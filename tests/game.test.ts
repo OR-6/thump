@@ -172,4 +172,29 @@ describe('the game', () => {
     for (let t = 0; t < 40; t += 1 / 72) g.tick(t);
     expect(g.mate!.level).toBeLessThan(2);
   });
+
+  it('REC: locked until Night Bus; then records what you play anywhere and plays it back', () => {
+    const voiced: string[] = [];
+    const st = { ...stage([]), voice: (key: string) => voiced.push(key) };
+    const p = freshProgress();
+    const g = new Game(st, p, room([{ id: 'p1', family: 'marimba', zones: 8 }]));
+    g.start(0);
+    g.tick(1);
+    g.key('loop');
+    expect(g.display.sub).toMatch(/Night Bus/);
+    p.unlocks.push('loops');
+    g.tick(5);
+    g.key('loop');
+    expect(g.looper.state).toBe('count');
+    const t0 = g.loopClock.timeAt(g.looper.recStart);
+    for (let t = 5; t < t0; t += 1 / 72) g.tick(t);
+    g.hit('kit:kick', t0 + 0.01, 0.9);
+    g.hit('p1:2', t0 + g.loopClock.spb * 2, 0.8);
+    for (let t = t0; t < t0 + 16 * g.loopClock.spb + 3; t += 1 / 72) g.tick(t);
+    expect(g.looper.state).toBe('play');
+    expect(voiced).toContain('kit:kick');
+    expect(voiced).toContain('p1:2');
+    g.begin(0);
+    expect(g.looper.state).toBe('off');
+  });
 });

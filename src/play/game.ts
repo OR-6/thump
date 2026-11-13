@@ -14,6 +14,7 @@ import { SONGS, dailySong } from '../songs/songs.js';
 import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/cast.js';
 import { bed } from '../songs/chart.js';
 import { Bandmate } from '../bandmate/bandmate.js';
+import { Looper } from './looper.js';
 import { FAMILIES, type Family } from '../room/classify.js';
 import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
@@ -23,7 +24,7 @@ export type Unlock = 'tom' | 'jam' | 'loops' | 'swaps';
 export const UNLOCK_AFTER: Record<string, Unlock[]> = {
   'porch-step': ['tom'],
   'kitchen-clock': ['jam'],
-  'night-bus': [],
+  'night-bus': ['loops'],
   'big-room': [],
 };
 
@@ -202,6 +203,31 @@ export class Game {
       }
       return;
     }
+    if (k === 'loop') {
+      if (this.mode === 'play' || this.mode === 'count' || this.mode === 'jam') return;
+      if (!(this.progress.unlocks as string[]).includes('loops')) {
+        this.display.sub = 'REC unlocks after Night Bus';
+        return;
+      }
+      if (twice) {
+        this.looper.clear();
+        this.lastTap[k] = -9;
+        this.refreshDisplay();
+        this.display.sub = 'Loops cleared';
+        return;
+      }
+      if (this.looper.state === 'off') {
+        const spb = secPerBeat(96, this.opts.tempo);
+        this.loopClock.set(this.t + 0.15, spb);
+      }
+      const beat = this.loopClock.beatAt(this.t);
+      this.looper.rec(beat);
+      // a bar of count before a take
+      const from = this.looper.recStart - 4;
+      for (let i = 0; i < 4; i++) this.stage.band({ beat: from + i, voice: 'shaker', midi: 0, len: 0.2, vel: i ? 0.6 : 0.9 }, this.loopClock.timeAt(from + i), this.loopClock.spb);
+      this.refreshDisplay();
+      return;
+    }
     if (k === 'jam') {
       if (this.mode === 'jam') this.endJam();
       else if ((this.progress.unlocks as string[]).includes('jam') && this.mode !== 'play' && this.mode !== 'count') this.beginJam();
@@ -209,6 +235,10 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- jam
+
+  readonly looper = new Looper();
+  readonly loopClock = new SongClock();
+  private onLoop = (key: string, atBeat: number, gain: number): void => this.stage.voice(key, this.loopClock.timeAt(atBeat), gain);
 
   /** The bandmate in a jam (null outside one), the surface it claimed, and the jam's cycle. */
   mate: Bandmate | null = null;
@@ -223,6 +253,7 @@ export class Game {
 
   /** JAM: the bandmate claims your most melodic instrument and trades two-bar phrases with you. */
   beginJam(): void {
+    this.looper.clear();
     const order: Family[] = ['marimba', 'glock', 'tongue', 'bowl', 'bell'];
     const inst = this.room.instruments();
     const pick = order.map((f) => inst.find((i) => i.family === f)).find(Boolean);
@@ -345,6 +376,7 @@ export class Game {
   begin(i: number): void {
     const song = this.songAt(i);
     if (!song) return;
+    this.looper.clear();
     this.song = song;
     this.selected = i;
     this.offered = true;
@@ -381,6 +413,7 @@ export class Game {
   hit(key: string, t: number, gain: number): Grade | 'extra' | null {
     if (this.mode === 'results' && t - this.modeT > 1.5) this.leaveResults();
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
+    if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
     const at = t - this.opts.offset - this.clock.start;
     const r = this.judge.hit(key, at);
@@ -396,6 +429,13 @@ export class Game {
 
   tick(t: number): void {
     this.t = t;
+    if (this.mode === 'discover' && this.looper.state !== 'off') {
+      const b = this.loopClock.beatAt(t);
+      const was = this.looper.state;
+      const wasRec = this.looper.recording;
+      this.looper.tick(b, b + TIMING.lookAheadS / this.loopClock.spb, this.onLoop);
+      if (was !== this.looper.state || wasRec !== this.looper.recording || this.looper.state === 'count') this.refreshDisplay();
+    }
     if (this.mode === 'discover') {
       // the first song is offered once there are two instruments (or the table alone has had a while)
       if (!this.offered && (this.found.length >= 2 || (this.kitAt >= 0 && t - this.kitAt > 25))) {
@@ -517,6 +557,15 @@ export class Game {
     d.day = this.progress.days.length;
     d.gold = !!this.progress.gold[sel.id];
     d.code = this.code;
+    if (this.mode === 'discover' && this.looper.state !== 'off') {
+      const l = this.looper;
+      const b = this.loopClock.beatAt(this.t);
+      d.line = 'Loop';
+      if (l.state === 'count') d.count = Math.max(1, Math.min(4, Math.ceil(l.recStart - b)));
+      d.sub = l.recording ? `Recording layer ${l.layers.length + 1}` : `${l.layers.length} layer${l.layers.length === 1 ? '' : 's'} · REC adds one`;
+      d.pulse = 'loop';
+      return;
+    }
     switch (this.mode) {
       case 'discover':
         if (!this.offered) {
@@ -605,5 +654,5 @@ function cap(s: string): string {
 }
 
 function unlockLine(u: Unlock): string {
-  return u === 'tom' ? 'New: a tom on your table' : 'New: JAM with a bandmate';
+  return u === 'tom' ? 'New: a tom on your table' : u === 'loops' ? 'New: REC loops on the module' : 'New: JAM with a bandmate';
 }

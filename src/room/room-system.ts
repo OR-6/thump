@@ -346,7 +346,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const r = this.ref(key);
       if (!r) return;
       const when = this.clock.toAudio(at);
-      if (r.kind === 'keys') {
+      if (r.kind === 'pad') {
+        const p = this.kit.pad(r.lane);
+        audio.drum(r.lane, vel, p ? Math.max(-0.8, Math.min(0.8, p.x / 0.4)) : 0, when);
+        this.later(at, () => p?.hit(vel * 0.8));
+        return;
+      } else if (r.kind === 'keys') {
         const q = this.kit.keyZones[r.zone];
         if (q) audio.modal('keys', q.midi, vel, 0, when);
       } else if (r.kind === 'zone' && r.surface?.voice) {
@@ -1703,7 +1708,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.autoT = t;
     if (this.game.mode === 'discover' && t >= this.autoNext) {
       this.autoNext = t + 1.2;
-      const next = this.surfaces.find((s) => !s.discovered && s.voice && s.reach <= 1.5);
+      const next = this.surfaces.find((s) => !s.discovered && s.voice && s.reach <= ACTIVE_M && s.source !== 'module');
       if (next) {
         // a strike in the middle of it (or on the kit's snare)
         this.hitAt.x = next === this.kitSurface ? 0.09 : (next.bounds.minX + next.bounds.maxX) / 2;

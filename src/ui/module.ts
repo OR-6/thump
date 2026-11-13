@@ -16,14 +16,14 @@ export const MODULE = {
   /** The display's tilt back from facing straight at you (radians): it looks up at a seated player. */
   tilt: 0.6,
   /** Keys along the front edge (module-local x), each this wide. */
-  keyW: 0.062,
+  keyW: 0.05,
   keyD: 0.034,
   keyZ: 0.04,
 } as const;
 
-export type ModuleKey = 'prev' | 'play' | 'next' | 'jam';
-export const KEYS: readonly ModuleKey[] = ['prev', 'play', 'next', 'jam'];
-const KEY_X = [-0.105, -0.035, 0.035, 0.105];
+export type ModuleKey = 'prev' | 'play' | 'next' | 'jam' | 'loop';
+export const KEYS: readonly ModuleKey[] = ['prev', 'play', 'next', 'jam', 'loop'];
+const KEY_X = [-0.116, -0.058, 0, 0.058, 0.116];
 
 export interface Display {
   /** The big line (≤ 18 characters). */
@@ -59,7 +59,7 @@ export class Module {
   private tex: CanvasTexture;
   private keyMeshes: Mesh[] = [];
   private keyMats: MeshStandardMaterial[] = [];
-  private press = new Float32Array(4);
+  private press = new Float32Array(5);
   private pulseT = 0;
   private last = '';
   shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '' };
@@ -177,7 +177,7 @@ export class Module {
   update(dt: number): void {
     this.pulseT += dt;
     const pulse = this.shown.pulse;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < KEYS.length; i++) {
       this.press[i] = Math.max(0, this.press[i] - dt * 6);
       const p = pulse === KEYS[i] ? 0.5 + 0.5 * Math.sin(this.pulseT * 6) : 0;
       const k = Math.max(this.press[i], p * 0.8);
@@ -213,6 +213,11 @@ function keyTexture(k: ModuleKey): CanvasTexture {
     g.lineTo(90, 64);
     g.lineTo(48, 94);
     g.closePath();
+    g.fill();
+  } else if (k === 'loop') {
+    // rec: a red dot
+    g.fillStyle = '#ff4a3a';
+    g.arc(64, 64, 26, 0, Math.PI * 2);
     g.fill();
   } else {
     // jam: two little notes
