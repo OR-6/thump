@@ -84,6 +84,7 @@ For each: ten hits (the window: gentle fingertip taps only).
 
 Sit back down. With two instruments found, **▶** pulses: tap it. Play *Porch Step* to the end.
 - Read at the end: stars, fps min (line 1), the Timing readout (Settings → Tuning → Timing).
+- Good: the instruments you found but aren't playing join in softly; the last chord crosses the room; then your last four bars play back (the encore). Say if any of it felt like too much.
 - Say: did the light dots tell you what to hit? Did hits feel early, on, or late? If consistently late, set Timing to the learned value + the difference and play again.
 - Good: 2–3 stars on a first play, fps min ≥ 70.
 
@@ -96,6 +97,7 @@ Mid-song, take the headset off for 5 s, then put it back on.
 ## 7. JAM and the phone (6 min)
 
 1. After Porch Step, tap **JAM**. The bandmate plays two bars on one of your instruments, then "Your turn": answer on the lit bars. Two rounds. Good: it gets busier when you answer well.
+   Watch the mallets: do they fly to the right bars and strike on the notes, and rest on the module between phrases?
 2. The module shows a 4-letter code. On your phone open **https://or-6.github.io/thump/**, type the code. Good: the phone shows a bass pad pulsing on the beat; your taps play bass in the headset, in time and in key.
 - Read: how long from a phone tap to the sound (feel: tight / loose / late).
 
