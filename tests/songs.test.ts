@@ -79,7 +79,7 @@ describe('casting a song onto a room', () => {
   it('the gong goes on the wall', () => expect(cast(['gong'], [wall, door]).gong?.surface).toBe('p3'));
   it('note keys: degrees to bars, wrapping on small instruments', () => {
     const c = cast(['melody'], [door]);
-    const zones = (id: string) => (id === 'keys' ? 5 : 8);
+    const zones = (id: string, d: number) => d % (id === 'keys' ? 5 : 8);
     expect(noteKey({ beat: 0, part: 'melody', degree: 3, vel: 1 }, c, zones)).toBe('p1:3');
     const k = cast(['melody'], []);
     expect(noteKey({ beat: 0, part: 'melody', degree: 7, vel: 1 }, k, zones)).toBe('keys:2');

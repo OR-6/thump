@@ -73,7 +73,7 @@ export function rootNear(base: number, keyPc: number): number {
 
 /** Lay out an instrument's zones on its surface around `anchor` (both in the surface's 2D frame). */
 export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: number }, size: number, keyPc = 0): Zone[] {
-  const root = rootNear(registerBase(family, size), keyPc);
+  const { root, d0 } = startOf(family, size, keyPc);
   const out: Zone[] = [];
   const fit = (cx: number, cz: number, w: number, h: number) => ({
     x: clampSpan(cx, w, b.minX, b.maxX),
@@ -82,29 +82,31 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
   switch (family) {
     case 'marimba': {
       // 8 bars stacked up the surface, low at the bottom; higher bars a little shorter, like a real marimba
+      // bars at least a hand apart (palm to fingertip lands ~9 cm along a door)
       const n = 8;
-      const room = Math.max(0.24, Math.min(0.56, b.maxZ - b.minZ - 0.04));
+      const room = Math.max(0.5, Math.min(0.72, b.maxZ - b.minZ - 0.04));
       const step = room / n;
-      const barH = Math.min(0.042, step * 0.66);
+      const barH = Math.min(0.05, step * 0.62);
       const maxW = Math.max(0.2, Math.min(0.44, b.maxX - b.minX - 0.04));
       const c = fit(anchor.x, anchor.z, maxW, room);
       for (let i = 0; i < n; i++) {
         const w = maxW * (1 - (i / (n - 1)) * 0.3);
-        out.push({ i, shape: 'rect', x: c.x, z: c.z - room / 2 + step * (i + 0.5), w, h: barH, degree: i, midi: degreeMidi(root, i) });
+        out.push({ i, shape: 'rect', x: c.x, z: c.z - room / 2 + step * (i + 0.5), w, h: barH, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
       }
       break;
     }
     case 'glock': {
       // 8 keys across the pane, low on the left; higher keys a little shorter
+      // keys wider than a fingertip spread (index to ring is ~4 cm)
       const n = 8;
-      const room = Math.max(0.24, Math.min(0.4, b.maxX - b.minX - 0.04));
+      const room = Math.max(0.48, Math.min(0.62, b.maxX - b.minX - 0.04));
       const step = room / n;
-      const keyW = Math.min(0.032, step * 0.72);
+      const keyW = Math.min(0.05, step * 0.68);
       const maxH = Math.max(0.07, Math.min(0.13, b.maxZ - b.minZ - 0.04));
       const c = fit(anchor.x, anchor.z, room, maxH);
       for (let i = 0; i < n; i++) {
         const h = maxH * (1 - (i / (n - 1)) * 0.32);
-        out.push({ i, shape: 'rect', x: c.x - room / 2 + step * (i + 0.5), z: c.z, w: keyW, h, degree: i, midi: degreeMidi(root, i) });
+        out.push({ i, shape: 'rect', x: c.x - room / 2 + step * (i + 0.5), z: c.z, w: keyW, h, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
       }
       break;
     }
@@ -117,37 +119,80 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
       const c = fit(anchor.x, anchor.z, (ring + r) * 2, (ring + r) * 2);
       for (let i = 0; i < n; i++) {
         const a = -Math.PI / 2 - (i / n) * Math.PI * 2;
-        out.push({ i, shape: 'disc', x: c.x + Math.cos(a) * ring, z: c.z + Math.sin(a) * ring, w: r, h: 0, degree: i, midi: degreeMidi(root, i) });
+        out.push({ i, shape: 'disc', x: c.x + Math.cos(a) * ring, z: c.z + Math.sin(a) * ring, w: r, h: 0, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
       }
       break;
     }
     case 'keys': {
       // the table keys: five slim bars in a row
-      for (let i = 0; i < 5; i++) out.push({ i, shape: 'rect', x: anchor.x + (i - 2) * 0.085, z: anchor.z, w: 0.07, h: 0.012, degree: i, midi: degreeMidi(root, i) });
+      for (let i = 0; i < 5; i++) out.push({ i, shape: 'rect', x: anchor.x + (i - 2) * 0.085, z: anchor.z, w: 0.07, h: 0.012, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
       break;
     }
     case 'gong': {
       const r = 0.12 + 0.12 * Math.min(1, Math.max(0, size));
       const c = fit(anchor.x, anchor.z, r * 2, r * 2);
-      out.push({ i: 0, shape: 'disc', x: c.x, z: c.z, w: r, h: 0, degree: -1, midi: root });
+      out.push({ i: 0, shape: 'disc', x: c.x, z: c.z, w: r, h: 0, degree: -1, midi: degreeMidi(root, d0) });
       break;
     }
     case 'bell':
-      out.push({ i: 0, shape: 'disc', x: anchor.x, z: anchor.z, w: 0.05, h: 0, degree: 0, midi: root });
+      out.push({ i: 0, shape: 'disc', x: anchor.x, z: anchor.z, w: 0.05, h: 0, degree: d0, midi: degreeMidi(root, d0) });
       break;
     default: {
       const r = family === 'stomp' ? 0.22 : family === 'shaker' ? 0.14 : 0.08;
       const c = fit(anchor.x, anchor.z, r * 2, r * 2);
-      out.push({ i: 0, shape: 'disc', x: c.x, z: c.z, w: r, h: 0, degree: -1, midi: root });
+      out.push({ i: 0, shape: 'disc', x: c.x, z: c.z, w: r, h: 0, degree: -1, midi: degreeMidi(root, d0) });
     }
   }
   return out;
 }
 
-/** Re-pitch zones into another key (a song's), keeping each zone's degree. */
+/**
+ * Where an instrument's lowest note sits: the key's root an octave or so below the size's register, and
+ * the scale degree whose note is nearest that register (so a bigger surface really is lower, step by
+ * step, not only in octave jumps).
+ */
+export function startOf(family: Family, size: number, keyPc: number): { root: number; d0: number } {
+  const base = registerBase(family, size);
+  const root = rootNear(base, keyPc) - 12;
+  let d0 = 0;
+  let best = Infinity;
+  for (let d = 0; d < 10; d++) {
+    const m = degreeMidi(root, d);
+    if (Math.abs(m - base) < best) {
+      best = Math.abs(m - base);
+      d0 = d;
+    }
+  }
+  return { root, d0 };
+}
+
+/** Re-pitch zones into another key (a song's), keeping each zone's place in the scale. */
 export function retune(zones: Zone[], family: Family, size: number, keyPc: number): void {
-  const root = rootNear(registerBase(family, size), keyPc);
-  for (const z of zones) if (z.degree >= 0) z.midi = degreeMidi(root, z.degree);
+  const { root, d0 } = startOf(family, size, keyPc);
+  zones.forEach((z, i) => {
+    if (z.degree < 0) return;
+    z.degree = d0 + i;
+    z.midi = degreeMidi(root, z.degree);
+  });
+}
+
+/** The zone a song's scale degree lands on: the zone with that degree, else the same note an octave over. */
+export function zoneForDegree(zones: readonly Zone[], degree: number): number {
+  if (zones.length <= 1 || degree < 0) return 0;
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < zones.length; i++) {
+    const zd = zones[i].degree;
+    if (zd < 0) continue;
+    // same pitch class (degree mod 5) first, then nearest
+    const same = ((zd - degree) % 5 + 5) % 5 === 0;
+    const d = Math.abs(zd - degree) + (same ? 0 : 100);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
 }
 
 /**

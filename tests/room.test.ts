@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classify, type Features } from '../src/room/classify.js';
-import { degreeMidi, rootNear, zoneAt, zonesFor, retune } from '../src/room/zones.js';
+import { degreeMidi, rootNear, zoneAt, zonesFor, retune, zoneForDegree } from '../src/room/zones.js';
 
 const base: Features = { facing: 'vertical', width: 1, length: 1, area: 1, elevation: 1, hollow: 0, glass: 0, soft: 0, curved: 0, bump: false, label: '' };
 const f = (o: Partial<Features>): Features => {
@@ -79,6 +79,25 @@ describe('pitch zones', () => {
     expect(rootNear(55, 7)).toBe(55);
     const z = zonesFor('glock', { minX: -1, maxX: 1, minZ: -1, maxZ: 1 }, { x: 0, z: 0 }, 0.5, 0);
     retune(z, 'glock', 0.5, 2);
-    expect(((z[0].midi % 12) + 12) % 12).toBe(2);
+    const dPenta = new Set([2, 4, 6, 9, 11]);
+    for (const q of z) expect(dPenta.has(((q.midi % 12) + 12) % 12)).toBe(true);
   });
+  it('size really sets pitch: doors from small to big step down through the scale, not only by octaves', () => {
+    const lows = [0, 0.2, 0.4, 0.6, 0.8, 1].map((s) => zonesFor('marimba', door, { x: 0, z: 0 }, s)[0].midi);
+    for (let i = 1; i < lows.length; i++) expect(lows[i]).toBeLessThanOrEqual(lows[i - 1]);
+    expect(new Set(lows).size).toBeGreaterThanOrEqual(4);
+  });
+  it('bars and keys are at least a hand apart', () => {
+    const m = zonesFor('marimba', door, { x: 0, z: 0 }, 0.5);
+    expect(m[1].z - m[0].z).toBeGreaterThanOrEqual(0.06);
+    const g = zonesFor('glock', { minX: -1, maxX: 1, minZ: -1, maxZ: 1 }, { x: 0, z: 0 }, 0.5);
+    expect(g[1].x - g[0].x).toBeGreaterThanOrEqual(0.06);
+  });
+  it("a song's degree lands on the zone with that degree, or the same note in another octave", () => {
+    const z = zonesFor('marimba', door, { x: 0, z: 0 }, 0.5);
+    const d = z[3].degree;
+    expect(zoneForDegree(z, d)).toBe(3);
+    expect(z[zoneForDegree(z, d + 5)].degree % 5).toBe(d % 5);
+  });
+  it('an invisible boundary wall is not an instrument', () => expect(classify(f({ width: 3, length: 2.5, label: 'invisible wall face' }))).toBeNull());
 });

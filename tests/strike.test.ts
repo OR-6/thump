@@ -237,6 +237,16 @@ describe('strike detection', () => {
     expect(play(det, slap(0.1, 1.2, 0, 0.32), 0.6, 1)).toHaveLength(1);
   });
 
+  it('a stop-only surface (a doorway, a box face) ignores a hand passing through, still takes a stop', () => {
+    const det = new StrikeDetector();
+    det.stopOnly = true;
+    // straight through at 1 m/s, no stop
+    expect(play(det, (t) => ({ y: 0.1 - t * 1.0 }), 0.5)).toHaveLength(0);
+    const det2 = new StrikeDetector();
+    det2.stopOnly = true;
+    expect(play(det2, slap(0.1, 1.0, 0.006), 1)).toHaveLength(1);
+  });
+
   it('louder for faster, never silent', () => {
     expect(speedToGain(0.2)).toBeCloseTo(Math.pow(10, -24 / 20), 3);
     expect(speedToGain(0.8)).toBeGreaterThan(speedToGain(0.5));

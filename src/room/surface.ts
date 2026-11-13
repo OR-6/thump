@@ -48,7 +48,7 @@ export class Surface {
   sink = 0;
 
   constructor(
-    readonly id: string,
+    public id: string,
     readonly source: SurfaceSource,
     readonly label: string,
     strike: ConstructorParameters<typeof StrikeDetector>[0] = {},

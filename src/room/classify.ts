@@ -86,25 +86,26 @@ export function labelHints(label: string): Partial<Pick<Features, 'hollow' | 'gl
  */
 export function classify(f: Features, isKitTable = false): Voice | null {
   const h = { ...f, ...mergeHints(f) };
+  if (/invisible/.test(f.label)) return null; // a boundary Quest drew, not a real surface
   if (isKitTable) return { family: 'kit', size: norm(f.area, 0.3, 2), why: 'the table the kit is on' };
   if (f.facing === 'down') return null;
   if (f.area < 0.01 && !f.bump) return null;
   if (f.facing === 'up' && f.elevation < 0.15) return { family: 'stomp', size: 1, why: 'the floor' };
-  if (h.soft >= 0.5) return { family: 'shaker', size: norm(f.area, 0.2, 3), why: 'soft: the hand sinks in' };
+  if (h.soft >= 0.5) return { family: 'shaker', size: norm(f.area, 0.2, 3), why: f.soft >= 0.5 ? 'soft: the hand sinks in' : 'soft furniture (room scan)' };
   if (f.bump) {
     if (h.curved >= 0.5) return { family: 'bowl', size: norm(f.width, 0.08, 0.35), why: 'a curved shell on the table' };
     if (f.length >= f.width * 0.9) return { family: 'bell', size: norm(f.length, 0.06, 0.25), why: 'a small tall bump' };
     return { family: 'block', size: norm(f.area, 0.01, 0.1), why: 'a small flat bump' };
   }
-  if (h.glass >= 0.5) return { family: 'glock', size: norm(f.width, 0.3, 2), why: 'glass framed in a wall' };
+  if (h.glass >= 0.5) return { family: 'glock', size: norm(f.width, 0.3, 2), why: f.glass >= 0.5 ? 'a pane set into a wall' : 'glass (room scan)' };
   if (f.facing === 'up') {
     if (h.hollow >= 0.5) return { family: 'tongue', size: norm(f.area, 0.1, 1), why: 'the top of a hollow box' };
     if (h.curved >= 0.5) return { family: 'bowl', size: norm(f.width, 0.1, 0.6), why: 'a curved top' };
-    if (f.area >= 0.25 && f.elevation >= 0.4 && f.elevation <= 1.2) return { family: 'tongue', size: norm(f.area, 0.25, 2), why: 'another table: a big hollow top' };
+    if (f.area >= 0.25 && f.elevation >= 0.4 && f.elevation <= 1.2) return { family: 'tongue', size: norm(f.area, 0.25, 2), why: 'another table top' };
     return { family: 'block', size: norm(f.area, 0.02, 0.25), why: 'a small solid top' };
   }
   // vertical faces
-  if (h.hollow >= 0.5 && f.length >= 1.5 && f.width >= 0.5 && f.width <= 1.4) return { family: 'marimba', size: norm(f.length * f.width, 1, 2.6), why: 'door-sized and hollow' };
+  if (h.hollow >= 0.5 && f.length >= 1.5 && f.width >= 0.5 && f.width <= 1.8) return { family: 'marimba', size: norm(f.length * f.width, 1, 3.2), why: f.hollow >= 0.5 ? 'door-sized, set into a wall' : 'a door (room scan)' };
   if (h.hollow >= 0.5) return { family: 'tongue', size: norm(f.area, 0.1, 1.5), why: 'a hollow box front' };
   if (h.curved >= 0.5) return { family: 'bowl', size: norm(f.width, 0.1, 0.6), why: 'a curved face' };
   if (f.area >= 0.8) return { family: 'gong', size: norm(f.area, 0.8, 12), why: 'large and solid' };

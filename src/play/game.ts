@@ -57,6 +57,8 @@ export interface Room {
   instruments(): RoomInstrument[];
   /** Zone count of a surface ('keys' and room surfaces). */
   zones(surface: string): number;
+  /** The zone of a surface that plays a song's scale degree. */
+  zoneFor(surface: string, degree: number): number;
 }
 
 export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam';
@@ -245,7 +247,7 @@ export class Game {
   }
 
   private jamKey(degree: number): string {
-    return `${this.jamSurface}:${this.jamZones > 1 ? Math.max(0, degree) % this.jamZones : 0}`;
+    return `${this.jamSurface}:${this.jamZones > 1 ? this.room.zoneFor(this.jamSurface, degree) : 0}`;
   }
 
   private tickJam(t: number): void {
@@ -337,7 +339,7 @@ export class Game {
     this.cast = cast(song.parts, this.room.instruments());
     this.stage.casting(this.cast);
     this.stage.retune(song.key);
-    const notes: JudgeNote[] = song.notes.map((n) => ({ beat: n.beat, lane: noteKey(n, this.cast, (s) => this.room.zones(s)), vel: n.vel }));
+    const notes: JudgeNote[] = song.notes.map((n) => ({ beat: n.beat, lane: noteKey(n, this.cast, (s, d) => this.room.zoneFor(s, d)), vel: n.vel }));
     const spb = secPerBeat(song.bpm, this.opts.tempo);
     this.tempoAtStart = this.opts.tempo;
     this.clock.set(this.t + 0.4 + 4 * spb, spb);

@@ -20,7 +20,8 @@ function stage(log: string[]): GameStage {
 }
 
 function room(list: RoomInstrument[]): Room {
-  return { instruments: () => list, zones: (id) => (id === 'keys' ? 5 : (list.find((x) => x.id === id)?.zones ?? 0)) };
+  const n = (id: string) => (id === 'keys' ? 5 : (list.find((x) => x.id === id)?.zones ?? 0));
+  return { instruments: () => list, zones: n, zoneFor: (id, d) => (n(id) <= 1 || d < 0 ? 0 : d % n(id)) };
 }
 
 /** A player who hits every note `late` s after it's due. */

@@ -50,7 +50,7 @@ import { Surface, outlineOf } from './surface.js';
 import { Overlay, Sheen } from './overlay.js';
 import { Motes } from './motes.js';
 import { FAMILIES, type Family, type Features } from './classify.js';
-import { retune, zoneAt, type Zone } from './zones.js';
+import { retune, zoneAt, zoneForDegree, type Zone } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
 
 const params = new URLSearchParams(location.search);
@@ -71,7 +71,7 @@ const ACTIVE_M = 3;
 const SEATED_M = 1.1;
 /** A hand this close to a surface (along its normal) is tested against it. */
 const NEAR_MIN = -0.12;
-const NEAR_MAX = 0.32;
+const NEAR_MAX = 0.6;
 
 /** Strike tuning from the address (device sessions): ?speed=0.3 &near=20 (mm) &decel=10 &latch=100 (ms) &rearm=18 (mm). */
 function strikeOverrides(): Partial<Record<keyof typeof STRIKE, number>> {
@@ -282,6 +282,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return out;
     },
     zones: (id) => (id === 'keys' ? this.kit.keyZones.length : (this.surfaces.find((s) => s.id === id)?.zones.length ?? 0)),
+    zoneFor: (id, degree) => zoneForDegree(id === 'keys' ? this.kit.keyZones : (this.surfaces.find((s) => s.id === id)?.zones ?? []), degree),
   };
 
   private stage: GameStage = {
@@ -593,7 +594,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         // the hand's shadow on the table
         this.tmp.copy(h.palm).applyMatrix4(inv);
         this.kit.setHandShadow(i, this.tmp.x, this.tmp.y - h.palmRadius - this.kitSurface.detector.surfaceY, this.tmp.z);
-      } else this.kit.setHandShadow(i, 0, Infinity, 0);
+        this.untracked[i] = 0;
+      } else {
+        this.kit.setHandShadow(i, 0, Infinity, 0);
+        this.untracked[i] += delta;
+      }
       let best: Surface | null = null;
       let bestStrike: Strike | null = null;
       this.sample.tracked = h.tracked;
@@ -602,15 +607,23 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const s = this.surfaces[k];
         if (!s.voice && s.source !== 'module') continue;
         if (s.reach > ACTIVE_M && s.source !== 'kit' && s.source !== 'module') continue;
-        let near = false;
-        if (h.tracked) {
-          s.toZone(h.palm, this.o);
-          near = this.o.y > NEAR_MIN && this.o.y < NEAR_MAX && s.over(this.o.x, this.o.z, 0.08);
+        if (!h.tracked) {
+          // tracking lost: keep feeding the gap to the surfaces it was near (a late hit is still a hit), then let go
+          if (s.near[i]) {
+            s.detector.update(hand, NOT_TRACKED, t, delta);
+            if (this.untracked[i] > 0.2) {
+              s.detector.forget(hand);
+              s.near[i] = false;
+            }
+          }
+          continue;
         }
+        s.toZone(h.palm, this.o);
+        // a hand is followed from well out (so a fast first slap has a history), struck only near
+        const near = this.o.y > NEAR_MIN && this.o.y < NEAR_MAX && s.over(this.o.x, this.o.z, 0.08);
         if (!near) {
           if (s.near[i]) {
-            // a hand leaving a surface: let the detector see the gap (a dropout), then forget it
-            s.detector.update(hand, NOT_TRACKED, t, delta);
+            s.detector.forget(hand);
             s.near[i] = false;
           }
           continue;
@@ -618,33 +631,52 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         s.near[i] = true;
         this.fill(h, s);
         const strike = s.detector.update(hand, this.sample, t, delta);
-        if (strike && (!bestStrike || Math.abs(strike.height) < Math.abs(bestStrike.height))) {
-          best = s;
-          bestStrike = strike;
-          const p = this.sample.points[strike.point];
-          this.hitAt.x = p.x;
-          this.hitAt.z = p.z;
-          if (s === this.kitSurface) {
-            // which pad: kit-local points (zone z is −kit z)
-            for (let q = 0; q < this.sample.points.length; q++) {
-              const a = this.sample.points[q];
-              const b = this.padPts[q];
-              b.x = a.x;
-              b.y = a.y;
-              b.z = -a.z;
-              b.r = a.r;
-            }
-            const visible = this.visibleSpots();
-            const pi = pickPad(this.padPts, s.detector.surfaceY, strike.height, visible);
-            this.hitAt.pad = pi;
-            this.hitAt.lane = pi >= 0 ? visible[pi].lane : 'kick';
+        if (!strike) continue;
+        // the kit always wins a tie with a room surface over the same table
+        const better = !bestStrike || (s === this.kitSurface && best !== this.kitSurface) || (best !== this.kitSurface && Math.abs(strike.height) < Math.abs(bestStrike.height));
+        if (!better) continue;
+        best = s;
+        bestStrike = strike;
+        // where it landed: the middle of the points touching (palm and fingers within 1 cm of the lowest)
+        let sx = 0;
+        let sz = 0;
+        let n = 0;
+        const low = this.sample.points[strike.point];
+        const lowH = low.y - low.r;
+        for (const q of this.sample.points) {
+          if (q.y - q.r - lowH > 0.01) continue;
+          sx += q.x;
+          sz += q.z;
+          n++;
+        }
+        this.hitAt.x = sx / n;
+        this.hitAt.z = sz / n;
+        this.hitHand = i;
+        if (s === this.kitSurface) {
+          // which pad: kit-local points (zone z is −kit z)
+          for (let q = 0; q < this.sample.points.length; q++) {
+            const a = this.sample.points[q];
+            const b = this.padPts[q];
+            b.x = a.x;
+            b.y = a.y;
+            b.z = -a.z;
+            b.r = a.r;
           }
+          const visible = this.visibleSpots();
+          const pi = pickPad(this.padPts, s.detector.surfaceY, strike.height, visible);
+          this.hitAt.pad = pi;
+          this.hitAt.lane = pi >= 0 ? visible[pi].lane : 'kick';
         }
       }
-      if (best && bestStrike) this.onHit(this.preferInset(best), side, bestStrike);
+      // one slap is one hit, whichever surfaces it crossed: the same hand can't strike again for a latch
+      if (best && bestStrike && t - this.handLatch[i] >= STRIKE.latchS) {
+        this.handLatch[i] = t;
+        this.onHit(this.preferInset(best), side, bestStrike);
+        this.watchSink(i, best);
+      }
+      this.trackSink(i, h);
     }
   }
-
   /**
    * A window or a door is set into its wall: the hand meets the wall's plane first, but a strike that
    * lands inside a smaller surface set into that one (nearly parallel, within 12 cm) belongs to it.
@@ -664,6 +696,42 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     return best;
   }
+  private untracked = [0, 0];
+  private handLatch = [-Infinity, -Infinity];
+  private hitHand = 0;
+  /** Softness from the hand: after a hit, how far the hand goes on past the surface, per hand. */
+  private sinkWatch: ({ s: Surface; until: number; deepest: number } | null)[] = [null, null];
+
+  private watchSink(i: number, s: Surface): void {
+    if (s.source !== 'plane' && s.source !== 'volume') return;
+    this.sinkWatch[i] = { s, until: this.clock.t + 0.15, deepest: 0 };
+  }
+
+  /** A surface the hand sinks into (a cushion, a bed) is soft: after a few hits it becomes a shaker. */
+  private trackSink(i: number, h: (typeof hands)['left']): void {
+    const w = this.sinkWatch[i];
+    if (!w || !h.tracked) return;
+    w.s.toZone(h.palm, this.o);
+    const depth = -(this.o.y - h.palmRadius - w.s.detector.surfaceY);
+    if (depth > w.deepest) w.deepest = depth;
+    if (this.clock.t < w.until) return;
+    this.sinkWatch[i] = null;
+    const s = w.s;
+    s.sink = s.sink * 0.6 + w.deepest * 0.4;
+    s.hits++;
+    if (s.hits >= 3 && s.sink > 0.025 && s.voice && s.voice.family !== 'shaker' && s.features.soft < 0.5) {
+      const f = { ...s.features, soft: Math.min(1, s.sink / 0.04) };
+      s.setFeatures(f);
+      if (DEBUG) console.log(`[thump] ${s.id} is soft (sinks ${Math.round(s.sink * 1000)} mm): now ${s.voice?.family}`);
+      if (s.discovered) {
+        // re-draw it as what it really is
+        s.discovered = false;
+        this.dropOverlay(s);
+        this.discover(s);
+      }
+    }
+  }
+
   private o = { x: 0, y: 0, z: 0 };
   private tmpM = new Matrix4();
   private modLift = new Matrix4().makeTranslation(0, MODULE.h + 0.008, 0);
@@ -699,7 +767,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const t = st.t;
     const gain = st.gain;
     this.debug.hits++;
-    s.hits++;
     this.hitTimes.push(performance.now());
     if (this.hitTimes.length > 64) this.hitTimes.splice(0, 32);
     if (s === this.moduleSurface) {
@@ -718,7 +785,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const zone = s.zones[z];
     if (!zone || !s.voice) return;
     this.lastWorld.set(zone.x, 0, -zone.z).applyMatrix4(s.world);
-    audio.modal(s.voice.family, zone.midi, gain, this.panOf(this.lastWorld), 0, s.voice.size);
+    audio.modal(s.voice.family, zone.midi, gain, this.panOf(this.lastWorld), 0, s.voice.size, s.id);
     this.overlays.get(s)?.hit(z, gain);
     const grade = this.game.hit(`${s.id}:${z}`, t, gain);
     if (grade === 'perfect') {
@@ -768,7 +835,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** Off the pads, the table still plays: by where you hit it. */
   private drumAt(x: number, z: number): Lane | 'rim' {
     const hx = this.handed() === 'left' ? -x : x;
-    if (Math.abs(x) > KIT_ZONE.halfX || z > KIT_ZONE.front || z < KIT_ZONE.back) return 'rim';
+    // the real table's edge is a rim; without it, the kit area's edge is
+    if (this.tableOutline ? this.toTableEdge(x, z) < 0.04 : Math.abs(x) > KIT_ZONE.halfX || z > KIT_ZONE.front || z < KIT_ZONE.back) return 'rim';
     if (hx < -0.17) return this.lanes().includes('tom') ? 'tom' : 'kick';
     if (hx < 0) return 'kick';
     if (hx < 0.17) return 'snare';
@@ -806,6 +874,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       a.group.updateMatrixWorld(true);
       const w = this.tmp2.set(s.anchor.x, 0, -s.anchor.z).applyMatrix4(s.world);
       const local = w.applyMatrix4(this.tmpM2.copy(a.group.matrixWorld).invert());
+      // one entry per instrument and place
+      if (list.some((x) => x.family === s.voice!.family && Math.hypot(x.x - local.x, x.y - local.y, x.z - local.z) < 0.15)) return;
       list.push({ family: s.voice.family, x: r4(local.x), y: r4(local.y), z: r4(local.z) });
     }
     saveProgress(this.progress);
@@ -890,66 +960,148 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** Planes and room-scan volumes → surfaces; kept stable across frames (discoveries survive). */
   private syncSurfaces(): void {
-    const seen = new Set<object>();
+    this.seenSrc.clear();
     let planes = 0;
     let meshes = 0;
-    const kitY = this.kit.root.getWorldPosition(this.tmp2).y;
-    const kitC = this.tmp2.clone();
+    let changed = false;
+    const kitY = this.kit.root.getWorldPosition(this.kitC).y;
+    const created: Surface[] = [];
     for (const e of this.queries.planes.entities) {
       const pl = e.getValue(XRPlane, '_plane') as (XRPlane & { semanticLabel?: string; polygon?: DOMPointReadOnly[] }) | undefined;
       const obj = e.object3D;
       if (!pl || !obj) continue;
       planes++;
-      seen.add(pl);
-      if (this.bySource.has(pl)) continue;
-      const s = this.fromPlane(pl, obj, kitY, kitC);
+      this.seenSrc.add(pl);
+      const had = this.bySource.get(pl);
+      obj.updateMatrixWorld();
+      if (had && !this.moved(pl, obj)) continue;
+      // new, or Quest moved it (a recentre, a better fit): build it afresh, keeping what was found on it
+      const s = this.fromPlane(pl, obj, kitY, this.kitC);
+      this.srcPose.set(pl, obj.matrixWorld.clone());
+      if (had) for (const old of had) this.orphan(old);
       this.bySource.set(pl, s ? [s] : []);
+      if (s) created.push(s);
+      changed = true;
     }
     for (const e of this.queries.meshes.entities) {
       const mesh = e.getValue(XRMesh, '_mesh') as object | undefined;
       const obj = e.object3D;
       if (!mesh || !obj) continue;
       meshes++;
-      seen.add(mesh);
-      if (this.bySource.has(mesh)) continue;
-      if (!e.getValue(XRMesh, 'isBounded3D')) {
-        this.bySource.set(mesh, []);
-        continue;
+      this.seenSrc.add(mesh);
+      const had = this.bySource.get(mesh);
+      obj.updateMatrixWorld();
+      // a box's faces are picked from where you stand: walk a metre away and they're picked again
+      const stale = had && had.every((x) => !x.discovered) && this.volumeHead.get(mesh)!.distanceTo(this.head) > 1;
+      if (had && !stale && !this.moved(mesh, obj)) continue;
+      let list: Surface[] = [];
+      if (e.getValue(XRMesh, 'isBounded3D')) {
+        const label = String(e.getValue(XRMesh, 'semanticLabel') ?? '').toLowerCase();
+        list = this.fromVolume(label, obj, e.getVectorView(XRMesh, 'min'), e.getVectorView(XRMesh, 'max'));
       }
-      const label = String(e.getValue(XRMesh, 'semanticLabel') ?? '').toLowerCase();
-      const min = e.getVectorView(XRMesh, 'min');
-      const max = e.getVectorView(XRMesh, 'max');
-      this.bySource.set(mesh, this.fromVolume(label, obj, min, max, kitY, kitC));
+      this.srcPose.set(mesh, obj.matrixWorld.clone());
+      this.volumeHead.set(mesh, this.head.clone());
+      if (had) for (const old of had) this.orphan(old);
+      this.bySource.set(mesh, list);
+      created.push(...list);
+      changed = true;
     }
-    if (this.bySource.size !== this.measuredCount) {
-      // new planes: what's inset in what may have changed (a window appears after its wall)
-      this.measuredCount = this.bySource.size;
+    for (const [src, list] of this.bySource) {
+      if (this.seenSrc.has(src)) continue;
+      for (const old of list) this.orphan(old);
+      this.bySource.delete(src);
+      this.srcPose.delete(src);
+      changed = true;
+    }
+    // a replaced or moved surface keeps its instrument, its id and where its notes are
+    for (const s of created) this.adopt(s);
+    const now = this.clock.t;
+    for (let k = this.orphans.length - 1; k >= 0; k--) {
+      if (now - this.orphans[k].at > 4) {
+        this.dropSurface(this.orphans[k].s);
+        this.orphans.splice(k, 1);
+      }
+    }
+    if (changed) {
+      // what's inset in what may have changed (a window appears after its wall)
       for (const list of this.bySource.values())
         for (const s of list) {
           if (s.discovered || s.source !== 'plane' || s.features.facing !== 'vertical') continue;
           const f = { ...s.features, hollow: 0, glass: 0 };
           this.measure(s, f);
           s.setFeatures(f);
+          this.tune(s);
         }
-    }
-    for (const [src, list] of this.bySource) {
-      if (seen.has(src)) continue;
-      for (const s of list) this.dropSurface(s);
-      this.bySource.delete(src);
     }
     this.debug.planes = planes;
     this.debug.meshes = meshes;
-    this.surfaces = [this.kitSurface, this.moduleSurface];
+    this.surfaces.length = 0;
+    this.surfaces.push(this.kitSurface, this.moduleSurface);
     for (const list of this.bySource.values()) for (const s of list) this.surfaces.push(s);
     for (const s of this.surfaces) if (!s.discovered && s.source !== 'module') this.restore(s);
     this.updateReach();
-    this.rebuildSheens();
+    if (changed) this.rebuildSheens();
+  }
+  private seenSrc = new Set<object>();
+  private srcPose = new Map<object, Matrix4>();
+  private volumeHead = new Map<object, Vector3>();
+  private kitC = new Vector3();
+  private orphans: { s: Surface; at: number }[] = [];
+
+  /** Has a plane or box moved more than a centimetre or a degree since it was built? */
+  private moved(src: object, obj: Object3D): boolean {
+    const was = this.srcPose.get(src);
+    if (!was) return true;
+    const a = was.elements;
+    const b = obj.matrixWorld.elements;
+    if (Math.hypot(a[12] - b[12], a[13] - b[13], a[14] - b[14]) > 0.01) return true;
+    for (let k = 0; k < 11; k++) if (k !== 3 && k !== 7 && Math.abs(a[k] - b[k]) > 0.0175) return true;
+    return false;
+  }
+
+  /** A surface that went away: kept a few seconds in case its replacement arrives. */
+  private orphan(s: Surface): void {
+    if (s.discovered) this.orphans.push({ s, at: this.clock.t });
+    else this.dropSurface(s);
+  }
+
+  /** A new surface where a found one was (same instrument, coplanar within 5 cm): it takes over. */
+  private adopt(s: Surface): void {
+    if (!s.voice) return;
+    for (let k = 0; k < this.orphans.length; k++) {
+      const o = this.orphans[k].s;
+      if (o.voice?.family !== s.voice.family || Math.abs(o.normal.dot(s.normal)) < 0.95) continue;
+      const w = this.tmp.set(o.anchor.x, 0, -o.anchor.z).applyMatrix4(o.world);
+      s.toZone(w, this.o);
+      if (Math.abs(this.o.y) > 0.05 || !s.over(this.o.x, this.o.z, 0.1)) continue;
+      this.orphans.splice(k, 1);
+      this.dropSurface(o);
+      s.id = o.id;
+      this.hitAt.x = this.o.x;
+      this.hitAt.z = this.o.z;
+      this.restoring = true;
+      this.discover(s);
+      this.restoring = false;
+      return;
+    }
+  }
+
+  /** Strike tuning per surface: room planes can sit a few centimetres off; glass wants soft taps. */
+  private tune(s: Surface): void {
+    const c = s.detector.cfg;
+    c.nearM = Math.max(STRIKE_CFG.nearM ?? 0, 0.03);
+    c.surfaceDriftM = 0.05;
+    if (s.voice?.family === 'glock') {
+      c.minSpeed = Math.min(STRIKE_CFG.minSpeed ?? 1, 0.18);
+      c.hardSpeed = 0.7;
+    }
+    // a door frame may be an open doorway, a box's face a soft cover: only a stop is a hit
+    s.detector.stopOnly = s.source === 'volume' || /door/.test(s.label);
   }
 
   private fromPlane(pl: XRPlane & { semanticLabel?: string; polygon?: DOMPointReadOnly[] }, obj: Object3D, kitY: number, kitC: Vector3): Surface | null {
-    obj.updateMatrixWorld();
     const label = (pl.semanticLabel ?? '').toLowerCase();
-    if (label === 'ceiling') return null;
+    if (label === 'ceiling' || /invisible/.test(label)) return null;
     const poly = pl.polygon ?? [];
     if (poly.length < 3) return null;
     const centre = obj.getWorldPosition(new Vector3());
@@ -957,7 +1109,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const vertical = Math.abs(n.y) < 0.7;
     if (vertical && n.dot(this.tmp.copy(this.head).sub(centre)) < 0) n.negate();
     if (!vertical && n.y < 0) return null; // a ceiling-like face
-    // the kit's own table: the kit already plays it
+    // the kit's own table: the kit plays all of it
     if (!vertical && Math.abs(centre.y - kitY) < 0.05) {
       this.planeInv.copy(obj.matrixWorld).invert();
       const k = this.tmp.copy(kitC).applyMatrix4(this.planeInv);
@@ -984,81 +1136,106 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     };
     this.measure(s, f);
     s.setFeatures(f);
+    this.tune(s);
     return s.voice ? s : null;
   }
 
-  /** A room-scan volume (a cupboard, a sofa…): its top, and the face turned toward you. */
-  private fromVolume(label: string, obj: Object3D, min: ArrayLike<number>, max: ArrayLike<number>, kitY: number, kitC: Vector3): Surface[] {
-    if (/wall|floor|ceiling|table|desk/.test(label)) return [];
-    obj.updateMatrixWorld();
+  /** A room-scan box (a cupboard, a sofa…): its top where it has a real one, and the face turned toward you. */
+  private fromVolume(label: string, obj: Object3D, min: ArrayLike<number>, max: ArrayLike<number>): Surface[] {
+    if (/wall|floor|ceiling|table|desk|invisible/.test(label)) return [];
     const out: Surface[] = [];
     const m = obj.matrixWorld;
-    const cx = (min[0] + max[0]) / 2;
-    const cz = (min[2] + max[2]) / 2;
-    const corners = (pts: number[][]) => pts.map(([x, y, z]) => new Vector3(x, y, z).applyMatrix4(m));
-    const make = (centre: Vector3, n: Vector3, pts: Vector3[], facing: Features['facing']) => {
-      const s = new Surface(`v${this.nextId++}`, 'volume', label, STRIKE_CFG);
-      this.forwardFlat(this.fwd);
-      s.setFrame(centre, n, this.fwd);
-      outlineOf(s, pts);
-      const b = s.bounds;
-      const f: Features = { facing, width: b.maxX - b.minX, length: b.maxZ - b.minZ, area: (b.maxX - b.minX) * (b.maxZ - b.minZ), elevation: centre.y, hollow: /storage|cabinet|drawer/.test(label) ? 0.9 : 0, glass: 0, soft: 0, curved: 0, bump: false, label };
-      s.setFeatures(f);
-      if (s.voice) out.push(s);
-    };
-    // the top
-    const top = corners([
-      [min[0], max[1], min[2]],
-      [max[0], max[1], min[2]],
-      [max[0], max[1], max[2]],
-      [min[0], max[1], max[2]],
-    ]);
-    const topC = new Vector3(cx, max[1], cz).applyMatrix4(m);
-    const up = new Vector3(0, 1, 0).transformDirection(m);
-    if (up.y > 0.7 && topC.y > 0.15 && !(Math.abs(topC.y - kitY) < 0.05 && topC.distanceTo(kitC) < 0.6)) make(topC, up, top, 'up');
-    // the side facing the head
-    const faces: [number[], number[][]][] = [
-      [[1, 0, 0], [[max[0], min[1], min[2]], [max[0], min[1], max[2]], [max[0], max[1], max[2]], [max[0], max[1], min[2]]]],
-      [[-1, 0, 0], [[min[0], min[1], max[2]], [min[0], min[1], min[2]], [min[0], max[1], min[2]], [min[0], max[1], max[2]]]],
-      [[0, 0, 1], [[max[0], min[1], max[2]], [min[0], min[1], max[2]], [min[0], max[1], max[2]], [max[0], max[1], max[2]]]],
-      [[0, 0, -1], [[min[0], min[1], min[2]], [max[0], min[1], min[2]], [max[0], max[1], min[2]], [min[0], max[1], min[2]]]],
-    ];
-    let bestDot = 0.3;
-    let best: [Vector3, Vector3[], Vector3] | null = null;
-    for (const [nl, pts] of faces) {
-      const n = new Vector3(nl[0], nl[1], nl[2]).transformDirection(m);
-      const w = corners(pts);
-      const c = w.reduce((a, p) => a.add(p), new Vector3()).multiplyScalar(1 / w.length);
-      const d = n.dot(this.tmp.copy(this.head).sub(c).normalize());
-      if (d > bestDot) {
-        bestDot = d;
-        best = [c, w, n];
+    const corner = (x: number, y: number, z: number) => new Vector3(x, y, z).applyMatrix4(m);
+    // the box's six faces, in world space: [normal, centre, corners]
+    const X = [min[0], max[0]];
+    const Y = [min[1], max[1]];
+    const Z = [min[2], max[2]];
+    const faces: { n: Vector3; c: Vector3; pts: Vector3[] }[] = [];
+    for (const ax of [0, 1, 2] as const) {
+      for (const side of [0, 1]) {
+        const nl = [0, 0, 0];
+        nl[ax] = side ? 1 : -1;
+        const pts: Vector3[] = [];
+        const u = (ax + 1) % 3;
+        const v = (ax + 2) % 3;
+        const R = [X, Y, Z];
+        for (const [a, b] of [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ]) {
+          const p = [0, 0, 0];
+          p[ax] = R[ax][side];
+          p[u] = R[u][a];
+          p[v] = R[v][b];
+          pts.push(corner(p[0], p[1], p[2]));
+        }
+        const c = pts.reduce((acc, p) => acc.add(p), new Vector3()).multiplyScalar(0.25);
+        faces.push({ n: new Vector3(nl[0], nl[1], nl[2]).transformDirection(m), c, pts });
       }
     }
-    if (best) make(best[0], best[2], best[1], 'vertical');
+    const make = (face: { n: Vector3; c: Vector3; pts: Vector3[] }, facing: Features['facing']) => {
+      // never over the kit: the kit always plays its table
+      for (const p of [face.c, ...face.pts]) {
+        this.tmp.copy(p).applyMatrix4(this.tmpM.copy(this.kit.root.matrixWorld).invert());
+        if (Math.abs(this.tmp.x) < 0.45 && Math.abs(this.tmp.z) < 0.32 && Math.abs(this.tmp.y) < 0.12) return;
+      }
+      const s = new Surface(`v${this.nextId++}`, 'volume', label, STRIKE_CFG);
+      this.forwardFlat(this.fwd);
+      s.setFrame(face.c, face.n, this.fwd);
+      outlineOf(s, face.pts);
+      const b = s.bounds;
+      const f: Features = { facing, width: b.maxX - b.minX, length: b.maxZ - b.minZ, area: (b.maxX - b.minX) * (b.maxZ - b.minZ), elevation: face.c.y, hollow: /storage|cabinet|drawer/.test(label) ? 0.9 : 0, glass: 0, soft: 0, curved: 0, bump: false, label };
+      s.setFeatures(f);
+      this.tune(s);
+      if (s.voice) out.push(s);
+    };
+    // the top only where a box really has one to play (a sofa's box top is its backrest, in mid-air)
+    if (!/couch|sofa|bed|lamp|plant|chair|other/.test(label)) {
+      const top = faces.reduce((a, f) => (f.n.y > a.n.y ? f : a));
+      if (top.n.y > 0.85 && top.c.y > 0.15) make(top, 'up');
+    }
+    // the side facing the head
+    let bestDot = 0.3;
+    let best: (typeof faces)[number] | null = null;
+    for (const f of faces) {
+      if (Math.abs(f.n.y) > 0.5) continue;
+      const d = f.n.dot(this.tmp.copy(this.head).sub(f.c).normalize());
+      if (d > bestDot) {
+        bestDot = d;
+        best = f;
+      }
+    }
+    if (best) make(best, 'vertical');
     return out;
   }
 
-  /** What geometry says beyond its outline: inset in a wall (a door or a window), a box behind it. */
+  /** What geometry says beyond its outline: set into a bigger wall (a door, if door-shaped; else glass). */
   private measure(s: Surface, f: Features): void {
     if (f.facing !== 'vertical') return;
-    // inset in a bigger wall plane, nearly coplanar: a door (tall) or a window
     for (const list of this.bySource.values()) {
       for (const o of list) {
         if (o === s || o.features.facing !== 'vertical' || o.features.area <= f.area * 1.6) continue;
         if (Math.abs(o.normal.dot(s.normal)) < 0.95) continue;
         this.tmp.copy(s.centre).applyMatrix4(o.inv);
         if (Math.abs(this.tmp.y) > 0.12 || !o.over(this.tmp.x, -this.tmp.z, 0)) continue;
-        if (f.length >= 1.5 && f.width >= 0.5 && f.width <= 1.4) f.hollow = Math.max(f.hollow, 0.7);
-        else f.glass = Math.max(f.glass, 0.6);
+        const doorShaped = f.length >= 1.5 && f.width >= 0.5 && f.width <= 1.8;
+        if (doorShaped || /door/.test(f.label)) f.hollow = Math.max(f.hollow, 0.7);
+        // only a window or an unlabelled pane can be glass (never a door, a picture or a board)
+        else if (/window/.test(f.label) || f.label === '') f.glass = Math.max(f.glass, 0.6);
       }
     }
   }
 
-  private dropSurface(s: Surface): void {
+  private dropOverlay(s: Surface): void {
     this.holders.get(s)?.removeFromParent();
     this.holders.delete(s);
     this.overlays.delete(s);
+  }
+
+  private dropSurface(s: Surface): void {
+    this.dropOverlay(s);
     const sh = this.sheens.get(s);
     if (sh) {
       sh.group.parent?.removeFromParent();
@@ -1231,6 +1408,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const pose = kitPose(this.head, this.fwd, this.placement.deskY!, palm);
       root.position.set(pose.x, pose.y, pose.z);
       root.rotation.set(0, pose.yaw, 0);
+      root.updateMatrixWorld(true);
+      this.fitToTable();
     }
     root.visible = true;
     root.updateMatrixWorld(true);
@@ -1246,6 +1425,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // the kit's surface and the module's keys
     this.kitSurface.setFrame(root.getWorldPosition(this.tmp), new Vector3(0, 1, 0), this.forwardFlat(this.fwd).clone());
     this.kitSurface.bounds = { minX: -KIT_ZONE.halfX - 0.06, maxX: KIT_ZONE.halfX + 0.06, minZ: -KIT_ZONE.front - 0.04, maxZ: -KIT_ZONE.back + 0.04 };
+    if (this.tableOutline) {
+      // the whole real table plays (within arm's reach)
+      const b = this.kitSurface.bounds;
+      for (const q of this.tableOutline) {
+        b.minX = Math.max(-0.9, Math.min(b.minX, q.x));
+        b.maxX = Math.min(0.9, Math.max(b.maxX, q.x));
+        b.minZ = Math.max(-0.7, Math.min(b.minZ, -q.z));
+        b.maxZ = Math.min(0.7, Math.max(b.maxZ, -q.z));
+      }
+    }
     this.kitSurface.outline = [
       { x: -KIT_ZONE.halfX, z: -KIT_ZONE.front },
       { x: KIT_ZONE.halfX, z: -KIT_ZONE.front },
@@ -1288,6 +1477,64 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();
+  }
+
+  /** The real table's outline in kit-local x/z, when Quest found it (the rim is its edge). */
+  private tableOutline: { x: number; z: number }[] | null = null;
+
+  /**
+   * When the table plane is known: slide the kit away from you until its front sits 3 cm inside the
+   * real edge (nothing over your lap), and remember the outline so the whole table plays.
+   */
+  private fitToTable(): void {
+    this.tableOutline = null;
+    const root = this.kit.root;
+    const y = root.position.y;
+    for (const e of this.queries.planes.entities) {
+      const pl = e.getValue(XRPlane, '_plane') as (XRPlane & { semanticLabel?: string; polygon?: DOMPointReadOnly[] }) | undefined;
+      const obj = e.object3D;
+      if (!pl || !obj || pl.orientation !== 'horizontal' || !pl.polygon || pl.polygon.length < 3) continue;
+      obj.updateMatrixWorld();
+      obj.getWorldPosition(this.tmp);
+      if (Math.abs(this.tmp.y - y) > 0.05) continue;
+      this.planeInv.copy(obj.matrixWorld).invert();
+      const at = (lx: number, lz: number) => this.tmp2.set(lx, 0, lz).applyMatrix4(root.matrixWorld).applyMatrix4(this.planeInv);
+      const c = at(0, 0);
+      if (!insidePolygon(pl.polygon, c.x, c.z, 0.05)) continue;
+      // step back from you, a centimetre at a time, until the kit's front edge is on the table
+      const away = this.tmp.set(0, 0, -1).transformDirection(root.matrixWorld).setY(0).normalize();
+      for (let k = 0; k < 25; k++) {
+        const f = at(0, KIT_ZONE.front + 0.03);
+        const l = at(-KIT_ZONE.halfX * 0.6, KIT_ZONE.front + 0.03);
+        const r = at(KIT_ZONE.halfX * 0.6, KIT_ZONE.front + 0.03);
+        if (insidePolygon(pl.polygon, f.x, f.z, 0) && insidePolygon(pl.polygon, l.x, l.z, 0) && insidePolygon(pl.polygon, r.x, r.z, 0)) break;
+        root.position.addScaledVector(away, 0.01);
+        root.updateMatrixWorld(true);
+      }
+      const inv = this.tmpM2.copy(root.matrixWorld).invert();
+      this.tableOutline = pl.polygon.map((p) => {
+        const w = new Vector3(p.x, 0, p.z).applyMatrix4(obj.matrixWorld).applyMatrix4(inv);
+        return { x: w.x, z: w.z };
+      });
+      break;
+    }
+  }
+
+  /** Distance from a kit-local point to the real table's edge (Infinity when unknown). */
+  private toTableEdge(x: number, z: number): number {
+    const p = this.tableOutline;
+    if (!p) return Infinity;
+    let d = Infinity;
+    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+      const ax = p[i].x;
+      const az = p[i].z;
+      const ex = p[j].x - ax;
+      const ez = p[j].z - az;
+      const l2 = ex * ex + ez * ez || 1e-9;
+      const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2));
+      d = Math.min(d, Math.hypot(x - (ax + t * ex), z - (az + t * ez)));
+    }
+    return d;
   }
 
   /** Compile every shader while the kit appears, so the first hit, overlay or mote doesn't hitch. */
@@ -1429,7 +1676,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.placement = new Placement();
     this.kit.root.visible = false;
     for (const s of [...this.bySource.values()].flat()) this.dropSurface(s);
+    for (const o of this.orphans) this.dropSurface(o.s);
+    this.orphans.length = 0;
     this.bySource.clear();
+    this.srcPose.clear();
+    this.volumeHead.clear();
+    this.tableOutline = null;
     this.surfaces = [this.kitSurface, this.moduleSurface];
     this.debug.phase = 'waiting';
     this.debug.anchored = false;

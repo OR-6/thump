@@ -13,7 +13,7 @@ import { zonesFor, type Zone } from '../room/zones.js';
 /** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.15 } as const;
 /** The kit's playing area (kit-local): the whole table here is the kit. */
-export const KIT_ZONE = { halfX: 0.38, back: -0.21, front: 0.2 } as const;
+export const KIT_ZONE = { halfX: 0.38, back: -0.21, front: 0.14 } as const;
 
 let shadowTex: CanvasTexture | null = null;
 function handShadowTexture(): CanvasTexture {

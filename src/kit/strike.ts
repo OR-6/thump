@@ -133,6 +133,11 @@ export function speedToGain(speed: number, cfg: Pick<StrikeConfig, 'minSpeed' | 
 export class StrikeDetector {
   /** Learned surface height in surface-local y (0 = the estimate). */
   surfaceY = 0;
+  /**
+   * Only a stop counts, never passing through (a door frame that may be an open doorway, the face of a
+   * room-scan box): a hand going through it is reaching, not hitting.
+   */
+  stopOnly = false;
   readonly cfg: StrikeConfig;
   private tracks: [HandTrack, HandTrack] = [new HandTrack(), new HandTrack()];
   /** Strikes reported, per kind (debug). */
@@ -294,7 +299,7 @@ export class StrikeDetector {
     // (`span` back-dates a stop seen only after the samples stopped changing)
     if (t - span - tr.lastHitT < 0.2 && peak < tr.lastHitSpeed * 0.7) return null;
     if (peak < cfg.minSpeed || peak < cfg.downShare * side1) return null;
-    if (wasH > 0 && lowH <= 0) {
+    if (!this.stopOnly && wasH > 0 && lowH <= 0) {
       // back-date to where it passed through the surface
       const k = wasH / Math.max(1e-6, wasH - lowH);
       return this.fire(tr, 'cross', peak, low, lowH, t - dt * (1 - k));

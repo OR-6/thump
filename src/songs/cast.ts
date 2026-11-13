@@ -65,7 +65,7 @@ export function cast(parts: readonly Part[], room: readonly RoomInstrument[]): C
 }
 
 /** The judge's key for a note under a cast: "surface:zone" (the kit's zones are its drum names). */
-export function noteKey(n: Note, c: Cast, zonesOf: (surface: string) => number): string {
+export function noteKey(n: Note, c: Cast, zoneFor: (surface: string, degree: number) => number): string {
   const t = c[n.part];
   if (!t) return `kit:${n.part}`;
   if (t.family === 'kit') {
@@ -73,9 +73,7 @@ export function noteKey(n: Note, c: Cast, zonesOf: (surface: string) => number):
     const drum: DrumPart = (DRUMS as readonly string[]).includes(n.part) ? (n.part as DrumPart) : n.part === 'gong' ? 'kick' : 'hat';
     return `kit:${drum === 'rim' ? 'snare' : drum}`;
   }
-  const zones = zonesOf(t.surface);
-  if (zones <= 1 || n.degree < 0) return `${t.surface}:0`;
-  return `${t.surface}:${n.degree % zones}`;
+  return `${t.surface}:${zoneFor(t.surface, n.degree)}`;
 }
 
 /** How many distinct instruments (beyond the kit) a song would like: the next song's ask. */
