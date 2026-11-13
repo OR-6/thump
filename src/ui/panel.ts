@@ -216,7 +216,7 @@ export class Panel {
     if (p === this.page && d.count > 0 === this.lastCount > 0 && d.stars === this.lastStars) return;
     this.lastCount = d.count;
     this.lastStars = d.stars;
-    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
+    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
     if (p.id !== this.pageId) {
@@ -328,6 +328,21 @@ export class Panel {
     g.fillStyle = '#2a2927';
     rounded(g, X, 470, R - X, 22, 11);
     g.fill();
+    // the song's map on it: the second half a shade lighter, each Go wild! a red stretch marked above
+    const m = d.map;
+    if (m && m.beats > 0) {
+      const at = (b: number) => X + ((R - X) * b) / m.beats;
+      g.fillStyle = '#34322e';
+      g.fillRect(at(m.second[0]), 474, at(m.second[1]) - at(m.second[0]), 14);
+      g.font = `600 24px ${FONT}`;
+      for (const [a, z] of m.wild) {
+        g.fillStyle = '#7a2a1e';
+        g.fillRect(at(a), 474, at(z) - at(a), 14);
+        g.fillStyle = '#ff7a5c';
+        const t = 'WILD';
+        g.fillText(t, (at(a) + at(z) - g.measureText(t).width) / 2, 458);
+      }
+    }
     if (d.meter >= 0) {
       g.fillStyle = '#2a2927';
       g.fillRect(X, 520, R - X, 10);

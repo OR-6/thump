@@ -53,7 +53,7 @@ export class KitView {
     ['marimba', new Overlay('marimba', 8)],
     ['guitar', new Overlay('harp', 10)],
     ['handpan', new Overlay('tongue', 10)],
-    ['congas', new Overlay('tongue', 4)],
+    ['congas', new Overlay('congas', 4)],
   ]);
   /** The zones of the instrument on the desk (none for the drums: they have pads). */
   instZones: Zone[] = [];

@@ -12,7 +12,7 @@ Sit at a desk or a tray table. If nothing shows up, rest a palm flat on it. A pa
 
 To press something on the panel, poke it with a fingertip or pinch it. An item lights up as your finger gets close, and it presses when your fingertip goes through the face. It clicks.
 
-Tap the desk and the drums come out: a kick and a snare under your hands, a hi-hat to the right, a row of light bars behind. A tom joins after your first song. Then your first note on anything brings in a soft backing band at 90 bpm. Stop for two bars and it drops out.
+Tap the desk and the drums come out: a kick and a snare under your hands, a hi-hat to the right, a row of light bars behind. A tom joins after your first song. Then your first few notes on anything bring in a soft backing band at your tempo (three steady notes set it; otherwise 90 bpm), and the panel says how fast. Stop for two bars and it drops out.
 
 ## The panel
 
@@ -52,7 +52,7 @@ The band plays the song as written and you play your part on what's out:
 
 From bar 9 the tune goes up two notes every other time round, so the song has a second half.
 
-The notes fall onto the exact key, bar, field or drum that plays them and land on the beat. Hit one and it bursts. A song has two *Go wild!* stretches where anything you hit counts, and in the last bars on Normal the notes stop falling (*Keep it going*). During *Go wild!* the room above eye level goes dim and your hits wash it in their colour, never more than three times a second.
+The notes fall onto the exact key, bar, field or drum that plays them and land on the beat. Hit one and it bursts. A song has two *Go wild!* stretches where anything you hit counts, and in the last bars on Normal the notes stop falling (*Keep it going*). When the song ends the band holds its chord and waits (*Last one!*): hit it and they land on it with you. The progress bar shows the song's map: the two *Go wild!* stretches and its second half. During *Go wild!* the room above eye level goes dim and your hits wash it in their colour, never more than three times a second.
 
 In a song the panel shows its name, a progress bar, how many notes in a row, a card for each instrument you can switch to, and STOP. Tap a card to switch mid-song: it says "Piano next", takes over at the next loop, and gives you a bar to find it ("Find it, then join in").
 

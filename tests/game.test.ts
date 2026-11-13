@@ -515,7 +515,29 @@ describe('the game', () => {
     expect(g.last!.stars).toBeGreaterThanOrEqual(2);
   });
 
-  it('free play: your first note brings a soft band in under you; two quiet bars and it lets go', () => {
+  it('free play: the band takes your tempo from three steady notes (90 when they wander)', () => {
+    const st = { ...stage([]), freeHarmony: () => ({ inst: 'piano', root: 48, chords: [[0, 4, 7], [9, 12, 16], [5, 9, 12]] }) };
+    const g = new Game(st, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    for (const t of [1, 1.5, 2.0]) {
+      g.tick(t);
+      g.hit('piano:2', t, 0.7);
+    }
+    expect(60 / g.clock.spb).toBeCloseTo(120, 0);
+    expect(g.display.page?.line).toBe("The band's with you, 120 bpm");
+    // a wandering three: the steady default
+    const h = new Game(st, freshProgress(), room([]));
+    h.start(0);
+    h.discovered('kit', 'table', 0);
+    for (const t of [1, 1.3, 2.4]) {
+      h.tick(t);
+      h.hit('piano:2', t, 0.7);
+    }
+    expect(60 / h.clock.spb).toBeCloseTo(90, 0);
+  });
+
+  it('free play: your first notes bring a soft band in under you; two quiet bars and it lets go', () => {
     const band: string[] = [];
     const voiced: string[] = [];
     const st = {
@@ -595,6 +617,29 @@ describe('the game', () => {
     // the drums you'd play were played for you
     expect(voiced.filter((k) => k === 'kit:kick').length).toBeGreaterThan(4);
     expect(g.performed('kick-start')).toBe(false);
+  });
+
+  it('the last hit: the band waits for it, then lands with you; or ends by itself', () => {
+    let drops = 0;
+    const g = new Game({ ...stage([]), drop: () => drops++ }, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.act('nav:songs');
+    g.act('play');
+    let t = 0;
+    for (let k = 0; k < 6000 && g.display.line !== 'Last one!'; k++) g.tick((t += 1 / 30));
+    expect(g.display.line).toBe('Last one!');
+    expect(g.mode).toBe('play');
+    const before = drops;
+    g.tick((t += 0.5));
+    expect(g.mode).toBe('play');
+    g.hit('kit:snare', t, 0.8);
+    expect(g.mode).toBe('results');
+    expect(drops).toBe(before + 1);
+    // again, and nobody hits it: it ends on its own
+    g.act('again');
+    for (let k = 0; k < 9000 && g.mode !== 'results'; k++) g.tick((t += 1 / 30));
+    expect(g.mode).toBe('results');
   });
 
   it('learns a steady lateness', () => {

@@ -786,7 +786,7 @@ export class Game {
           if (p.def.name === 'HAT' && this.level === 'easy' && beat < 32) return;
           let part = this.onInst(inst, n.key, k, p.def.name);
           // bars 9–14, every other time round: the tune two notes higher (a B section; any note of the scale fits)
-          if (p.def.name.startsWith('KEYS') && beat >= 32 && beat < 56 && L % 2 === 1) part = lift(part, 2);
+          if (p.def.name.startsWith('KEYS') && beat >= SECOND[0] && beat < SECOND[1] && L % 2 === 1) part = lift(part, 2);
           notes.push({ beat, part: part as never, degree: -1, vel: Math.max(0.6, n.vel) });
         });
     }
@@ -913,6 +913,7 @@ export class Game {
     this.stage.useInstrument?.(inst);
     this.combo = 0;
     this.bestRun = 0;
+    this.finalWait = -1;
     const t = m.track;
     this.bld = null;
     // 16 bars with a fill in bars 7–8 and 15–16, then 4 bars of hold it (scored, never shown)
@@ -1193,11 +1194,24 @@ export class Game {
       this.groove.last = t;
       return;
     }
-    const spb = 60 / 90;
+    // the band takes your tempo from your first three notes (steady ones: two gaps within a quarter of each other;
+    // quick ones are eighths); unsteady, or a pause, and it plays at 90
+    const taps = this.grooveTaps;
+    if (taps.length && t - taps[taps.length - 1] > 1.6) taps.length = 0;
+    taps.push(t);
+    if (taps.length < 3) return;
+    const a = taps[1] - taps[0];
+    const b = taps[2] - taps[1];
+    let spb = Math.abs(a - b) <= 0.25 * Math.max(a, b) ? (a + b) / 2 : 60 / 90;
+    if (spb < 0.42) spb *= 2;
+    spb = Math.max(60 / 126, Math.min(60 / 72, spb));
+    taps.length = 0;
     // the band comes in a beat later: your note was the 4 before its 1
     this.clock.set(t + spb, spb);
     this.groove = { root: f.root, chords: f.chords, inst: f.inst, sched: -0.01, last: t };
+    this.refreshDisplay();
   }
+  private grooveTaps: number[] = [];
   private tickGroove(t: number): void {
     const g = this.groove;
     if (!g) return;
@@ -1640,6 +1654,7 @@ export class Game {
   stop(): void {
     this.stage.lightsDown?.(false);
     this.listening = false;
+    this.finalWait = -1;
     this.perf = null;
     this.perfShown = 0;
     this.stage.casting({});
@@ -1669,6 +1684,12 @@ export class Game {
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
     // listening: you can play along, nothing's scored
     if (this.listening) return null;
+    // the band's waiting for your last hit
+    if (this.finalWait >= 0 && this.perf) {
+      if (gain < 0.2) return null;
+      this.landLastHit();
+      return 'perfect';
+    }
     if (this.perf) {
       const b = this.clock.beatAt(t - this.opts.offset);
       if (this.perf.fills.some(([a, z]) => b >= a - 0.25 && b < z)) {
@@ -1795,9 +1816,43 @@ export class Game {
     if (this.perf) this.tickPerform(beat);
     if (beat >= song.bars * 4 + 1) {
       if (this.perf && this.listening) this.endListen();
+      else if (this.perf && this.lastHit(t)) return;
       else if (this.perf) this.endPerform();
       else this.end();
     }
+  }
+
+  /**
+   * The last hit: the song's over and the band holds its chord, waiting for you (your instrument's light pulses): hit
+   * it and the band lands on it with you. Up to five seconds, then it ends by itself. (Not in a band: friends' songs
+   * end on the band's clock.) True while it waits.
+   */
+  private finalWait = -1;
+  private lastHit(t: number): boolean {
+    const p = this.perf!;
+    if (this.finalWait < 0) {
+      if (this.stage.bandState?.().state === 'connected') return false;
+      this.finalWait = t;
+      const tr = p.track;
+      this.stage.band({ beat: 0, voice: 'chord', midi: tr.chords[0], len: 8, vel: 0.32, minor: !!tr.minorChords?.includes(0) }, this.clock.timeAt(this.clock.beatAt(t)), this.clock.spb);
+      this.refreshDisplay();
+    }
+    if (t - this.finalWait > 5) {
+      this.finalWait = -1;
+      return false;
+    }
+    const pulse = 0.55 + 0.45 * Math.sin((t - this.finalWait) * 9);
+    for (const k of FINAL_KEYS[p.inst] ?? FINAL_KEYS.drums) this.stage.light(k, pulse);
+    return true;
+  }
+  private landLastHit(): void {
+    this.finalWait = -1;
+    const tr = this.perf!.track;
+    const at = this.clock.timeAt(this.clock.beatAt(this.t));
+    this.stage.drop?.();
+    this.stage.band({ beat: 0, voice: 'chord', midi: tr.chords[0], len: 6, vel: 0.6, minor: !!tr.minorChords?.includes(0) }, at, this.clock.spb);
+    this.stage.band({ beat: 0, voice: 'bass', midi: tr.chords[0] - 24, len: 4, vel: 0.8 }, at, this.clock.spb);
+    this.endPerform();
   }
 
   private leaveResults(): void {
@@ -2032,6 +2087,8 @@ export class Game {
     d.inst = null;
     d.progress = -1;
     d.combo = 0;
+    // a song's map for its progress bar (not when it's playing itself to you)
+    d.map = this.perf && this.song && !this.listening && (this.mode === 'play' || this.mode === 'count') ? { beats: this.song.bars * 4, wild: this.perf.fills, second: SECOND } : null;
     if (d.screen === 'home') {
       const v = this.stage.shelf?.(0);
       this.songSel = Math.max(0, Math.min(this.songSel, this.tracks.length - 1));
@@ -2056,7 +2113,7 @@ export class Game {
     const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
       page: pageId,
-      line: pageId === 'free' ? (this.groove ? "The band's playing along" : this.offered && this.found.includes('kit') ? 'Ready? Try SONGS' : '') : pageId === 'main' ? (this.found.includes('kit') ? '' : 'Tap the desk to start') : pageId === 'songs' && this.t - this.bandWait < 4 ? 'Asking the band to start it' : d.line,
+      line: pageId === 'free' ? (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try SONGS' : '') : pageId === 'main' ? (this.found.includes('kit') ? '' : 'Tap the desk to start') : pageId === 'songs' && this.t - this.bandWait < 4 ? 'Asking the band to start it' : d.line,
       sub: d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0 },
       songs: this.tracks.map((t) => ({ name: t.name, meta: `${t.id.startsWith('daily-') ? 'Today: ' : ''}${t.bpm < 85 ? 'slow' : t.bpm < 100 ? 'steady' : 'quick'}, ${t.minor ? 'moody' : 'bright'}`.replace(/^[a-z]/, (c) => c.toUpperCase()), stars: this.progress.stars[t.id] ?? 0, locked: false })),
@@ -2198,6 +2255,11 @@ export class Game {
             d.sub = 'Listen, then it\'s your turn';
             break;
           }
+          if (this.finalWait >= 0) {
+            d.line = 'Last one!';
+            d.sub = 'Hit it, hard';
+            break;
+          }
           d.line = inFill ? 'Go wild!' : big ? 'Huge!' : b >= this.perf.holdFrom ? 'Keep it going' : this.song!.name;
           d.sub = inFill ? 'Fast fingers, anything' : big ? 'Follow the lights again' : b >= this.perf.holdFrom ? 'No lights now, keep going' : joins ? `${this.perf.joins} comes in next` : 'Hit what glows';
           d.meter = this.energy;
@@ -2219,6 +2281,7 @@ export class Game {
         d.line = `${s.perfect + s.good} of ${s.total} notes`;
         d.stars = s.stars;
         d.best = this.fromPerform ? this.lastBest : null;
+        d.map = null;
         // how it felt in time: a number when it was close, a word that says which way when it wasn't
         const feel = this.lastTight >= 70 ? `On time ${this.lastTight}%` : this.lastLean < 0 ? 'A bit ahead of the beat' : this.lastLean > 0 ? 'A bit behind the beat' : 'Loose';
         // (only what you can see: a tom on the kit; the rest is the old box's and stays quiet)
@@ -2331,6 +2394,10 @@ const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', mari
 
 /** Which instrument each part is played on (it comes out on the desk when the part is asked for). */
 const PART_INST: Record<string, string> = { KICK: 'drums', SNARE: 'drums', HAT: 'drums', CLAP: 'drums', PERC: 'handpan', 'PERC 2': 'handpan', KEYS: 'piano', 'KEYS 2': 'piano', BASS: 'piano' };
+/** The song's second half (the tune two notes up, every other time round): bars 9–14. */
+const SECOND = [32, 56] as const;
+/** Where the last hit lights: the instrument's biggest note. */
+const FINAL_KEYS: Record<string, readonly string[]> = { drums: ['kit:kick', 'kit:snare'], piano: ['piano:0'], marimba: ['marimba:0'], guitar: ['guitar:9'], handpan: ['handpan:0'], congas: ['congas:0', 'congas:2'] };
 /** A note `by` steps up its instrument (turning back down at the top), for the B section. */
 const TOP: Record<string, number> = { piano: 5, marimba: 7, handpan: 8 };
 function lift(key: string, by: number): string {
