@@ -179,7 +179,7 @@ export function marimbaZones(root: number, scale: Scale): Zone[] {
 
 /** The congas: two drums side by side (the low one left, 15 cm and 13 cm across). Zones 0/1 the low drum's middle and
  * edge, 2/3 the high drum's (a hit lands on whichever its distance from the centre says). */
-export const CONGA = { x: [-0.085, 0.085], z: 0.02, r: [0.075, 0.065], open: 0.6 } as const;
+export const CONGA = { x: [-0.094, 0.09], z: 0.02, r: [0.075, 0.065], open: 0.6 } as const;
 export function congaZones(): Zone[] {
   const out: Zone[] = [];
   for (let d = 0; d < 2; d++) {

@@ -412,22 +412,32 @@ export class CongaModel implements DeskModel {
       const R = zones[d * 2 + 1].w;
       const drum = named(new Group(), d === 0 ? 'Tumba' : 'Quinto');
       drum.position.set(inner.x, 0, -inner.z);
-      // the shell: a short barrel (wider at the belly), staves showing as fine dark lines, a stripe round it
+      // the shell: the top of a conga's barrel, flaring out to the desk (a ring of wood you see round the head from
+      // above, so it reads as a conga cut down, not a frame drum), staves as fine dark lines, a stripe round it
+      const FLARE = 1.18;
       const pts: Vector2[] = [];
-      for (let k = 0; k <= 8; k++) {
-        const t = k / 8;
-        pts.push(new Vector2(R * (0.96 + 0.06 * Math.sin(Math.PI * t * 0.8)), t * (H - 0.004)));
+      for (let k = 0; k <= 10; k++) {
+        const t = k / 10;
+        pts.push(new Vector2(R * (FLARE - (FLARE - 0.99) * Math.pow(t, 0.6)), t * (H - 0.004)));
       }
       const shell = named(new Mesh(new LatheGeometry(pts, 48), this.wood), 'Shell');
-      const band = named(new Mesh(new CylinderGeometry(R * 1.035, R * 1.03, 0.0035, 48, 1, true), this.stripe), 'Stripe');
-      band.position.y = H * 0.38;
+      const rAt = (y: number) => R * (FLARE - (FLARE - 0.99) * Math.pow(Math.max(0, y / (H - 0.004)), 0.6));
+      const band = named(new Mesh(new CylinderGeometry(rAt(H * 0.36) + 0.0006, rAt(H * 0.28) + 0.0006, 0.0035, 48, 1, true), this.stripe), 'Stripe');
+      band.position.y = H * 0.32;
+      // staves: dark seams down the flare, leaning out with it
       const staves = named(new Group(), 'Staves');
-      const sg = new BoxGeometry(0.0007, H - 0.006, 0.0006);
-      for (let i = 0; i < 14; i++) {
-        const a = (i / 14) * Math.PI * 2;
+      const sg = new BoxGeometry(0.0008, 1, 0.0006);
+      const lean = Math.atan2(rAt(0) - rAt(H - 0.004), H - 0.004);
+      const len = (H - 0.005) / Math.cos(lean);
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
         const s = new Mesh(sg, this.stripe);
-        s.position.set(Math.cos(a) * R * 1.012, (H - 0.006) / 2 + 0.001, Math.sin(a) * R * 1.012);
-        s.rotation.y = -a;
+        const mid = (H - 0.005) / 2;
+        const r = rAt(mid) + 0.0004;
+        s.scale.y = len;
+        s.position.set(Math.cos(a) * r, mid, Math.sin(a) * r);
+        s.rotation.set(0, -a, 0);
+        s.rotateZ(lean);
         staves.add(s);
       }
       // the head: rawhide, the low drum a shade darker, its own material so it can glow
@@ -451,9 +461,9 @@ export class CongaModel implements DeskModel {
         const a = ((i + 0.5) / 4) * Math.PI * 2;
         const l = named(new Group(), `Lug${i}`);
         const p = new Mesh(plate, this.lug);
-        p.position.set(R * 1.04, H * 0.45, 0);
+        p.position.set(rAt(H * 0.55) + 0.001, H * 0.55, 0);
         const r = new Mesh(rod, this.lug);
-        r.position.set(R * 1.04, H * 0.45 + 0.006, 0);
+        r.position.set(rAt(H * 0.55) + 0.001, H * 0.55 + 0.004, 0);
         l.add(p, r);
         l.rotation.y = a;
         lugs.add(l);
