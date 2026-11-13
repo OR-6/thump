@@ -160,6 +160,15 @@ export class Overlay {
   }
 
   /** Lay the shapes out for `zones` (zone coordinates), hidden until revealed. */
+  /**
+   * Over a modelled instrument: only the lights (no dark backing or painted note dots: the model is the
+   * instrument, and anything painted on it reads as a sticker).
+   */
+  plain(): void {
+    this.backing.visible = false;
+    this.detail.visible = false;
+  }
+
   build(zones: Zone[], hc = false): void {
     this.zones = zones;
     this.hc = hc;

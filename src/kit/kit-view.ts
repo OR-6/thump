@@ -154,6 +154,7 @@ export class KitView {
     this.instZones = instZones(id, root, scale);
     const o = this.shelf.get(id)!;
     o.build(this.instZones);
+    o.plain();
     // the instrument itself (the light on it is the song's notes, quiet at rest)
     for (const [k, m] of this.models) m.root.visible = k === id;
     const model = this.models.get(id);
@@ -173,7 +174,8 @@ export class KitView {
       this.instShadow.scale.set((x1 - x0) * 1.35 + 0.06, (z1 - z0) * 1.5 + 0.06, 1);
       this.instShadow.position.set((x0 + x1) / 2, 0.0006, -(z0 + z1) / 2 - 0.01);
     }
-    o.rest = 0.12;
+    // (no light at rest: the instrument is the instrument; its notes light when a song asks, and when hit)
+    o.rest = 0;
     // (the piano's chord button is red rubber on its case: no tape)
     this.chordTag.mesh.visible = false;
     o.group.position.y = id === 'piano' ? 0.0125 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? 0.022 : id === 'congas' ? 0.021 : 0;

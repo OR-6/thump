@@ -9,7 +9,7 @@
 import { BoxGeometry, CircleGeometry, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
 import { KEYBOARD, PIANO_CHORD, pianoBlacks } from '../../kit/shelf.js';
-import { fineNormal } from './surfaces.js';
+import { fineNormal, woodGrain } from './surfaces.js';
 
 const mat = (name: string, color: number, roughness: number, metalness = 0) => new MeshStandardMaterial({ name, color, roughness, metalness });
 const named = <T extends { name: string }>(o: T, n: string): T => {
@@ -370,45 +370,87 @@ export class MarimbaModel implements DeskModel {
   private bars: Mesh[] = [];
   private barY = 0.0085;
   private spring = new Springs(8);
-  private readonly wood = mat('Rosewood', 0x7a3a1e, 0.42);
-  private readonly frame = mat('Frame', 0x3b2416, 0.5);
-  private readonly cord = mat('Cord', 0x1e1c1b, 0.9);
+  private readonly wood = (() => {
+    const map = woodGrain(41).clone();
+    map.needsUpdate = true;
+    map.repeat.set(18, 5);
+    map.rotation = Math.PI / 2;
+    return new MeshPhysicalMaterial({ name: 'Rosewood', color: 0x8a3f20, map, roughness: 0.45, clearcoat: 0.6, clearcoatRoughness: 0.22 });
+  })();
+  private readonly frame = new MeshPhysicalMaterial({ name: 'Frame', color: 0x3b2416, map: woodGrain(43), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.3 });
+  private readonly cord = mat('Cord', 0x26211c, 0.9);
   private readonly brass = mat('Brass', 0xc8a050, 0.3, 1);
+  private readonly chrome = mat('Chrome', 0xe2e5ea, 0.16, 1);
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
     this.bars = [];
     if (!zones.length) return;
     const box = new BoxGeometry(1, 1, 1);
-    const x0 = zones[0].x - zones[0].w / 2 - 0.012;
-    const x1 = zones[zones.length - 1].x + zones[zones.length - 1].w / 2 + 0.012;
-    const zc = zones[0].z;
-    const reach = zones[0].h / 2 + 0.012;
-    // the frame: two rails under the bar ends, with a cord along each, and brass resonator caps peeking out behind
+    const first = zones[0];
+    const last = zones[zones.length - 1];
+    const x0 = first.x - first.w / 2 - 0.014;
+    const x1 = last.x + last.w / 2 + 0.014;
+    const zc = first.z;
+    // the bars rest on cords through their nodes (22% in from each end): the rails follow that line, closing in
+    // toward the short high bars, as on a real frame
+    const node = (h: number) => h * 0.28;
     for (const s of [-1, 1]) {
+      const a = { x: x0, z: zc + s * node(first.h) };
+      const b = { x: x1, z: zc + s * node(last.h) };
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      const ang = Math.atan2(b.z - a.z, b.x - a.x);
       const rail = named(new Mesh(box, this.frame), 'Rail');
-      rail.scale.set(x1 - x0, 0.006, 0.012);
-      rail.position.set((x0 + x1) / 2, 0.003, -(zc + s * reach * 0.62));
-      const c = named(new Mesh(box, this.cord), 'Cord');
-      c.scale.set(x1 - x0, 0.002, 0.003);
-      c.position.set((x0 + x1) / 2, 0.0068, -(zc + s * reach * 0.62));
+      rail.scale.set(len, 0.006, 0.012);
+      rail.position.set((a.x + b.x) / 2, 0.003, -(a.z + b.z) / 2);
+      rail.rotation.y = ang;
+      const c = named(new Mesh(new CylinderGeometry(0.0011, 0.0011, len, 8), this.cord), 'Cord');
+      c.rotation.set(0, ang, Math.PI / 2);
+      c.position.set((a.x + b.x) / 2, 0.0072, -(a.z + b.z) / 2);
       this.root.add(rail, c);
+      // brass posts between the bars, holding the cord
+      for (let k = 0; k <= zones.length; k++) {
+        const px = k === 0 ? first.x - first.w / 2 - 0.004 : k === zones.length ? last.x + last.w / 2 + 0.004 : (zones[k - 1].x + zones[k].x) / 2;
+        const t = (px - a.x) / (b.x - a.x);
+        const post = named(new Mesh(new CylinderGeometry(0.0013, 0.0013, 0.012, 8), this.brass), 'Post');
+        post.position.set(px, 0.009, -(a.z + (b.z - a.z) * t));
+        this.root.add(post);
+      }
     }
-    for (const s of [x0 - 0.006, x1 + 0.006]) {
+    // the end blocks
+    for (const [sx, h] of [[x0 - 0.007, first.h], [x1 + 0.007, last.h]] as const) {
       const end = named(new Mesh(box, this.frame), 'End');
-      end.scale.set(0.012, 0.012, reach * 1.5);
-      end.position.set(s, 0.006, -zc);
+      end.scale.set(0.014, 0.013, node(h) * 2 + 0.03);
+      end.position.set(sx, 0.0065, -zc);
       this.root.add(end);
     }
     zones.forEach((q, i) => {
-      const bar = named(new Mesh(box, this.wood), `Bar${i}`);
-      bar.scale.set(q.w, 0.009, q.h);
+      // a rosewood bar: rounded corners, a soft edge, the grain along its length
+      const r = Math.min(0.008, q.w * 0.3);
+      const shape = new Shape();
+      const w = q.w / 2;
+      const h = q.h / 2;
+      shape.moveTo(-w + r, -h);
+      shape.lineTo(w - r, -h);
+      shape.quadraticCurveTo(w, -h, w, -h + r);
+      shape.lineTo(w, h - r);
+      shape.quadraticCurveTo(w, h, w - r, h);
+      shape.lineTo(-w + r, h);
+      shape.quadraticCurveTo(-w, h, -w, h - r);
+      shape.lineTo(-w, -h + r);
+      shape.quadraticCurveTo(-w, -h, -w + r, -h);
+      const g = new ExtrudeGeometry(shape, { depth: 0.007, bevelEnabled: true, bevelThickness: 0.001, bevelSize: 0.001, bevelSegments: 2, curveSegments: 4 });
+      g.rotateX(-Math.PI / 2);
+      g.translate(0, -0.0035, 0);
+      const bar = named(new Mesh(g, this.wood), `Bar${i}`);
       bar.position.set(q.x, this.barY, -q.z);
       this.bars.push(bar);
-      // a brass resonator cap behind each bar, longer under the low ones
-      const cap = named(new Mesh(new CylinderGeometry(0.01, 0.01, 0.004, 20), this.brass), `Resonator${i}`);
-      cap.position.set(q.x, 0.002, -(q.z + q.h / 2 + 0.014));
-      this.root.add(bar, cap);
+      // its resonator: a chrome tube lying behind it, longer for the low bars, capped
+      const tl = 0.024 + 0.026 * (1 - i / Math.max(1, zones.length - 1));
+      const tube = named(new Mesh(new CylinderGeometry(0.0075, 0.0075, tl, 20, 1, false), this.chrome), `Resonator${i}`);
+      tube.rotation.x = Math.PI / 2;
+      tube.position.set(q.x, 0.0078, -(q.z + q.h / 2 + 0.012 + tl / 2));
+      this.root.add(bar, tube);
     });
   }
 
