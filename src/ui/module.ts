@@ -69,7 +69,8 @@ export class Module {
     this.root.add(body);
     // the display: a slanted face on the back half, raised a little
     const face = new Mesh(new PlaneGeometry(0.19, 0.065), new MeshBasicMaterial({ map: this.tex, toneMapped: false }));
-    face.position.set(0, MODULE.h + 0.016, -0.018);
+    // just in front of the bezel's face (along the tilted normal), never behind it
+    face.position.set(0, MODULE.h + 0.0155 + Math.sin(MODULE.tilt) * 0.0062, -0.0215 + Math.cos(MODULE.tilt) * 0.0062);
     face.rotation.x = -MODULE.tilt;
     const bezel = new Mesh(new BoxGeometry(0.2, 0.074, 0.01), new MeshStandardMaterial({ color: 0x0c0c0d, roughness: 0.5 }));
     bezel.position.set(0, MODULE.h + 0.0155, -0.0215);

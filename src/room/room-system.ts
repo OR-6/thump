@@ -550,8 +550,28 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           }
         }
       }
-      if (best && bestStrike) this.onHit(best, side, bestStrike);
+      if (best && bestStrike) this.onHit(this.preferInset(best), side, bestStrike);
     }
+  }
+
+  /**
+   * A window or a door is set into its wall: the hand meets the wall's plane first, but a strike that
+   * lands inside a smaller surface set into that one (nearly parallel, within 12 cm) belongs to it.
+   */
+  private preferInset(s: Surface): Surface {
+    if (s === this.kitSurface || s === this.moduleSurface || !s.features) return s;
+    this.lastWorld.set(this.hitAt.x, 0, -this.hitAt.z).applyMatrix4(s.world);
+    let best = s;
+    for (const t of this.surfaces) {
+      if (t === s || !t.voice || !t.features || t.source === 'kit' || t.source === 'module') continue;
+      if (t.features.area >= best.features.area || Math.abs(t.normal.dot(s.normal)) < 0.95) continue;
+      t.toZone(this.lastWorld, this.o);
+      if (Math.abs(this.o.y) > 0.12 || !t.over(this.o.x, this.o.z, 0.01)) continue;
+      best = t;
+      this.hitAt.x = this.o.x;
+      this.hitAt.z = this.o.z;
+    }
+    return best;
   }
   private o = { x: 0, y: 0, z: 0 };
   private tmpM = new Matrix4();

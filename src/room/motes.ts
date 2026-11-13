@@ -3,7 +3,8 @@
  * a low arc across your real room to the exact pad, bar or key that will play it, arriving on the beat.
  * Hit on time, it vanishes into its target; missed, it fades where it landed. One draw for all of them.
  */
-import { AdditiveBlending, Color, InstancedMesh, Matrix4, MeshBasicMaterial, Quaternion, SphereGeometry, Vector3 } from '@iwsdk/core';
+import { Color, InstancedMesh, Matrix4, MeshBasicMaterial, Quaternion, SphereGeometry, Vector3 } from '@iwsdk/core';
+import { asLight } from '../art/light.js';
 import { TIMING } from '../config.js';
 import type { MoteView } from '../play/game.js';
 
@@ -19,7 +20,7 @@ export class Motes {
   readonly mesh: InstancedMesh;
 
   constructor() {
-    this.mesh = new InstancedMesh(new SphereGeometry(1, 12, 8), new MeshBasicMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false }), MAX);
+    this.mesh = new InstancedMesh(new SphereGeometry(1, 12, 8), asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false })), MAX);
     this.mesh.name = 'Motes';
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;

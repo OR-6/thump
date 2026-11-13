@@ -7,7 +7,6 @@
  * Two draws per instrument (the shapes, and their additive glow), whatever its zone count.
  */
 import {
-  AdditiveBlending,
   BufferGeometry,
   Color,
   DoubleSide,
@@ -26,6 +25,7 @@ import {
   ShapeGeometry,
   Vector3,
 } from '@iwsdk/core';
+import { asLight } from '../art/light.js';
 import { FAMILIES, type Family } from './classify.js';
 import type { Zone } from './zones.js';
 import type { Surface } from './surface.js';
@@ -66,13 +66,15 @@ export class Overlay {
   private revealT = 1;
   private sweepT = -1;
   private hc = false;
+  /** Brightness at rest (the table's edge keys sit quieter than a door's bars). */
+  rest = 0.55;
 
   constructor(readonly family: Family, max = 12) {
     const g = geos();
     this.group.name = `Overlay-${family}`;
     const solid = new MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false, side: DoubleSide });
     this.shapes = new InstancedMesh(family === 'marimba' || family === 'glock' || family === 'keys' ? g.box : g.ring, solid, max);
-    this.glow = new InstancedMesh(family === 'marimba' || family === 'glock' || family === 'keys' ? g.box : g.disc, new MeshBasicMaterial({ transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, side: DoubleSide }), max);
+    this.glow = new InstancedMesh(family === 'marimba' || family === 'glock' || family === 'keys' ? g.box : g.disc, asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })), max);
     for (const m of [this.shapes, this.glow]) {
       m.frustumCulled = false;
       m.count = 0;
@@ -162,7 +164,7 @@ export class Overlay {
       this.ask[i] = 0;
       const s = this.shown[i];
       // the shape: its accent, brighter as it lights; the glow: dark (invisible, additive) at rest
-      this.shapes.setColorAt(i, _c.copy(this.base).multiplyScalar(0.55 + 0.45 * s).lerp(WHITE, s * 0.35));
+      this.shapes.setColorAt(i, _c.copy(this.base).multiplyScalar(this.rest + (1 - this.rest) * s).lerp(WHITE, s * 0.35));
       this.glow.setColorAt(i, _c.copy(this.base).multiplyScalar(0.06 + s * 0.9));
     }
     if (this.shapes.instanceColor) this.shapes.instanceColor.needsUpdate = true;
@@ -192,7 +194,7 @@ export class Sheen {
     const geo = new ShapeGeometry(shape);
     // ShapeGeometry is in x/y: lay it into x/z with zone z → local −z
     geo.rotateX(-Math.PI / 2);
-    this.fill = new Mesh(geo, new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.04, blending: AdditiveBlending, depthWrite: false, toneMapped: false, side: DoubleSide }));
+    this.fill = new Mesh(geo, asLight(new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.04, depthWrite: false, toneMapped: false, side: DoubleSide })));
     this.fill.position.y = 0.002;
     const lg = new BufferGeometry();
     const v: number[] = [];

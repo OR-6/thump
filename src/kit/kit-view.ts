@@ -59,6 +59,7 @@ export class KitView {
     // the edge keys lie on the table (an overlay on the kit's own surface: zone z is away from you)
     this.keyZones = zonesFor('keys', { minX: -0.3, maxX: 0.3, minZ: -0.1, maxZ: 0.3 }, { x: KEYS_ROW.x, z: -KEYS_ROW.z }, 0.5);
     this.keys.group.visible = false;
+    this.keys.rest = 0.3;
     this.root.add(this.keys.group, this.module.root);
     const g = new PlaneGeometry(1, 1);
     g.rotateX(-Math.PI / 2);

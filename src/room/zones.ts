@@ -123,7 +123,7 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
     }
     case 'keys': {
       // the table's edge keys: five slim bars in a row
-      for (let i = 0; i < 5; i++) out.push({ i, shape: 'rect', x: anchor.x + (i - 2) * 0.085, z: anchor.z, w: 0.07, h: 0.026, degree: i, midi: degreeMidi(root, i) });
+      for (let i = 0; i < 5; i++) out.push({ i, shape: 'rect', x: anchor.x + (i - 2) * 0.085, z: anchor.z, w: 0.07, h: 0.012, degree: i, midi: degreeMidi(root, i) });
       break;
     }
     case 'gong': {

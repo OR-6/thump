@@ -6,7 +6,6 @@
  * Pad-local: origin on the table at the pad's centre, +Y up.
  */
 import {
-  AdditiveBlending,
   CanvasTexture,
   Color,
   CylinderGeometry,
@@ -19,6 +18,7 @@ import {
   SRGBColorSpace,
   TorusGeometry,
 } from '@iwsdk/core';
+import { asLight } from '../art/light.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
 
@@ -122,13 +122,13 @@ export class PadView {
     const led = new Mesh(new RingGeometry(R * 1.04, R * 1.1, 64), this.led);
     led.rotation.x = -Math.PI / 2;
     led.position.y = 0.0015;
-    this.ledGlow = new MeshBasicMaterial({ color: this.base, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
+    this.ledGlow = asLight(new MeshBasicMaterial({ color: this.base, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
     const glow = new Mesh(new RingGeometry(R * 1.0, R * 1.55, 64), this.ledGlow);
     glow.rotation.x = -Math.PI / 2;
     glow.position.y = 0.001;
     glow.renderOrder = 3;
     // a ripple ring that spreads across the head on a hit
-    this.ripple = new Mesh(new RingGeometry(0.9, 1, 48), new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
+    this.ripple = new Mesh(new RingGeometry(0.9, 1, 48), asLight(new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false })));
     this.ripple.rotation.x = -Math.PI / 2;
     this.ripple.position.y = HEIGHT + 0.0008;
     this.ripple.renderOrder = 4;
