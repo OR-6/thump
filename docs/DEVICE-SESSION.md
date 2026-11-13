@@ -65,13 +65,14 @@ Put the piano out. SONGS, Kick Start, EASY, then PLAY. After the count-in, notes
 
 - Watch: each note falls onto the exact key and lands on the beat. Hit it and it bursts.
 - Partway through, poke the DRUMS card. The panel should say "Drums next", the drums come out at the next loop, and "Find it, then join in" gives you a bar before the notes start falling on the drums.
-- "Go wild!" twice: hit anything, fast. At the end, "Keep it going": no more notes fall and the lights go dim.
-- Read: the results (stars, notes played out of the total, "On time" % or which side of the beat), and fps min on line 1 straight after.
+- "Go wild!" twice: hit anything, fast. The room above eye level should dim (your hands and the desk stay lit) with soft colour, never flickering. On Easy the notes keep falling to the end.
+- "Last one!": the band holds its chord and your instrument pulses. Wait two seconds, then hit it: the band should land on your hit.
+- Read: the results (stars, notes played out of the total, "On time" % or which side of the beat, the song and your best run), "That was you" as your two best bars play back with your notes in gold, and fps min on line 1 straight after.
 - Good: the notes land on the beat and on the right target, the switch lands at the next loop with a bar to find the drums, the frame rate holds.
 
 ## 5. Make a track (7 min)
 
-MENU, then MAKE A TRACK. For each part the panel says what to do ("Pick the big boom"); hit it, then "Hit when it glows" to copy the lit bar, then "Your turn: play anything" for a bar of your own. The instrument for each part comes out by itself.
+MENU, then MAKE A TRACK. For each part the panel says what to do ("Hit a drum for BOOM"); hit it, then "Hit when it glows" to copy the lit bar, then "Your turn: play anything" for a bar of your own. The instrument for each part comes out by itself.
 
 - Good: each part goes in and loops; the panel says how it went in ("BOOM: yours", or "BOOM: 7 of 8" if you only copied part of it) and what's next; after the last part, "Everything, in…", a silent bar with a riser, then the whole track drops in together.
 - Then perform it. In the emulator only the autoplayer has started this, and the build page shows just BACK A PART and STOP, so write down how you got it going (or that you couldn't).
