@@ -1,14 +1,13 @@
 /**
  * Audio: one AudioContext (latency hint 'interactive'), created on the first gesture.
  *
- * Every drum is synthesised (DESIGN.md §3.3): no samples, no licences, instant. Each voice takes a
- * velocity (louder and brighter when harder) and a pan (from where its pad lies). Hits play at
- * once (scheduled for the current audio time on the frame they're seen); the backing band and the
- * beat light are scheduled ahead on the same clock.
+ * Instruments are recorded clips (src/audio/sampler.ts: CC0, the Versilian Community Sample Library), picked by
+ * how hard you hit and re-pitched to the note; synthesised voices stand in until they've loaded. Each hit takes a
+ * velocity (louder and brighter when harder) and a pan (from where it lies). Hits play at once (scheduled for the
+ * current audio time on the frame they're seen); the band and the beat light are scheduled ahead on the same clock.
  *
- * Mix: drums → master; a short room reverb (0.4 s, −18 dB) glues everything but the hat; a soft-clip
- * limiter on the master (a curve, no look-ahead: no added latency) so two-handed hits never clip; the
- * backing band and the click have their own quiet buses.
+ * Mix: everything → master; a 1.9 s room reverb on a send; a soft limiter with four times the headroom (a curve, no
+ * look-ahead: no added latency) so two hands and the band together round off rather than clip.
  */
 import type { Lane } from '../config.js';
 import type { BedEvent } from '../songs/chart.js';

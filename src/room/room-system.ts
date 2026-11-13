@@ -364,19 +364,35 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     bandmate: (event, surface) => {
       const s = surface === 'keys' ? null : this.surfaces.find((x) => x.id === surface);
       const o = s ? this.overlays.get(s) : this.kit.keys;
+      // the bandmate speaks through its instrument: a little figure on the notes it plays, never a robot chirp
+      const fam: Family = s?.voice?.family ?? this.deskFamily;
+      const zones = s ? s.zones : this.kit.keyZones;
+      const motif = (degrees: readonly number[], gap: number, vel: number) => {
+        degrees.forEach((d, k) => {
+          const z = zones[Math.min(zones.length - 1, Math.max(0, d))];
+          if (!z) return;
+          audio.modal(fam, z.midi, vel, 0, audio.now() + 0.05 + k * gap, s?.voice?.size ?? 0.5, 'mate');
+          this.later(this.clock.t + 0.05 + k * gap, () => o?.hit(Math.min(zones.length - 1, d), vel));
+        });
+      };
       if (event === 'claim') {
         this.phone.open();
         o?.sweep();
-        audio.chirp('hello');
+        motif([0, 2, 4], 0.11, 0.5);
         if (!this.settings.noWords) {
           if (s) this.tmp.set(s.anchor.x, 0.05, -s.anchor.z - 0.12).applyMatrix4(s.world);
           else this.tmp.set(0, 0.06, -0.12).applyMatrix4(this.kit.root.matrixWorld);
           this.tag.show('Your bandmate plays this', 0xf2efe6, this.tmp, this.head, 3);
         }
       } else if (event === 'happy') {
-        audio.chirp('happy');
+        // pleased: up to the top and back
+        motif([2, 4, 5], 0.09, 0.45);
+      } else if (event === 'turn') {
+        o?.sweep();
+        this.kit.module.pressKey(3);
       } else if (event === 'simpler') {
-        audio.chirp('turn');
+        // easing off: down, slower
+        motif([3, 1], 0.16, 0.4);
       }
     },
   };
@@ -1163,6 +1179,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const z = zoneAt(s.zones, this.hitAt.x, this.hitAt.z);
     const zone = s.zones[z];
     if (!zone || !s.voice) return;
+    if (this.flam(s.id, z, side, t)) return;
     this.lastWorld.set(zone.x, 0, -zone.z).applyMatrix4(s.world);
     // glass is for taps: a hard hit plays no louder than a gentle one
     const g0 = isGlass(s) ? Math.min(gain, 0.55) : gain;
@@ -1175,8 +1192,23 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.record(s, z, gain, st, grade);
   }
 
+  /** Both hands on the same pad or bar within 25 ms is one note (a flam reads as a double otherwise). */
+  private flamSurface = '';
+  private flamZone = -1;
+  private flamSide: Side = 'left';
+  private flamT = -9;
+  private flam(surface: string, zone: number, side: Side, t: number): boolean {
+    const same = surface === this.flamSurface && zone === this.flamZone && side !== this.flamSide && t - this.flamT < (STRIKE.flamS ?? 0.025);
+    if (!same) {
+      this.flamSurface = surface;
+      this.flamZone = zone;
+      this.flamSide = side;
+      this.flamT = t;
+    }
+    return same;
+  }
+
   private hitKit(side: Side, gain: number, st: Strike, t: number): void {
-    void side;
     const x = this.hitAt.x;
     const kz = -this.hitAt.z; // kit-local z (toward the player)
     // an edge key?
@@ -1184,6 +1216,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (let i = 0; i < this.kit.keyZones.length; i++) {
         const q = this.kit.keyZones[i];
         if (Math.abs(x - q.x) <= q.w / 2 + 0.012 && Math.abs(-kz - q.z) <= q.h / 2 + 0.014) {
+          if (this.flam('keys', i, side, t)) return;
           this.lastWorld.set(q.x, 0, -q.z);
           this.kit.root.localToWorld(this.lastWorld);
           audio.modal(this.deskFamily, q.midi, gain, this.panOf(this.lastWorld), 0, 0.5, 'desk', i);
@@ -1201,6 +1234,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // a pad, or a drum by where on the table: left kick, centre snare, right hat, the edges a rim
     let lane: Lane | 'rim' = this.hitAt.pad >= 0 ? this.hitAt.lane : this.drumAt(x, kz);
     if (lane !== 'rim' && !this.kit.pad(lane)?.visible) lane = 'snare';
+    if (this.flam('kit', LANE_INDEX[lane] ?? 9, side, t)) return;
     const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
     audio.drum(lane, gain, pan, 0, 1);
     if (lane !== 'rim') this.kit.pad(lane)?.hit(gain);
@@ -2083,6 +2117,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 }
 
 const GUARD_NAMES = ['RoomSystem.hands', 'RoomSystem.swaps', 'RoomSystem.game'];
+const LANE_INDEX: Partial<Record<string, number>> = { kick: 0, snare: 1, hat: 2, tom: 3, rim: 4 };
 
 const NOT_TRACKED: HandSample = { tracked: false, pinching: false, points: [] };
 

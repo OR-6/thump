@@ -51,7 +51,7 @@ export interface GameStage {
   /** In-headset settings: read and switch (saved by the stage). */
   setting(name: 'oneHand' | 'contrast' | 'words', flip: boolean): boolean;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
-  bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave', surface?: string): void;
+  bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave' | 'turn', surface?: string): void;
   /** The tuning page: act on a key (null: just read), and what the page shows. */
   tune(k: ModuleKey | null): { line: string; sub: string; labels: string[] };
 }
@@ -381,6 +381,8 @@ export class Game {
     }
     if (this.jamPhase === 'listen' && beat >= cycleStart + 8 - 0.5 && this.jamDecided === this.jamCycle) {
       this.jamPhase = 'turn';
+      // the handover: a run of light across its bars toward you, as it leaves the space for your answer
+      this.stage.bandmate('turn', this.jamSurface);
       this.refreshDisplay();
     }
     // your turn: the notes to answer light a beat ahead and fly from the module

@@ -19,7 +19,7 @@ export function mountLanding(world: World): void {
         <h1>Thump</h1>
         <p class="tag">Play your room.</p>
       </header>
-      <ul class="kit" aria-hidden="true"><li style="--c:#ff5a3c">Table · drum kit</li><li style="--c:#fff1d0">Wall · gong</li><li style="--c:#ffa630">Door · marimba</li><li style="--c:#8fd8ff">Window · glockenspiel</li></ul>
+      <ul class="kit" aria-hidden="true"><li style="--c:#ff5a3c">Table · drum kit</li><li style="--c:#e8a44a">Wall · gong</li><li style="--c:#ffc14d">Door · marimba</li><li style="--c:#6fa8ff">Window · harp</li><li style="--c:#2ad1b5">Cupboard · kalimba</li><li style="--c:#d4703a">Next wall · timpani</li></ul>
       <p class="lede">Every surface in your room is an instrument. Hit anything to find out what it plays, then play songs across your own room, with your hands.</p>
       <div class="go">
         <button id="enter-xr" class="patch" type="button">Enter mixed reality</button>
@@ -46,7 +46,7 @@ export function mountLanding(world: World): void {
           <p class="small-print">Timing offset: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
         </div>
       </details>
-      <footer class="foot">Every sound is made live in your browser from the shape of what you hit: no samples, no recordings. Code under the MIT licence.</footer>
+      <footer class="foot">Twenty recorded instruments, public domain (the Versilian Community Sample Library), tuned to your room as you play. Code under the MIT licence.</footer>
     </main>`;
   document.body.appendChild(el);
 
@@ -108,7 +108,7 @@ export function mountLanding(world: World): void {
     const b = e.currentTarget as HTMLButtonElement;
     if (b.dataset.sure !== '1') {
       b.dataset.sure = '1';
-      b.textContent = 'Tap again to forget your songs and kit';
+      b.textContent = 'Tap again to forget your songs and rooms';
       return;
     }
     const p = loadProgress();

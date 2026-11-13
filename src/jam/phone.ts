@@ -10,7 +10,7 @@ export function mountPhoneJam(host: HTMLElement): void {
   const box = document.createElement('section');
   box.className = 'jam';
   box.innerHTML = `
-    <h2>Jam with a friend's headset</h2>
+    <h2>Got a code from a friend's headset?</h2>
     <p class="jam-lede">Your phone plays the bass. When they tap JAM, type the 4 letters on their drum module.</p>
     <form class="jam-join">
       <input id="jam-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Headset code" />
