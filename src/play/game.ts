@@ -101,6 +101,18 @@ export class Game {
   readonly list: Song[] = [...SONGS, dailySong(dayKey())];
   /** A phone-jam code to show on the display ('' for none). */
   code = '';
+  /** The key now (pitch class): a song's, the jam's, or C. */
+  get keyPc(): number {
+    return this.mode === 'jam' ? 9 : this.song && (this.mode === 'play' || this.mode === 'count') ? this.song.key : 0;
+  }
+  /** The beat now (song or jam), or NaN outside music. */
+  get beatNow(): number {
+    return this.mode === 'play' || this.mode === 'count' || this.mode === 'jam' ? this.clock.beatAt(this.t) : Number.NaN;
+  }
+  /** BPM now (for the phone's light). */
+  get bpmNow(): number {
+    return this.mode === 'jam' ? 96 * this.opts.tempo : (this.song?.bpm ?? 80) * this.opts.tempo;
+  }
   private lastTap: Record<string, number> = {};
   private stopAsked = -1;
   private weakRuns = 0;

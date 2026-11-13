@@ -52,6 +52,8 @@ import { Motes } from './motes.js';
 import { FAMILIES, type Family, type Features } from './classify.js';
 import { retune, zoneAt, zoneForDegree, type Zone } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
+import { coop, type CoopStatus } from '../net/coop.js';
+import { RateLimit, bassNote, validFromPhone, type JamToPhone } from '../jam/protocol.js';
 
 const params = new URLSearchParams(location.search);
 /** `?debug=1`: a board behind the module (fps, planes, the last hit's surface and how it was measured). */
@@ -141,6 +143,8 @@ export interface RoomDebug {
   fpsMin: number;
   tag: string;
   errors: number;
+  phone?: string;
+  phoneNotes?: number;
 }
 
 export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, meshes: { required: [XRMesh] } }) {
@@ -359,6 +363,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const s = surface === 'keys' ? null : this.surfaces.find((x) => x.id === surface);
       const o = s ? this.overlays.get(s) : this.kit.keys;
       if (event === 'claim') {
+        this.openPhoneJam();
         o?.sweep();
         audio.chirp('hello');
         if (!this.settings.noWords) {
@@ -373,6 +378,56 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     },
   };
+  /** The phone jam: a code on the module; a friend's phone becomes the bass. */
+  private phoneWired = false;
+  private phoneBeat = -1;
+  private phoneLimit = new RateLimit(12, 1);
+  private openPhoneJam(): void {
+    if (coop.status.state === 'hosting' || coop.status.state === 'connected') return;
+    if (!this.phoneWired) {
+      this.phoneWired = true;
+      const on = (e: Event) => {
+        const st = (e as CustomEvent<CoopStatus>).detail;
+        this.debug.phone = st.state;
+        this.game.code = st.state === 'hosting' && st.code ? st.code : '';
+        if (st.state === 'connected' && coop.transport) {
+          coop.transport.onMessage((m) => this.onPhone(m));
+          coop.transport.send({ k: 'part', part: 'bass' } satisfies JamToPhone);
+          if (!this.settings.noWords) {
+            this.tmp.set(0, 0.12, -0.2).applyMatrix4(this.kit.root.matrixWorld);
+            this.tag.show("A friend's phone is the bass", 0x2ad1b5, this.tmp, this.head, 3);
+          }
+        }
+        this.game.refreshDisplay();
+      };
+      window.addEventListener('thump:coop', on);
+      this.cleanupFuncs.push(() => window.removeEventListener('thump:coop', on));
+    }
+    void coop.host();
+  }
+
+  private onPhone(m: unknown): void {
+    if (!validFromPhone(m) || m.k !== 'note') return;
+    if (!this.phoneLimit.ok(this.clock.t)) return;
+    audio.bass(bassNote(60 + this.game.keyPc, m.n), m.v, -0.3);
+    this.debug.phoneNotes = (this.debug.phoneNotes ?? 0) + 1;
+  }
+
+  /** The beat, to the phone's light (each beat while music plays). */
+  private beatToPhone(): void {
+    const tr = coop.transport;
+    if (!tr || coop.status.state !== 'connected') return;
+    const b = Math.floor(this.game.beatNow);
+    if (Number.isNaN(b)) {
+      if (this.phoneBeat !== -1) tr.send({ k: 'rest' } satisfies JamToPhone);
+      this.phoneBeat = -1;
+      return;
+    }
+    if (b === this.phoneBeat) return;
+    this.phoneBeat = b;
+    tr.send({ k: 'beat', b, bpm: this.game.bpmNow, root: 60 + this.game.keyPc, song: this.game.mode === 'jam' ? 'Jam' : (this.game.song?.name ?? '') } satisfies JamToPhone);
+  }
+
   /** The bandmate's notes, lit when they play. */
   private pendingLights: { at: number; key: string; vel: number }[] = [];
   private timed: { at: number; fn: () => void }[] = [];
@@ -540,6 +595,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.pendingLights.splice(i, 1);
       }
     }
+    this.beatToPhone();
     this.kit.module.set(this.game.display);
     this.debug.mode = this.game.mode;
     this.debug.found = this.game.found.slice();

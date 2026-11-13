@@ -11,7 +11,7 @@ export function mountPhoneJam(host: HTMLElement): void {
   box.className = 'jam';
   box.innerHTML = `
     <h2>Jam with a friend's headset</h2>
-    <p class="jam-lede">Your phone plays the bass. Type the 4 letters on the toy telephone on their table.</p>
+    <p class="jam-lede">Your phone plays the bass. When they tap JAM, type the 4 letters on their drum module.</p>
     <form class="jam-join">
       <input id="jam-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Headset code" />
       <button class="patch small" type="submit">Join</button>
@@ -40,7 +40,7 @@ export function mountPhoneJam(host: HTMLElement): void {
     e.preventDefault();
     const code = normaliseCode(input.value);
     if (!code) {
-      status.textContent = 'Type the 4 letters on the toy telephone';
+      status.textContent = 'Type the 4 letters on their drum module';
       return;
     }
     void coop.join(code, 'caller');

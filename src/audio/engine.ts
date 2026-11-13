@@ -594,6 +594,35 @@ class Engine {
     }
   }
 
+  /** The phone's bass: a round plucked low note, from where the phone is. */
+  bass(midi: number, vel: number, pan = 0): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const v = Math.max(0.2, Math.min(1, vel));
+    this.played.phone = (this.played.phone ?? 0) + 1;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = midiHz(midi);
+    const o2 = ctx.createOscillator();
+    o2.frequency.value = midiHz(midi + 12);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(400 + 900 * v, t);
+    lp.frequency.exponentialRampToValueAtTime(220, t + 0.3);
+    const g = this.out(ctx, this.drums, pan, 0.4, t, 1);
+    this.env(g.gain, t, 0.7 * v, 0.004, 0.55);
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.25;
+    o.connect(lp);
+    o2.connect(g2).connect(lp);
+    lp.connect(g);
+    o.start(t);
+    o2.start(t);
+    o.stop(t + 0.7);
+    o2.stop(t + 0.7);
+  }
+
   /** A metronome tick (its own quiet bus). */
   click(when = 0, accent = false): void {
     const ctx = this.ready();

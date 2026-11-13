@@ -122,7 +122,7 @@ class CoopSession {
   async join(raw: string, as: 'guest' | 'caller' = 'guest'): Promise<void> {
     const code = normaliseCode(raw);
     if (!code) {
-      this.set({ state: 'error', message: "Type the 4 letters on your friend's toy telephone" });
+      this.set({ state: 'error', message: "Type the 4 letters on your friend's drum module" });
       return;
     }
     this.leave(true);

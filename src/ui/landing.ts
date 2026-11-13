@@ -6,6 +6,7 @@ import { VisibilityState, type World } from '@iwsdk/core';
 import { audio } from '../audio/engine.js';
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { loadProgress, saveProgress, freshProgress } from '../persistence/progress.js';
+import { mountPhoneJam } from '../jam/phone.js';
 
 const LIVE_URL = 'or-6.github.io/thump';
 
@@ -65,10 +66,12 @@ export function mountLanding(world: World): void {
       }
     }, 250);
   });
-  if (!world.xrEnabled) {
+  if (!world.xrEnabled || new URLSearchParams(location.search).has('jam')) {
     el.querySelector<HTMLElement>('.go')!.hidden = true;
     el.querySelector<HTMLElement>('#xr-unsupported')!.hidden = false;
   }
+  // a friend's phone joins the headset's jam (shown where there's no headset)
+  mountPhoneJam(el.querySelector<HTMLElement>('#xr-unsupported')!);
   const copyBtn = el.querySelector<HTMLButtonElement>('#copy-link')!;
   copyBtn.addEventListener('click', () => {
     const url = location.origin + location.pathname;
