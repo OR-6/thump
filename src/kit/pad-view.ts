@@ -1,7 +1,8 @@
 /**
- * One drum of the table kit, as an electronic kit's pad (DESIGN.md §3.13): a matte black mesh head on a
- * rubber rim, a thin chrome hoop, and an LED ring that flashes by hit strength and glows a beat before
- * its note. A hit dents the head and sends a ripple across it.
+ * One drum of the desk kit, as a real drum (src/scene-assets/lib/drums.ts): a white coated head, a lacquered shell,
+ * a chrome hoop with lugs; the hat is a hi-hat. A hit dents the head and sends a ripple across it, and the hoop
+ * glints. A ring of light on the desk round it is the song's note: it glows a beat before the note and flashes on
+ * the hit (the light is the music, not the drum).
  *
  * Pad-local: origin on the table at the pad's centre, +Y up.
  */
@@ -19,11 +20,14 @@ import {
   TorusGeometry,
 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
+import { DRUM_H, buildDrum, buildHiHat } from '../scene-assets/lib/drums.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
 
-/** Flush with the table: the real wood stops your hand, not a virtual puck. */
-const HEIGHT = 0.006;
+/** Low on the table: the real wood stops your hand, a centimetre and a half under the head. */
+const HEIGHT = DRUM_H;
+/** Each drum's lacquer (and the kick's dark front head). */
+const SHELL: Record<Lane, { shell: number; head?: number }> = { kick: { shell: 0x6e1a12, head: 0x1f1e22 }, snare: { shell: 0x1d1c20 }, hat: { shell: 0 }, tom: { shell: 0x5a3a22 }, gong: { shell: 0x3a2a18 } };
 const SQUASH_S = 0.1;
 
 /** Each drum's LED colour. */
@@ -84,6 +88,7 @@ export class PadView {
   /** The squashing part (head, rim, hoop). */
   readonly body = new Group();
   private head: MeshStandardMaterial;
+  private hoopMat: MeshStandardMaterial | undefined;
   private led: MeshBasicMaterial;
   private ledGlow: MeshBasicMaterial;
   private ripple: Mesh;
@@ -106,18 +111,12 @@ export class PadView {
     const R = this.radius;
     this.group.name = `Pad-${lane}`;
     this.base.setHex(LED[lane]);
-    const rubber = new MeshStandardMaterial({ color: 0x1b1b1e, roughness: 0.92 });
-    this.head = new MeshStandardMaterial({ map: meshTexture(), roughness: 0.85, color: hc ? 0x666666 : 0xffffff });
-    const body = new Mesh(new CylinderGeometry(R, R * 1.02, HEIGHT, 48), [rubber, this.head, rubber]);
-    body.position.y = HEIGHT / 2;
-    // the rubber rim and a thin chrome hoop just inside it
-    const rim = new Mesh(new TorusGeometry(R * 0.985, 0.0026, 8, 56), rubber);
-    rim.rotation.x = -Math.PI / 2;
-    rim.position.y = HEIGHT;
-    const hoop = new Mesh(new TorusGeometry(R * 1.005, 0.0016, 8, 64), new MeshStandardMaterial({ color: 0xd8dade, metalness: 1, roughness: 0.22 }));
-    hoop.rotation.x = -Math.PI / 2;
-    hoop.position.y = HEIGHT + 0.002;
-    this.body.add(body, rim, hoop);
+    // the drum itself (the hat: a hi-hat), its head the part a hit dents
+    const model = lane === 'hat' ? buildHiHat(spec.size) : buildDrum(spec.size, SHELL[lane]);
+    const headMesh = model.getObjectByName(lane === 'hat' ? 'Top' : 'Head') as Mesh | undefined;
+    this.head = (headMesh?.material as MeshStandardMaterial | undefined) ?? new MeshStandardMaterial();
+    this.hoopMat = ((model.getObjectByName('Hoop') ?? model.getObjectByName('Clutch')) as Mesh | undefined)?.material as MeshStandardMaterial | undefined;
+    this.body.add(model);
     this.group.add(this.body);
     // the LED ring round the base, and its glow on the table
     this.led = new MeshBasicMaterial({ color: this.base.clone().multiplyScalar(0.25), toneMapped: false });
@@ -143,7 +142,7 @@ export class PadView {
   }
 
   setContrast(hc: boolean): void {
-    this.head.color.setHex(hc ? 0x666666 : 0xffffff);
+    void hc;
   }
 
   appear(how: 'fade' | 'slide'): void {
@@ -217,8 +216,10 @@ export class PadView {
     this.shown += (target - this.shown) * Math.min(1, dt * 30);
     this.ask = 0;
     const lit = this.shown * (1 - 0.7 * this.dim);
-    this.led.color.copy(this.base).multiplyScalar((0.22 + 0.78 * lit) * (1 - 0.6 * this.dim)).lerp(_white, this.white * 0.8);
+    this.led.color.copy(this.base).multiplyScalar((0.06 + 0.94 * lit) * (1 - 0.6 * this.dim)).lerp(_white, this.white * 0.8);
     this.ledGlow.opacity = lit * 0.9;
+    // the hoop glints on a hit
+    if (this.hoopMat) this.hoopMat.emissive.setScalar(this.flash * 0.35);
   }
 
   get light(): number {

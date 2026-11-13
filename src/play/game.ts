@@ -143,7 +143,7 @@ export class Game {
   readonly graded = { perfect: 0, good: 0, extra: 0 };
   readonly offsets: number[] = [];
   /** What the module shows now. */
-  readonly display: Display = { line: 'Hit the desk', sub: 'Anywhere, with your hand', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
+  readonly display: Display = { line: 'Tap the desk', sub: 'Anywhere, with your hand', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   /** The settings page is up on the module (tap ◀ twice; ▶ closes it). */
   settingsOpen = false;
   /** A pad was just hit: its sound shows on the module and ◀ ▶ change it, for a few seconds. */
@@ -432,7 +432,7 @@ export class Game {
       b.target = { surface: a.surface, key: lo ? `${a.surface}:${Number(a.key.slice(a.key.indexOf(':') + 1)) + lo}` : a.key };
       b.moved = a.moved;
       // recording starts on the next bar at least four beats away (the count-in); the take runs two bars from there
-      b.recStart = Math.ceil((beat + 4) / 4) * 4;
+      b.recStart = Math.ceil((beat + 2) / 4) * 4;
       b.hits = [];
       b.clicked = Math.floor(beat);
       b.phase = 'count';
@@ -577,7 +577,7 @@ export class Game {
         // almost nothing played: once more, straight away (only once; then it goes in filled)
         if (share < 0.34 && !b.retried) {
           b.retried = true;
-          b.recStart = Math.ceil((beat + 4) / 4) * 4;
+          b.recStart = Math.ceil((beat + 2) / 4) * 4;
           b.hits = [];
           b.clicked = Math.floor(beat);
           b.phase = 'count';
@@ -586,7 +586,9 @@ export class Game {
         }
         b.retried = false;
         b.parts.push({ def, surface: target.surface, key: target.key, notes });
-        b.verdict = { name: say(def.name), hit: own ? -1 : Math.round(share * pat.length), of: pat.length };
+        // (you copied the lit bar and left your own empty: it's in, filled from the pattern; not a score)
+        const copied = !own && played(notes, pat.filter((s) => relOf(s.beat) < 4)) >= 0.75;
+        b.verdict = { name: say(def.name), hit: own ? -1 : copied ? -2 : Math.round(share * pat.length), of: pat.length };
         b.guard = Math.ceil(beat) + 4;
         // the new part's notes already inside the scheduled window go out now, once
         const base = Math.floor(beat / LOOP_BEATS) * LOOP_BEATS;
@@ -637,7 +639,7 @@ export class Game {
       if (b.verdict) {
         // what just went in, and what's next (hits pick nothing for this bar)
         const v = b.verdict;
-        d.line = v.hit < 0 ? `${v.name}: yours` : v.hit >= v.of ? `${v.name}: every note` : `${v.name}: ${v.hit} of ${v.of}`;
+        d.line = v.hit === -2 ? `${v.name}: in` : v.hit < 0 ? `${v.name}: yours` : v.hit >= v.of ? `${v.name}: every note` : `${v.name}: ${v.hit} of ${v.of}`;
         d.sub = `Next: ${say(def.name)}`;
         return;
       }
@@ -651,7 +653,7 @@ export class Game {
       return;
     }
     // the take's second bar: no lights, play what you like
-    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Now make your own' : 'Hit when it glows';
+    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Your turn: play anything' : 'Hit when it glows';
   }
 
   // ---------------------------------------------------------------- perform
@@ -1026,7 +1028,7 @@ export class Game {
       return;
     }
     // (not while a pad's sound is up: then ◀ ◀ is stepping through sounds)
-    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam' && this.t >= this.pad.until) {
+    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam' && this.t >= this.pad.until && !(this.shelfShown && this.t < this.shelfUntil)) {
       // tap ◀ twice: the settings page (and the first tap's step back is undone)
       if (this.mode === 'discover') {
         this.selected = (this.selected + 1) % this.available();
@@ -1088,6 +1090,7 @@ export class Game {
       this.refreshDisplay();
       return;
     }
+    if (k === 'play' && this.mode === 'discover' && !this.offered) return;
     if (k === 'play' && this.mode === 'discover') {
       const next = this.nextTrack();
       if (next >= 0 && (!this.machine || this.performed(this.machine.track.id))) this.beginBuild(next);
@@ -1667,6 +1670,7 @@ export class Game {
       return;
     }
     this.shelfWhat = '';
+    if (this.mode === 'discover' && this.stage.shelf && this.found.includes('kit') && this.stage.shelf(0).id !== 'drums') d.keyLabels = ['', '', '', 'NOTES', 'SOUND'];
     const nextT = this.nextTrack();
     if (this.mode === 'discover' && this.offered && nextT >= 0 && this.machine && this.performed(this.machine.track.id)) {
       d.line = `Build ${TRACKS[nextT].name}?`;
@@ -1684,7 +1688,7 @@ export class Game {
     }
     if (this.mode === 'discover' && this.offered) {
       d.line = 'Build a track?';
-      d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : 'Tap ▶';
+      d.sub = 'Tap ▶';
       d.pulse = 'play';
       return;
     }
@@ -1693,8 +1697,8 @@ export class Game {
         if (!this.offered) {
           // first the desk; once the drums are out, what's on the desk and how to get more
           const out = this.found.includes('kit') && this.stage.shelf ? this.stage.shelf(0) : null;
-          d.line = out ? out.name : this.found.includes('kit') ? 'Hit something' : 'Hit the desk';
-          d.sub = out ? '◀ ▶ for more instruments' : this.lastFound ? found(this.lastFound) : 'Anywhere, with your hand';
+          d.line = out ? out.name : this.found.includes('kit') ? 'Hit something' : 'Tap the desk';
+          d.sub = out ? '< > more instruments' : 'Anywhere, with your hand';
         } else {
           d.line = sel.name;
           const need = wants(sel.parts);
@@ -1739,7 +1743,7 @@ export class Game {
             break;
           }
           d.line = inFill ? 'Go wild!' : big ? 'Huge!' : b >= this.perf.holdFrom ? 'Keep it going' : this.song!.name;
-          d.sub = inFill ? 'Hit anything, fast' : big ? 'Back to the glow' : b >= this.perf.holdFrom ? 'Lights down' : joins ? `${this.perf.joins} comes in next` : 'Hit what glows';
+          d.sub = inFill ? 'Fast fingers, anything' : big ? 'Back to the glow' : b >= this.perf.holdFrom ? 'No lights now, keep going' : joins ? `${this.perf.joins} comes in next` : 'Hit what glows';
           d.meter = this.energy;
           break;
         }
@@ -1840,7 +1844,7 @@ export function fillScore(beats: readonly number[]): { slots: number; onGrid: nu
   const slots = new Set(beats.map((b) => Math.round(b * 2))).size;
   const on = beats.filter((b) => Math.abs(b * 2 - Math.round(b * 2)) < 0.25).length;
   const onGrid = beats.length ? on / beats.length : 0;
-  return { slots, onGrid, good: slots >= 6 && onGrid >= 0.6 };
+  return { slots, onGrid, good: slots >= 6 && onGrid >= 0.4 };
 }
 
 /** Which way you leaned against the beat (offsets in seconds, + late): −1 ahead, +1 behind, 0 on it (within 25 ms). */

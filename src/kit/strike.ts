@@ -138,7 +138,8 @@ class HandTrack {
 export function speedToGain(speed: number, cfg: Pick<StrikeConfig, 'minSpeed' | 'hardSpeed'> = STRIKE): number {
   const lo = cfg.minSpeed * 0.8;
   const k = Math.min(1, Math.max(0, (speed - lo) / (cfg.hardSpeed - lo)));
-  return Math.pow(10, (-(1 - Math.pow(k, 0.6)) * 24) / 20);
+  // a 12 dB range: a fingertip tap on a tray is clearly heard, a slap is louder but nobody has to pound the table
+  return Math.pow(10, (-(1 - Math.pow(k, 0.6)) * 12) / 20);
 }
 
 export class StrikeDetector {

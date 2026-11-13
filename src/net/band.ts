@@ -101,7 +101,8 @@ export class BandLink {
     wrap('drum', ((voice: Voice, vel: number, _pan?: number, when?: number, size?: number) => ({ k: 'n', s: `d:${voice}`, m: 0, v: vel, d: ahead(when ?? 0), z: size ?? 1 })) as never);
     wrap('modal', ((family: Family, midi: number, vel: number, _pan?: number, when?: number, size?: number) => ({ k: 'n', s: `m:${family}`, m: midi, v: vel, d: ahead(when ?? 0), z: size ?? 0.5 })) as never);
     wrap('pluck', ((midi: number, vel: number, _pan?: number, when?: number, kind?: string) => ({ k: 'n', s: `p:${kind ?? 'nylon'}`, m: midi, v: vel, d: ahead(when ?? 0) })) as never);
-    wrap('band', ((e: BedEvent, when: number, spb: number) => ({ k: 'n', s: `b:${e.voice}`, m: e.midi, v: e.vel, d: ahead(when), z: e.len, spb, mi: e.minor })) as never);
+    // (the chords under a track stay on this headset: friends' tracks would clash in two keys)
+    wrap('band', (() => null) as never);
     tr.onMessage((m) => this.play(m));
   }
 

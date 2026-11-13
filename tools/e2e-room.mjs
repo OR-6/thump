@@ -19,7 +19,7 @@ s = await until((x) => x.debug.surfaces.length > 0, 5000);
 const fams = s.debug.surfaces.map((x) => `${x.id}:${x.label || '-'}→${x.family}@${x.reach}`);
 console.log(`surfaces: ${fams.join('  ')}`);
 check('the room has surfaces (planes found)', s.debug.planes > 0 && s.debug.surfaces.length > 1, `planes=${s.debug.planes} meshes=${s.debug.meshes}`);
-check('the module says hit the desk', s.game.display.line === 'Hit the desk', s.game.display.line);
+check('the module says tap the desk', s.game.display.line === 'Tap the desk', s.game.display.line);
 const look = [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05];
 shot('room-01-placed', look);
 

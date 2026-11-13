@@ -47,7 +47,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'guitar',
     name: 'Guitar',
-    how: 'Left picks, right strums',
+    how: 'Tap a square, then strings',
     sounds: [
       { id: 'nylon', name: 'Nylon', string: 'nylon' },
       { id: 'steel', name: 'Steel', string: 'steel' },

@@ -128,6 +128,8 @@ export class KitView {
     this.instZones = id === 'piano' ? pianoZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : handpanZones(root, scale);
     const o = this.shelf.get(id)!;
     o.build(this.instZones);
+    // the piano's keys in warm ivory, not the bars' colour
+    if (id === 'piano') o.recolor(0xf3e6c8);
     o.reveal(0, 0.03);
   }
   /** The bars were shown (the kit's first bloom): they come back with the drums. */

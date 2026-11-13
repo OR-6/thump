@@ -26,7 +26,7 @@ export type ModuleKey = 'prev' | 'play' | 'next' | 'jam' | 'loop';
 export const KEYS: readonly ModuleKey[] = ['prev', 'play', 'next', 'jam', 'loop'];
 const KEY_X = [-0.1, -0.05, 0, 0.05, 0.1];
 /** Printed under each key on the module's front edge: what tapping it twice does. */
-const LEGEND = ['SETTINGS ×2', 'STOP ×2', 'TRACKS', '', 'CLEAR ×2'];
+const LEGEND = ['INSTRUMENT', 'PLAY', 'INSTRUMENT', '', ''];
 
 export interface Display {
   /** The big line (≤ 18 characters). */

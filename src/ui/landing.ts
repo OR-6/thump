@@ -54,7 +54,7 @@ export function mountLanding(world: World): void {
         </div>
       </section>
       <section class="manual">
-        <p>Sit at a desk or a tray table with a Quest 3 on. Hit the desk and a drum kit comes up under your hands. The arrows on the little box swap it for a piano, a guitar or a handpan. Every note fits the others, so there's no wrong one.</p>
+        <p>Sit at a desk or a tray table with a Quest 3 on. Tap the desk and a drum kit comes up under your hands. The arrows on the little box swap it for a piano, a guitar or a handpan. Every note fits the others, so there's no wrong one.</p>
         <p>Then build a track a part at a time, make the second bar of each part your own, and play the whole thing live. Switch instruments halfway through if you like.</p>
         <p>With friends: one of you starts a band, the others type the code. Up to four headsets, wherever you all are.</p>
         <p class="note">Put the controllers down: it's hands only. Quest asks once to see your desk. Nothing leaves the headset unless you play together, and then only the notes.</p>

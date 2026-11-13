@@ -1,47 +1,56 @@
-# Video: shot list and voice-over (real passthrough on a Quest 3)
+# Video: shot list and voice-over
 
-Target **2:00** (judges may stop at 3:00). Real gameplay only, recorded in the headset; no AI video. The first second is a finger tapping a real mug, a ring of light round it, and a bell. "Your desk is a drum machine" by second three.
+About 90 seconds. Real passthrough recorded in a Quest 3, real hands, the game's own sound. It opens on someone sitting at a desk or a tray table, and the first hit lands in the first three seconds.
 
 ## Before you record
 
-- **Desk:** your own, a mug, a book, a bottle, a keyboard, the laptop open. Warm light, nothing branded in view. No room scan needed.
-- **Headset:** charged, lenses clean, hand tracking on, controllers out of reach.
-- **Recording:** Meta button → Camera → Record video, landscape, highest resolution, **microphone on** (the real knock under the sound is the point).
-- **Move slowly.** Turn your head half as fast as feels natural; hold each shot a beat before and after.
-- **Fresh start** for shots 1–3: on the 2D page open Settings → *Start over*. Film at `https://or-6.github.io/thump/` (no `?debug`).
+- Where: a small table or a tray table, sitting down. A plain wall behind, warm light, nothing branded in view. Clear the table: the instruments go where your mug would be.
+- Headset: charged, lenses clean, hand tracking on, controllers out of reach.
+- Recording: Meta button → Camera → Record video, landscape, highest resolution, microphone on. The knock of your hand on the table under the sound is part of it.
+- Move slowly. Turn your head half as fast as feels natural. Hold each shot a beat before and after the action.
+- Address: `https://or-6.github.io/thump/` (no `?debug`). For shots 1–2 do a fresh start: on the 2D page, Settings → *Start over*.
+- For shots 5–7 you need Kick Start built once. Build it before filming, or film shot 4 and keep going.
+- For shot 8 you need a second player. A second Quest is best. If there isn't one, join from a laptop on the 2D page (its pads play into the band) and film the laptop with a phone.
 
-## Voice-over (short, dry, the hook by second 3)
+## Voice-over
 
-- 0:00 (a finger on the mug, a bell; no words for one beat)
-- 0:02 "This is Thump. Your desk is a drum machine."
-- 0:06 "Hit the desk, it's a kit. Hit your mug, it rings. Anything in reach plays."
-- 0:24 "Pick what anything sounds like."
-- 0:30 "Then build a track out of it, one part at a time."
-- 1:00 "And play it live. Fills. Then the lights go off."
-- 1:25 "Someone to play with, too."
-- 1:40 "It works in an airplane seat."
-- 1:52 "Thump."
+Short and dry. Leave gaps; the music does most of it.
 
-Feature chips (top right): **hand tracking** on shots 1–4, **passthrough** on 2 and 5–6, **persistent anchor** when your kept things come back.
+- 0:00 (no words: a palm on the tray, a tap, the drums come up)
+- 0:03 "This is Thump. You play it sitting down."
+- 0:10 "The arrows on the box put something else on the desk."
+- 0:20 "Every note's in the scale. You can't hit a wrong one."
+- 0:26 "Then you build a track. Copy one bar, make the next one yours."
+- 0:44 (no words: the silent bar, then the drop)
+- 0:50 "Then play it over the top."
+- 1:02 "Switch to piano halfway if you like."
+- 1:12 "Friends join from their own desks."
+- 1:25 "Thump."
 
-## Shots, in story order
+## Shots, in order
 
-| # | Time | Shot | How to get it | On-screen text |
+In the Shot column, quoted lines are exactly what the module or the 2D page shows. The last column is the caption card.
+
+| # | Time | Shot | How to get it | Caption |
 |---|---|---|---|---|
-| 1 | 0:00–0:05 | **A mug gets its ring:** a real desk, a finger taps the mug, a ring of light round it, a bell | Fresh start (Settings → Start over), a mug on the desk | "Hit your mug." |
-| 2 | 0:05–0:12 | **The machine running:** the desk playing a track by itself, rings flashing on the mug, the book, the keyboard | Build Kick Start first, then just watch | "Your desk is a drum machine." |
-| 3 | 0:12–0:24 | Discovery in a few hits: the desk is a kit, the book knocks, the keyboard becomes keys, the knee is a conga | Fresh start | "Everything in reach plays." |
-| 4 | 0:24–0:30 | Change a sound: hit the mug, ▶ ▶ on the module: bell, chime, glock | Any time | "Pick its sound." |
-| 5 | 0:30–1:00 | **Build:** *Hit what plays the kick*; the desk; two bars along with the lights; the snare on the book, the hat on the mug… | ▶ on *Build a track?* | "Build a track out of your stuff." |
-| 6 | 1:00–1:25 | **Perform:** notes fly to the mug and the book; *Fill!*; the lights go off, *Hold it*; *Tight 84%* | ▶ on *Perform?* | "Then play it live." |
-| 7 | 1:25–1:40 | JAM: the bandmate's mallets lift off the module and play on the mug; you answer | After the first performance (or `?unlock=all`) | "Someone to play with." |
-| 8 | 1:40–1:52 | An airplane-style tray: a cup, a phone, knees; the same game in a tight seat | Any small table | "Anywhere you can sit." |
-| 9 | 1:52–2:00 | The link | Title card | "or-6.github.io/thump" |
+| 1 | 0:00–0:06 | A tray table, two hands. A palm rests, the module turns up ("Tap the desk"), one tap and the drums come up under the hands | Fresh start, sit down, enter mixed reality | "Tap the desk." |
+| 2 | 0:06–0:10 | A few hits on the drums: BOOM, SMACK, TICK, the light bars behind | Straight on from shot 1 | (none) |
+| 3 | 0:10–0:20 | The piano comes out: two notes and the chord pad; then the guitar, a chord pad and a strum; then the handpan, a run round it | The arrow right of ▶, then play each a few seconds | "Swap what's on the desk." |
+| 4 | 0:20–0:26 | NOTES: "Notes: Sad" and a run on the handpan. SOUND: "Sound: Bells" | The last two keys on the module | "No wrong notes." |
+| 5 | 0:26–0:44 | Build Kick Start: "Pick the big boom", a hit, "Hit when it glows", the lit bar copied, "Your turn: play anything", a bar of your own. Cut to TUNE: the piano comes out by itself | ▶ on "Build a track?" | "Build it a part at a time." |
+| 6 | 0:44–0:50 | "Everything, in…": a silent bar, the riser, then the whole track drops in at once | The last part of the build | (none) |
+| 7 | 0:50–1:12 | Perform: "Hit what glows", "Go wild!" and a fast fill, then the arrow right of ▶ and "Piano next", "Find it, then join in", the tune on the piano. End on the results: notes played and the stars | ▶ on "Your track. Perform? ▶" | "Play it live." |
+| 8 | 1:12–1:25 | Two people at two desks. On the 2D page "Start a band", the code, typed on the other side, "2 in the band". Then both play; a note from the friend lands to one side | See *Before you record* | "Play together, from anywhere." |
+| 9 | 1:25–1:30 | End card | Title card | "or-6.github.io/thump" |
 
-Record 2–3 takes of each. Keep your head still during the action; move only between shots.
+Shoot two or three takes of each. Keep your head still during the action and move only between shots. Don't stage the results number: use whatever you get.
+
+Feature chips (top right): hand tracking on shots 1–5, passthrough on 1 and 7, plane detection on 1 (the desk is found from a plane or a resting palm).
 
 ## Assembling it
 
-1. Copy the headset recordings into `artifacts/video/` named as in `docs/video-shots.json` (or edit that file), and set each shot's `in`/`out` seconds.
+The cut list and captions used by the tools are from an earlier version of the video. Update both to the table above before assembling: `docs/video-shots.json` (clip names, `in`/`out`, card, chip) and the caption text in `tools/video-cards.mjs`.
+
+1. Copy the headset recordings into `artifacts/video/`, named as in `docs/video-shots.json`, and set each shot's `in`/`out` seconds.
 2. Make the cards once (with the dev server up): `npx @iwsdk/cli browser run tools/video-cards.mjs` → `artifacts/video-cards/`.
 3. `node tools/video-assemble.mjs docs/video-shots.json artifacts/video/thump.mp4` (needs ffmpeg). Title card, each shot with its caption and feature chip, end card, at 1920×1080, with the game's own sound.

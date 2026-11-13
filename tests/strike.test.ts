@@ -63,14 +63,15 @@ describe('strike detection', () => {
     expect(play(det, path, 1)).toHaveLength(1);
   });
 
-  it('a soft fingertip tap is a quiet hit, a hard slap ~20 dB louder', () => {
+  it('a soft fingertip tap is a quieter hit, a hard slap ~10 dB louder (a tray never needs pounding)', () => {
     const det = new StrikeDetector();
     const soft = play(det, slap(0.05, 0.4), 1.0);
     expect(soft).toHaveLength(1);
     const det2 = new StrikeDetector();
     const hard = play(det2, slap(0.12, 1.6), 1.0);
     const db = 20 * Math.log10(hard[0].gain / soft[0].gain);
-    expect(db).toBeGreaterThan(14);
+    expect(db).toBeGreaterThan(7);
+    expect(db).toBeLessThan(13);
   });
 
   it('lowering a hand slowly onto the table is silent, and it then rests', () => {
@@ -333,7 +334,7 @@ describe('strike detection', () => {
   });
 
   it('louder for faster, never silent', () => {
-    expect(speedToGain(0.2)).toBeCloseTo(Math.pow(10, -24 / 20), 3);
+    expect(speedToGain(0.2)).toBeCloseTo(Math.pow(10, -12 / 20), 3);
     expect(speedToGain(0.8)).toBeGreaterThan(speedToGain(0.5));
     expect(speedToGain(5)).toBe(1);
   });

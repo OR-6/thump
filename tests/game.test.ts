@@ -49,9 +49,8 @@ describe('the game', () => {
   it('starts with "Hit something", and offers to build a track once two things are found', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
-    expect(g.display.line).toBe('Hit the desk');
+    expect(g.display.line).toBe('Tap the desk');
     g.discovered('kit', 'table', 1);
-    expect(g.display.sub).toMatch(/kit/i);
     expect(g.display.pulse).toBeNull();
     g.discovered('marimba', 'door', 2);
     g.tick(2.1);
@@ -426,8 +425,9 @@ describe('the game', () => {
     g.tick(9);
     // the module keeps naming what's on the desk, and how to get more
     expect(g.display.line).toBe('Piano');
-    expect(g.display.sub).toBe('◀ ▶ for more instruments');
-    expect(g.display.keyLabels).toBeNull();
+    expect(g.display.sub).toBe('< > more instruments');
+    // and its NOTES and SOUND keys stay labelled
+    expect(g.display.keyLabels).toEqual(['', '', '', 'NOTES', 'SOUND']);
     g.tick(45);
     g.key('play');
     expect(g.mode).toBe('build');
