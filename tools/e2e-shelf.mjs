@@ -79,8 +79,40 @@ s = state();
 check('its middle rings', s.debug.lastHit?.family === 'handpan' && s.debug.lastHit?.zone === 0, JSON.stringify(s.debug.lastHit));
 shot('shelf-handpan', look);
 
+// the stand: a pinch on a tile puts that instrument out
+{
+  const pinchAt = async (at) => {
+    // put the hand there, pinch, see where the pinch point landed, and move so it lands on the tile
+    xr('set-transform', { device: HAND, position: { x: at[0], y: at[1] + 0.06, z: at[2] + 0.05 }, orientation: { pitch: -30, yaw: 0, roll: 0 } });
+    await wait(300);
+    xr('set-select-value', { device: HAND, value: 1 });
+    await wait(300);
+    let st = state();
+    const pp = st.right.pinchPoint;
+    xr('set-select-value', { device: HAND, value: 0 });
+    await wait(300);
+    const pos = { x: at[0] + (at[0] - pp[0]), y: at[1] + 0.06 + (at[1] - pp[1]), z: at[2] + 0.05 + (at[2] - pp[2]) };
+    xr('set-transform', { device: HAND, position: pos, orientation: { pitch: -30, yaw: 0, roll: 0 } });
+    await wait(300);
+    xr('set-select-value', { device: HAND, value: 1 });
+    await wait(400);
+    st = state();
+    xr('set-select-value', { device: HAND, value: 0 });
+    await wait(300);
+    return st;
+  };
+  const tile = state().targets['tile-piano'];
+  check('the stand shows a tile per instrument', !!tile && !!state().targets['tile-guitar'], Object.keys(state().targets).filter((k) => k.startsWith('tile')).join(','));
+  if (tile) {
+    const st = await pinchAt(tile);
+    s = state();
+    check('a pinch on the piano tile puts the piano out', s.targets.inst?.[0] === 1 && s.game.display.line === 'Piano', `inst=${s.targets.inst} pinching=${st.right.pinching} line=${s.game.display.line}`);
+  }
+}
+
 await key('next');
+await wait(500);
 s = state();
-check('and round to the drums', s.targets.inst?.[0] === 0 && !!s.targets.kick, `inst=${s.targets.inst}`);
+check('and on to the guitar', s.targets.inst?.[0] === 2, `inst=${s.targets.inst}`);
 check('no frame errors', s.debug.errors === 0, `errors=${s.debug.errors}`);
 done('E2E shelf');

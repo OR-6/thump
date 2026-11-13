@@ -1027,6 +1027,27 @@ export class Game {
     g.sched = Math.max(g.sched, Math.floor(ahead * 2) / 2);
   }
 
+  /** An instrument was picked on the stand: say what it is. */
+  shelfPicked(v: ShelfView): void {
+    this.shelfShown = v;
+    this.shelfWhat = '';
+    this.tried.add(v.id);
+    this.shelfUntil = this.t + 6;
+    this.refreshDisplay();
+  }
+
+  /** Performing: switch to this instrument at the next loop (the stand's tile, or ◀ ▶). */
+  switchTo(id: string): void {
+    if (!this.perf || !this.machine || this.perf.queued || id === this.perf.inst) return;
+    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => PART_INST[p.def.name] === id)) return;
+    const beat = this.clock.beatAt(this.t);
+    const when = Math.max(0, Math.ceil((beat + 2) / LOOP_BEATS) * LOOP_BEATS);
+    if (when >= (this.song?.bars ?? 20) * 4 - 4) return;
+    this.perf.queued = id;
+    this.perf.switchAt = when;
+    this.refreshDisplay();
+  }
+
   /** The shelf on the module for a few seconds after a change (and which setting was just changed). */
   private shelfShown: ShelfView | null = null;
   private shelfUntil = -1;
@@ -1776,8 +1797,8 @@ export class Game {
         if (!this.offered) {
           // first the desk; once the drums are out, what's on the desk and how to get more
           const out = this.found.includes('kit') && this.stage.shelf ? this.stage.shelf(0) : null;
-          d.line = out ? out.name : this.found.includes('kit') ? 'Hit something' : 'Tap the desk';
-          d.sub = out ? '< > more instruments' : 'Anywhere, with your hand';
+          d.line = out ? out.name : this.found.includes('kit') ? 'Hit something' : this.stage.shelf ? 'Pick one' : 'Tap the desk';
+          d.sub = out ? 'Pinch another on the stand' : this.stage.shelf ? 'Pinch it, or tap the desk' : 'Anywhere, with your hand';
         } else {
           d.line = sel.name;
           const need = wants(sel.parts);

@@ -55,7 +55,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { PIANO_CHORD, SCALES, STRUM, guitarZones, handpanZones, instDef, pianoZones, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { PIANO_CHORD, SCALES, SHELF, STRUM, guitarZones, handpanZones, instDef, pianoZones, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -68,6 +68,7 @@ import type { RoomInstrument } from '../songs/cast.js';
 import { PhoneLink } from './phone-link.js';
 import { coop, type CoopStatus } from '../net/coop.js';
 import { BandLink } from '../net/band.js';
+import { Stand } from '../stand/stand.js';
 
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
 const RESUME_WINDOW_S = 4;
@@ -193,6 +194,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit = new KitView();
     this.kit.setContrast(this.settings.highContrast);
     this.kitEntity = this.world.createTransformEntity(this.kit.root);
+    this.kit.root.add(this.stand.root);
     this.kitHome = this.kit.root.parent;
     this.worldRoot.name = 'RoomOverlays';
     this.world.createTransformEntity(this.worldRoot);
@@ -974,6 +976,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.player.head.getWorldPosition(this.head);
     this.tag.update(dt);
     this.hint.update(dt);
+    this.stand.update(dt);
+    if (!this.stand.root.visible && this.placement.phase === 'placed') this.refreshStand();
     if (this.placement.phase !== 'placed') {
       if (!immersive) return;
       this.sessionTime += dt;
@@ -1131,6 +1135,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.sample.tracked = h.tracked;
       // a hand holding a pinch (to swap an instrument) is reaching, not hitting
       this.pinchHeld[i] = h.tracked && h.pinch.pinching ? this.pinchHeld[i] + delta : 0;
+      // a pinch on the stand picks an instrument
+      const pinched = h.tracked && !h.controller && h.pinch.pinching;
+      if (pinched && !this.pinchWas[i]) this.pinchStand(h.pinchPoint);
+      this.pinchWas[i] = pinched;
       this.sample.pinching = this.swaps.holding(i) || (this.pinchHeld[i] > 0.15 && (this.progress.unlocks as string[]).includes('swaps'));
       for (let k = 0; k < this.surfaces.length; k++) {
         const s = this.surfaces[k];
@@ -2000,6 +2008,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
   /** A song or a build wants this instrument out (null: the one you chose in free play). Not saved. */
   private useInstrument(id: InstId | null): void {
+    this.useInstrumentNow(id);
+    this.refreshStand();
+  }
+  private useInstrumentNow(id: InstId | null): void {
     const want = id ?? ((['drums', 'piano', 'guitar', 'handpan'] as InstId[]).includes(this.settings.inst as InstId) ? (this.settings.inst as InstId) : 'drums');
     const root = this.instRoot(want);
     const scale = scaleById(this.shelfCfg(want).scale);
@@ -2010,6 +2022,39 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.setInstrument(want, root, scale);
   }
   private instTuning = '';
+
+  // ------------------------------------------------------------------ the stand
+
+  private stand = new Stand();
+  private pinchWas = [false, false];
+  /** The stand shows what's on the shelf, lit for the one that's out. */
+  private refreshStand(): void {
+    this.stand.set(SHELF.map((d) => ({ id: d.id, name: d.name, color: d.color })), this.kit.inst);
+    this.stand.root.visible = this.placement.phase === 'placed';
+  }
+  /** A pinch (world point): on a tile, that instrument comes out (the first one brings the kit out too). */
+  private pinchStand(at: Vector3): void {
+    if (this.placement.phase !== 'placed') return;
+    this.kit.root.updateMatrixWorld(true);
+    const local = this.kit.root.worldToLocal(this.tmp3.copy(at));
+    const item = this.stand.pickAt(local);
+    if (!item) return;
+    audio.tick();
+    const m = this.game.mode;
+    if (m === 'play' || m === 'count') {
+      this.game.switchTo(item.id);
+      return;
+    }
+    if (m !== 'discover') return;
+    if (!this.kitSurface.discovered) {
+      this.hitAt.x = 0;
+      this.hitAt.z = 0;
+      this.discover(this.kitSurface);
+    }
+    this.putOut(item.id as InstId);
+    this.game.shelfPicked(this.shelfView());
+  }
+  private tmp3 = new Vector3();
 
   /** The zones of a surface, the desk's bars, or a shelf instrument (as it would be laid out now). */
   private zonesOf(id: string): Zone[] {
@@ -3089,6 +3134,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = root.localToWorld(this.tmp.set(z.x, 0, -z.z)).toArray().map(r4)));
     if (this.kit.inst === 'guitar') out.strum = root.localToWorld(this.tmp.set((STRUM.x0 + STRUM.x1) / 2, 0, -(STRUM.z0 + STRUM.z1) / 2)).toArray().map(r4);
     out.inst = [['drums', 'piano', 'guitar', 'handpan'].indexOf(this.kit.inst)];
+    for (const d of SHELF) {
+      const q = this.stand.tileAt(d.id);
+      if (q) out[`tile-${d.id}`] = root.localToWorld(this.tmp.copy(q)).toArray().map(r4);
+    }
     for (const s of this.surfaces) {
       if (s.source !== 'plane' && s.source !== 'volume') continue;
       const cx = (s.bounds.minX + s.bounds.maxX) / 2;

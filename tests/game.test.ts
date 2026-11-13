@@ -425,7 +425,7 @@ describe('the game', () => {
     g.tick(9);
     // the module keeps naming what's on the desk, and how to get more
     expect(g.display.line).toBe('Piano');
-    expect(g.display.sub).toBe('< > more instruments');
+    expect(g.display.sub).toBe('Pinch another on the stand');
     // and its NOTES and SOUND keys stay labelled
     expect(g.display.keyLabels).toEqual(['', '', '', 'NOTES', 'SOUND']);
     g.tick(45);
