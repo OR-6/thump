@@ -3,14 +3,18 @@ import { bed, grid, secPerBeat } from '../src/songs/chart.js';
 import { SONGS } from '../src/songs/songs.js';
 import { NoteJudge, copyNeeds, estimateOffset, starsFor, windows } from '../src/songs/judge.js';
 import { EventCursor, SongClock } from '../src/songs/sequencer.js';
-import { lanesBefore } from '../src/play/progression.js';
+import { cast, noteKey, wants } from '../src/songs/cast.js';
 import { Bandmate } from '../src/bandmate/bandmate.js';
 
-describe('grid notation', () => {
-  it('reads eighths and bars', () => {
+describe('notation', () => {
+  it('reads drum eighths and bars', () => {
     const n = grid({ kick: 'x...x...|X.......', snare: '..x...x.' });
-    expect(n.map((x) => `${x.lane}@${x.beat}`)).toEqual(['kick@0', 'snare@1', 'kick@2', 'snare@3', 'kick@4']);
+    expect(n.map((x) => `${x.part}@${x.beat}`)).toEqual(['kick@0', 'snare@1', 'kick@2', 'snare@3', 'kick@4']);
     expect(n[4].vel).toBe(1);
+  });
+  it('reads melodic degrees', () => {
+    const n = grid({ melody: '0.2.4...' });
+    expect(n.map((x) => `${x.degree}@${x.beat}`)).toEqual(['0@0', '2@1', '4@2']);
   });
   it('the bed has a count-in bar before bar 0', () => {
     const b = bed({ roots: [60], bass: 'x.......', chord: 'hold', shaker: false }, 2);
@@ -20,31 +24,26 @@ describe('grid notation', () => {
 });
 
 describe('charts', () => {
-  SONGS.forEach((s, i) => {
-    it(`${s.name}: every lane is unlocked by then, notes are in the song`, () => {
-      const have = lanesBefore(i);
-      for (const l of s.lanes) expect(have).toContain(l);
-      for (const n of [...s.notes, ...s.copy]) expect(s.lanes).toContain(n.lane);
+  SONGS.forEach((s) => {
+    it(`${s.name}: notes use its parts, inside the song`, () => {
       const end = s.bars * 4;
       for (const n of s.notes) {
+        expect(s.parts).toContain(n.part);
         expect(n.beat).toBeGreaterThanOrEqual(0);
         expect(n.beat).toBeLessThan(end);
       }
       for (const e of s.bed) expect(e.beat).toBeLessThan(end);
-      expect(s.copy.length).toBeGreaterThanOrEqual(3);
-      for (const n of s.copy) expect(n.beat).toBeLessThan(4);
       expect(s.mood.split(' ').length).toBeLessThanOrEqual(3);
       expect(s.bpm).toBeGreaterThanOrEqual(72);
       expect(s.bpm).toBeLessThanOrEqual(124);
     });
-    it(`${s.name}: one hand never has to be in two places (no two notes on the same pad closer than an eighth at tempo)`, () => {
-      const byLane = new Map<string, number[]>();
-      for (const n of s.notes) (byLane.get(n.lane) ?? byLane.set(n.lane, []).get(n.lane)!).push(n.beat);
-      for (const beats of byLane.values()) for (let k = 1; k < beats.length; k++) expect(beats[k] - beats[k - 1]).toBeGreaterThanOrEqual(0.5 - 1e-9);
-      // never three pads at once (two hands)
+    it(`${s.name}: playable with two hands (never 3 notes at once, a part never faster than eighths)`, () => {
+      const byPart = new Map<string, number[]>();
+      for (const n of s.notes) (byPart.get(n.part) ?? byPart.set(n.part, []).get(n.part)!).push(n.beat);
+      for (const beats of byPart.values()) for (let k = 1; k < beats.length; k++) expect(beats[k] - beats[k - 1]).toBeGreaterThanOrEqual(0.5 - 1e-9);
       const at = new Map<number, number>();
       for (const n of s.notes) at.set(n.beat, (at.get(n.beat) ?? 0) + 1);
-      for (const c of at.values()) expect(c).toBeLessThanOrEqual(3);
+      for (const c of at.values()) expect(c).toBeLessThanOrEqual(2);
     });
     it(`${s.name}: lasts 40–100 s`, () => {
       const sec = (s.bars + 1) * 4 * secPerBeat(s.bpm);
@@ -52,14 +51,52 @@ describe('charts', () => {
       expect(sec).toBeLessThan(100);
     });
   });
-  it('the call-and-answer song has calls and leaves room for every answer', () => {
-    const ca = SONGS.find((s) => s.calls)!;
-    for (const c of ca.calls!) expect(c + 4).toBeLessThanOrEqual(ca.bars);
+  it('early songs ask for fewer instruments', () => {
+    expect(wants(SONGS[0].parts)).toBe(1);
+    expect(wants(SONGS[SONGS.length - 1].parts)).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('casting a song onto a room', () => {
+  const door = { id: 'p1', family: 'marimba' as const, zones: 8 };
+  const window = { id: 'p2', family: 'glock' as const, zones: 8 };
+  const wall = { id: 'p3', family: 'gong' as const, zones: 1 };
+  it('drums go to the kit; the melody to the door', () => {
+    const c = cast(['kick', 'snare', 'melody'], [door, window]);
+    expect(c.kick?.surface).toBe('kit');
+    expect(c.melody?.surface).toBe('p1');
+  });
+  it('a chime takes the window when the door has the melody', () => {
+    const c = cast(['melody', 'chime'], [door, window]);
+    expect(c.melody?.surface).toBe('p1');
+    expect(c.chime?.surface).toBe('p2');
+  });
+  it('a room with nothing but the table: the edge keys play the melody, the kit the gong', () => {
+    const c = cast(['melody', 'gong', 'kick'], []);
+    expect(c.melody?.surface).toBe('keys');
+    expect(c.gong?.surface).toBe('kit');
+  });
+  it('the gong goes on the wall', () => expect(cast(['gong'], [wall, door]).gong?.surface).toBe('p3'));
+  it('note keys: degrees to bars, wrapping on small instruments', () => {
+    const c = cast(['melody'], [door]);
+    const zones = (id: string) => (id === 'keys' ? 5 : 8);
+    expect(noteKey({ beat: 0, part: 'melody', degree: 3, vel: 1 }, c, zones)).toBe('p1:3');
+    const k = cast(['melody'], []);
+    expect(noteKey({ beat: 0, part: 'melody', degree: 7, vel: 1 }, k, zones)).toBe('keys:2');
+    expect(noteKey({ beat: 0, part: 'snare', degree: -1, vel: 1 }, k, zones)).toBe('kit:snare');
+  });
+  SONGS.forEach((s) => {
+    for (const room of [[], [door], [door, window, wall]]) {
+      it(`${s.name} casts onto a room with ${room.length} instruments`, () => {
+        const c = cast(s.parts, room);
+        for (const p of s.parts) expect(c[p]).toBeDefined();
+      });
+    }
   });
 });
 
 describe('timing judge', () => {
-  const notes = grid({ kick: 'x...x...', snare: '..x...x.' }); // beats 0,1,2,3
+  const notes = grid({ kick: 'x...x...', snare: '..x...x.' }).map((n) => ({ beat: n.beat, lane: n.part, vel: n.vel })); // beats 0,1,2,3
   const spb = secPerBeat(80);
 
   it('perfect, good, and a stray hit', () => {
@@ -99,7 +136,7 @@ describe('timing judge', () => {
 
   it('notes added live (an answer) are judged', () => {
     const j = new NoteJudge([], spb);
-    j.add(grid({ tom: 'x.......' }, 2));
+    j.add(grid({ tom: 'x.......' }, 2).map((n) => ({ beat: n.beat, lane: n.part, vel: n.vel })));
     expect(j.hit('tom', 8 * spb)?.grade).toBe('perfect');
   });
 
@@ -147,7 +184,7 @@ describe('bandmate', () => {
   it('never plays a pad you have not unlocked', () => {
     const b = new Bandmate(['kick', 'snare']);
     for (let i = 0; i < 12; i++) {
-      for (const n of b.call(0)) expect(['kick', 'snare']).toContain(n.lane);
+      for (const n of b.call(0)) expect(["kick", "snare"]).toContain(n.part);
       b.report({ share: 1 });
     }
   });

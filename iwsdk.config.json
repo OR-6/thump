@@ -17,6 +17,7 @@
           "required": false
         },
         "planeDetection": true,
+        "meshDetection": true,
         "anchors": true
       }
     },

@@ -4,9 +4,9 @@
  */
 import { LANES, type Lane } from '../config.js';
 import { load, save } from './storage.js';
-import type { Unlock } from '../play/progression.js';
+import type { Unlock } from '../play/game.js';
 
-const UNLOCKS: readonly Unlock[] = ['tom', 'gong', 'bandmate', 'arrange', 'phone'];
+const UNLOCKS: readonly Unlock[] = ['tom', 'jam', 'loops', 'swaps'];
 
 export interface SavedKit {
   /** IWSDK's persistent room-anchor handle the pose is relative to. */

@@ -30,6 +30,9 @@ export class HandState {
   /** Raw fingertips (world): index is indexTip above; middle and ring for strikes. */
   readonly middleTip = new Vector3();
   readonly ringTip = new Vector3();
+  /** Index and pinky knuckles (world): a flat slap lands on these too. */
+  readonly knuckleIndex = new Vector3();
+  readonly knucklePinky = new Vector3();
   /** Fingertip joint radius (m). */
   tipRadius = 0.008;
   /** wrist +Y · world up. */
@@ -125,6 +128,9 @@ export class HandTrackerSystem extends createSystem({}) {
         const meta = src.hand.get('middle-finger-metacarpal');
         const midTip = src.hand.get('middle-finger-tip');
         const ringTip = src.hand.get('ring-finger-tip');
+        const midKnuckle = src.hand.get('middle-finger-phalanx-proximal');
+        const idxKnuckle = src.hand.get('index-finger-phalanx-proximal');
+        const pinkyKnuckle = src.hand.get('pinky-finger-phalanx-proximal');
         const tp = thumb && frame.getJointPose(thumb, ref);
         const ip = index && frame.getJointPose(index, ref);
         const wp = wrist && frame.getJointPose(wrist, ref);
@@ -132,6 +138,9 @@ export class HandTrackerSystem extends createSystem({}) {
         if (!tp || !ip || !wp || !mp) continue;
         const mtp = midTip && frame.getJointPose(midTip, ref);
         const rtp = ringTip && frame.getJointPose(ringTip, ref);
+        const mkp = midKnuckle && frame.getJointPose(midKnuckle, ref);
+        const ikp = idxKnuckle && frame.getJointPose(idxKnuckle, ref);
+        const pkp = pinkyKnuckle && frame.getJointPose(pinkyKnuckle, ref);
         this.seen[side] = true;
         const h = hands[side];
         h.controller = false;
@@ -169,11 +178,13 @@ export class HandTrackerSystem extends createSystem({}) {
         } else {
           h.indexVel.set(0, 0, 0);
         }
-        h.palm.set(
-          mp.transform.position.x,
-          mp.transform.position.y,
-          mp.transform.position.z,
-        );
+        // the palm's true centre: halfway from the middle metacarpal (near the wrist) to its knuckle
+        h.palm.set(mp.transform.position.x, mp.transform.position.y, mp.transform.position.z);
+        if (mkp) h.palm.set((h.palm.x + mkp.transform.position.x) / 2, (h.palm.y + mkp.transform.position.y) / 2, (h.palm.z + mkp.transform.position.z) / 2);
+        if (ikp) h.knuckleIndex.set(ikp.transform.position.x, ikp.transform.position.y, ikp.transform.position.z);
+        else h.knuckleIndex.copy(h.palm);
+        if (pkp) h.knucklePinky.set(pkp.transform.position.x, pkp.transform.position.y, pkp.transform.position.z);
+        else h.knucklePinky.copy(h.palm);
         h.palmRadius = mp.radius ?? 0.02;
         h.tipRadius = ip.radius ?? 0.008;
         if (mtp) h.middleTip.set(mtp.transform.position.x, mtp.transform.position.y, mtp.transform.position.z);
@@ -249,6 +260,8 @@ export class HandTrackerSystem extends createSystem({}) {
     h.palm.copy(this.tmpIndex);
     h.middleTip.copy(this.tmpIndex);
     h.ringTip.copy(this.tmpIndex);
+    h.knuckleIndex.copy(this.tmpIndex);
+    h.knucklePinky.copy(this.tmpIndex);
     h.tipRadius = 0.01;
     h.palmRadius = 0.02; // a resting controller's tip sits a little above the desk (unmeasured: check on a headset)
     h.upDot = trigger > 0.6 ? 1 : 0;

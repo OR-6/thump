@@ -1,19 +1,26 @@
 /**
- * Song charts (data only) and the little grid notation they are written in.
+ * Song charts (data only) and the little notations they are written in.
  *
- * A chart's notes are what the player plays; its bed is what the synth band plays under them
- * (bass, chords, shaker). Beats are quarter notes from the first bar of play (bar 0); a song has
- * one count-in bar before it.
+ * Songs are written in **parts** (the kit's drums, and melody, bass, chime, shake and gong), not for a
+ * particular room: when a song starts it is cast onto the instruments your room has (src/songs/cast.ts).
+ * A chart's notes are what the player plays; its bed is what the synth band plays under them. Beats
+ * are quarter notes from the first bar of play (bar 0); a song has one count-in bar before it.
  *
- * Grid notation: one string per lane, bars separated by `|`, each bar split into as many equal
- * steps as it has characters. `x` a note, `X` an accent, `o` a soft note, `.` a rest.
- * `grid({ kick: 'x...x...', snare: '..x...x.' })` is "boom · tak · boom · tak" in eighths.
+ * Drum grid: one string per part, bars separated by `|`, each bar split into as many equal steps as
+ * it has characters. `x` a note, `X` an accent, `o` a soft note, `.` a rest.
+ * Melodic line: the same, with digits for scale degrees (0 = the key's root in the instrument's
+ * register, 1–4 up the major pentatonic, 5 = the octave…).
  */
-import type { Lane } from '../config.js';
+export type DrumPart = 'kick' | 'snare' | 'hat' | 'tom' | 'rim';
+export type TonalPart = 'melody' | 'bass' | 'chime' | 'shake' | 'gong';
+export type Part = DrumPart | TonalPart;
+export const DRUMS: readonly DrumPart[] = ['kick', 'snare', 'hat', 'tom', 'rim'];
 
 export interface Note {
   beat: number;
-  lane: Lane;
+  part: Part;
+  /** Scale degree for a pitched part, −1 when unpitched. */
+  degree: number;
   vel: number;
 }
 
@@ -39,38 +46,37 @@ export interface Song {
   bpm: number;
   bars: number;
   beatsPerBar: 4;
-  lanes: Lane[];
+  /** The key's pitch class (0 = C). */
+  key: number;
+  /** The parts it uses (cast onto the room when it starts). */
+  parts: Part[];
   notes: Note[];
-  /** The one-bar pattern the pads play first and the player copies (beats within the bar). */
-  copy: Note[];
   bed: BedEvent[];
-  /** Call and answer with the bandmate: it plays these bars, you answer in the next two (notes made live). */
-  calls?: number[];
-  /** The card's icon, drawn in the card renderer. */
-  icon: 'porch' | 'clock' | 'birds' | 'hands' | 'gong' | 'bus';
 }
 
 const VEL: Record<string, number> = { x: 0.85, X: 1, o: 0.55 };
 
-/** Notes from a grid, starting at `bar` (see the notation above). */
-export function grid(lanes: Partial<Record<Lane, string>>, bar = 0, beatsPerBar = 4): Note[] {
+/** Notes from a grid of parts, starting at `bar` (see the notations above). Digits are scale degrees. */
+export function grid(parts: Partial<Record<Part, string>>, bar = 0, beatsPerBar = 4): Note[] {
   const out: Note[] = [];
-  for (const [lane, text] of Object.entries(lanes) as [Lane, string][]) {
+  for (const [part, text] of Object.entries(parts) as [Part, string][]) {
     const bars = text.split('|');
     bars.forEach((b, i) => {
       const steps = b.length;
       for (let k = 0; k < steps; k++) {
-        const v = VEL[b[k]];
+        const ch = b[k];
+        const deg = ch >= '0' && ch <= '9' ? Number(ch) : -1;
+        const v = deg >= 0 ? 0.85 : VEL[ch];
         if (v === undefined) continue;
-        out.push({ beat: (bar + i) * beatsPerBar + (k * beatsPerBar) / steps, lane, vel: v });
+        out.push({ beat: (bar + i) * beatsPerBar + (k * beatsPerBar) / steps, part, degree: deg, vel: v });
       }
     });
   }
-  return out.sort((a, b) => a.beat - b.beat || a.lane.localeCompare(b.lane));
+  return out.sort((a, b) => a.beat - b.beat || a.part.localeCompare(b.part));
 }
 
 /** The same bar(s) of grid, `times` times over, from `bar`. */
-export function repeat(lanes: Partial<Record<Lane, string>>, bar: number, times: number): Note[] {
+export function repeat(lanes: Partial<Record<Part, string>>, bar: number, times: number): Note[] {
   const one = grid(lanes, 0);
   const span = Math.max(1, ...Object.values(lanes).map((t) => (t ?? '').split('|').length));
   const out: Note[] = [];

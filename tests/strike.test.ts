@@ -39,7 +39,7 @@ describe('strike detection', () => {
     const det = new StrikeDetector();
     const hits = play(det, slap(0.1, 1.2), 1.2);
     expect(hits).toHaveLength(1);
-    expect(hits[0].gain).toBeGreaterThan(0.75);
+    expect(hits[0].gain).toBeGreaterThan(0.7);
   });
 
   it('a slap that tracking reports 8 mm above the table still hits (the stop)', () => {
@@ -49,12 +49,28 @@ describe('strike detection', () => {
     expect(hits[0].kind).toBe('stop');
   });
 
-  it('a soft fingertip tap is a quiet hit', () => {
+  it('a stop spread over 40 ms still hits', () => {
     const det = new StrikeDetector();
-    const hits = play(det, slap(0.05, 0.4), 1.0);
-    expect(hits).toHaveLength(1);
-    expect(hits[0].gain).toBeLessThan(0.65);
-    expect(hits[0].gain).toBeGreaterThanOrEqual(0.4);
+    // 1 m/s, easing to zero over the last 40 ms (the hand compresses on the table)
+    const path = (t: number) => {
+      if (t < 0.3) return { y: 0.1 };
+      const k = t - 0.3;
+      const tEnd = 0.08;
+      if (k < tEnd) return { y: Math.max(0.005, 0.1 - k * 1.0) };
+      const e = Math.min(1, (k - tEnd) / 0.04);
+      return { y: Math.max(0.004, 0.02 - 0.02 * (1 - (1 - e) * (1 - e)) - 0.0) };
+    };
+    expect(play(det, path, 1)).toHaveLength(1);
+  });
+
+  it('a soft fingertip tap is a quiet hit, a hard slap ~20 dB louder', () => {
+    const det = new StrikeDetector();
+    const soft = play(det, slap(0.05, 0.4), 1.0);
+    expect(soft).toHaveLength(1);
+    const det2 = new StrikeDetector();
+    const hard = play(det2, slap(0.12, 1.6), 1.0);
+    const db = 20 * Math.log10(hard[0].gain / soft[0].gain);
+    expect(db).toBeGreaterThan(14);
   });
 
   it('lowering a hand slowly onto the table is silent, and it then rests', () => {
@@ -63,26 +79,31 @@ describe('strike detection', () => {
     expect(det.isResting(1)).toBe(true);
   });
 
-  it('a resting hand must lift 2 cm before it plays again', () => {
+  it('resting is found under real jitter (1 mm), and a lean set-down after a small lift is silent', () => {
     const det = new StrikeDetector();
-    play(det, () => ({ y: 0 }), 1);
+    play(det, () => ({ y: 0 }), 1, 1, 0, 0.001);
     expect(det.isResting(1)).toBe(true);
-    // lift 1 cm and come down hard: still resting
-    const small = play(det, (t) => ({ y: t < 0.1 ? t * 0.1 : Math.max(0, 0.01 - (t - 0.1) * 1.2) }), 0.5, 1, 1);
-    expect(small).toHaveLength(0);
+    // lift 1.5 cm and set it down at 0.4 m/s
+    const lean = play(det, (t) => ({ y: t < 0.1 ? t * 0.15 : Math.max(0, 0.015 - (t - 0.1) * 0.4) }), 0.5, 1, 1, 0.001);
+    expect(lean).toHaveLength(0);
     // lift 4 cm, then slap
     const big = play(det, (t) => ({ y: t < 0.2 ? t * 0.2 : Math.max(0, 0.04 - (t - 0.2) * 1.2) }), 0.6, 1, 2);
     expect(big).toHaveLength(1);
   });
 
+  it('a hand hovering that stops sharply 2.5 cm above the table is silent, and does not move the surface', () => {
+    const det = new StrikeDetector();
+    expect(play(det, slap(0.12, 0.6, 0.025), 1)).toHaveLength(0);
+    expect(Math.abs(det.surfaceY)).toBeLessThan(0.001);
+  });
+
   it('a hand reaching across the table is not a hit', () => {
     const det = new StrikeDetector();
-    // mostly sideways at 1 m/s, sinking at 0.4 m/s onto the table
     const hits = play(det, (t) => ({ y: Math.max(0, 0.06 - t * 0.4), x: -0.3 + t * 1.0 }), 0.6);
     expect(hits).toHaveLength(0);
   });
 
-  it('a pinching hand never hits', () => {
+  it('a pinching (holding) hand never hits', () => {
     const det = new StrikeDetector();
     const hits = play(det, (t) => ({ ...slap(0.1, 1.2)(t), pinching: true }), 1);
     expect(hits).toHaveLength(0);
@@ -90,35 +111,117 @@ describe('strike detection', () => {
 
   it('a hand just found by tracking does nothing for its first frames', () => {
     const det = new StrikeDetector();
-    // appears 3 cm up, already moving down fast
     const hits = play(det, (t) => ({ y: Math.max(0, 0.03 - t * 1.5) }), 0.3);
     expect(hits).toHaveLength(0);
   });
 
-  it('two slaps 250 ms apart are two hits; a bounce is not', () => {
+  it('two slaps 250 ms apart are two hits', () => {
     const det = new StrikeDetector();
     const twice = (t: number) => {
-      const k = t % 0.25; // down 60 ms at 1 m/s, up again
+      const k = t % 0.25;
       return { y: k < 0.06 ? 0.06 - k * 1.0 : k < 0.12 ? 0 : Math.min(0.06, (k - 0.12) * 0.6) };
     };
-    const hits = play(det, (t) => (t < 0.3 ? { y: 0.06 } : twice(t - 0.3)), 0.3 + 0.5);
-    expect(hits).toHaveLength(2);
-    // a 4 mm bounce right after a hit does not re-trigger
-    const det2 = new StrikeDetector();
-    const bounce = play(det2, (t) => ({ y: t < 0.3 ? 0.08 : t < 0.38 ? Math.max(0, 0.08 - (t - 0.3) * 1.2) : t < 0.42 ? 0.004 : 0 }), 0.8);
-    expect(bounce).toHaveLength(1);
+    expect(play(det, (t) => (t < 0.3 ? { y: 0.06 } : twice(t - 0.3)), 0.8)).toHaveLength(2);
   });
 
-  it('a table 2 cm higher than placed still plays, and the surface learns it', () => {
+  for (const up of [0.008, 0.015, 0.02, 0.03]) {
+    it(`a natural ${up * 1000} mm rebound after a slap is not a second hit`, () => {
+      const det = new StrikeDetector();
+      // 1.2 m/s down, contact at 0.383 s, then a ballistic bounce of height `up`
+      const v0 = Math.sqrt(2 * 9.8 * up);
+      const path = (t: number) => {
+        if (t < 0.3) return { y: 0.1 };
+        const c = 0.3 + 0.1 / 1.2;
+        if (t < c) return { y: 0.1 - (t - 0.3) * 1.2 };
+        const k = t - c;
+        return { y: Math.max(0, v0 * k - 4.9 * k * k) };
+      };
+      // a real hand is never frozen: 0.3 mm of tracking jitter
+      expect(play(det, path, 1, 1, 0, 0.0003)).toHaveLength(1);
+    });
+  }
+
+  it('a one-frame dropout mid-slap still hits', () => {
     const det = new StrikeDetector();
-    const first = play(det, slap(0.12, 1.2, 0.02), 0.8);
-    expect(first).toHaveLength(1);
-    expect(det.surfaceY).toBeGreaterThan(0.003);
-    // keep slapping: the surface settles near the real table and medium hits land
+    const hits: number[] = [];
+    for (let t = 0, i = 0; t <= 1; t += DT, i++) {
+      const y = (t < 0.3 ? 0.1 : Math.max(0, 0.1 - (t - 0.3) * 1.2)) + 0.02;
+      const lost = Math.abs(t - 0.36) < DT / 2;
+      if (det.update(1, hand(0, y, 0, !lost), t, DT)) hits.push(t);
+    }
+    expect(hits).toHaveLength(1);
+  });
+
+  it('a 60 ms dropout right at contact still hits (late), once', () => {
+    const det = new StrikeDetector();
+    const hits: string[] = [];
+    const contact = 0.3 + 0.1 / 1.2;
+    for (let t = 0; t <= 1; t += DT) {
+      const y = (t < 0.3 ? 0.1 : Math.max(0, 0.1 - (t - 0.3) * 1.2)) + 0.02;
+      const lost = t > contact - 0.03 && t < contact + 0.03;
+      const s = det.update(1, hand(0, y, 0, !lost), t, DT);
+      if (s) hits.push(s.kind);
+    }
+    expect(hits).toHaveLength(1);
+  });
+
+  it('samples repeated at 30 Hz under a 72 Hz frame: one hit, speed not inflated', () => {
+    const det = new StrikeDetector();
+    let held = 0.12;
+    let last = -1;
+    const hits: number[] = [];
+    for (let t = 0; t <= 1; t += DT) {
+      const tick = Math.floor(t * 30);
+      if (tick !== last) {
+        last = tick;
+        held = (t < 0.3 ? 0.1 : Math.max(0, 0.1 - (t - 0.3) * 0.8)) + 0.02;
+      }
+      const s = det.update(1, hand(0, held, 0), t, DT);
+      if (s) hits.push(s.speed);
+    }
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toBeLessThan(1.3);
+  });
+
+  it('a frame hitch does not read as a huge speed', () => {
+    const det = new StrikeDetector();
+    const hits: number[] = [];
+    let t = 0;
+    for (; t < 0.4; t += DT) det.update(1, hand(0, 0.08, 0), t, DT);
+    // 120 ms with no frames while the hand drifted down 3 cm, then it carries on slowly
+    t += 0.12;
+    const s0 = det.update(1, hand(0, 0.05, 0), t, 0.12);
+    if (s0) hits.push(s0.speed);
+    for (let k = 0; k < 60; k++) {
+      t += DT;
+      const s = det.update(1, hand(0, Math.max(0.02, 0.05 - k * 0.002), 0), t, DT);
+      if (s) hits.push(s.speed);
+    }
+    expect(hits).toHaveLength(0);
+  });
+
+  it('works the same at 90 and 120 Hz', () => {
+    for (const hz of [90, 120]) {
+      const det = new StrikeDetector();
+      let n = 0;
+      for (let t = 0; t <= 1; t += 1 / hz) if (det.update(1, hand(0, (t < 0.3 ? 0.1 : Math.max(0.006, 0.1 - (t - 0.3) * 1.0)) + 0.02, 0), t, 1 / hz)) n++;
+      expect(n).toBe(1);
+    }
+  });
+
+  it('strike times are back-dated to the contact (within a frame)', () => {
+    const det = new StrikeDetector();
+    const hits = play(det, slap(0.1, 1.0, 0, 0.3), 1);
+    const contact = 0.3 + 0.1 / 1.0;
+    expect(Math.abs(hits[0].t - contact)).toBeLessThan(DT * 1.01);
+  });
+
+  it('a table 1.2 cm higher than placed plays, and the surface learns it', () => {
+    const det = new StrikeDetector();
     let all = 0;
-    for (let k = 0; k < 6; k++) all += play(det, slap(0.12, 0.8, 0.02, 0.1), 0.6, 1, 1 + k).length;
+    for (let k = 0; k < 6; k++) all += play(det, slap(0.12, 1.0, 0.012, 0.1), 0.6, 1, k).length;
     expect(all).toBe(6);
-    expect(det.surfaceY).toBeGreaterThan(0.012);
+    expect(det.surfaceY).toBeGreaterThan(0.006);
   });
 
   it('jitter on a resting or hovering hand never plays', () => {
@@ -128,16 +231,14 @@ describe('strike detection', () => {
     expect(play(det2, () => ({ y: 0.03 }), 3, 1, 0, 0.0015)).toHaveLength(0);
   });
 
-  it('both hands are independent (a flam is two strikes, joined by the kit)', () => {
+  it('both hands are independent', () => {
     const det = new StrikeDetector();
-    const a = play(det, slap(0.1, 1.2, 0, 0.3), 0.6, 0);
-    const b = play(det, slap(0.1, 1.2, 0, 0.32), 0.6, 1);
-    expect(a).toHaveLength(1);
-    expect(b).toHaveLength(1);
+    expect(play(det, slap(0.1, 1.2, 0, 0.3), 0.6, 0)).toHaveLength(1);
+    expect(play(det, slap(0.1, 1.2, 0, 0.32), 0.6, 1)).toHaveLength(1);
   });
 
   it('louder for faster, never silent', () => {
-    expect(speedToGain(0.1)).toBeCloseTo(0.4);
+    expect(speedToGain(0.2)).toBeCloseTo(Math.pow(10, -24 / 20), 3);
     expect(speedToGain(0.8)).toBeGreaterThan(speedToGain(0.5));
     expect(speedToGain(5)).toBe(1);
   });

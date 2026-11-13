@@ -4,14 +4,20 @@
  * note never hit is simply 'miss' once its window has passed. Stars from the share of perfect and
  * good notes (PLAN §3.5).
  */
-import { TIMING, type Lane } from '../config.js';
-import type { Note } from './chart.js';
+import { TIMING } from '../config.js';
+
+/** A note to judge: when, and which target (a "surface:zone" key) it wants. */
+export interface JudgeNote {
+  beat: number;
+  lane: string;
+  vel: number;
+}
 
 export type Grade = 'perfect' | 'good' | 'miss';
 
 export interface JudgedNote {
   beat: number;
-  lane: Lane;
+  lane: string;
   vel: number;
   /** Song seconds. */
   t: number;
@@ -56,7 +62,7 @@ export class NoteJudge {
   private readonly res: HitResult = { grade: 'miss', index: -1, offset: 0 };
 
   constructor(
-    notes: readonly Note[],
+    notes: readonly JudgeNote[],
     private spb: number,
     public win: Windows = windows(false),
   ) {
@@ -64,7 +70,7 @@ export class NoteJudge {
   }
 
   /** Add notes (an answer written live); kept sorted by time. */
-  add(notes: readonly Note[]): void {
+  add(notes: readonly JudgeNote[]): void {
     for (const n of notes) this.notes.push({ beat: n.beat, lane: n.lane, vel: n.vel, t: n.beat * this.spb, grade: null, offset: 0 });
     this.notes.sort((a, b) => a.t - b.t);
     // a note added behind the cursor must still be judged
@@ -76,7 +82,7 @@ export class NoteJudge {
    * A hit on `lane` at song time `t` (already corrected by the calibration offset).
    * @returns the graded note (a reused object), or null for a hit no note wanted.
    */
-  hit(lane: Lane, t: number): HitResult | null {
+  hit(lane: string, t: number): HitResult | null {
     let best = -1;
     let bestD = Infinity;
     for (let i = this.cursor; i < this.notes.length; i++) {

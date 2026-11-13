@@ -1,14 +1,13 @@
 /**
- * One felt pad on the table: a thick felt disc with a rolled, stitched edge, its own colour and
- * shape cue, a soft contact shadow, and a ring of light around it on the table (the beat light,
- * and the flash when it's hit). A hit squashes it (12% at full force, ~100 ms).
+ * One drum of the table kit, as an electronic kit's pad (PLAN §3.13): a matte black mesh head on a
+ * rubber rim, a thin chrome hoop, and an LED ring that flashes by hit strength and glows a beat before
+ * its note. A hit dents the head and sends a ripple across it.
  *
- * Pad-local: origin on the table at the pad's centre, +Y up out of the surface (for the wall gong,
- * the group is turned so +Y is the wall's normal).
+ * Pad-local: origin on the table at the pad's centre, +Y up.
  */
 import {
   AdditiveBlending,
-  CircleGeometry,
+  CanvasTexture,
   Color,
   CylinderGeometry,
   Group,
@@ -16,37 +15,77 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
+  RingGeometry,
+  SRGBColorSpace,
   TorusGeometry,
-  BoxGeometry,
 } from '@iwsdk/core';
 import { PADS, type Lane } from '../config.js';
-import { blobTexture, glowTexture, padTopTexture } from '../art/felt.js';
-import { feltTexture } from '../art/textures.js';
 import { motion } from '../ui/motion.js';
 
-const HEIGHT = 0.016;
-const SQUASH_S = 0.11;
+const HEIGHT = 0.018;
+const SQUASH_S = 0.1;
 
-let planeGeo: PlaneGeometry | null = null;
-function plane(): PlaneGeometry {
-  if (!planeGeo) {
-    planeGeo = new PlaneGeometry(1, 1);
-    planeGeo.rotateX(-Math.PI / 2);
+/** Each drum's LED colour. */
+export const LED: Record<Lane, number> = { kick: 0xff4a3a, snare: 0xf4f1ea, hat: 0x5cd6ff, tom: 0xffa630, gong: 0xfff1d0 };
+
+let meshTex: CanvasTexture | null = null;
+/** The mesh head: charcoal with a fine woven dot pattern and a soft sheen. */
+function meshTexture(): CanvasTexture {
+  if (meshTex) return meshTex;
+  const S = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#17171a';
+  g.fillRect(0, 0, S, S);
+  g.fillStyle = '#26262b';
+  for (let y = 0; y < S; y += 6) for (let x = (y / 6) % 2 ? 3 : 0; x < S; x += 6) g.fillRect(x, y, 2, 2);
+  const grad = g.createRadialGradient(S * 0.38, S * 0.32, 10, S / 2, S / 2, S / 2);
+  grad.addColorStop(0, 'rgba(255,255,255,0.09)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.02)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.25)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, S, S);
+  meshTex = new CanvasTexture(c);
+  meshTex.colorSpace = SRGBColorSpace;
+  meshTex.anisotropy = 4;
+  return meshTex;
+}
+
+let shadowTex: CanvasTexture | null = null;
+function shadowTexture(): CanvasTexture {
+  if (shadowTex) return shadowTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(0,0,0,0.6)');
+  grad.addColorStop(0.6, 'rgba(0,0,0,0.35)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  shadowTex = new CanvasTexture(c);
+  return shadowTex;
+}
+
+let flat: PlaneGeometry | null = null;
+function flatPlane(): PlaneGeometry {
+  if (!flat) {
+    flat = new PlaneGeometry(1, 1);
+    flat.rotateX(-Math.PI / 2);
   }
-  return planeGeo;
+  return flat;
 }
 
 export class PadView {
   readonly group = new Group();
-  /** The squashing part (body + rim), scaled about the table. */
+  /** The squashing part (head, rim, hoop). */
   readonly felt = new Group();
-  readonly body: Mesh;
-  private rim: Mesh;
-  private top: MeshStandardMaterial;
-  private side: MeshStandardMaterial;
-  private glowMat: MeshBasicMaterial;
-  private glow: Mesh;
-  private shadow: Mesh;
+  private head: MeshStandardMaterial;
+  private led: MeshBasicMaterial;
+  private ledGlow: MeshBasicMaterial;
+  private ripple: Mesh;
+  private rippleT = 1;
   private base = new Color();
   private squashT = 1;
   private squashK = 0;
@@ -54,14 +93,9 @@ export class PadView {
   private ask = 0;
   private shown = 0;
   private appearT = 1;
-  private appearHow: 'fade' | 'slide' = 'fade';
-  /** Where it slides in from (pad-local x offset), when sliding. */
-  private slideFrom = 0;
   readonly radius: number;
-  /** The pad's spot (kit-local x, z) it settles at. */
   x = 0;
   z = 0;
-  /** Lifted while being moved (pinched). */
   lift = 0;
 
   constructor(readonly lane: Lane, hc = false) {
@@ -69,98 +103,81 @@ export class PadView {
     this.radius = spec.size / 2;
     const R = this.radius;
     this.group.name = `Pad-${lane}`;
-    this.base.setHex(spec.color);
-    const brass = spec.mark === 'brass';
-    this.top = new MeshStandardMaterial({ map: padTopTexture(spec, hc), roughness: brass ? 0.35 : 0.95, metalness: brass ? 0.6 : 0, emissive: new Color(0x000000) });
-    this.side = new MeshStandardMaterial({ color: hc ? 0xfff4dc : new Color(spec.color).multiplyScalar(0.82), roughness: brass ? 0.4 : 0.95, metalness: brass ? 0.55 : 0, map: brass ? null : feltTexture() });
-    const h = brass ? 0.008 : HEIGHT;
-    const geo = new CylinderGeometry(R * 0.94, R, h, 48, 1, false);
-    geo.translate(0, h / 2, 0);
-    this.body = new Mesh(geo, [this.side, this.top, this.side]);
-    this.body.name = `PadBody-${lane}`;
-    this.body.castShadow = false;
-    // a rolled felt edge: a soft torus round the rim (brass: a thin lip)
-    const tube = brass ? 0.003 : 0.0055;
-    this.rim = new Mesh(new TorusGeometry(R * 0.97, tube, 10, 48), this.side);
-    this.rim.rotation.x = -Math.PI / 2;
-    this.rim.position.y = h - tube * 0.6;
-    this.felt.add(this.body, this.rim);
-    if (brass) {
-      // the gong's felt hanger strap above it
-      const strap = new Mesh(new BoxGeometry(0.018, 0.004, 0.06), new MeshStandardMaterial({ color: 0x8b3a2a, roughness: 0.95, map: feltTexture() }));
-      strap.position.set(0, 0.002, -R - 0.025);
-      this.felt.add(strap);
-    }
+    this.base.setHex(LED[lane]);
+    const rubber = new MeshStandardMaterial({ color: 0x1b1b1e, roughness: 0.92 });
+    this.head = new MeshStandardMaterial({ map: meshTexture(), roughness: 0.85, color: hc ? 0x666666 : 0xffffff });
+    const body = new Mesh(new CylinderGeometry(R, R * 1.02, HEIGHT, 48), [rubber, this.head, rubber]);
+    body.position.y = HEIGHT / 2;
+    // the rubber rim and a thin chrome hoop just inside it
+    const rim = new Mesh(new TorusGeometry(R * 0.985, 0.0045, 10, 56), rubber);
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.y = HEIGHT;
+    const hoop = new Mesh(new TorusGeometry(R * 1.005, 0.0016, 8, 64), new MeshStandardMaterial({ color: 0xd8dade, metalness: 1, roughness: 0.22 }));
+    hoop.rotation.x = -Math.PI / 2;
+    hoop.position.y = HEIGHT + 0.0035;
+    this.felt.add(body, rim, hoop);
     this.group.add(this.felt);
-    this.glowMat = new MeshBasicMaterial({ map: glowTexture(), color: new Color(spec.color).lerp(new Color(0xffffff), 0.35), transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
-    this.glow = new Mesh(plane(), this.glowMat);
-    this.glow.scale.setScalar(R * 3.2);
-    this.glow.position.y = 0.0012;
-    this.glow.renderOrder = 3;
-    this.group.add(this.glow);
-    this.shadow = new Mesh(plane(), new MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false, opacity: 0.85 }));
-    this.shadow.scale.setScalar(R * 2.7);
-    this.shadow.position.y = 0.0006;
-    this.shadow.renderOrder = 1;
-    this.group.add(this.shadow);
+    // the LED ring round the base, and its glow on the table
+    this.led = new MeshBasicMaterial({ color: this.base.clone().multiplyScalar(0.25), toneMapped: false });
+    const led = new Mesh(new RingGeometry(R * 1.04, R * 1.1, 64), this.led);
+    led.rotation.x = -Math.PI / 2;
+    led.position.y = 0.0015;
+    this.ledGlow = new MeshBasicMaterial({ color: this.base, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
+    const glow = new Mesh(new RingGeometry(R * 1.0, R * 1.55, 64), this.ledGlow);
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 0.001;
+    glow.renderOrder = 3;
+    // a ripple ring that spreads across the head on a hit
+    this.ripple = new Mesh(new RingGeometry(0.9, 1, 48), new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
+    this.ripple.rotation.x = -Math.PI / 2;
+    this.ripple.position.y = HEIGHT + 0.0008;
+    this.ripple.renderOrder = 4;
+    const shadow = new Mesh(flatPlane(), new MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false }));
+    shadow.scale.setScalar(R * 2.8);
+    shadow.position.y = 0.0006;
+    shadow.renderOrder = 1;
+    this.group.add(led, glow, this.ripple, shadow);
     this.group.visible = false;
   }
 
-  /** Restyle for high contrast (pads become cream with black marks). */
   setContrast(hc: boolean): void {
-    const spec = PADS[this.lane];
-    this.top.map?.dispose();
-    this.top.map = padTopTexture(spec, hc);
-    this.top.needsUpdate = true;
-    this.side.color.set(hc ? 0xfff4dc : new Color(spec.color).multiplyScalar(0.82));
+    this.head.color.setHex(hc ? 0x666666 : 0xffffff);
   }
 
-  /** Appear: 'fade' (grows in place) or 'slide' (slides onto the table from the outside). */
   appear(how: 'fade' | 'slide'): void {
-    this.appearHow = how;
+    void how;
     this.appearT = 0;
-    this.slideFrom = how === 'slide' ? Math.sign(this.x || 1) * 0.16 : 0;
     this.group.visible = true;
   }
 
   hide(): void {
     this.group.visible = false;
-    this.appearT = 1;
   }
 
   get visible(): boolean {
     return this.group.visible;
   }
 
-  /** Struck with loudness `gain` 0..1. */
   hit(gain: number): void {
     this.squashT = 0;
     this.squashK = gain;
-    this.flash = Math.max(this.flash, 0.55 + 0.45 * gain);
+    this.flash = Math.max(this.flash, 0.4 + 0.6 * gain);
+    this.rippleT = 0;
   }
 
-  /** Ask for light this frame (the brightest ask wins). */
   setGlow(k: number): void {
     if (k > this.ask) this.ask = k;
   }
 
   update(dt: number): void {
     if (!this.group.visible) return;
-    // appear
-    let ax = 0;
     let s = 1;
     if (this.appearT < 1) {
-      this.appearT = Math.min(1, this.appearT + dt / (this.appearHow === 'slide' ? 0.65 : 0.5));
-      const e = 1 - Math.pow(1 - this.appearT, 3);
-      if (this.appearHow === 'slide') ax = this.slideFrom * (1 - e);
-      else {
-        // a little overshoot as it settles
-        const b = this.appearT - 1;
-        s = 0.3 + 0.7 * (1 + 2.2 * b * b * b + 1.2 * b * b);
-      }
+      this.appearT = Math.min(1, this.appearT + dt / 0.45);
+      const b = this.appearT - 1;
+      s = 0.4 + 0.6 * (1 + 2.0 * b * b * b + 1.0 * b * b);
     }
-    this.group.position.set(this.x + ax, this.lift, this.z);
-    // squash and spring back
+    this.group.position.set(this.x, this.lift, this.z);
     let sy = 1;
     let sxz = 1;
     if (this.squashT < SQUASH_S) {
@@ -169,30 +186,24 @@ export class PadView {
       const env = Math.sin(k * Math.PI) * (1 - k * 0.3);
       const amp = (0.04 + 0.08 * this.squashK) * (motion.calm ? 0.5 : 1);
       sy = 1 - amp * env;
-      sxz = 1 + amp * 0.45 * env;
+      sxz = 1 + amp * 0.3 * env;
     }
     this.felt.scale.set(s * sxz, s * sy, s * sxz);
-    this.shadow.scale.setScalar(this.radius * 2.7 * s);
-    // light: the beat glow asked for this frame, or a hit's flash fading
-    this.flash = Math.max(0, this.flash - dt * 4.5);
-    const target = Math.max(this.ask * 0.85, this.flash);
+    if (this.rippleT < 1) {
+      this.rippleT = Math.min(1, this.rippleT + dt / 0.3);
+      this.ripple.scale.setScalar(this.radius * (0.15 + 0.82 * this.rippleT));
+      (this.ripple.material as MeshBasicMaterial).opacity = 0.35 * this.squashK * (1 - this.rippleT);
+      this.ripple.position.y = HEIGHT * sy + 0.0008;
+    }
+    this.flash = Math.max(0, this.flash - dt * 4);
+    const target = Math.max(this.ask * 0.8, this.flash);
     this.shown += (target - this.shown) * Math.min(1, dt * 30);
     this.ask = 0;
-    this.glowMat.opacity = this.shown;
-    this.glow.scale.setScalar(this.radius * (3.0 + 0.5 * this.flash) * s);
-    this.top.emissive.copy(this.base).multiplyScalar(this.shown * 0.45);
+    this.led.color.copy(this.base).multiplyScalar(0.22 + 0.78 * this.shown);
+    this.ledGlow.opacity = this.shown * 0.9;
   }
 
-  /** World-less helper: the pad's light level now (debug/E2E). */
   get light(): number {
     return this.shown;
   }
-}
-
-/** A small flat felt disc helper for markers (the move plate, nudge arrows). */
-export function feltDisc(radius: number, color: number): Mesh {
-  const m = new Mesh(new CircleGeometry(radius, 32), new MeshStandardMaterial({ color, roughness: 0.95, map: feltTexture() }));
-  m.rotation.x = -Math.PI / 2;
-  m.position.y = 0.002;
-  return m;
 }

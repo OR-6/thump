@@ -6,12 +6,14 @@
  * once (scheduled for the current audio time on the frame they're seen); the backing band and the
  * beat light are scheduled ahead on the same clock.
  *
- * Mix: drums → master; a short room reverb (0.4 s, −18 dB) glues everything but the hat; a master
- * compressor (−10 dB, 3:1) so flams and two-handed hits never clip; the backing band and the
- * click have their own quiet buses.
+ * Mix: drums → master; a short room reverb (0.4 s, −18 dB) glues everything but the hat; a soft-clip
+ * limiter on the master (a curve, no look-ahead: no added latency) so two-handed hits never clip; the
+ * backing band and the click have their own quiet buses.
  */
 import type { Lane } from '../config.js';
 import type { BedEvent } from '../songs/chart.js';
+import type { Family } from '../room/classify.js';
+import { MODAL } from './modal.js';
 
 export type Voice = Lane | 'knock' | 'rim' | 'clap' | 'block' | 'bell';
 
@@ -76,14 +78,11 @@ class Engine {
     if (!Ctor) return;
     const ctx = new Ctor({ latencyHint: 'interactive' });
     this.ctx = ctx;
-    const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -10;
-    comp.ratio.value = 3;
-    comp.attack.value = 0.003;
-    comp.release.value = 0.12;
+    const clip = ctx.createWaveShaper();
+    clip.curve = softClip();
     this.master = ctx.createGain();
-    this.master.gain.value = 0.9;
-    this.master.connect(comp).connect(ctx.destination);
+    this.master.gain.value = 0.8;
+    this.master.connect(clip).connect(ctx.destination);
     this.drums = ctx.createGain();
     this.drums.connect(this.master);
     this.bedBus = ctx.createGain();
@@ -176,6 +175,23 @@ class Engine {
         o.connect(g);
         o.start(t);
         o.stop(t + 0.6);
+        // a second harmonic and a short body tone: small speakers can't play 50 Hz, they can play these
+        const o2 = ctx.createOscillator();
+        o2.type = 'triangle';
+        o2.frequency.setValueAtTime(f0 * 2, t);
+        o2.frequency.exponentialRampToValueAtTime(130 / Math.sqrt(big), t + 0.05);
+        const g2 = this.out(ctx, this.drums, pan, 0.3, t, 1);
+        this.env(g2.gain, t, 0.38 * v, 0.002, 0.12);
+        o2.connect(g2);
+        o2.start(t);
+        o2.stop(t + 0.2);
+        const body = ctx.createOscillator();
+        body.frequency.value = 240;
+        const gb = this.out(ctx, this.drums, pan, 0, t, 1);
+        this.env(gb.gain, t, 0.16 * v, 0.001, 0.03);
+        body.connect(gb);
+        body.start(t);
+        body.stop(t + 0.06);
         // the beater's click: a short bright tick, louder on a hard hit
         const n = this.noiseSrc(ctx, t, 0.012);
         const hp = ctx.createBiquadFilter();
@@ -232,6 +248,16 @@ class Engine {
         o.connect(g);
         o.start(t);
         o.stop(t + 0.6);
+        // its second and third harmonics carry it on small speakers
+        const h2 = ctx.createOscillator();
+        h2.type = 'triangle';
+        h2.frequency.setValueAtTime(((120 + 25 * v) / Math.sqrt(big)) * 2, t);
+        h2.frequency.exponentialRampToValueAtTime((82 / Math.sqrt(big)) * 2, t + 0.22);
+        const gh = this.out(ctx, this.drums, pan, 0.5, t, 1);
+        this.env(gh.gain, t, 0.3 * v, 0.003, 0.25);
+        h2.connect(gh);
+        h2.start(t);
+        h2.stop(t + 0.4);
         const n = this.noiseSrc(ctx, t, 0.03);
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
@@ -355,6 +381,114 @@ class Engine {
         n.connect(lp).connect(ng);
         break;
       }
+    }
+  }
+
+  /**
+   * A tuned instrument from the room (PLAN §3.4): `midi` its note, `vel` 0..1, `size` 0..1 the surface's
+   * size within its family (bigger: lower partial decay, longer ring).
+   */
+  modal(family: Family, midi: number, vel: number, pan = 0, when = 0, size = 0.5): void {
+    if (family === 'stomp') return this.stomp(vel, pan, when);
+    if (family === 'shaker') return this.shake(vel, pan, when, size);
+    const pre = MODAL[family];
+    const ctx = this.ready();
+    if (!pre || !ctx) return;
+    const t = Math.max(ctx.currentTime, when || ctx.currentTime);
+    const v = Math.max(0.05, Math.min(1, vel));
+    this.played[family] = (this.played[family] ?? 0) + 1;
+    this.lastGain = v;
+    this.lastVoice = family;
+    this.lastAt = t;
+    const f0 = midiHz(midi);
+    const long = 0.75 + 0.6 * Math.min(1, Math.max(0, size));
+    const g = this.out(ctx, this.drums, pan, pre.wet, t, pre.level * (0.35 + 0.65 * v));
+    let into: AudioNode = g;
+    if (pre.lowpass > 0) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = pre.lowpass * (0.7 + 0.6 * v);
+      lp.connect(g);
+      into = lp;
+    }
+    let end = t;
+    for (let k = 0; k < pre.modes.length; k++) {
+      const m = pre.modes[k];
+      const f = f0 * m.ratio;
+      if (f > 16000) continue;
+      // a harder hit brings up the upper partials
+      const amp = m.amp * (k === 0 ? 1 : 0.35 + 0.65 * v);
+      const dec = m.decay * long;
+      const twins = m.beat ? 2 : 1;
+      for (let w = 0; w < twins; w++) {
+        const o = ctx.createOscillator();
+        o.frequency.value = w === 0 ? f : f + m.beat!;
+        const pg = ctx.createGain();
+        this.env(pg.gain, t, (amp * 0.5) / twins, pre.attack, dec);
+        o.connect(pg).connect(into);
+        o.start(t);
+        o.stop(t + pre.attack + dec + 0.05);
+      }
+      end = Math.max(end, t + dec);
+    }
+    const n = this.noiseSrc(ctx, t, pre.noise.dur);
+    const nf = ctx.createBiquadFilter();
+    nf.type = pre.noise.type;
+    nf.frequency.value = pre.noise.freq;
+    nf.Q.value = pre.noise.q;
+    const ng = ctx.createGain();
+    this.env(ng.gain, t, pre.noise.amp * v * 1.6, 0.001, pre.noise.dur);
+    n.connect(nf).connect(ng).connect(g);
+    void end;
+  }
+
+  /** The floor: a low thump you feel. */
+  private stomp(vel: number, pan: number, when: number): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = Math.max(ctx.currentTime, when || ctx.currentTime);
+    const v = Math.max(0.05, Math.min(1, vel));
+    this.played.stomp = (this.played.stomp ?? 0) + 1;
+    this.lastVoice = 'stomp';
+    this.lastGain = v;
+    const o = ctx.createOscillator();
+    o.frequency.setValueAtTime(95, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    const g = this.out(ctx, this.drums, pan, 0.6, t, 1);
+    this.env(g.gain, t, 0.9 * v, 0.003, 0.35);
+    o.connect(g);
+    o.start(t);
+    o.stop(t + 0.5);
+    const o2 = ctx.createOscillator();
+    o2.type = 'triangle';
+    o2.frequency.setValueAtTime(190, t);
+    o2.frequency.exponentialRampToValueAtTime(90, t + 0.1);
+    const g2 = this.out(ctx, this.drums, pan, 0.3, t, 1);
+    this.env(g2.gain, t, 0.3 * v, 0.002, 0.14);
+    o2.connect(g2);
+    o2.start(t);
+    o2.stop(t + 0.2);
+  }
+
+  /** A shaker: two quick bursts of bright filtered noise (a bigger cushion: duller and longer). */
+  private shake(vel: number, pan: number, when: number, size: number): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = Math.max(ctx.currentTime, when || ctx.currentTime);
+    const v = Math.max(0.05, Math.min(1, vel));
+    this.played.shaker = (this.played.shaker ?? 0) + 1;
+    this.lastVoice = 'shaker';
+    this.lastGain = v;
+    for (let k = 0; k < 2; k++) {
+      const at = t + k * 0.045;
+      const n = this.noiseSrc(ctx, at, 0.09);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 7000 - 2500 * size;
+      bp.Q.value = 1.3;
+      const g = this.out(ctx, this.drums, pan, 0.8, at, 1);
+      this.env(g.gain, at, (k ? 0.3 : 0.45) * v, 0.012, 0.07 + 0.04 * size);
+      n.connect(bp).connect(g);
     }
   }
 
@@ -536,6 +670,17 @@ class Engine {
     this.env(g.gain, t, 0.18, 0.001, 0.025);
     n.connect(bp).connect(g);
   }
+}
+
+/** tanh-like soft clip: transparent below about −6 dB, rounds off peaks above (no look-ahead). */
+function softClip(): Float32Array<ArrayBuffer> {
+  const n = 2048;
+  const c = new Float32Array(new ArrayBuffer(n * 4));
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    c[i] = Math.tanh(x * 1.2) / Math.tanh(1.2);
+  }
+  return c;
 }
 
 function impulse(ctx: BaseAudioContext, seconds: number, decay: number): AudioBuffer {

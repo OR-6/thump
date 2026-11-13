@@ -51,36 +51,33 @@ export const ZONE_SCALE = 1.2;
 /** Zones never shrink below this diameter (PLAN §3.2). */
 export const MIN_ZONE = 0.09;
 
-/** Strike detection (PLAN §3.2, §4). Tuned on the device: see docs/DEVICE-SESSION.md. */
+/** Strike detection (PLAN §3.2). Tuned on the device: see docs/DEVICE-SESSION.md. */
 export const STRIKE = {
-  /** A crossing counts at this downward speed or more (m/s). */
+  /** A strike at this approach speed or more (m/s). */
   minSpeed: 0.35,
-  /** Near the surface, a stop this sharp counts too (m/s², the drop in downward speed per second). */
+  /** Near the surface, a stop this sharp counts too (m/s², the drop in approach speed per second). */
   minDecel: 12,
-  /** "Near the surface": the lowest point within this height of the table (tracking loses the last centimetre). */
-  nearM: 0.015,
-  /** One slap is one hit: a hand cannot hit again for this long. */
-  latchS: 0.09,
-  /** After a hit, the hand must lift this far above the surface before it can hit again. */
-  rearmM: 0.012,
-  /** A hand flat and still on the table this long is resting: no hits until it lifts restLiftM. */
-  restS: 0.4,
-  restLiftM: 0.02,
-  /** "Still" for resting: below this speed (m/s). */
-  restSpeed: 0.05,
+  /** "Near the surface": the lowest point within this height of it (tracking loses the last centimetre). */
+  nearM: 0.018,
+  /** One slap is one hit: a hand cannot hit the same surface again for this long. */
+  latchS: 0.12,
+  /** After a hit, the hand must lift this far before it can hit again (a natural rebound is 1–3 cm). */
+  rearmM: 0.022,
+  /** A hand resting on the surface must lift this far before it plays. */
+  restLiftM: 0.025,
   /** A hand just found by tracking does nothing for this long (its first frames jump). */
   freshS: 0.15,
-  /** The motion must be mostly downward: vertical speed at least this share of the horizontal. */
+  /** Tracking lost for up to this long keeps the hand's state (fast slaps blur the cameras). */
+  dropoutS: 0.12,
+  /** The motion must be mostly toward the surface: approach speed at least this share of the sideways speed. */
   downShare: 0.6,
-  /** The learned surface may drift this far from where the kit was placed (m). */
+  /** The learned surface may drift this far from its estimate (m). */
   surfaceDriftM: 0.03,
   /** How fast the learned surface follows observed contacts (0..1 per contact). */
   surfaceLearn: 0.25,
-  /** Speeds mapped to loudness (m/s → gain). */
-  softSpeed: 0.3,
-  hardSpeed: 1.6,
-  minGain: 0.4,
-  /** Two hits on one pad within this long are a flam (one note, the second softer). */
+  /** The speed of a hard slap (full loudness), m/s. */
+  hardSpeed: 1.4,
+  /** Two hands on one pad within this long are one note (played once, at the louder of the two). */
   flamS: 0.025,
 } as const;
 
