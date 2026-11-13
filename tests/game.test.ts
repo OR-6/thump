@@ -22,7 +22,14 @@ function stage(log: string[]): GameStage {
 
 function room(list: RoomInstrument[]): Room {
   const n = (id: string) => (id === 'keys' ? 5 : (list.find((x) => x.id === id)?.zones ?? 0));
-  return { instruments: () => list, zones: n, zoneFor: (id, d) => (n(id) <= 1 || d < 0 ? 0 : d % n(id)) };
+  // zones start at scale degree 2 (as a real register would), so degree ≠ zone index
+  const D0 = 2;
+  return {
+    instruments: () => list,
+    zones: n,
+    zoneFor: (id, d) => (n(id) <= 1 || d < 0 ? 0 : (((d - D0) % n(id)) + n(id)) % n(id)),
+    degreeOf: (id, z) => (n(id) <= 1 ? -1 : z + D0),
+  };
 }
 
 /** A player who hits every note `late` s after it's due. */
@@ -205,5 +212,61 @@ describe('the game', () => {
     expect(voiced).toContain('p1:2');
     g.begin(0);
     expect(g.looper.state).toBe('off');
+  });
+
+  it('JAM: calls start on their downbeat, and the echo plays back the notes you played', () => {
+    const calls: { key: string; at: number }[] = [];
+    const st = { ...stage([]), voice: (key: string, at: number) => calls.push({ key, at }) };
+    const p = freshProgress();
+    p.unlocks.push('jam');
+    const g = new Game(st, p, room([{ id: 'p1', family: 'marimba', zones: 8 }]));
+    g.start(0);
+    g.key('jam');
+    const dt = 1 / 72;
+    let answeredWith: { key: string; t: number }[] = [];
+    for (let t = 0; t < 60 && g.mode === 'jam'; t += dt) {
+      g.tick(t);
+      // answer every call with the same zones, a little late
+      g.dueBetween(t - dt - 0.02, t - 0.02, (key) => {
+        g.hit(key, t, 0.8);
+        answeredWith.push({ key, t });
+      });
+    }
+    // every call's first note sits exactly on its cycle's downbeat
+    const spb = g.clock.spb;
+    for (let c = 0; c < 3; c++) {
+      const want = g.clock.timeAt(c * 16);
+      expect(calls.some((x) => Math.abs(x.at - want) < 1e-6)).toBe(true);
+    }
+    // the third call is your own answer played back: the same zones
+    const third = calls.filter((x) => x.at >= g.clock.timeAt(32) - 1e-6 && x.at < g.clock.timeAt(40)).map((x) => x.key);
+    const secondAnswer = answeredWith.filter((a) => a.t >= g.clock.timeAt(24) - 0.2 && a.t < g.clock.timeAt(32)).map((a) => a.key);
+    expect(third.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(third)).toEqual(new Set(secondAnswer));
+    void spb;
+    answeredWith = [];
+  });
+
+  it('◀◀ opens settings without moving the song choice; the count-in counts 4 3 2 1', () => {
+    const p = freshProgress();
+    p.stars['porch-step'] = 2;
+    p.stars['kitchen-clock'] = 2;
+    const g = new Game(stage([]), p, room([]));
+    g.start(0);
+    g.selected = 1;
+    g.tick(1);
+    g.key('prev');
+    g.tick(1.2);
+    g.key('prev');
+    expect(g.settingsOpen).toBe(true);
+    expect(g.selected).toBe(1);
+    g.key('play');
+    g.begin(0);
+    const seen = new Set<number>();
+    for (let t = 1.3; g.mode === 'count'; t += 1 / 72) {
+      g.tick(t);
+      if (g.display.count) seen.add(g.display.count);
+    }
+    expect([...seen].sort()).toEqual([1, 2, 3, 4]);
   });
 });

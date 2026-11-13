@@ -287,6 +287,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     zones: (id) => (id === 'keys' ? this.kit.keyZones.length : (this.surfaces.find((s) => s.id === id)?.zones.length ?? 0)),
     zoneFor: (id, degree) => zoneForDegree(id === 'keys' ? this.kit.keyZones : (this.surfaces.find((s) => s.id === id)?.zones ?? []), degree),
+    degreeOf: (id, zone) => (id === 'keys' ? this.kit.keyZones : (this.surfaces.find((s) => s.id === id)?.zones ?? []))[zone]?.degree ?? 0,
   };
 
   private stage: GameStage = {
@@ -371,7 +372,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const z = r.surface.zones[r.zone];
         if (z) {
           this.lastWorld.set(z.x, 0, -z.z).applyMatrix4(r.surface.world);
-          audio.modal(r.surface.voice.family, z.midi, vel, this.panOf(this.lastWorld), when, r.surface.voice.size);
+          audio.modal(r.surface.voice.family, z.midi, vel, this.panOf(this.lastWorld), when, r.surface.voice.size, r.surface.id);
         }
       }
       // its note lights where it plays, when it plays
@@ -508,7 +509,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const kitPose = this.progress.kit;
     this.progress = { ...freshProgress(), kit: kitPose, rooms: {} };
     saveProgress(this.progress);
+    this.game.endJam();
+    this.game.looper.clear();
     this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset });
+    this.game.code = coop.status.state === 'hosting' && coop.status.code ? coop.status.code : '';
+    audio.stopSustain();
+    this.brushPrev.clear();
+    this.pendingLights.length = 0;
+    this.timed.length = 0;
+    this.farTold = false;
+    this.unsaved.length = 0;
+    this.kit.keys.rest = 0.35;
+    for (const o of this.orphans) this.dropSurface(o.s);
+    this.orphans.length = 0;
+    for (const o of this.overlays.values()) o.dispose();
     for (const s of this.surfaces) s.discovered = false;
     for (const g of this.holders.values()) g.removeFromParent();
     this.overlays.clear();
@@ -617,7 +631,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.beatToPhone();
     this.kit.module.set(this.game.display);
     this.debug.mode = this.game.mode;
-    this.debug.found = this.game.found.slice();
+    if (this.debug.found.length !== this.game.found.length) this.debug.found = this.game.found.slice();
     this.kit.update(dt);
     for (const o of this.overlays.values()) o.update(dt);
     for (const sh of this.sheens.values()) sh.update(dt);
@@ -628,6 +642,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.motes.update(this.game.motes, this.game.moteCount, this.tmp2, this.head, this.resolveMote);
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
     if (this.debug.anchored) this.saveKitPose();
+    if (this.unsaved.length && this.roomAnchor()) {
+      const list = this.unsaved.splice(0);
+      for (const u of list) if (u.discovered) this.remember(u);
+    }
   }
 
   private resolveMote = (key: string, out: Vector3, col: Color): boolean => {
@@ -708,7 +726,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const strike = s.detector.update(hand, this.sample, t, delta);
         if (!strike) continue;
         // the kit always wins a tie with a room surface over the same table
-        const better = !bestStrike || (s === this.kitSurface && best !== this.kitSurface) || (best !== this.kitSurface && Math.abs(strike.height) < Math.abs(bestStrike.height));
+        // the module's keys win over the table under them, the kit wins over a room surface over the same table
+        const rank = (x: Surface | null) => (x === this.moduleSurface ? 2 : x === this.kitSurface ? 1 : 0);
+        const better = !bestStrike || rank(s) > rank(best) || (rank(s) === rank(best) && Math.abs(strike.height) < Math.abs(bestStrike.height));
         if (!better) continue;
         best = s;
         bestStrike = strike;
@@ -744,7 +764,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
       }
       // one slap is one hit, whichever surfaces it crossed: the same hand can't strike again for a latch
-      if (best && bestStrike && t - this.handLatch[i] >= STRIKE.latchS) {
+      if (best && bestStrike && t - this.handLatch[i] >= (STRIKE_CFG.latchS ?? STRIKE.latchS)) {
         this.handLatch[i] = t;
         this.onHit(this.preferInset(best), side, bestStrike);
         this.watchSink(i, best);
@@ -773,12 +793,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
   /** Soft surfaces (shakers) keep sounding while a hand brushes across them, louder the faster. */
   private brushPrev = new Map<Surface, Float64Array>();
+  private brushLevel = [0, 0];
   private brushShakers(dt: number): void {
     if (dt <= 0 || dt > 0.1) return;
     for (const s of this.surfaces) {
       if (!s.discovered || s.voice?.family !== 'shaker') continue;
       let prev = this.brushPrev.get(s);
-      if (!prev) this.brushPrev.set(s, (prev = new Float64Array([NaN, NaN, NaN, NaN])));
+      if (!prev) this.brushPrev.set(s, (prev = new Float64Array([NaN, NaN, NaN, NaN, 0, 0])));
       let level = 0;
       for (let i = 0; i < 2; i++) {
         const h = hands[SIDES[i]];
@@ -790,11 +811,21 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const on = this.o.y - h.palmRadius < 0.04 && this.o.y > -0.08 && s.over(this.o.x, this.o.z, 0.02);
         const px = prev[i * 2];
         const pz = prev[i * 2 + 1];
-        prev[i * 2] = on ? this.o.x : NaN;
-        prev[i * 2 + 1] = this.o.z;
-        if (!on || Number.isNaN(px)) continue;
-        const speed = Math.hypot(this.o.x - px, this.o.z - pz) / dt;
-        level = Math.max(level, Math.min(1, (speed - 0.12) / 0.6));
+        prev[4 + i] += dt;
+        if (!on) {
+          prev[i * 2] = NaN;
+          continue;
+        }
+        const moved = Number.isNaN(px) ? 0 : Math.hypot(this.o.x - px, this.o.z - pz);
+        // the tracker repeats samples: measure over the time since the hand last really moved
+        if (Number.isNaN(px) || moved > 0.0002) {
+          const speed = Number.isNaN(px) ? 0 : moved / Math.max(dt, prev[4 + i]);
+          prev[i * 2] = this.o.x;
+          prev[i * 2 + 1] = this.o.z;
+          prev[4 + i] = 0;
+          this.brushLevel[i] = Math.min(1, Math.max(0, (speed - 0.12) / 0.6));
+        } else if (prev[4 + i] > 0.08) this.brushLevel[i] = 0;
+        level = Math.max(level, this.brushLevel[i]);
       }
       this.lastWorld.set(s.anchor.x, 0, -s.anchor.z).applyMatrix4(s.world);
       audio.sustain(s.id, level, this.panOf(this.lastWorld), s.voice.size);
@@ -802,6 +833,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
   }
 
+  private prevFamily: Family | null = null;
   private untracked = [0, 0];
   private handLatch = [-Infinity, -Infinity];
   private hitHand = 0;
@@ -826,14 +858,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     s.sink = s.sink * 0.6 + w.deepest * 0.4;
     s.hits++;
     if (s.hits >= 3 && s.sink > 0.025 && s.voice && s.voice.family !== 'shaker' && s.features.soft < 0.5) {
+      this.prevFamily = s.voice.family;
       const f = { ...s.features, soft: Math.min(1, s.sink / 0.04) };
       s.setFeatures(f);
       if (DEBUG) console.log(`[thump] ${s.id} is soft (sinks ${Math.round(s.sink * 1000)} mm): now ${s.voice?.family}`);
       if (s.discovered) {
-        // re-draw it as what it really is
+        // re-draw it as what it really is; the room map swaps its old instrument for the new one
+        const from = this.prevFamily;
         s.discovered = false;
         this.dropOverlay(s);
         this.discover(s);
+        if (from) this.game.rediscovered(from, this.surfaces.some((x) => x !== s && x.discovered && x.voice?.family === from));
       }
     }
   }
@@ -974,7 +1009,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** Save a found instrument under the room's anchor, so it's there next time in this room. */
   private remember(s: Surface): void {
     const a = this.roomAnchor();
-    if (!a || !s.voice) return;
+    if (!s.voice) return;
+    if (!a) {
+      if (!this.unsaved.includes(s)) this.unsaved.push(s);
+      return;
+    }
     const list = (this.progress.rooms[a.uuid] ??= []);
     if (s === this.kitSurface) {
       if (!list.some((i) => i.family === 'kit')) list.push({ family: 'kit', x: 0, y: 0, z: 0 });
@@ -982,13 +1021,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       a.group.updateMatrixWorld(true);
       const w = this.tmp2.set(s.anchor.x, 0, -s.anchor.z).applyMatrix4(s.world);
       const local = w.applyMatrix4(this.tmpM2.copy(a.group.matrixWorld).invert());
-      // one entry per instrument and place
-      if (list.some((x) => x.family === s.voice!.family && Math.hypot(x.x - local.x, x.y - local.y, x.z - local.z) < 0.15)) return;
-      list.push({ family: s.voice.family, x: r4(local.x), y: r4(local.y), z: r4(local.z) });
+      // one entry per place: a surface found again as something else replaces its old entry
+      const near = list.findIndex((x) => x.family !== 'kit' && Math.hypot(x.x - local.x, x.y - local.y, x.z - local.z) < 0.15);
+      const entry = { family: s.voice.family, x: r4(local.x), y: r4(local.y), z: r4(local.z) };
+      if (near >= 0) list[near] = entry;
+      else list.push(entry);
     }
     saveProgress(this.progress);
   }
   private tmpM2 = new Matrix4();
+  /** Found before the room anchor existed: saved once it does. */
+  private unsaved: Surface[] = [];
 
   /** Instruments found here before come back already drawn (no tag, no chime; the room map counts them). */
   private restore(s: Surface): boolean {
@@ -1030,7 +1073,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.kitSheen?.group.removeFromParent();
       this.kitSheen = null;
     } else {
-      s.layZones({ x: this.hitAt.x, z: this.hitAt.z }, this.game.song?.key ?? 0);
+      s.layZones({ x: this.hitAt.x, z: this.hitAt.z }, this.game.keyPc);
       const holder = new Group();
       holder.matrixAutoUpdate = false;
       holder.matrix.copy(s.world);
@@ -1178,6 +1221,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (!s.voice) return;
     for (let k = 0; k < this.orphans.length; k++) {
       const o = this.orphans[k].s;
+      // what the hand learned (it's soft) carries over to the replacement
+      if (o.features.soft >= 0.5 && s.features.soft < 0.5 && Math.abs(o.normal.dot(s.normal)) > 0.95) {
+        s.setFeatures({ ...s.features, soft: o.features.soft });
+        s.sink = o.sink;
+        this.tune(s);
+      }
       if (o.voice?.family !== s.voice.family || Math.abs(o.normal.dot(s.normal)) < 0.95) continue;
       const w = this.tmp.set(o.anchor.x, 0, -o.anchor.z).applyMatrix4(o.world);
       s.toZone(w, this.o);
@@ -1197,6 +1246,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** Strike tuning per surface: room planes can sit a few centimetres off; glass wants soft taps. */
   private tune(s: Surface): void {
     const c = s.detector.cfg;
+    Object.assign(c, STRIKE, STRIKE_CFG);
     c.nearM = Math.max(STRIKE_CFG.nearM ?? 0, 0.03);
     c.surfaceDriftM = 0.05;
     if (s.voice?.family === 'glock') {
@@ -1337,6 +1387,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private dropOverlay(s: Surface): void {
+    this.overlays.get(s)?.dispose();
     this.holders.get(s)?.removeFromParent();
     this.holders.delete(s);
     this.overlays.delete(s);
@@ -1344,6 +1395,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   private dropSurface(s: Surface): void {
     this.dropOverlay(s);
+    audio.stopSustain(s.id);
+    this.brushPrev.delete(s);
     const sh = this.sheens.get(s);
     if (sh) {
       sh.group.parent?.removeFromParent();
@@ -1780,6 +1833,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.sessionTime = 0;
     if (this.placement.phase !== 'placed') return;
     if (this.game.mode === 'play' || this.game.mode === 'count') this.game.stop();
+    // nothing keeps playing while you're out of the headset (and nothing catches up all at once on return)
+    this.game.endJam();
+    this.game.looper.clear();
+    audio.stopSustain();
+    this.brushPrev.clear();
+    this.pendingLights.length = 0;
+    this.timed.length = 0;
     if (this.kitEntity.hasComponent(XRAnchor)) this.kitEntity.removeComponent(XRAnchor);
     this.placement = new Placement();
     this.kit.root.visible = false;

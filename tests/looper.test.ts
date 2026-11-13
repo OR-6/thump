@@ -21,8 +21,8 @@ describe('loops', () => {
     expect(l.layers[0].map((h) => h.beat)).toEqual([0, 2, 3.5]);
     run(l, 20, 36, out);
     const kicks = out.filter(([k]) => k === 'kit:kick').map(([, at]) => at);
-    expect(kicks).toEqual([20, 36].filter((x) => x < 36.2).slice(0, kicks.length));
-    expect(out.filter(([k]) => k === 'p1:3').length).toBeGreaterThanOrEqual(1);
+    expect(kicks).toEqual([20, 36]);
+    expect(out.filter(([k]) => k === 'p1:3').map(([, at]) => at)).toEqual([22]);
   });
 
   it('layers on the next loop boundary, at most three, and clears', () => {
@@ -46,5 +46,23 @@ describe('loops', () => {
     l.rec(0);
     run(l, 0, 21, []);
     expect(l.state).toBe('off');
+  });
+
+  it('keeps three layers at most (the oldest goes only when a new one lands)', () => {
+    const l = new Looper();
+    l.rec(0);
+    run(l, 0, 4, []);
+    l.hear(4, 'a', 1);
+    run(l, 4, 21, []);
+    for (const [k, start] of [['b', 36], ['c', 52], ['d', 68]] as const) {
+      l.rec(start - 15);
+      l.hear(start, k, 1);
+      run(l, start - 15, start + 17, []);
+    }
+    expect(l.layers.map((x) => x[0].key)).toEqual(['b', 'c', 'd']);
+    // an empty take doesn't push anything out
+    l.rec(85);
+    run(l, 85, 118, []);
+    expect(l.layers.length).toBe(3);
   });
 });

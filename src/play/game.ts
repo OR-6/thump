@@ -62,6 +62,8 @@ export interface Room {
   zones(surface: string): number;
   /** The zone of a surface that plays a song's scale degree. */
   zoneFor(surface: string, degree: number): number;
+  /** The scale degree a zone of a surface plays. */
+  degreeOf(surface: string, zone: number): number;
 }
 
 export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam';
@@ -172,6 +174,15 @@ export class Game {
     this.refreshDisplay();
   }
 
+  /** A surface's instrument changed (it turned out soft): the old family goes from the map if nothing else plays it. */
+  rediscovered(from: Family, stillHas: boolean): void {
+    if (!stillHas) {
+      const i = this.found.indexOf(from);
+      if (i >= 0) this.found.splice(i, 1);
+    }
+    this.refreshDisplay();
+  }
+
   /** A module key was tapped. */
   key(k: ModuleKey): void {
     const twice = this.t - (this.lastTap[k] ?? -9) < 0.9;
@@ -191,7 +202,8 @@ export class Game {
       return;
     }
     if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam') {
-      // tap ◀ twice: the settings page
+      // tap ◀ twice: the settings page (and the first tap's step back is undone)
+      if (this.mode === 'discover') this.selected = (this.selected + 1) % this.available();
       this.settingsOpen = true;
       this.lastTap[k] = -9;
       this.refreshDisplay();
@@ -215,6 +227,7 @@ export class Game {
       } else {
         if (this.mode === 'jam') this.endJam();
         this.begin(this.selected);
+        this.lastTap.play = -9;
       }
       return;
     }
@@ -225,22 +238,15 @@ export class Game {
         return;
       }
       if (twice) {
+        this.recPending = -1;
         this.looper.clear();
         this.lastTap[k] = -9;
         this.refreshDisplay();
         this.display.sub = 'Loops cleared';
         return;
       }
-      if (this.looper.state === 'off') {
-        const spb = secPerBeat(96, this.opts.tempo);
-        this.loopClock.set(this.t + 0.15, spb);
-      }
-      const beat = this.loopClock.beatAt(this.t);
-      this.looper.rec(beat);
-      // a bar of count before a take
-      const from = this.looper.recStart - 4;
-      for (let i = 0; i < 4; i++) this.stage.band({ beat: from + i, voice: 'shaker', midi: 0, len: 0.2, vel: i ? 0.6 : 0.9 }, this.loopClock.timeAt(from + i), this.loopClock.spb);
-      this.refreshDisplay();
+      if (this.looper.state === 'off') this.startTake();
+      else this.recPending = this.t; // a layer, unless a second tap clears them
       return;
     }
     if (k === 'jam') {
@@ -250,6 +256,18 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- jam
+
+  /** A REC tap while looping waits this long for a second tap (which clears) before laying a layer. */
+  private recPending = -1;
+
+  private startTake(): void {
+    if (this.looper.state === 'off') this.loopClock.set(this.t + 0.15, secPerBeat(96, this.opts.tempo));
+    this.looper.rec(this.loopClock.beatAt(this.t));
+    // a bar of count before a take
+    const from = this.looper.recStart - 4;
+    for (let i = 0; i < 4; i++) this.stage.band({ beat: from + i, voice: 'shaker', midi: 0, len: 0.2, vel: i ? 0.6 : 0.9 }, this.loopClock.timeAt(from + i), this.loopClock.spb);
+    this.refreshDisplay();
+  }
 
   readonly looper = new Looper();
   readonly loopClock = new SongClock();
@@ -261,7 +279,10 @@ export class Game {
   private jamZones = 0;
   private jamCycle = 0;
   private jamCalls: { beat: number; degree: number; vel: number }[] = [];
-  private jamAnswer: { beat: number; degree: number; hit: boolean }[] = [];
+  private jamAnswer: { beat: number; degree: number; hit: boolean; key: string }[] = [];
+  /** The cycle whose call has been decided, and a count-in owed to the next call. */
+  private jamDecided = -1;
+  private jamCountIn = false;
   private jamPhase: 'listen' | 'turn' = 'listen';
   /** Answers scored (debug/E2E): the share of each. */
   readonly jamShares: number[] = [];
@@ -280,6 +301,9 @@ export class Game {
     this.jamCalls = [];
     this.jamAnswer = [];
     this.jamShares.length = 0;
+    this.jamPhase = 'listen';
+    this.jamDecided = -1;
+    this.jamCountIn = false;
     const spb = secPerBeat(96, this.opts.tempo);
     this.clock.set(this.t + 0.4 + 4 * spb, spb);
     this.stage.retune(9);
@@ -313,19 +337,23 @@ export class Game {
     const spb = this.clock.spb;
     this.bedCursor?.pull(beat + TIMING.lookAheadS / spb, this.onBed);
     const cycleStart = this.jamCycle * 16;
-    // a little before each call: decide it (an echo of your last answer once, else a call by level)
-    if (beat >= cycleStart - 1 && this.jamCalls.length === 0 && this.jamCycle < 8) {
+    // just before each cycle: decide its call (an echo of your last answer once, else a call by level)
+    if (this.jamDecided !== this.jamCycle && beat >= cycleStart - 0.5 && this.jamCycle < 8) {
+      this.jamDecided = this.jamCycle;
       const mate = this.mate!;
       const bar = this.jamCycle * 4;
       const echo = this.jamCycle >= 2 ? mate.echo(cycleStart - 8, cycleStart, bar) : null;
       const call = echo ?? mate.call(bar);
       this.jamCalls = call.map((n) => ({ beat: n.beat, degree: n.degree, vel: n.vel }));
       for (const n of this.jamCalls) this.stage.voice(this.jamKey(n.degree), this.clock.timeAt(n.beat), n.vel * 0.85);
-      this.jamAnswer = this.jamCalls.map((n) => ({ beat: n.beat + 8, degree: n.degree, hit: false }));
+      this.jamAnswer = this.jamCalls.map((n) => ({ beat: n.beat + 8, degree: n.degree, hit: false, key: this.jamKey(n.degree) }));
+      // you'd gone quiet: a soft count-in under the call brings you back
+      if (this.jamCountIn) for (let i = 0; i < 4; i++) this.stage.band({ beat: cycleStart + i, voice: 'shaker', midi: 0, len: 0.2, vel: 0.9 }, this.clock.timeAt(cycleStart + i), spb);
+      this.jamCountIn = false;
       this.jamPhase = 'listen';
       this.refreshDisplay();
     }
-    if (this.jamPhase === 'listen' && beat >= cycleStart + 8 - 0.5 && this.jamCalls.length) {
+    if (this.jamPhase === 'listen' && beat >= cycleStart + 8 - 0.5 && this.jamDecided === this.jamCycle) {
       this.jamPhase = 'turn';
       this.refreshDisplay();
     }
@@ -335,28 +363,24 @@ export class Game {
       for (const n of this.jamAnswer) {
         const d = n.beat - beat;
         if (d > TIMING.travelBeats || d < -0.6 || k >= MAX_MOTES) continue;
-        const key = this.jamKey(n.degree);
-        if (!n.hit && d <= TIMING.glowBeats && d > -0.3) this.stage.light(key, 1 - Math.max(0, d) / TIMING.glowBeats);
+        if (!n.hit && d <= TIMING.glowBeats && d > -0.3) this.stage.light(n.key, 1 - Math.max(0, d) / TIMING.glowBeats);
         const m = this.motes[k++];
-        m.key = key;
+        m.key = n.key;
         m.ahead = d;
         m.grade = n.hit ? 'perfect' : null;
       }
     }
     this.moteCount = k;
-    // the answer is over: how did it go?
-    if (this.jamCalls.length && beat >= cycleStart + 16 + 0.3) {
+    // the answer is over (its last note's window has passed, before the next downbeat): how did it go?
+    if (this.jamDecided === this.jamCycle && beat >= cycleStart + 15.75) {
       const share = this.jamAnswer.length ? this.jamAnswer.filter((n) => n.hit).length / this.jamAnswer.length : 0;
       const mate = this.mate!;
-      const quiet = mate.idle(beat);
+      this.jamCountIn = mate.idle(beat);
       mate.report(share);
       this.jamShares.push(share);
       this.stage.bandmate(share >= 0.7 ? 'happy' : 'simpler', this.jamSurface);
       if (share >= 0.7) this.stage.celebrate(share >= 0.95 ? 3 : 2);
-      this.jamCalls = [];
       this.jamCycle++;
-      // you've gone quiet: a soft count-in brings you back
-      if (quiet) for (let i = 0; i < 4; i++) this.stage.band({ beat: 0, voice: 'shaker', midi: 0, len: 0.2, vel: 0.9 }, this.clock.timeAt(this.jamCycle * 16 - 4 + i), spb);
       if (this.jamCycle >= 8) this.endJam();
       else this.refreshDisplay();
     }
@@ -368,7 +392,7 @@ export class Game {
     const beat = this.clock.beatAt(t - this.opts.offset);
     const onIt = key.startsWith(this.jamSurface + ':');
     const zone = onIt ? Number(key.slice(this.jamSurface.length + 1)) : -1;
-    mate.hear({ beat, degree: zone, vel: gain });
+    mate.hear({ beat, degree: zone >= 0 ? this.room.degreeOf(this.jamSurface, zone) : -1, vel: gain });
     if (this.jamPhase !== 'turn' || !onIt) return 'extra';
     const win = windows(this.opts.tempo < 0.95).good * 1.4;
     let best = -1;
@@ -444,12 +468,17 @@ export class Game {
 
   tick(t: number): void {
     this.t = t;
+    if (this.recPending > 0 && t - this.recPending > 0.9) {
+      this.recPending = -1;
+      if (this.mode === 'discover') this.startTake();
+    }
     if (this.mode === 'discover' && this.looper.state !== 'off') {
       const b = this.loopClock.beatAt(t);
       const was = this.looper.state;
       const wasRec = this.looper.recording;
       this.looper.tick(b, b + TIMING.lookAheadS / this.loopClock.spb, this.onLoop);
-      if (was !== this.looper.state || wasRec !== this.looper.recording || this.looper.state === 'count') this.refreshDisplay();
+      const count = this.looper.state === 'count' ? Math.max(1, Math.min(4, Math.ceil(this.looper.recStart - b))) : 0;
+      if (was !== this.looper.state || wasRec !== this.looper.recording || count !== this.display.count) this.refreshDisplay();
     }
     if (this.mode === 'discover') {
       // the first song is offered once there are two instruments (or the table alone has had a while)
@@ -483,7 +512,7 @@ export class Game {
     if (this.mode === 'count' && beat >= 0) {
       this.mode = 'play';
       this.refreshDisplay();
-    }
+    } else if (this.mode === 'count' && Math.ceil(-beat) !== this.display.count) this.refreshDisplay();
     const j = this.judge!;
     j.sweep(t - this.opts.offset - this.clock.start, this.onMiss);
     let k = 0;
@@ -637,7 +666,7 @@ export class Game {
       if (this.jamPhase !== 'turn') return;
       for (const n of this.jamAnswer) {
         const due = this.clock.timeAt(n.beat) + this.opts.offset;
-        if (!n.hit && due > a && due <= b) fn(this.jamKey(n.degree));
+        if (!n.hit && due > a && due <= b) fn(n.key);
       }
       return;
     }
@@ -656,8 +685,6 @@ export class Game {
     const spb = this.clock.spb;
     this.clock.delay(2 * spb);
     const beat = this.clock.beatAt(t);
-    // the band's look-ahead already handed out may play during the clicks; skip ahead of it
-    this.bedCursor?.seek(beat + 2);
     this.stage.band({ beat, voice: 'shaker', midi: 0, len: 0.2, vel: 0.9 }, t + 0.05, spb);
     this.stage.band({ beat: beat + 1, voice: 'shaker', midi: 0, len: 0.2, vel: 0.9 }, t + 0.05 + spb, spb);
   }

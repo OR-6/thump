@@ -23,7 +23,6 @@ export class Looper {
 
   /** The REC key: start a take (after a one-bar count), or a new layer while looping. */
   rec(nowBeat: number): void {
-    if (this.layers.length >= 3) this.layers.shift();
     this.take = [];
     // a take always starts on a loop boundary; the first one after a one-bar count
     this.recStart = this.state === 'play' ? this.nextBoundary(nowBeat) : Math.ceil(nowBeat) + 4;
@@ -69,7 +68,10 @@ export class Looper {
     }
     if (this.recording && beat >= this.recStart + this.beats - 0.25) {
       this.recording = false;
-      if (this.take.length) this.layers.push(this.take.sort((a, b) => a.beat - b.beat));
+      if (this.take.length) {
+        if (this.layers.length >= 3) this.layers.shift();
+        this.layers.push(this.take.sort((a, b) => a.beat - b.beat));
+      }
       this.take = [];
       if (this.state === 'rec') this.state = this.layers.length ? 'play' : 'off';
       if (this.state === 'play' && this.layers.length === 0) this.state = 'off';

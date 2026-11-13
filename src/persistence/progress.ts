@@ -78,7 +78,7 @@ export function loadProgress(): Progress {
   if (r.rooms && typeof r.rooms === 'object') {
     for (const [uuid, list] of Object.entries(r.rooms as Record<string, unknown>)) {
       if (!Array.isArray(list)) continue;
-      const ok = list.filter((i): i is SavedInstrument => !!i && typeof i.family === 'string' && [i.x, i.y, i.z].every((n: unknown) => typeof n === 'number' && Number.isFinite(n))).slice(0, 40);
+      const ok = list.filter((i): i is SavedInstrument => !!i && typeof i.family === 'string' && [i.x, i.y, i.z].every((n: unknown) => typeof n === 'number' && Number.isFinite(n))).slice(-40);
       if (ok.length) p.rooms[uuid.slice(0, 80)] = ok;
     }
   }
@@ -91,6 +91,9 @@ export function loadProgress(): Progress {
 }
 
 export function saveProgress(p: Progress): void {
+  // the rooms you played in most recently (eight at most)
+  const ids = Object.keys(p.rooms);
+  if (ids.length > 8) for (const id of ids.slice(0, ids.length - 8)) delete p.rooms[id];
   save(KEY, p);
 }
 

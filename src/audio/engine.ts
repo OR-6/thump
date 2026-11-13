@@ -458,8 +458,13 @@ class Engine {
       const i = mine >= 3 ? this.voices.findIndex((v) => v.owner === owner) : 0;
       if (i < 0) break;
       const old = this.voices[i];
-      old.g.gain.cancelScheduledValues(now);
-      old.g.gain.setTargetAtTime(0, now, 0.006);
+      const gp = old.g.gain as AudioParam & { cancelAndHoldAtTime?: (t: number) => void };
+      if (gp.cancelAndHoldAtTime) gp.cancelAndHoldAtTime(now);
+      else {
+        gp.cancelScheduledValues(now);
+        gp.setValueAtTime(gp.value, now);
+      }
+      gp.setTargetAtTime(0, now, 0.006);
       this.voices.splice(i, 1);
       if (old.owner === owner) mine--;
     }
@@ -595,7 +600,7 @@ class Engine {
   }
 
   /** Sustained shakers, one per soft surface: a looping noise whose level follows how fast the hand brushes. */
-  private sustains = new Map<string, { g: GainNode; bp: BiquadFilterNode }>();
+  private sustains = new Map<string, { g: GainNode; bp: BiquadFilterNode; src: AudioBufferSourceNode; pan: StereoPannerNode | null }>();
   sustain(id: string, level: number, pan = 0, size = 0.5): void {
     const ctx = this.ready();
     if (!ctx) return;
@@ -608,15 +613,36 @@ class Engine {
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
       bp.Q.value = 1.2;
-      const g = this.out(ctx, this.drums, pan, 0.6, ctx.currentTime, 0);
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
       src.connect(bp).connect(g);
+      if (p) g.connect(p).connect(this.drums);
+      else g.connect(this.drums);
+      const w = ctx.createGain();
+      w.gain.value = 0.6;
+      (p ?? g).connect(w).connect(this.send);
       src.start();
-      v = { g, bp };
+      v = { g, bp, src, pan: p };
       this.sustains.set(id, v);
     }
     const t = ctx.currentTime;
+    if (v.pan) v.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.05);
     v.bp.frequency.setTargetAtTime(6500 - 2500 * size + 1500 * level, t, 0.03);
     v.g.gain.setTargetAtTime(0.28 * Math.min(1, level), t, level > 0.01 ? 0.03 : 0.08);
+  }
+
+  /** Stop a shaker's loop (its surface went away), or all of them. */
+  stopSustain(id?: string): void {
+    const ctx = this.ctx;
+    for (const [k, v] of this.sustains) {
+      if (id !== undefined && k !== id) continue;
+      if (ctx) {
+        v.g.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+        v.src.stop(ctx.currentTime + 0.2);
+      }
+      this.sustains.delete(k);
+    }
   }
 
   /** The phone's bass: a round plucked low note, from where the phone is. */

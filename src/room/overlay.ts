@@ -188,14 +188,15 @@ export class Overlay {
       if (k <= 0) continue;
       if (z.shape === 'rect') {
         const along = z.w >= z.h;
-        for (const sgn of [-1, 1]) {
+        for (let e = 0; e < 2; e++) {
+          const sgn = e ? 1 : -1;
           const off = (along ? z.w : z.h) / 2 - 0.007;
           _p.set(z.x + (along ? sgn * off * k : 0), LIFT * 1.3, -(z.z + (along ? 0 : sgn * off * k)));
           _m.compose(_p, _q, _s.setScalar(0.0032));
           this.detail.setMatrixAt(d++, _m);
         }
       } else if (this.family === 'gong') {
-        for (const f of [0.32, 0.55, 0.75]) {
+        for (const f of GONG_RINGS) {
           _p.set(z.x, LIFT * 1.3, -z.z);
           _m.compose(_p, _q, _s.set(z.w * f * k, 1, z.w * f * k));
           this.detail.setMatrixAt(d++, _m);
@@ -248,12 +249,22 @@ export class Overlay {
     if (this.glow.instanceColor) this.glow.instanceColor.needsUpdate = true;
   }
 
+  /** Free its GPU buffers and materials (shared geometries stay). */
+  dispose(): void {
+    for (const m of [this.shapes, this.glow, this.backing, this.detail]) {
+      (m.material as MeshBasicMaterial).dispose();
+      m.dispose();
+    }
+    this.group.removeFromParent();
+  }
+
   /** Light level of zone i now (debug/E2E). */
   level(i: number): number {
     return this.shown[i] ?? 0;
   }
 }
 const WHITE = new Color(0xffffff);
+const GONG_RINGS = [0.32, 0.55, 0.75];
 
 /** A faint sheen and outline on an undiscovered surface: "there's something here". */
 export class Sheen {

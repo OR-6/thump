@@ -77,7 +77,7 @@ describe('casting a song onto a room', () => {
     expect(c.gong?.surface).toBe('kit');
   });
   it('the gong goes on the wall', () => expect(cast(['gong'], [wall, door]).gong?.surface).toBe('p3'));
-  it('note keys: degrees to bars, wrapping on small instruments', () => {
+  it('note keys: a pitched note goes to the zone the room gives its degree; drums to the kit', () => {
     const c = cast(['melody'], [door]);
     const zones = (id: string, d: number) => d % (id === 'keys' ? 5 : 8);
     expect(noteKey({ beat: 0, part: 'melody', degree: 3, vel: 1 }, c, zones)).toBe('p1:3');

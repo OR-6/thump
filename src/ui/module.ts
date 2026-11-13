@@ -63,7 +63,6 @@ export class Module {
   private keyMats: MeshStandardMaterial[] = [];
   private press = new Float32Array(5);
   private pulseT = 0;
-  private last = '';
   shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null };
 
   constructor() {
@@ -108,11 +107,31 @@ export class Module {
     this.press[i] = 1;
   }
 
+  private lastMeter = -9;
+  private lastFound = -1;
+  private lastLabels: string[] | null = null;
+  private lastStr = ['', '', '', '', ''];
+  private lastNum = [NaN, NaN, NaN, NaN, NaN];
   set(d: Display): void {
-    const key = `${d.line}|${d.sub}|${d.found.join(',')}|${d.total}|${Math.round(d.meter * 24)}|${d.stars}|${d.count}|${d.day}|${d.gold}|${d.code}|${d.keyLabels?.join(',') ?? ''}`;
     this.shown = d;
-    if (key === this.last) return;
-    this.last = key;
+    const meter = Math.round(d.meter * 24);
+    const labels = d.keyLabels ? d.keyLabels.join('|') : '';
+    const same =
+      d.line === this.lastStr[0] && d.sub === this.lastStr[1] && d.code === this.lastStr[2] && labels === this.lastStr[3] &&
+      d.total === this.lastNum[0] && d.stars === this.lastNum[1] && d.count === this.lastNum[2] && d.day === this.lastNum[3] && (d.gold ? 1 : 0) === this.lastNum[4] &&
+      meter === this.lastMeter && d.found.length === this.lastFound;
+    if (same) return;
+    this.lastStr[0] = d.line;
+    this.lastStr[1] = d.sub;
+    this.lastStr[2] = d.code;
+    this.lastStr[3] = labels;
+    this.lastNum[0] = d.total;
+    this.lastNum[1] = d.stars;
+    this.lastNum[2] = d.count;
+    this.lastNum[3] = d.day;
+    this.lastNum[4] = d.gold ? 1 : 0;
+    this.lastMeter = meter;
+    this.lastFound = d.found.length;
     this.draw(d);
   }
 
