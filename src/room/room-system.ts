@@ -55,6 +55,8 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
+import { PIANO_CHORD, SCALES, STRUM, instDef, scaleById, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
 import { Overlay, Sheen } from './overlay.js';
@@ -77,7 +79,7 @@ const THING_WORD: Record<string, string> = { cup: 'cup', tall: 'bottle', knee: '
 /** Where a song's target key points: a pad, an edge key, or a zone on a room surface. */
 interface KeyRef {
   surface: Surface | null;
-  kind: 'pad' | 'keys' | 'zone' | 'clap';
+  kind: 'pad' | 'keys' | 'zone' | 'clap' | 'inst';
   lane: Lane;
   zone: number;
 }
@@ -304,8 +306,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!r) return;
       if (r.kind === 'pad') this.kit.pad(r.lane)?.setGlow(k);
       else if (r.kind === 'keys') this.kit.keys.light(r.zone, k);
-      else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
+      else if (r.kind === 'inst') {
+        if (key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.light(r.zone, k);
+      } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
+    shelf: (dir) => this.shelfStep(dir),
+    useInstrument: (id) => this.useInstrument(id as InstId | null),
+    shelfSet: (which) => this.shelfChange(which),
     celebrate: (stars) => {
       // the last chord: every instrument flashes white and a ring of light runs out across the room from the kit;
       // then a light sweep across every instrument, the kit's LEDs in order, and a note for each star as it fills
@@ -336,6 +343,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!r) return;
       if (r.kind === 'pad') this.kit.pad(r.lane)?.miss();
       else if (r.kind === 'keys') this.kit.keys.miss(r.zone);
+      else if (r.kind === 'inst') {
+        if (key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.miss(r.zone);
+      }
       else if (r.surface) this.overlays.get(r.surface)?.miss(r.zone);
     },
     tempo: (t) => {
@@ -414,6 +424,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           if (this.labelTags.size) this.labelTags.get(key)?.bump();
         });
         return;
+      } else if (r.kind === 'inst') {
+        this.playInst(key.slice(0, key.indexOf(':')) as InstId, r.zone, vel, 0, when);
       } else if (r.kind === 'keys') {
         const q = this.kit.keyZones[r.zone];
         if (q) audio.modal(this.deskFamily, q.midi, vel, 0, when, 0.5, 'desk', 0);
@@ -774,6 +786,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const sid = key.slice(0, i);
     const rest = key.slice(i + 1);
     if (sid === 'clap') r = { surface: null, kind: 'clap', lane: 'kick', zone: 0 };
+    else if (sid === 'piano' || sid === 'guitar' || sid === 'handpan') r = { surface: null, kind: 'inst', lane: 'kick', zone: Number(rest) };
     else if (sid === 'kit') r = { surface: this.kitSurface, kind: 'pad', lane: rest as Lane, zone: 0 };
     else if (sid === 'keys') r = { surface: this.kitSurface, kind: 'keys', lane: 'kick', zone: Number(rest) };
     else {
@@ -964,6 +977,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (d >= 0) {
         const r = this.ref(p.key);
         if (r?.kind === 'keys') this.kit.keys.hit(r.zone, p.vel);
+        else if (r?.kind === 'inst' && p.key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.hit(r.zone, p.vel);
         else if (r?.surface) this.overlays.get(r.surface)?.hit(r.zone, p.vel);
         if (this.labelTags.size && r) this.labelTags.get(r.kind === 'keys' ? 'keys' : (r.surface?.id ?? ''))?.bump();
         this.pendingLights.splice(i, 1);
@@ -1836,6 +1850,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     const x = this.hitAt.x;
     const kz = -this.hitAt.z; // kit-local z (toward the player)
+    if (this.kit.inst !== 'drums') return this.hitInstrument(side, gain, st, t);
     // an edge key?
     if (this.kit.keys.group.visible) {
       for (let i = 0; i < this.kit.keyZones.length; i++) {
@@ -1868,6 +1883,157 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.kit.pad(lane)?.perfect();
     }
     this.record(this.kitSurface, 0, gain, st, g, lane);
+  }
+
+  // ------------------------------------------------------------------ the instrument shelf
+
+  /** The guitar's chord (0–2) and the piano chord pad's next chord. */
+  private guitarChord = 0;
+  private pianoChord = 0;
+  private shelfCfg(id: InstId): { scale: string; sound: string } {
+    const d = instDef(id);
+    return this.settings.shelf[id] ?? { scale: SCALES[0].id, sound: d.sounds[0].id };
+  }
+  /** Lowest notes: the piano round middle C, the handpan and guitar an octave down, all in the song's key. */
+  private instRoot(id: InstId): number {
+    const pc = this.game.keyPc;
+    return (id === 'piano' ? 60 : 48) + pc;
+  }
+  private shelfView(): ShelfView {
+    const id = this.kit.inst;
+    const d = instDef(id);
+    const c = this.shelfCfg(id);
+    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name };
+  }
+  /** A song or a build wants this instrument out (null: the one you chose in free play). Not saved. */
+  private useInstrument(id: InstId | null): void {
+    const want = id ?? ((['drums', 'piano', 'guitar', 'handpan'] as InstId[]).includes(this.settings.inst as InstId) ? (this.settings.inst as InstId) : 'drums');
+    if (want === this.kit.inst && (want === 'drums' || this.kit.instZones.length)) return;
+    this.kit.setInstrument(want, this.instRoot(want), scaleById(this.shelfCfg(want).scale));
+  }
+
+  /** Put an instrument on the desk (saved for next time). */
+  private putOut(id: InstId): void {
+    this.kit.setInstrument(id, this.instRoot(id), scaleById(this.shelfCfg(id).scale));
+    if (this.settings.inst !== id) {
+      this.settings = { ...this.settings, inst: id };
+      saveSettings(this.settings);
+    }
+  }
+  private shelfStep(dir: 1 | -1 | 0): ShelfView {
+    if (dir !== 0 && this.placement.phase === 'placed') {
+      this.putOut(stepShelf(this.kit.inst, dir));
+      audio.tick();
+    }
+    return this.shelfView();
+  }
+  private shelfChange(which: 'scale' | 'sound'): ShelfView {
+    const id = this.kit.inst;
+    const d = instDef(id);
+    const c = { ...this.shelfCfg(id) };
+    if (which === 'scale') {
+      const i = SCALES.findIndex((s) => s.id === c.scale);
+      c.scale = SCALES[(i + 1) % SCALES.length].id;
+    } else {
+      const i = d.sounds.findIndex((s) => s.id === c.sound);
+      c.sound = d.sounds[(i + 1) % d.sounds.length].id;
+    }
+    this.settings = { ...this.settings, shelf: { ...this.settings.shelf, [id]: c } };
+    saveSettings(this.settings);
+    this.putOut(id);
+    // let it be heard: a little run up the new notes, or a strum
+    const t0 = audio.now();
+    if (id === 'guitar') this.strum(0, 0.6, 0, t0);
+    else for (let i = 0; i < 4; i++) this.playInst(id, id === 'handpan' ? i * 2 : i, 0.55, 0, t0 + i * 0.12);
+    return this.shelfView();
+  }
+
+  /** A note (or the guitar's chord `zone`) on a shelf instrument, at audio time `when` (0: now). */
+  private playInst(id: InstId, zone: number, vel: number, pan: number, when: number): void {
+    if (id === 'drums') return;
+    const c = this.shelfCfg(id);
+    const scale = scaleById(c.scale);
+    const snd = instDef(id).sounds.find((x) => x.id === c.sound) ?? instDef(id).sounds[0];
+    const root = this.instRoot(id);
+    if (id === 'guitar') return this.strum(Math.max(0, Math.min(2, zone)), vel, pan, when);
+    if (id === 'piano' && zone === PIANO_CHORD) {
+      // the chord pad: the chord the song is on, else the next of the scale's three
+      const ch = scale.chords[this.pianoChord % scale.chords.length];
+      for (const n of ch) audio.modal(snd.family ?? 'keys', root - 12 + n, vel * 0.7, pan, when, 0.5, `piano-chord`, n);
+      return;
+    }
+    const z = this.kit.inst === id ? this.kit.instZones[zone] : null;
+    const midi = z?.midi ?? root + scale.steps[zone % scale.steps.length];
+    audio.modal(snd.family ?? 'keys', midi, vel, pan, when, 0.5, `${id}`, zone);
+  }
+
+  /** The guitar: six strings low to high, a hair apart (a slow hand spreads them more), from chord `c`. */
+  private strum(c: number, vel: number, pan: number, when: number): void {
+    const cfg = this.shelfCfg('guitar');
+    const scale = scaleById(cfg.scale);
+    const snd = instDef('guitar').sounds.find((x) => x.id === cfg.sound) ?? instDef('guitar').sounds[0];
+    const notes = strumNotes(this.instRoot('guitar'), scale.chords[c % scale.chords.length]);
+    const t0 = when || audio.now();
+    const gap = 0.009 + 0.02 * (1 - Math.min(1, vel));
+    for (let k = 0; k < notes.length; k++) {
+      const v = vel * (0.85 - k * 0.04);
+      if (snd.string) audio.pluck(notes[k], v, pan, t0 + k * gap, snd.string);
+      else audio.modal(snd.family ?? 'harp', notes[k], v, pan, t0 + k * gap, 0.5, `guitar${k}`, k);
+    }
+  }
+
+  /** A hit on the instrument on the desk (not the drums). */
+  private hitInstrument(side: Side, gain: number, st: Strike, t: number): void {
+    const id = this.kit.inst;
+    const o = this.kit.instOverlay();
+    const x = this.hitAt.x;
+    const z = this.hitAt.z;
+    const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
+    // the nearest zone the hand is on (with a little give round each)
+    let best = -1;
+    let bd = Infinity;
+    const zones = this.kit.instZones;
+    for (let i = 0; i < zones.length; i++) {
+      const q = zones[i];
+      if (q.degree < 0 && id === 'guitar') continue;
+      const inside = q.shape === 'disc' ? Math.hypot(x - q.x, z - q.z) <= q.w + 0.012 : Math.abs(x - q.x) <= q.w / 2 + 0.008 && Math.abs(z - q.z) <= q.h / 2 + 0.012;
+      if (!inside) continue;
+      const d = Math.hypot(x - q.x, z - q.z);
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    if (id === 'guitar') {
+      if (best >= 0) {
+        // a chord pad: that chord, and a soft strum of it so the hand that picks is heard too
+        this.guitarChord = best;
+        if (this.flam('guitar', best, side, t)) return;
+        this.strum(best, gain * 0.45, pan, 0);
+        o?.hit(best, gain);
+        this.record(this.kitSurface, best, gain, st, this.game.hit(`guitar:${best}`, t, gain), 'chord');
+        return;
+      }
+      if (x >= STRUM.x0 - 0.03 && x <= STRUM.x1 + 0.03 && z >= STRUM.z0 - 0.03 && z <= STRUM.z1 + 0.03) {
+        if (this.flam('guitar', 9, side, t)) return;
+        this.strum(this.guitarChord, gain, pan, 0);
+        for (let s = 3; s < 9; s++) o?.hit(s, gain * (1 - (s - 3) * 0.08));
+        this.record(this.kitSurface, 9, gain, st, this.game.hit(`guitar:${this.guitarChord}`, t, gain), 'strum');
+        return;
+      }
+    } else if (best >= 0) {
+      if (this.flam(id, best, side, t)) return;
+      if (id === 'piano' && best === PIANO_CHORD) this.pianoChord++;
+      this.playInst(id, best, gain, pan, 0);
+      o?.hit(best, gain);
+      const g = this.game.hit(`${id}:${best}`, t, gain);
+      if (g === 'perfect') o?.perfect(best);
+      this.record(this.kitSurface, best, gain, st, g, id);
+      return;
+    }
+    // off the instrument: the desk still knocks, softly
+    audio.drum('rim', gain * 0.5, pan, 0, 1);
+    this.record(this.kitSurface, 0, gain, st, null, 'rim');
   }
 
   /** Off the pads, the table still plays: by where you hit it. */
@@ -1972,9 +2138,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.revealKeys(this.hitAt.x, this.hitAt.z);
     // then the thing the room scan can't show you: what's on the table plays too
     this.later(this.clock.t + 5, () => {
-      if (this.touched.length || this.settings.noWords || this.game.mode !== 'discover' || this.tag.shownText) return;
-      this.tmp.set(0.22, 0.09, 0.05).applyMatrix4(this.kit.root.matrixWorld);
-      this.tag.show('Now hit things on the desk', 0xfff2dc, this.tmp, this.head, 5);
+      if (this.settings.noWords || this.game.mode !== 'discover' || this.tag.shownText || this.kit.inst !== 'drums') return;
+      // more than drums: the shelf is on the box's arrows
+      this.tmp.set(0, 0.1, -0.2).applyMatrix4(this.kit.root.matrixWorld);
+      this.tag.show('◀ ▶ for piano, guitar, more', 0xfff2dc, this.tmp, this.head, 5);
     });
     const fx = this.hitAt.x;
     const fz = this.hitAt.z;
@@ -2008,6 +2175,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const lanes = this.lanes();
       if (this.restoring) this.kit.reveal(lanes);
       else this.bloom(lanes);
+      // a player coming back finds the instrument they left out
+      if (this.restoring && this.settings.inst !== 'drums') this.useInstrument(null);
       this.kit.keys.recolor(FAMILIES[this.deskFamily].color);
       this.kitSheen?.group.removeFromParent();
       this.kitSheen = null;
@@ -2446,7 +2615,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.moduleSurface.detector.resetSurface(0);
     this.layout();
     // the kit and room come back as they were when you return within the session
-    if (this.kitSurface.discovered) this.kit.reveal(this.lanes());
+    if (this.kitSurface.discovered) {
+      this.kit.reveal(this.lanes());
+      this.useInstrument(null);
+    }
     this.surfT = 0;
     this.warmShaders();
     try {
@@ -2771,6 +2943,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (z) out[`key-${k}`] = this.tmp.set(z.x, 0, -z.z).applyMatrix4(this.moduleSurface.world).toArray().map(r4);
     });
     this.kit.keyZones.forEach((z, i) => (out[`edge${i}`] = root.localToWorld(this.tmp.set(z.x, 0, -z.z)).toArray().map(r4)));
+    // the instrument on the desk: each of its notes (and the guitar's strum band)
+    this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = root.localToWorld(this.tmp.set(z.x, 0, -z.z)).toArray().map(r4)));
+    if (this.kit.inst === 'guitar') out.strum = root.localToWorld(this.tmp.set((STRUM.x0 + STRUM.x1) / 2, 0, -(STRUM.z0 + STRUM.z1) / 2)).toArray().map(r4);
+    out.inst = [['drums', 'piano', 'guitar', 'handpan'].indexOf(this.kit.inst)];
     for (const s of this.surfaces) {
       if (s.source !== 'plane' && s.source !== 'volume') continue;
       const cx = (s.bounds.minX + s.bounds.maxX) / 2;

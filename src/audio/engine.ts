@@ -516,6 +516,61 @@ class Engine {
     if (owner) this.claimVoice(owner, g, t, end, [src]);
   }
 
+  /** Plucked strings (the guitar on the shelf), made once per note and kind: a burst of noise in a tuned loop. */
+  private strings = new Map<string, AudioBuffer>();
+  private stringBuffer(ctx: AudioContext, midi: number, kind: 'nylon' | 'steel'): AudioBuffer {
+    const id = `${kind}:${midi}`;
+    let b = this.strings.get(id);
+    if (b) return b;
+    const sr = ctx.sampleRate;
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const n = Math.max(2, sr / f);
+    const N = Math.floor(n);
+    const frac = n - N;
+    const len = Math.floor(sr * (kind === 'steel' ? 2.6 : 1.9));
+    b = ctx.createBuffer(1, len, sr);
+    const y = b.getChannelData(0);
+    // the pluck: noise, softened for nylon (a fingertip), brighter for steel (a pick)
+    let lp = 0;
+    const soft = kind === 'nylon' ? 0.45 : 0.8;
+    for (let i = 0; i < N + 1 && i < len; i++) {
+      lp += soft * (Math.random() * 2 - 1 - lp);
+      y[i] = lp;
+    }
+    // the string: each pass averages neighbours (losing highs first) and loses a little, tuned by a fractional tap
+    const loss = kind === 'steel' ? 0.9965 : 0.9935;
+    for (let i = N + 1; i < len; i++) {
+      const a0 = y[i - N];
+      const a1 = y[i - N - 1];
+      const d = a0 + (a1 - a0) * frac;
+      const d2 = i - N - 2 >= 0 ? y[i - N - 1] + (y[i - N - 2] - y[i - N - 1]) * frac : d;
+      y[i] = loss * 0.5 * (d + d2);
+    }
+    if (this.strings.size > 64) this.strings.delete(this.strings.keys().next().value as string);
+    this.strings.set(id, b);
+    return b;
+  }
+
+  /** One plucked string (the guitar): `midi`, loudness 0..1, at audio time `when`. */
+  pluck(midi: number, vel: number, pan = 0, when = 0, kind: 'nylon' | 'steel' = 'nylon'): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = Math.max(ctx.currentTime, when || ctx.currentTime);
+    const src = ctx.createBufferSource();
+    src.buffer = this.stringBuffer(ctx, midi, kind);
+    const v = Math.max(0.05, Math.min(1, vel));
+    const g = this.out(ctx, this.drums, pan, 0.5, t, 0.9 * (0.15 + 0.85 * v));
+    const body = ctx.createBiquadFilter();
+    body.type = 'peaking';
+    body.frequency.value = kind === 'steel' ? 2400 : 180;
+    body.gain.value = kind === 'steel' ? 3 : 5;
+    src.connect(body).connect(g);
+    src.start(t);
+    src.stop(t + src.buffer.duration);
+    this.lastGain = v;
+    this.lastAt = t;
+  }
+
   /** The band's piano: chords voiced close and led smoothly from the last one, and the bass with a soft sub under it. */
   private voicing: number[] = [60, 64, 67];
   private piano(ctx: AudioContext, e: BedEvent, t0: number, len: number, spb: number): void {

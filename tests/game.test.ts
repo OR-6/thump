@@ -49,7 +49,7 @@ describe('the game', () => {
   it('starts with "Hit something", and offers to build a track once two things are found', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
-    expect(g.display.line).toBe('Hit something');
+    expect(g.display.line).toBe('Hit the desk');
     g.discovered('kit', 'table', 1);
     expect(g.display.sub).toMatch(/kit/i);
     expect(g.display.pulse).toBeNull();
@@ -393,6 +393,45 @@ describe('the game', () => {
     from = voiced.length;
     for (let k = 0; k < 180; k++) g.tick((t += 1 / 30));
     expect(voiced.slice(from).some((k) => k.startsWith('t1:'))).toBe(true);
+  });
+
+  it('free play: ◀ ▶ swap the instrument on the desk; NOTES and SOUND change it; a build brings the drums back', () => {
+    const order = ['drums', 'piano', 'guitar', 'handpan'];
+    let i = 0;
+    let scale = 'Happy';
+    const used: (string | null)[] = [];
+    const view = () => ({ id: order[i], name: order[i][0].toUpperCase() + order[i].slice(1), how: 'how', scale, sound: 'Grand' });
+    const st = {
+      ...stage([]),
+      shelf: (d: 1 | -1 | 0) => {
+        i = (i + d + 4) % 4;
+        return view();
+      },
+      shelfSet: (w: 'scale' | 'sound') => {
+        if (w === 'scale') scale = 'Sad';
+        return view();
+      },
+      useInstrument: (id: string | null) => used.push(id),
+    };
+    const g = new Game(st, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(1);
+    g.key('next');
+    expect(g.display.line).toBe('Piano');
+    expect(g.display.keyLabels).toEqual(['', '', '', 'NOTES', 'SOUND']);
+    g.tick(2);
+    g.key('jam');
+    expect(g.display.sub).toBe('Notes: Sad');
+    g.tick(9);
+    // the module keeps naming what's on the desk, and how to get more
+    expect(g.display.line).toBe('Piano');
+    expect(g.display.sub).toBe('◀ ▶ for more instruments');
+    expect(g.display.keyLabels).toBeNull();
+    g.tick(45);
+    g.key('play');
+    expect(g.mode).toBe('build');
+    expect(used).toContain('drums');
   });
 
   it('learns a steady lateness', () => {

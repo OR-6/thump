@@ -195,7 +195,8 @@ export class Module {
 
   private drawKeys(d: Display): void {
     KEYS.forEach((k, i) => {
-      drawKey(this.keyCanvases[i], k, d.keyLabels?.[i] ?? null, d.locked.includes(k));
+      // ('' in a page's labels: that key keeps its own mark)
+      drawKey(this.keyCanvases[i], k, d.keyLabels?.[i] || null, d.locked.includes(k) && !d.keyLabels?.[i]);
       this.keyTex[i].needsUpdate = true;
     });
   }

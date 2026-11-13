@@ -62,6 +62,12 @@ export interface GameStage {
   labels?(parts: readonly { key: string; name: string }[]): void;
   /** ◀ ▶ on the pad last hit: the next sound in the bank on it; its name, or null when there's no pad. */
   changeSound?(dir: 1 | -1): string | null;
+  /** The instrument shelf: step to the next instrument on the desk (0: just read). What's out, its scale and sound. */
+  shelf?(dir: 1 | -1 | 0): ShelfView;
+  /** Change the instrument's scale or sound; the new view. */
+  shelfSet?(which: 'scale' | 'sound'): ShelfView;
+  /** Put this instrument on the desk for a song or a build (null: back to the one chosen in free play). */
+  useInstrument?(id: string | null): void;
   /** The tuning page: act on a key (null: just read), and what the page shows. */
   tune(k: ModuleKey | null): { line: string; sub: string; labels: string[] };
 }
@@ -89,6 +95,16 @@ export interface Room {
 }
 
 export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam' | 'build';
+
+/** What the shelf says about the instrument on the desk. */
+export interface ShelfView {
+  id: string;
+  name: string;
+  how: string;
+  /** Plain names ('' when it has no choice). */
+  scale: string;
+  sound: string;
+}
 
 export interface MoteView {
   key: string;
@@ -125,7 +141,7 @@ export class Game {
   readonly graded = { perfect: 0, good: 0, extra: 0 };
   readonly offsets: number[] = [];
   /** What the module shows now. */
-  readonly display: Display = { line: 'Hit something', sub: 'The desk, a mug, anything', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
+  readonly display: Display = { line: 'Hit the desk', sub: 'Anywhere, with your hand', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   /** The settings page is up on the module (tap ◀ twice; ▶ closes it). */
   settingsOpen = false;
   /** A pad was just hit: its sound shows on the module and ◀ ▶ change it, for a few seconds. */
@@ -226,16 +242,14 @@ export class Game {
 
   /** The first track not built yet that the things you've found open, or −1. */
   nextTrack(): number {
-    const have = this.room.things?.() ?? 0;
-    for (let i = 0; i < TRACKS.length; i++) if (!this.built(TRACKS[i].id)) return have >= TRACKS[i].needs ? i : -1;
+    // the next one opens once you've performed the one before it
+    for (let i = 0; i < TRACKS.length; i++) if (!this.built(TRACKS[i].id)) return i === 0 || this.performed(TRACKS[i - 1].id) ? i : -1;
     return -1;
   }
 
   /** Things still to find before the next track opens (0: none, or nothing left to open). */
   gate(): number {
-    const have = this.room.things?.() ?? 0;
-    const t = TRACKS.find((x) => !this.built(x.id));
-    return t ? Math.max(0, t.needs - have) : 0;
+    return 0;
   }
 
   performed(id: string): boolean {
@@ -292,6 +306,7 @@ export class Game {
     this.song = null;
     const spb = secPerBeat(track.bpm, this.opts.tempo);
     this.clock.set(this.t + 0.3, spb);
+    this.stage.useInstrument?.('drums');
     this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99, guard: -99, verdict: null, retried: false, pending: null, dropAt: -99 };
     this.stage.retune(track.key);
     this.moteCount = 0;
@@ -302,6 +317,7 @@ export class Game {
   /** Stop building or stop the machine; back to playing freely. */
   private endBuild(): void {
     this.bld = null;
+    this.stage.useInstrument?.(null);
     this.pushLabels();
     this.mode = 'discover';
     this.moteCount = 0;
@@ -622,6 +638,7 @@ export class Game {
   beginPerform(): void {
     const m = this.machine;
     if (!m) return;
+    this.stage.useInstrument?.('drums');
     const t = m.track;
     this.bld = null;
     // you play the kick, the snare and the part on a thing you found (your cup, your book); the rest is the bed
@@ -826,6 +843,13 @@ export class Game {
     return best;
   }
 
+  /** The shelf on the module for a few seconds after a change (and which setting was just changed). */
+  private shelfShown: ShelfView | null = null;
+  private shelfUntil = -1;
+  private shelfWhat: 'scale' | 'sound' | '' = '';
+  /** Instruments put on the desk this session (two, and it offers to build a track). */
+  private readonly tried = new Set<string>();
+
   /** A pad on a thing was hit: show its sound, with ◀ ▶ to change it. */
   focusPad(name: string, t: number): void {
     if (!name || this.mode !== 'discover') return;
@@ -899,7 +923,13 @@ export class Game {
     // (not while a pad's sound is up: then ◀ ◀ is stepping through sounds)
     if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam' && this.t >= this.pad.until) {
       // tap ◀ twice: the settings page (and the first tap's step back is undone)
-      if (this.mode === 'discover') this.selected = (this.selected + 1) % this.available();
+      if (this.mode === 'discover') {
+        this.selected = (this.selected + 1) % this.available();
+        if (this.stage.shelf && this.shelfShown) {
+          this.stage.shelf(1);
+          this.shelfShown = null;
+        }
+      }
       this.settingsOpen = true;
       this.lastTap[k] = -9;
       this.refreshDisplay();
@@ -910,6 +940,24 @@ export class Game {
       const name = this.stage.changeSound?.(k === 'next' ? 1 : -1);
       if (name) {
         this.focusPad(name, this.t);
+        return;
+      }
+    }
+    // free play: ◀ ▶ swap the instrument on the desk; with one out, the last two keys pick its scale and sound
+    if (this.mode === 'discover' && this.stage.shelf) {
+      if (k === 'prev' || k === 'next') {
+        this.shelfShown = this.stage.shelf(k === 'next' ? 1 : -1);
+        this.tried.add(this.shelfShown.id);
+        this.shelfUntil = this.t + 6;
+        this.refreshDisplay();
+        return;
+      }
+      const cur = this.shelfShown ?? this.stage.shelf(0);
+      if ((k === 'jam' || k === 'loop') && cur.id !== 'drums' && this.stage.shelfSet) {
+        this.shelfShown = this.stage.shelfSet(k === 'jam' ? 'scale' : 'sound');
+        this.shelfWhat = k === 'jam' ? 'scale' : 'sound';
+        this.shelfUntil = this.t + 6;
+        this.refreshDisplay();
         return;
       }
     }
@@ -1223,6 +1271,10 @@ export class Game {
       this.pad.until = -1;
       this.refreshDisplay();
     }
+    if (this.shelfShown && t >= this.shelfUntil) {
+      this.shelfShown = null;
+      this.refreshDisplay();
+    }
     // the tuning page's readouts follow the hits
     if (this.tuneOpen && t - this.tuneShownAt > 0.25) this.refreshDisplay();
     if (this.recPending > 0 && t - this.recPending > 0.9) {
@@ -1239,7 +1291,7 @@ export class Game {
     }
     if (this.mode === 'discover') {
       // the first song is offered once there are two instruments (or the table alone has had a while)
-      if (!this.offered && ((this.room.things?.() ?? 0) >= 2 || (this.kitAt >= 0 && t - this.kitAt > 40) || (!this.room.things && this.found.length >= 2))) {
+      if (!this.offered && (this.tried.size >= 2 || (this.room.things?.() ?? 0) >= 2 || (this.kitAt >= 0 && t - this.kitAt > 40) || (!this.room.things && this.found.length >= 2))) {
         this.offered = true;
         this.refreshDisplay();
       }
@@ -1316,6 +1368,7 @@ export class Game {
   private leaveResults(): void {
     this.encoreAt = -1;
     this.lap = null;
+    this.stage.useInstrument?.(null);
     this.mode = 'discover';
     this.song = null;
     this.stage.retune(0);
@@ -1485,6 +1538,15 @@ export class Game {
       this.buildDisplay(d);
       return;
     }
+    // the shelf just changed: what's on the desk now (and its notes or sound)
+    if (this.mode === 'discover' && this.shelfShown && this.t < this.shelfUntil) {
+      const v = this.shelfShown;
+      d.line = v.name;
+      d.sub = this.shelfWhat === 'scale' ? `Notes: ${v.scale}` : this.shelfWhat === 'sound' ? `Sound: ${v.sound}` : v.how;
+      d.keyLabels = v.id === 'drums' ? null : ['', '', '', 'NOTES', 'SOUND'];
+      return;
+    }
+    this.shelfWhat = '';
     const nextT = this.nextTrack();
     if (this.mode === 'discover' && this.offered && nextT >= 0 && this.machine && this.performed(this.machine.track.id)) {
       d.line = `Build ${TRACKS[nextT].name}?`;
@@ -1509,8 +1571,10 @@ export class Game {
     switch (this.mode) {
       case 'discover':
         if (!this.offered) {
-          d.line = 'Hit something';
-          d.sub = this.lastFound ? found(this.lastFound) : 'The desk, a mug, anything';
+          // first the desk; once the drums are out, what's on the desk and how to get more
+          const out = this.found.includes('kit') && this.stage.shelf ? this.stage.shelf(0) : null;
+          d.line = out ? out.name : this.found.includes('kit') ? 'Hit something' : 'Hit the desk';
+          d.sub = out ? '◀ ▶ for more instruments' : this.lastFound ? found(this.lastFound) : 'Anywhere, with your hand';
         } else {
           d.line = sel.name;
           const need = wants(sel.parts);

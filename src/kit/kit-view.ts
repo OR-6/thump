@@ -9,6 +9,7 @@ import { PadView } from './pad-view.js';
 import { Module } from '../ui/module.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
+import { guitarZones, handpanZones, pianoZones, type InstId, type Scale } from './shelf.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.11 } as const;
@@ -34,9 +35,20 @@ function handShadowTexture(): CanvasTexture {
 export class KitView {
   readonly root = new Group();
   readonly pads = new Map<Lane, PadView>();
+  /** The pads together (put away while another instrument is on the desk). */
+  private readonly padRoot = new Group();
   readonly module = new Module();
   readonly keys = new Overlay('keys', 8);
   keyZones: Zone[] = [];
+  /** The instrument on the desk, and the shelf's other instruments (each its own light on the table). */
+  inst: InstId = 'drums';
+  readonly shelf = new Map<Exclude<InstId, 'drums'>, Overlay>([
+    ['piano', new Overlay('keys', 8)],
+    ['guitar', new Overlay('harp', 10)],
+    ['handpan', new Overlay('tongue', 10)],
+  ]);
+  /** The zones of the instrument on the desk (none for the drums: they have pads). */
+  instZones: Zone[] = [];
   private handShadow: Mesh[] = [];
 
   constructor() {
@@ -54,13 +66,18 @@ export class KitView {
       p.x = PADS[lane].x;
       p.z = PADS[lane].z;
       this.pads.set(lane, p);
-      this.root.add(p.group);
+      this.padRoot.add(p.group);
     }
     // the table keys lie on the table (an overlay on the kit's own surface: zone z is away from you)
     this.keyZones = zonesFor('keys', { minX: -0.3, maxX: 0.3, minZ: -0.1, maxZ: 0.3 }, { x: KEYS_ROW.x, z: -KEYS_ROW.z }, 0.5);
     this.keys.group.visible = false;
     this.keys.rest = 0.35;
-    this.root.add(this.keys.group, this.module.root);
+    this.root.add(this.padRoot, this.keys.group, this.module.root);
+    for (const o of this.shelf.values()) {
+      o.group.visible = false;
+      o.rest = 0.45;
+      this.root.add(o.group);
+    }
     const g = new PlaneGeometry(1, 1);
     g.rotateX(-Math.PI / 2);
     for (let i = 0; i < 2; i++) {
@@ -83,13 +100,42 @@ export class KitView {
     this.keys.build(this.keyZones);
     this.keys.reveal();
     this.keys.group.visible = true;
+    this.keysShown = true;
   }
 
   /** The bars draw in from a point (kit zone coordinates), as part of the kit's first bloom. */
   revealKeys(fromX: number, fromZ: number): void {
     this.keys.build(this.keyZones);
     this.keys.reveal(fromX, fromZ);
-    this.keys.group.visible = true;
+    this.keys.group.visible = this.inst === 'drums';
+    this.keysShown = true;
+  }
+
+  /**
+   * Put an instrument on the desk: the drums are the pads and the bars; any other takes their place, drawn in from
+   * the middle. `root` is its lowest note (MIDI) and `scale` the notes it has.
+   */
+  setInstrument(id: InstId, root: number, scale: Scale): void {
+    const drums = id === 'drums';
+    this.padRoot.visible = drums;
+    this.keys.group.visible = drums && this.keyZones.length > 0 && this.keysShown;
+    for (const [k, o] of this.shelf) o.group.visible = k === id;
+    this.inst = id;
+    if (drums) {
+      this.instZones = [];
+      return;
+    }
+    this.instZones = id === 'piano' ? pianoZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : handpanZones(root, scale);
+    const o = this.shelf.get(id)!;
+    o.build(this.instZones);
+    o.reveal(0, 0.03);
+  }
+  /** The bars were shown (the kit's first bloom): they come back with the drums. */
+  private keysShown = false;
+
+  /** The overlay of the instrument on the desk (null for the drums). */
+  instOverlay(): Overlay | null {
+    return this.inst === 'drums' ? null : (this.shelf.get(this.inst) ?? null);
   }
 
   setContrast(hc: boolean): void {
@@ -114,6 +160,7 @@ export class KitView {
   update(dt: number): void {
     for (const p of this.pads.values()) p.update(dt);
     this.keys.update(dt);
+    for (const o of this.shelf.values()) if (o.group.visible) o.update(dt);
     this.module.update(dt);
   }
 }
