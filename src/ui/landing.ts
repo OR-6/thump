@@ -14,49 +14,56 @@ export function mountLanding(world: World): void {
   const el = document.createElement('div');
   el.id = 'landing';
   el.innerHTML = `
-    <main class="sheet">
-      <header class="mast">
-        <p class="kicker">Tonight, in your room</p>
-        <h1>Thump</h1>
-        <p class="tag">Play your room.</p>
-      </header>
-      <ol class="bill" aria-label="What your room might play">
-        <li><span class="who">Your table</span><i></i><span class="what" style="--c:#ff5a3c">drum kit</span></li>
-        <li><span class="who">The wall</span><i></i><span class="what" style="--c:#e8a44a">gong</span></li>
-        <li><span class="who">The next wall</span><i></i><span class="what" style="--c:#d4703a">timpani</span></li>
-        <li><span class="who">Your door</span><i></i><span class="what" style="--c:#ffc14d">marimba</span></li>
-        <li><span class="who">The window</span><i></i><span class="what" style="--c:#8fd8ff">glockenspiel, played gently</span></li>
-        <li><span class="who">The cupboard</span><i></i><span class="what" style="--c:#2ad1b5">kalimba</span></li>
-        <li><span class="who">Another table</span><i></i><span class="what" style="--c:#ff7aa2">congas</span></li>
-      </ol>
-      <p class="conductor">Conducted by your two hands.</p>
-      <p class="lede">Every surface in your room is an instrument. Hit anything to find out what it plays, then play songs across your own room.</p>
-      <div class="go">
-        <button id="enter-xr" class="patch" type="button">Enter mixed reality</button>
-        <p class="xr-fail" role="alert" hidden>Mixed reality didn't start. Allow what Quest asks for, then press Enter again.</p>
-        <p class="note">Sit at a table with hand tracking on. Quest will ask once to use your room; a room scan (Space Setup) finds more instruments.</p>
-      </div>
-      <div class="nohead" id="xr-unsupported" hidden>
-        <p class="quest"><b>Play on Meta Quest:</b> open <span class="url">${LIVE_URL}</span> in the headset's browser.</p>
-        <button type="button" id="copy-link" class="patch small">Copy link</button>
-      </div>
-      <details class="prep">
-        <summary>Settings</summary>
-        <div class="opts">
-          <label><input type="checkbox" data-k="oneHand" /> One hand: the drum kit within one hand's reach</label>
-          <label class="row">Lead hand
-            <select data-k="hand"><option value="auto">The hand you rest first</option><option value="right">Right</option><option value="left">Left</option></select>
-          </label>
-          <label class="row">Song speed <input type="range" min="0.6" max="1" step="0.1" data-k="tempo" /> <output id="tempo-out"></output></label>
-          <label><input type="checkbox" data-k="highContrast" /> High contrast</label>
-          <label><input type="checkbox" data-k="calmMotion" /> Calm motion</label>
-          <label><input type="checkbox" data-k="noWords" /> No words in the headset</label>
-          <label><input type="checkbox" data-k="band" /> Backing band in songs</label>
-          <label><input type="checkbox" data-k="placeFresh" /> Find the table again next time</label>
-          <p class="small-print">Timing offset: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
+    <main class="stage">
+      <article class="setlist" aria-label="Thump">
+        <span class="gaffer tl"></span><span class="gaffer tr"></span><span class="gaffer bl"></span>
+        <h1>THUMP</h1>
+        <p class="under">play your room</p>
+        <ol class="songs">
+          <li>Porch Step</li>
+          <li>Kitchen Clock</li>
+          <li>Night Bus</li>
+          <li>Big Room</li>
+          <li>Open House</li>
+        </ol>
+        <p class="encore">encore: whatever you just played</p>
+        <ul class="lineup">
+          <li><b>drums</b> the table</li>
+          <li><b>bells</b> your cups <small>(the tall one's lower)</small></li>
+          <li><b>wood block</b> a book</li>
+          <li><b>congas</b> your knees</li>
+          <li><b>marimba</b> the door, if you stand up</li>
+        </ul>
+      </article>
+      <section class="notes">
+        <p class="what">A music game for Meta Quest 3. Sit at a table and put the headset on. Hit the table and it's a drum kit. Tap your cup twice and it rings. Get up and the walls, the door and the window join in.</p>
+        <div class="go">
+          <button id="enter-xr" class="tape-btn" type="button">Enter mixed reality</button>
+          <p class="xr-fail" role="alert" hidden>That didn't start. Allow what Quest asks for, then try again.</p>
+          <p class="note">Hands, not controllers. Quest asks once to use your room.</p>
         </div>
-      </details>
-      <footer class="foot">Twenty recorded instruments, public domain (the Versilian Community Sample Library), tuned to your room as you play. Code under the MIT licence.</footer>
+        <div class="nohead" id="xr-unsupported" hidden>
+          <p class="quest">This one needs a Quest. In the headset's browser, go to <span class="url">${LIVE_URL}</span></p>
+          <button type="button" id="copy-link" class="tape-btn small">Copy the link</button>
+        </div>
+        <details class="prep">
+          <summary>Settings</summary>
+          <div class="opts">
+            <label><input type="checkbox" data-k="oneHand" /> One hand (the whole kit within reach of one)</label>
+            <label class="row">Lead hand
+              <select data-k="hand"><option value="auto">Whichever you rest first</option><option value="right">Right</option><option value="left">Left</option></select>
+            </label>
+            <label class="row">Song speed <input type="range" min="0.6" max="1" step="0.1" data-k="tempo" /> <output id="tempo-out"></output></label>
+            <label><input type="checkbox" data-k="highContrast" /> High contrast</label>
+            <label><input type="checkbox" data-k="calmMotion" /> Less movement</label>
+            <label><input type="checkbox" data-k="noWords" /> No words in the headset</label>
+            <label><input type="checkbox" data-k="band" /> Piano and bass behind the songs</label>
+            <label><input type="checkbox" data-k="placeFresh" /> Find the table again next time</label>
+            <p class="small-print">Timing: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
+          </div>
+        </details>
+        <footer class="foot">The instruments are real recordings, public domain, from the Versilian Community Sample Library. The code is MIT.</footer>
+      </section>
     </main>`;
   document.body.appendChild(el);
 
@@ -118,13 +125,13 @@ export function mountLanding(world: World): void {
     const b = e.currentTarget as HTMLButtonElement;
     if (b.dataset.sure !== '1') {
       b.dataset.sure = '1';
-      b.textContent = 'Tap again to forget your songs and rooms';
+      b.textContent = 'Sure? Tap again';
       return;
     }
     const p = loadProgress();
     saveProgress({ ...freshProgress(), kit: p.kit });
     window.dispatchEvent(new Event('thump:reset'));
-    b.textContent = 'Done: your room starts fresh';
+    b.textContent = 'Done. A fresh start.';
     b.dataset.sure = '';
   });
 

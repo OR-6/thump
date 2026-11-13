@@ -69,3 +69,11 @@ Ban list: "orchestra", "conducted", "tonight", "in the pocket", "nearly there", 
 5. Device session script around the desk, not the door. Video shot list: the cup getting its ring is shot one.
 
 Walls, doors and windows stay in the code as bonus pads; nothing asks for them, no track needs them, the landing does not lead with them.
+
+## The two modes, stated by the user (this is the rule)
+
+**Free play.** Tap or hit any object in reach and it makes a sound. The first hit plays at once; physics picks the default sound. The player can change what any object plays, two ways, both obvious: hit the object, and the module shows its name and sound with ◀ ▶ to step through the whole sound bank (not just its family: any sound on any object, drums, percussion, pitched, synth); or pinch and hold the object to cycle. The change is saved with the desk. Free play has the band following your tempo and REC for loops. This is where people spend time; it must feel like a sampler loaded with their desk.
+
+**Song mode.** The song lights panels (pads) on the desk and on the objects it uses; you hit the lit panel on the beat and the song works. Panels are the rings on your objects plus the desk's kit zones and key strip. Every song is playable on the desk alone; found objects make it richer, never required beyond the gate count. Fills, keep-it-going, stars, as above.
+
+Nothing else is a mode. Jam, loops and cards live inside these two.

@@ -189,7 +189,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.worldRoot.name = 'RoomOverlays';
     this.world.createTransformEntity(this.worldRoot);
     this.worldRoot.add(this.motes.mesh, this.tag.mesh);
-    this.hint = new Tag(0.24, 0.036);
+    this.hint = new Tag(0.36, 0.05);
     this.worldRoot.add(this.hint.mesh);
     const dot = new SphereGeometry(0.0035, 8, 6);
     this.holdRing = new InstancedMesh(dot, new MeshBasicMaterial({ color: 0xf2efe6 }), HOLD_DOTS);
@@ -692,13 +692,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (s) {
       this.tmp.set(s.anchor.x, 0.06, -s.anchor.z).applyMatrix4(s.world);
       this.tmp.y = Math.min(this.tmp.y, this.head.y);
-      this.tag.show(`Pinch and hold the ${surfaceName(s).toLowerCase()}: a new sound`, FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
+      this.tag.show('Pinch and hold it for a new sound', FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
       return;
     }
     if (!this.kit.keys.group.visible) return;
     const q = this.kit.keyZones[3];
     this.tmp.set(q ? q.x : 0, 0.07, q ? -q.z : -0.16).applyMatrix4(this.kit.root.matrixWorld);
-    this.tag.show('Pinch and hold the bars: a new sound', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
+    this.tag.show('Pinch and hold these for a new sound', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
     this.kit.keys.sweep();
   }
 
@@ -1575,6 +1575,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
    */
   private bloom(lanes: readonly Lane[]): void {
     this.kit.revealKeys(this.hitAt.x, this.hitAt.z);
+    // then the thing the room scan can't show you: what's on the table plays too
+    this.later(this.clock.t + 5, () => {
+      if (this.touched.length || this.settings.noWords || this.game.mode !== 'discover' || this.tag.shownText) return;
+      this.tmp.set(0.22, 0.09, 0.05).applyMatrix4(this.kit.root.matrixWorld);
+      this.tag.show('Tap something on it. Twice.', 0xfff2dc, this.tmp, this.head, 5);
+    });
     const fx = this.hitAt.x;
     const fz = this.hitAt.z;
     const order = lanes
@@ -2060,7 +2066,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // the first words, at hand height over the table (the module says it too)
       if (!this.settings.noWords && !this.kitSurface.discovered) {
         this.tmp.set(0, 0.12, 0.02).applyMatrix4(root.matrixWorld);
-        this.tag.show('Hit the table. Then what glows.', 0xff5a3c, this.tmp, this.head, 6);
+        this.tag.show('Hit the table', 0xff5a3c, this.tmp, this.head, 6);
       }
     }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();
@@ -2365,7 +2371,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 function touchName(s: Surface): string {
   const f = s.voice!.family;
   if (s.label === 'your lap') return 'Your knees are congas';
-  if (f === 'bell' || f === 'tubular') return 'That rings. Tap it gently';
+  if (f === 'bell' || f === 'tubular') return `That's ${withArticle(f)}. Gently`;
   if (f === 'frame' || f === 'cajon') return `That's ${withArticle(f)} now`;
   return `That's ${withArticle(f)}`;
 }

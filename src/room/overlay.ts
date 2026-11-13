@@ -463,7 +463,7 @@ export class Sheen {
     this.t += dt * (motion.calm ? 0.4 : 1);
     const t = this.t;
     // a slow breath on the surface, about every five seconds
-    (this.fill.material as MeshBasicMaterial).opacity = 0.025 + 0.07 * Math.pow(0.5 + 0.5 * Math.sin(t * 1.25), 3);
+    (this.fill.material as MeshBasicMaterial).opacity = 0.012 + 0.04 * Math.pow(0.5 + 0.5 * Math.sin(t * 1.25), 3);
     const sp = this.span;
     for (let k = 0; k < this.motes.count; k++) {
       const a = this.seeds[k * 4];

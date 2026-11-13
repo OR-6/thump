@@ -1,9 +1,10 @@
 /**
- * A slim name tag: dark glass with an accent bar and clean light text, shown for two seconds where an
- * instrument is discovered ("Door · marimba"), facing you. Text ≤ 6 words.
+ * A label the way musicians label things: a strip of masking tape with torn ends, written on in marker, a stroke of
+ * the instrument's colour under the words. It turns up where something was found ("Your door is a marimba"), facing
+ * you, a little crooked like a real one, and peels away after a couple of seconds. Text ≤ 6 words.
  */
 import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3 } from '@iwsdk/core';
-import { FONT, whenFonts } from './fonts.js';
+import { MARKER, whenFonts } from './fonts.js';
 
 
 export class Tag {
@@ -17,7 +18,7 @@ export class Tag {
   hold = 2.2;
 
   /** `widthM` is the room a tag has: text keeps its size and only shrinks past it (it's drawn centred, the rest clear). */
-  constructor(readonly widthM = 0.4, readonly heightM = 0.034) {
+  constructor(readonly widthM = 0.46, readonly heightM = 0.05) {
     this.canvas.width = Math.round((768 * widthM) / 0.2);
     this.canvas.height = Math.round((768 * heightM) / 0.2);
     this.tex = new CanvasTexture(this.canvas);
@@ -43,6 +44,8 @@ export class Tag {
     if (text !== this.text) this.draw(text, accent);
     if (at) this.mesh.position.copy(at);
     if (head) this.mesh.lookAt(head);
+    // stuck on by hand: never quite level
+    this.mesh.rotateZ(this.tilt);
     // as legible across the room as at the desk: it grows with distance past 60 cm
     if (at && head) this.mesh.scale.setScalar(Math.min(4, Math.max(1, at.distanceTo(head) / 0.6)));
     this.life = hold;
@@ -53,6 +56,8 @@ export class Tag {
     return this.mesh.visible ? this.text : '';
   }
 
+  private tilt = 0;
+
   private draw(text: string, accent: number): void {
     this.text = text;
     this.accent = accent;
@@ -61,22 +66,56 @@ export class Tag {
     const W = c.width;
     const H = c.height;
     g.clearRect(0, 0, W, H);
-    let px = Math.round(H * 0.58);
-    g.font = `600 ${px}px ${FONT}`;
-    while (g.measureText(text).width > W - H * 1.2 && px > 12) g.font = `600 ${--px}px ${FONT}`;
+    // the same words always tear and lean the same way
+    let seed = 7;
+    for (let k = 0; k < text.length; k++) seed = (seed * 31 + text.charCodeAt(k)) % 2147483647;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    this.tilt = (rnd() - 0.5) * 0.07;
+    let px = Math.round(H * 0.5);
+    g.font = `${px}px ${MARKER}`;
+    while (g.measureText(text).width > W - H * 1.4 && px > 12) g.font = `${--px}px ${MARKER}`;
     const tw = g.measureText(text).width;
-    const w = tw + H * 0.9;
+    const w = tw + H * 1.1;
     const x0 = (W - w) / 2;
-    const r = H * 0.22;
-    g.fillStyle = 'rgba(12,12,14,0.86)';
+    const top = H * 0.12;
+    const bot = H * 0.88;
+    // the tape: torn at both ends
     g.beginPath();
-    g.roundRect(x0, H * 0.1, w, H * 0.8, r);
+    g.moveTo(x0, top);
+    g.lineTo(x0 + w, top);
+    for (let y = top; y < bot; y += H * 0.07) g.lineTo(x0 + w + (rnd() - 0.5) * H * 0.12, y);
+    g.lineTo(x0 + w, bot);
+    g.lineTo(x0, bot);
+    for (let y = bot; y > top; y -= H * 0.07) g.lineTo(x0 + (rnd() - 0.5) * H * 0.12, y);
+    g.closePath();
+    g.fillStyle = '#ece2c6';
     g.fill();
-    g.fillStyle = `#${accent.toString(16).padStart(6, '0')}`;
-    g.fillRect(x0 + H * 0.16, H * 0.3, H * 0.07, H * 0.4);
-    g.fillStyle = '#f2efe6';
+    // its paper: faint fibres along it, and a slightly darker edge where it's thin
+    g.save();
+    g.clip();
+    for (let k = 0; k < 26; k++) {
+      g.fillStyle = `rgba(120, 100, 60, ${0.04 + rnd() * 0.05})`;
+      g.fillRect(x0 + rnd() * w, top + rnd() * (bot - top), w * (0.1 + rnd() * 0.3), 1 + rnd() * 1.5);
+    }
+    g.fillStyle = 'rgba(110, 90, 50, 0.10)';
+    g.fillRect(x0, top, w, H * 0.035);
+    g.fillRect(x0, bot - H * 0.035, w, H * 0.035);
+    g.restore();
+    // the words, in marker
+    const tx = x0 + H * 0.55;
+    const ty = H * 0.47;
+    g.fillStyle = '#17150f';
     g.textBaseline = 'middle';
-    g.fillText(text, x0 + H * 0.4, H * 0.53);
+    g.fillText(text, tx, ty);
+    // and a stroke of the instrument's colour under them, the way you'd underline it
+    g.strokeStyle = `#${accent.toString(16).padStart(6, '0')}`;
+    g.lineWidth = H * 0.06;
+    g.lineCap = 'round';
+    g.beginPath();
+    const uy = H * 0.76;
+    g.moveTo(tx + tw * 0.02, uy + (rnd() - 0.5) * 3);
+    g.quadraticCurveTo(tx + tw * 0.5, uy + (rnd() - 0.5) * 8, tx + tw * 0.96, uy - 2 + (rnd() - 0.5) * 4);
+    g.stroke();
     this.tex.needsUpdate = true;
   }
 

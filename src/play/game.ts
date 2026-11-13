@@ -110,7 +110,7 @@ export class Game {
   readonly graded = { perfect: 0, good: 0, extra: 0 };
   readonly offsets: number[] = [];
   /** What the module shows now. */
-  readonly display: Display = { line: 'Hit anything', sub: 'Your room is an orchestra', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
+  readonly display: Display = { line: 'Hit anything', sub: 'Start with the table', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   /** The settings page is up on the module (tap ◀ twice; ▶ closes it). */
   settingsOpen = false;
   /** The tuning page is up (in Settings, tap ◀ twice; ▶ closes it). */
@@ -764,7 +764,7 @@ export class Game {
       case 'discover':
         if (!this.offered) {
           d.line = 'Hit anything';
-          d.sub = this.lastFound ? found(this.lastFound) : 'Your room is an orchestra';
+          d.sub = this.lastFound ? found(this.lastFound) : 'Start with the table';
         } else {
           d.line = sel.name;
           const need = wants(sel.parts);
@@ -773,7 +773,7 @@ export class Game {
           d.sub = this.lastFound && this.found.length < 2
             ? found(this.lastFound)
             : jamNew
-              ? 'Tap JAM: a bandmate joins'
+              ? 'Tap JAM'
               : this.weakRuns >= 2 && this.opts.tempo > 0.95
                 ? 'Slower? Tap ◀ twice'
                 : have < need
@@ -795,7 +795,7 @@ export class Game {
         break;
       case 'jam':
         d.line = 'Jam';
-        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? (this.code ? "Friend's phone: or-6.github.io/thump" : 'Listen first') : 'Listen';
+        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? (this.code ? "Friend's phone: or-6.github.io/thump" : 'Listen') : 'Listen';
         d.pulse = 'jam';
         d.meter = this.jamShares.length ? this.jamShares[this.jamShares.length - 1] : -1;
         break;
@@ -804,7 +804,7 @@ export class Game {
         d.line = s.stars === 3 ? 'In the pocket' : s.stars === 2 ? 'Nearly there' : 'Once more?';
         d.stars = s.stars;
         const next = this.selected < this.available() ? this.songAt(this.selected) : null;
-        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'A tom, a bandmate, and swaps' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
+        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: a tom, and JAM' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
         break;
       }
     }
@@ -846,7 +846,8 @@ export class Game {
 }
 
 function found(f: { family: Family; label: string }): string {
-  return f.label ? `${cap(f.label)}: ${FAMILIES[f.family].name}` : cap(FAMILIES[f.family].name);
+  // "Door: marimba"; something found by touch is just what it plays
+  return f.label && f.label !== 'that' && f.label !== 'your lap' ? `${cap(f.label)}: ${FAMILIES[f.family].name}` : cap(FAMILIES[f.family].name);
 }
 
 function cap(s: string): string {
