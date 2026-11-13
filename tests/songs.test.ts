@@ -1,0 +1,178 @@
+import { describe, expect, it } from 'vitest';
+import { bed, grid, secPerBeat } from '../src/songs/chart.js';
+import { SONGS } from '../src/songs/songs.js';
+import { NoteJudge, copyNeeds, estimateOffset, starsFor, windows } from '../src/songs/judge.js';
+import { EventCursor, SongClock } from '../src/songs/sequencer.js';
+import { lanesBefore } from '../src/play/progression.js';
+import { Bandmate } from '../src/bandmate/bandmate.js';
+
+describe('grid notation', () => {
+  it('reads eighths and bars', () => {
+    const n = grid({ kick: 'x...x...|X.......', snare: '..x...x.' });
+    expect(n.map((x) => `${x.lane}@${x.beat}`)).toEqual(['kick@0', 'snare@1', 'kick@2', 'snare@3', 'kick@4']);
+    expect(n[4].vel).toBe(1);
+  });
+  it('the bed has a count-in bar before bar 0', () => {
+    const b = bed({ roots: [60], bass: 'x.......', chord: 'hold', shaker: false }, 2);
+    expect(b[0].beat).toBe(-4);
+    expect(b.filter((e) => e.voice === 'bass').map((e) => e.beat)).toEqual([0, 4]);
+  });
+});
+
+describe('charts', () => {
+  SONGS.forEach((s, i) => {
+    it(`${s.name}: every lane is unlocked by then, notes are in the song`, () => {
+      const have = lanesBefore(i);
+      for (const l of s.lanes) expect(have).toContain(l);
+      for (const n of [...s.notes, ...s.copy]) expect(s.lanes).toContain(n.lane);
+      const end = s.bars * 4;
+      for (const n of s.notes) {
+        expect(n.beat).toBeGreaterThanOrEqual(0);
+        expect(n.beat).toBeLessThan(end);
+      }
+      for (const e of s.bed) expect(e.beat).toBeLessThan(end);
+      expect(s.copy.length).toBeGreaterThanOrEqual(3);
+      for (const n of s.copy) expect(n.beat).toBeLessThan(4);
+      expect(s.mood.split(' ').length).toBeLessThanOrEqual(3);
+      expect(s.bpm).toBeGreaterThanOrEqual(72);
+      expect(s.bpm).toBeLessThanOrEqual(124);
+    });
+    it(`${s.name}: one hand never has to be in two places (no two notes on the same pad closer than an eighth at tempo)`, () => {
+      const byLane = new Map<string, number[]>();
+      for (const n of s.notes) (byLane.get(n.lane) ?? byLane.set(n.lane, []).get(n.lane)!).push(n.beat);
+      for (const beats of byLane.values()) for (let k = 1; k < beats.length; k++) expect(beats[k] - beats[k - 1]).toBeGreaterThanOrEqual(0.5 - 1e-9);
+      // never three pads at once (two hands)
+      const at = new Map<number, number>();
+      for (const n of s.notes) at.set(n.beat, (at.get(n.beat) ?? 0) + 1);
+      for (const c of at.values()) expect(c).toBeLessThanOrEqual(3);
+    });
+    it(`${s.name}: lasts 40–100 s`, () => {
+      const sec = (s.bars + 1) * 4 * secPerBeat(s.bpm);
+      expect(sec).toBeGreaterThan(40);
+      expect(sec).toBeLessThan(100);
+    });
+  });
+  it('the call-and-answer song has calls and leaves room for every answer', () => {
+    const ca = SONGS.find((s) => s.calls)!;
+    for (const c of ca.calls!) expect(c + 4).toBeLessThanOrEqual(ca.bars);
+  });
+});
+
+describe('timing judge', () => {
+  const notes = grid({ kick: 'x...x...', snare: '..x...x.' }); // beats 0,1,2,3
+  const spb = secPerBeat(80);
+
+  it('perfect, good, and a stray hit', () => {
+    const j = new NoteJudge(notes, spb);
+    expect(j.hit('kick', 0.02)?.grade).toBe('perfect');
+    expect(j.hit('snare', spb + 0.1)?.grade).toBe('good');
+    expect(j.hit('snare', spb * 1.5)).toBeNull(); // between notes
+    expect(j.hit('kick', 2 * spb - 0.05)?.grade).toBe('perfect');
+  });
+
+  it('a note is hit once; the wrong pad does not take it', () => {
+    const j = new NoteJudge(notes, spb);
+    expect(j.hit('snare', 0)).toBeNull();
+    expect(j.hit('kick', 0)?.grade).toBe('perfect');
+    expect(j.hit('kick', 0.01)).toBeNull();
+  });
+
+  it('passed notes become misses, and stars follow the share', () => {
+    const j = new NoteJudge(notes, spb);
+    j.hit('kick', 0);
+    j.hit('snare', spb);
+    j.hit('kick', 2 * spb);
+    let missed = 0;
+    j.sweep(10, () => missed++);
+    expect(missed).toBe(1);
+    const s = j.summary();
+    expect(s.share).toBeCloseTo(0.75);
+    expect(s.stars).toBe(2);
+    expect(j.done).toBe(true);
+  });
+
+  it('slow mode widens the windows', () => {
+    const j = new NoteJudge(notes, spb, windows(true));
+    expect(j.hit('kick', 0.15)?.grade).toBe('good');
+    expect(windows(true).good).toBeCloseTo(0.18);
+  });
+
+  it('notes added live (an answer) are judged', () => {
+    const j = new NoteJudge([], spb);
+    j.add(grid({ tom: 'x.......' }, 2));
+    expect(j.hit('tom', 8 * spb)?.grade).toBe('perfect');
+  });
+
+  it('stars: 1 finished, 2 at 70%, 3 at 90%', () => {
+    expect(starsFor(0.2)).toBe(1);
+    expect(starsFor(0.7)).toBe(2);
+    expect(starsFor(0.9)).toBe(3);
+  });
+
+  it('copy needs 3 of 4', () => {
+    expect(copyNeeds(4)).toBe(3);
+    expect(copyNeeds(3)).toBe(3);
+    expect(copyNeeds(6)).toBe(5);
+  });
+
+  it('calibration: the median tap offset, ignoring strays', () => {
+    const clicks = [0, 0.75, 1.5, 2.25];
+    expect(estimateOffset(clicks, [0.05, 0.81, 1.54, 2.3, 1.1])).toBeCloseTo(0.05, 2);
+    expect(estimateOffset(clicks, [0.05])).toBeNull();
+  });
+});
+
+describe('sequencer', () => {
+  it('maps the audio clock to beats and back', () => {
+    const c = new SongClock();
+    c.set(10, 0.5);
+    expect(c.beatAt(11)).toBe(2);
+    expect(c.timeAt(-4)).toBe(8);
+    c.delay(1);
+    expect(c.beatAt(11)).toBe(0);
+  });
+  it('hands out each event once, in order', () => {
+    const cur = new EventCursor([{ beat: -4 }, { beat: 0 }, { beat: 1 }, { beat: 2 }]);
+    cur.seek(-4);
+    const got: number[] = [];
+    cur.pull(0.5, (e) => got.push(e.beat));
+    cur.pull(0.5, (e) => got.push(e.beat));
+    cur.pull(5, (e) => got.push(e.beat));
+    expect(got).toEqual([-4, 0, 1, 2]);
+    expect(cur.done).toBe(true);
+  });
+});
+
+describe('bandmate', () => {
+  it('never plays a pad you have not unlocked', () => {
+    const b = new Bandmate(['kick', 'snare']);
+    for (let i = 0; i < 12; i++) {
+      for (const n of b.call(0)) expect(['kick', 'snare']).toContain(n.lane);
+      b.report({ share: 1 });
+    }
+  });
+  it('gets busier when you answer well, simpler when you struggle', () => {
+    const b = new Bandmate(['kick', 'snare', 'hat', 'tom']);
+    const n0 = b.call(0).length;
+    b.report({ share: 1 });
+    b.report({ share: 1 });
+    expect(b.level).toBe(2);
+    expect(b.call(0).length).toBeGreaterThanOrEqual(n0);
+    b.report({ share: 0.2 });
+    expect(b.level).toBe(1);
+  });
+  it('your answer is its call, two bars later', () => {
+    const call = new Bandmate(['kick', 'snare']).call(4);
+    const ans = Bandmate.answer(call);
+    expect(ans.map((n) => n.beat - 8)).toEqual(call.map((n) => n.beat));
+  });
+  it('listens: density, late nudges, and waiting', () => {
+    const b = new Bandmate(['kick', 'snare']);
+    for (let i = 0; i < 8; i++) b.hear({ lane: 'snare', beat: i, vel: 0.8, offset: 0.06 });
+    expect(b.density(8)).toBe(4);
+    expect(b.nudge()).toBe('snare');
+    expect(b.nudge()).toBeNull();
+    expect(b.idle(8 + 16)).toBe(true);
+    expect(b.idle(8 + 4)).toBe(false);
+  });
+});

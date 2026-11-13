@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <meta name="description" content="Thump: a hands-first mixed-reality drum game for Meta Quest. Every surface in your room is a drum: hit your real table and it plays. Copy grooves, play songs, trade fills with a bandmate." />
+    <meta property="og:title" content="Thump: play your room" />
+    <meta property="og:description" content="Every surface in your room is a drum. Hit your real table and it plays." />
+    <meta property="og:url" content="https://or-6.github.io/thump/" />
+    <meta name="theme-color" content="#4a2a18" />
+    <title>Thump</title>
+    <style>
+      @font-face { font-family: 'Lilita One'; src: url('./fonts/LilitaOne-Regular.ttf') format('truetype'); font-display: swap; }
+      :root {
+        --walnut: #5c3520; --walnut-deep: #4a2a18; --paper: #fff6e8; --ink: #2b2118; --ink-soft: #5a4636;
+        --tomato: #c43c28; --tomato-deep: #9a2c1c; --mustard: #f2b632; --teal: #11796d; --navy: #3d5a80;
+        --display: 'Lilita One', system-ui, sans-serif;
+      }
+      html, body { margin: 0; height: 100%; background: var(--walnut-deep); color: var(--ink);
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      #scene-container { position: fixed; inset: 0; }
+      #landing { position: fixed; inset: 0; overflow: auto; padding: 40px 16px; box-sizing: border-box;
+        background:
+          repeating-linear-gradient(178deg, #0000 0 38px, #ffffff08 38px 40px, #0000 40px 95px, #00000014 95px 97px),
+          linear-gradient(180deg, var(--walnut), var(--walnut-deep)); }
+      #landing[hidden] { display: none; }
+      #landing *, #landing *::before, #landing *::after { box-sizing: border-box; }
+      .sheet { position: relative; max-width: 640px; margin: 0 auto; padding: 40px 44px 30px; border-radius: 18px;
+        background: var(--paper); box-shadow: 0 6px 0 #d8c6a8, 0 20px 44px #0008; }
+      .sheet::before { content: ''; position: absolute; inset: 12px; border: 3px dashed #e3cfae; border-radius: 12px; pointer-events: none; }
+      .mast { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; position: relative; }
+      h1 { font-family: var(--display); font-weight: 400; font-size: 72px; line-height: 1; margin: 0; color: var(--tomato);
+        letter-spacing: 0.5px; text-shadow: 0 3px 0 #f2c9a4; }
+      .tag { font-family: var(--display); font-size: 28px; margin: 0; color: var(--navy); }
+      .lede { font-size: 19px; line-height: 1.5; margin: 22px 0 26px; color: var(--ink); max-width: 34em; position: relative; }
+      .go, .nohead { position: relative; }
+      .patch { font-family: var(--display); font-size: 26px; color: #fff6e8; background: var(--tomato); border: 0; cursor: pointer;
+        padding: 16px 30px 14px; border-radius: 14px; box-shadow: 0 5px 0 var(--tomato-deep); outline: 3px dashed #ffffff55; outline-offset: -9px; }
+      .patch:hover { filter: brightness(1.06); }
+      .patch:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--tomato-deep); }
+      .patch:focus-visible { outline: 3px solid var(--navy); outline-offset: 3px; }
+      .patch.small { font-size: 18px; padding: 10px 18px 9px; }
+      .note { font-size: 15px; color: var(--ink-soft); margin: 14px 0 0; line-height: 1.45; }
+      .xr-fail { color: var(--tomato-deep); font-weight: 600; margin: 12px 0 0; }
+      .quest { font-size: 17px; line-height: 1.5; margin: 0 0 12px; }
+      .url { font-family: ui-monospace, Menlo, monospace; background: #f3e3c6; padding: 1px 6px; border-radius: 5px; }
+      details.prep { margin-top: 30px; position: relative; border-top: 2px solid #ead8b8; padding-top: 14px; }
+      details.prep summary { font-family: var(--display); font-size: 21px; color: var(--navy); cursor: pointer; }
+      .opts { display: grid; gap: 11px; margin-top: 14px; font-size: 16px; }
+      .opts label { display: flex; gap: 10px; align-items: center; }
+      .opts input[type='checkbox'] { width: 20px; height: 20px; accent-color: var(--teal); }
+      .opts select, .opts input[type='range'] { font: inherit; accent-color: var(--teal); }
+      .opts .row { gap: 12px; }
+      .small-print { font-size: 14px; color: var(--ink-soft); margin: 4px 0 0; }
+      .link { font: inherit; color: var(--tomato-deep); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+      .foot { margin-top: 26px; font-size: 13px; color: var(--ink-soft); position: relative; }
+      @media (max-width: 520px) {
+        #landing { padding: 16px; }
+        .sheet { padding: 28px 22px 22px; }
+        h1 { font-size: 56px; }
+        .tag { font-size: 23px; }
+        .lede { font-size: 17px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>
