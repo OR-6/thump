@@ -107,7 +107,7 @@ export function buildPage(m: MenuInput): Page {
     }
     case 'songs': {
       const items: Item[] = [back()];
-      m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.locked ? 'Play the one before it' : s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24, y: 140 + i * 124, w: 860, h: 108 }));
+      m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.locked ? 'Play the one before it' : s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24, y: 136 + i * 106, w: 860, h: 96 }));
       items.push({ id: 'level:easy', label: 'EASY', on: m.level === 'easy', kind: 'chip', x: 910, y: 130, w: 205, h: 110 });
       items.push({ id: 'level:normal', label: 'NORMAL', on: m.level === 'normal', kind: 'chip', x: 1131, y: 130, w: 205, h: 110 });
       items.push({ id: 'nav:instruments', label: m.inst.name.toUpperCase(), sub: 'You play this', icon: m.inst.id, kind: 'button', x: 910, y: 262, w: 426, h: 150 });

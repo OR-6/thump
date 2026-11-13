@@ -348,13 +348,17 @@ describe('the game', () => {
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
     }
     const end = t;
+    const subs: string[] = [];
     for (let k = 0; k < 600 && g.mode === 'results'; k++) {
       t += 1 / 30;
       now = t;
       g.tick(t);
+      subs.push(g.display.sub);
     }
     expect(log.filter((x) => x === 'drop').length).toBeGreaterThanOrEqual(2);
     expect(voiced.filter((x) => x > end).length).toBeGreaterThan(20);
+    // and it was your playing that came back
+    expect(subs).toContain('That was you');
   });
 
   it('a hand resting on a thing silences its part in the machine; lifting it brings it back', () => {

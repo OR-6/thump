@@ -263,3 +263,56 @@ export function assign(part: PartDef, hitKey: string, zones: (surface: string) =
   if (part.pitched === 'yes' && zones(surface) < 4) return { surface: 'keys', key: 'keys:0', moved: true };
   return { surface, key: hitKey, moved: false };
 }
+
+/**
+ * Today's song: a new track every day, the same for everyone that day. Its tempo, key, groove and tune are picked
+ * from pools that sit right together (a backbeat always on 2 and 4; a tune that walks the scale; a bass on the chord
+ * roots), seeded from the date.
+ */
+export function dailyTrack(day: string): TrackDef {
+  let seed = 2166136261;
+  for (let i = 0; i < day.length; i++) seed = Math.imul(seed ^ day.charCodeAt(i), 16777619) >>> 0;
+  const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)];
+  const minor = rnd() < 0.5;
+  const key = pick([0, 2, 5, 7, 9]);
+  const bpm = pick([84, 88, 92, 96, 100, 104]);
+  const r = 48 + key;
+  // a tune: two bars of eighths, walking the scale a step or two at a time, resting between phrases
+  const tune = (): string => {
+    let d = pick([0, 2, 4]);
+    let out = '';
+    for (let b = 0; b < 2; b++) {
+      for (let k = 0; k < 8; k++) {
+        if (k % 2 === 1 || rnd() < 0.3 || (b === 1 && k >= 6)) out += '.';
+        else {
+          d = Math.max(0, Math.min(5, d + pick([-2, -1, 1, 1, 2, 0])));
+          out += String(d);
+        }
+      }
+      if (b === 0) out += '|';
+    }
+    return out;
+  };
+  const doy = Math.floor((Date.parse(`${day}T12:00:00Z`) - Date.parse(`${day.slice(0, 4)}-01-01T00:00:00Z`)) / 86400000) + 1;
+  return {
+    id: `daily-${day}`,
+    name: `Daily ${Number.isFinite(doy) ? doy : 1}`,
+    bpm,
+    key,
+    minor,
+    swing: rnd() < 0.3 ? 0.58 : undefined,
+    needs: 0,
+    chords: minor ? [r + 12, r + 17] : [r + 12, r + 9],
+    minorChords: minor ? [0, 1] : [1],
+    parts: [
+      { name: 'KICK', pattern: pick(['X...x...|X...x...', 'X..x....|X..x.x..', 'X...x.x.|X...x...']), pitched: 'no' },
+      { name: 'SNARE', pattern: '..X...X.|..X...X.', pitched: 'no' },
+      { name: 'HAT', pattern: pick(['x.x.x.x.|x.x.x.x.', '.x.x.x.x|.x.x.x.x', 'x.xxx.x.|x.x.x.xx']), pitched: 'no' },
+      { name: 'PERC', pattern: pick(['...x...x|...x...x', '..x...x.|..x.....', '.x...x..|.x...x..']), pitched: 'no' },
+      { name: 'KEYS', pattern: tune(), pitched: 'yes' },
+      // the bass on the roots: the first chord, then the second (in the minor pentatonic iv is degree 2; vi is 4)
+      { name: 'BASS', pattern: minor ? '0...0...|2...2...' : '0...0...|4...4...', pitched: 'if-it-can' },
+    ],
+  };
+}

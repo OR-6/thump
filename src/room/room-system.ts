@@ -73,6 +73,7 @@ import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R } from './hand-mallet.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
+import { Dimmer } from './dimmer.js';
 
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
 const RESUME_WINDOW_S = 4;
@@ -202,7 +203,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kitEntity = this.world.createTransformEntity(this.kit.root);
     this.kit.root.add(this.stand.root);
     for (const m of this.handMallets) this.worldRoot.add(m.group);
-    this.worldRoot.add(this.waterfall.slabs, this.waterfall.discs, this.waterfall.beams);
+    this.worldRoot.add(this.waterfall.slabs, this.waterfall.discs, this.waterfall.beams, this.dimmer.mesh);
     this.kitHome = this.kit.root.parent;
     this.worldRoot.name = 'RoomOverlays';
     this.world.createTransformEntity(this.worldRoot);
@@ -394,6 +395,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       saveSettings(this.settings);
     },
     tune: (k) => this.tunePage(k),
+    lightsDown: (on) => this.dimmer.set(on),
     flourish: () => {
       for (const o of this.overlays.values()) o.sweep();
       this.kit.keys.sweep();
@@ -1168,6 +1170,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // the song's notes fall onto what plays them
     this.kit.root.getWorldQuaternion(this.kitQ);
     this.waterfall.update(this.game.motes, this.game.moteCount, this.kitQ, this.resolveNote);
+    this.dimmer.update(dt, this.head, motion.calm);
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
     if (this.debug.anchored) this.saveKitPose();
     if (this.unsaved.length && this.roomAnchor()) {
@@ -1177,6 +1180,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private waterfall = new Waterfall();
+  private dimmer = new Dimmer();
   private kitQ = new Quaternion();
   /** Where a note lands (world), its colour, and its target's size and shape. */
   private resolveNote = (key: string, out: Vector3, col: Color, t: NoteTarget): boolean => {
@@ -2132,6 +2136,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (this.flam('kit', LANE_INDEX[lane] ?? 9, side, t)) return;
     const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
     audio.drum(lane, gain, pan, 0, 1);
+    this.dimmer.hit(LED[lane === 'rim' ? 'snare' : lane], gain);
     if (lane !== 'rim') this.kit.pad(lane)?.hit(gain);
     const g = this.game.hit(`kit:${lane === 'rim' ? 'snare' : lane}`, t, gain);
     if (g === 'perfect' && lane !== 'rim') {
@@ -2481,6 +2486,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (x >= STRUM.x0 - 0.03 && x <= STRUM.x1 + 0.03 && z >= STRUM.z0 - 0.03 && z <= STRUM.z1 + 0.03) {
         if (this.flam('guitar', 9, side, t)) return;
         this.strum(this.guitarChord, gain, pan, 0);
+        this.dimmer.hit(instDef('guitar').color, gain);
         for (let s = 3; s < 9; s++) o?.hit(s, gain * (1 - (s - 3) * 0.08));
         this.kit.instStruck(3, gain);
         // (in a track a strum is just a strum: it plays the chord under the bar)
@@ -2494,6 +2500,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (id === 'piano' && best === PIANO_CHORD) this.chordPadT = this.clock.t;
       // (the bass part being built on the piano is heard where it will play: two octaves down)
       this.playInst(id, best + (id === 'piano' && best !== PIANO_CHORD ? this.game.pianoLow() : 0), gain, pan, 0);
+      this.dimmer.hit(instDef(id).color, gain);
       o?.hit(best, gain);
       this.kit.instStruck(best, gain);
       const g = this.game.hit(`${id}:${best}`, t, gain);

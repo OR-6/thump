@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TRACKS, assign, ownBar, played, quantise, steps, LOOP_BEATS } from '../src/play/build.js';
+import { TRACKS, assign, dailyTrack, ownBar, played, quantise, steps, LOOP_BEATS } from '../src/play/build.js';
 
 const kick = steps('X.....x.|x...x...');
 
@@ -147,6 +147,23 @@ describe('build: the tracks sound like songs', () => {
     for (const t of TRACKS) expect(t.chords.length).toBe(2);
     expect(steps('xx......|........', 0.58).map((s) => s.beat)).toEqual([0, 0.58]);
     expect(TRACKS.find((t) => t.id === 'boom-bap-88')!.swing).toBeGreaterThan(0.5);
+  });
+});
+
+describe("today's song", () => {
+  it('is the same all day, different the next, with a backbeat, a tune in the scale, the bass on the roots', () => {
+    const a = dailyTrack('2026-11-14');
+    expect(dailyTrack('2026-11-14')).toEqual(a);
+    const days = ['2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18'].map(dailyTrack);
+    expect(days.some((d) => JSON.stringify(d.parts) !== JSON.stringify(a.parts) || d.bpm !== a.bpm)).toBe(true);
+    for (const d of [a, ...days]) {
+      expect(d.id.startsWith('daily-')).toBe(true);
+      expect(steps(d.parts.find((p) => p.name === 'SNARE')!.pattern).map((s) => s.beat)).toEqual([1, 3, 5, 7]);
+      const tune = steps(d.parts.find((p) => p.name === 'KEYS')!.pattern);
+      expect(tune.length).toBeGreaterThan(2);
+      expect(tune.every((s) => s.degree >= 0 && s.degree <= 5)).toBe(true);
+      expect(d.chords).toHaveLength(2);
+    }
   });
 });
 
