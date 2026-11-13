@@ -29,17 +29,17 @@ Feature chips (top right): **hand tracking** on shots 1–2, **plane detection**
 
 | # | Time | Shot | How to get it | On-screen text |
 |---|---|---|---|---|
-| 1 | 0:00–0:05 | **Cold open:** a flat hand taps the real door; light spreads from the hand and marimba bars snap in; a marimba note | Fresh start; walk to the door; hit it once | "Every surface is an instrument." |
-| 2 | 0:05–0:12 | Back at the desk: "Hit anything"; a slap, and the kit blooms out from the palm, each pad sounding as it appears | Fresh start, sit down first | "Hit anything." |
-| 3 | 0:12–0:24 | The wall becomes a gong (bronze, a long bloom, rings across the wall); the next wall a timpani; the window a glockenspiel, played gently | Lean or stand | "Your walls, a gong and timpani. Your window, a glockenspiel." |
-| 4 | 0:24–0:30 | **The tutti:** both hands slam the table and the whole room answers, a ring of light crossing the room, each instrument sounding as it arrives | Three instruments found, then both hands at once | "The whole room, at once." |
-| 5 | 0:30–1:00 | *Porch Step*: notes fly as light to the desk's bars and the pads; the instruments you found join in softly; the last chord crosses the room | Tap ▶ on the module | "Songs cast onto your room." |
-| 6 | 1:00–1:18 | **JAM:** the bandmate's mallets fly from the module to its instrument and play; "Your turn"; you answer | After the first song, tap JAM (or `?unlock=all`) | "A bandmate at your table." |
-| 7 | 1:18–1:30 | **Swap:** pinch and hold the window; the glockenspiel becomes a harp | After Porch Step | "Change any sound." |
-| 8 | 1:30–1:42 | A friend's phone in frame, tapping the bass pad in time with the light | Tap JAM; the code on the module; join from the phone | "A friend's phone is the bass." |
-| 9 | 1:42–1:55 | Headset off and on: the kit and the door's bars are still drawn | Real re-entry | "Your room remembers." |
-| 10 | 1:55–2:08 | Seated only (the airplane test): kit and bars, swap the bars to a vibraphone, play | Sit, hands on the desk | "A whole instrument at any desk." |
-| 11 | 2:08–2:20 | The link, big | Title card | "or-6.github.io/thump" |
+| 1 | 0:00–0:06 | **Cold open, seated:** a coffee cup on a table. A finger taps it twice; a ring of light, then it rings like a bell | Fresh start; a cup on the table | "Tap your cup twice." |
+| 2 | 0:06–0:14 | Three cups of different heights tapped in turn: three different notes, a little tune | Keep playing | "Taller cups ring lower." |
+| 3 | 0:14–0:22 | A slap on the table: the kit grows out from under the palm, each pad sounding as it appears; then a groove | Same seat | "The table is a drum kit." |
+| 4 | 0:22–0:28 | A book knocks like wood; hands drum on knees under the table: congas | Same seat | "Your knees are congas." |
+| 5 | 0:28–0:34 | **Both hands slam the table:** every instrument found plays one chord, light running across them | Three or more found | (no text) |
+| 6 | 0:34–1:02 | *Porch Step*: notes fly to the cups and the bars a beat early; the other instruments join in quietly; the last chord; then the encore | Tap ▶ on the module | "Songs for whatever's on your table." |
+| 7 | 1:02–1:18 | **JAM:** the bandmate's mallets lift off the module, play on your cups, and you answer | After the first song, tap JAM (or `?unlock=all`) | "Someone to play with." |
+| 8 | 1:18–1:28 | Pinch and hold the bars: balafon becomes a harp | After Porch Step | "Change any sound." |
+| 9 | 1:28–1:44 | Stand up: the wall booms like a gong, the door is a marimba, the window a glockenspiel | Needs the room scan | "Get up and the room joins in." |
+| 10 | 1:44–1:56 | An airplane-style tray: a cup and a phone, played seated in a tight space | Any small table | "Anywhere you can sit." |
+| 11 | 1:56–2:06 | The link | Title card | "or-6.github.io/thump" |
 
 Record 2–3 takes of each. Keep your head still during the action; move only between shots.
 
