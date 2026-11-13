@@ -4,13 +4,14 @@
  * its instrument's colour, with a faint beam above it, landing on the beat. Hit, it bursts into the target; missed,
  * it dims where it landed. Three draws for all of them; no allocation per frame.
  */
-import { AdditiveBlending, BoxGeometry, Color, CylinderGeometry, InstancedMesh, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from '@iwsdk/core';
+import { BoxGeometry, Color, CylinderGeometry, InstancedMesh, Matrix4, MeshBasicMaterial, Quaternion, Vector3 } from '@iwsdk/core';
+import { asLight } from '../art/light.js';
 import type { MoteView } from '../play/game.js';
 
 const MAX = 48;
 /** How far a note falls per beat (m), and how many beats ahead it shows. */
-export const FALL_PER_BEAT = 0.085;
-export const SHOW_BEATS = 2;
+export const FALL_PER_BEAT = 0.07;
+export const SHOW_BEATS = 3;
 
 /** A note's target: where (world), its colour, its size (m) and whether it's round. */
 export interface NoteTarget {
@@ -33,7 +34,8 @@ export class Waterfall {
   readonly beams: InstancedMesh;
 
   constructor() {
-    const mat = () => new MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
+    // light that only ever brightens what you see (over passthrough a plain additive blend would darken it)
+    const mat = () => asLight(new MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
     this.slabs = new InstancedMesh(new BoxGeometry(1, 1, 1), mat(), MAX);
     this.discs = new InstancedMesh(new CylinderGeometry(0.5, 0.5, 1, 28), mat(), MAX);
     this.beams = new InstancedMesh(new BoxGeometry(1, 1, 1), mat(), MAX);
@@ -59,22 +61,25 @@ export class Waterfall {
     _up.set(0, 1, 0).applyQuaternion(q);
     for (let i = 0; i < count; i++) {
       const n = notes[i];
-      if (n.ahead > SHOW_BEATS || n.ahead < -0.4) continue;
-      if (!resolve(n.key, _p, _c, _t)) continue;
       const hit = n.grade === 'perfect' || n.grade === 'good';
-      const missed = n.ahead < 0 && !hit;
-      // brighter as it nears; a hit bursts (wider, white, gone in a quarter beat); a miss dims where it landed
+      if (n.ahead > SHOW_BEATS || (n.ahead < -0.6 && !hit)) continue;
+      if (!resolve(n.key, _p, _c, _t)) continue;
+      // brighter as it nears; a hit bursts on the frame you hit it (on the target, wider, white, gone in a moment);
+      // a miss dims where it landed
       let k = 0.35 + 0.65 * (1 - Math.min(1, Math.max(0, n.ahead) / SHOW_BEATS));
       let grow = 1;
+      let landed = false;
       if (hit) {
-        const a = Math.min(1, -n.ahead / 0.25);
+        const a = Math.min(1, Math.max(0, n.since ?? -n.ahead) / 0.22);
+        if (a >= 1) continue;
         k = 1 - a;
-        grow = 1 + a * 0.8;
-        _c.lerp(_white, 0.6);
-      } else if (missed) k *= Math.max(0, 1 + n.ahead / 0.4) * 0.4;
+        grow = 1 + a * (n.grade === 'perfect' ? 1.0 : 0.4);
+        _c.lerp(_white, n.grade === 'perfect' ? 0.85 : 0.4);
+        landed = true;
+      } else if (n.ahead < -0.2) k *= Math.max(0, 1 + (n.ahead + 0.2) / 0.4) * 0.4;
       if (k <= 0.01) continue;
       _c.multiplyScalar(k);
-      const h = Math.max(0, n.ahead) * FALL_PER_BEAT + 0.004;
+      const h = landed ? 0.004 : Math.max(0, n.ahead) * FALL_PER_BEAT + 0.004;
       const at = _p.addScaledVector(_up, h);
       const w = _t.w * 0.86 * grow;
       const d = (_t.round ? _t.w : Math.min(_t.d, 0.045)) * 0.86 * grow;

@@ -373,7 +373,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const notes = [0, 4, 7, 14];
       for (let i = 0; i < stars; i++) this.later(this.clock.t + 0.45 * (i + 1), () => audio.modal(fam, root + notes[i], 0.75, (i - 1) * 0.3, 0, 0.4, 'stars'));
       if (stars === 3) this.later(this.clock.t + 1.8, () => audio.modal(fam, root + notes[3], 0.6, 0, 0, 0.4, 'stars'));
-      this.afterFirstSong();
     },
     casting: (c) => {
       // the table marimba glows brighter when a song uses it
@@ -445,7 +444,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     },
     unlock: (u: Unlock) => {
-      if (u === 'swaps') this.later(this.clock.t + 7, () => this.tellSwaps());
+      void u;
       if (u === 'tom') {
         this.layout();
         this.kit.pad('tom')?.appear('slide');
@@ -2175,6 +2174,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.refreshStand();
   }
   private useInstrumentNow(id: InstId | null): void {
+    this.kit.unfoldS = this.game.mode === 'play' || this.game.mode === 'count' ? 0.3 : 0.5;
     const want = id ?? ((SHELF.map((d) => d.id) as InstId[]).includes(this.settings.inst as InstId) ? (this.settings.inst as InstId) : 'drums');
     const root = this.instRoot(want);
     const scale = scaleById(this.shelfCfg(want).scale);
@@ -2221,27 +2221,39 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const k = this.panelItemAt(this.o.x, this.o.z);
         if (k < 0) continue;
         // the fingertip went through the face: that's a press, however gently (like a touch screen)
-        if (was > 0.002 && off <= 0) this.pressPanel(k);
+        if (was > 0.012 && off <= 0) this.pressPanel(k);
         const near = 1 - Math.max(0, off) / 0.05;
         if (near > bk) {
           bk = near;
           best = k;
+          this.hoverX = this.o.x;
+          this.hoverZ = this.o.z;
         }
       }
     }
-    this.kit.module.hover(best, bk);
+    this.kit.module.hover(best, bk, this.hoverX, this.hoverZ);
   }
 
   /** The panel's press zones: one per item on the page showing. */
   private zonesFor = -1;
   /** The item whose rectangle holds this panel point (strictly: off the panel is nothing), or −1. */
   private panelItemAt(x: number, z: number): number {
+    // inside an item, or within 8 mm of one (the nearest): fingertips land a few millimetres off
     const zs = this.moduleSurface.zones;
+    let best = -1;
+    let bd = 0.008;
     for (let i = 0; i < zs.length; i++) {
       const q = zs[i];
-      if (Math.abs(x - q.x) <= q.w / 2 && Math.abs(z - q.z) <= q.h / 2) return i;
+      const dx = Math.max(0, Math.abs(x - q.x) - q.w / 2);
+      const dz = Math.max(0, Math.abs(z - q.z) - q.h / 2);
+      const d = Math.hypot(dx, dz);
+      if (d === 0) return i;
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
     }
-    return -1;
+    return best;
   }
   private pageT = -9;
   private panelZones(): void {
@@ -2264,6 +2276,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private tipOff = [1, 1];
+  private hoverX = 0;
+  private hoverZ = 0;
   private panelPressT = -9;
   /** An item on the panel was pressed. */
   private pressPanel(k: number): void {
@@ -2271,12 +2285,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (!it || it.off) return;
     // one press per poke (the touch and the strike can both see it), and none just after the page changed (the
     // finger that pressed is still there, over something new)
-    if (this.clock.t - this.panelPressT < 0.45 || this.clock.t - this.pageT < 0.4) return;
+    if ((k === this.panelPressK && this.clock.t - this.panelPressT < 0.15) || this.clock.t - this.panelPressT < 0.08 || this.clock.t - this.pageT < 0.3) return;
     this.panelPressT = this.clock.t;
+    this.panelPressK = k;
     this.kit.module.pressKey(k);
     audio.tick();
-    this.panelAction(it.id);
+    // a press that changes the page flashes on what you pressed for a moment first
+    const moves = it.id.startsWith('nav:') || it.id === 'back' || it.id === 'play' || it.id === 'again' || it.id === 'next' || it.id === 'make' || it.id.startsWith('inst:') || it.id === 'key:play';
+    if (moves) this.later(this.clock.t + 0.09, () => this.panelAction(it.id));
+    else this.panelAction(it.id);
   }
+  private panelPressK = -1;
 
   /** What a panel item does: instruments and their settings and the band here; the rest is the game's. */
   private panelAction(id: string): void {
@@ -2451,7 +2470,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (best >= 0) {
         // a chord pad: that chord, and a soft strum of it so the hand that picks is heard too
         this.guitarChord = best;
-        this.chordPickedT = this.clock.t;
+        if (!this.game.harmony()?.song) this.chordPickedT = this.clock.t;
         if (this.flam('guitar', best, side, t)) return;
         this.strum(best, gain * 0.45, pan, 0);
         o?.hit(best, gain);
@@ -2587,13 +2606,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
    */
   private bloom(lanes: readonly Lane[]): void {
     this.kit.revealKeys(this.hitAt.x, this.hitAt.z);
-    // then the thing the room scan can't show you: what's on the table plays too
-    this.later(this.clock.t + 5, () => {
-      if (this.settings.noWords || this.game.mode !== 'discover' || this.tag.shownText || this.kit.inst !== 'drums') return;
-      // more than drums: the shelf is on the box's arrows
-      this.tmp.set(0, 0.1, -0.2).applyMatrix4(this.kit.root.matrixWorld);
-      this.tag.show('◀ ▶ for piano, guitar, more', 0xfff2dc, this.tmp, this.head, 5);
-    });
     const fx = this.hitAt.x;
     const fz = this.hitAt.z;
     const order = lanes
@@ -2681,7 +2693,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (DEBUG) console.log(`[thump] discovered ${s.id} '${s.label}' → ${v.family} (${v.why}) size ${v.size.toFixed(2)}`);
     if (!this.restoring) this.remember(s);
-    if (!this.restoring && !this.swapTold && swappable(s) && (this.progress.unlocks as string[]).includes('swaps')) this.later(this.clock.t + 2.5, () => this.tellSwaps());
+    void swappable;
     this.game.discovered(v.family, s === this.kitSurface ? 'table' : surfaceName(s).toLowerCase(), this.clock.t);
     this.refreshDebugSurfaces();
   }

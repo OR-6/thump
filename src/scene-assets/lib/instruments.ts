@@ -111,16 +111,16 @@ export class PianoModel implements DeskModel {
   }
 
   struck(i: number, gain: number): void {
-    this.spring.kick(i, 0.12 + 0.25 * gain);
+    this.spring.kick(i, 0.3 + 0.3 * gain);
   }
 
   update(dt: number): void {
-    this.spring.step(dt);
+    // critically damped: down in ~25 ms, back without bouncing up
+    this.spring.step(dt, 1600, 80);
     for (let i = 0; i < this.keys.length; i++) {
       const k = this.keys[i];
       if (this.keyY[i] === undefined) continue;
-      // a key sinks (up to 6 mm) and comes back on its spring
-      k.position.y = this.keyY[i] + Math.max(-0.006, Math.min(0.001, this.spring.x[i]));
+      k.position.y = this.keyY[i] + Math.max(-0.006, Math.min(0, this.spring.x[i]));
     }
   }
 }
@@ -258,6 +258,7 @@ export class HandpanModel implements DeskModel {
   private shell: Mesh | null = null;
   private readonly steel = mat('Steel', 0x4a3a2c, 0.32, 0.85);
   private readonly field = mat('Field', 0x5c4a38, 0.22, 0.9);
+  private glow: number[] = [];
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -286,7 +287,8 @@ export class HandpanModel implements DeskModel {
       const d = Math.hypot(q.x - ding.x, q.z - ding.z) / R;
       const y = 0.006 + H * Math.sqrt(Math.max(0, 1 - d * d)) * 0.98;
       const g = i === 0 ? new CylinderGeometry(r * 0.75, r, 0.006, 40) : new TorusGeometry(r * 0.82, 0.0022, 8, 40);
-      const m = named(new Mesh(g, this.field), i === 0 ? 'Ding' : `Field${i}`);
+      // (each field its own material, so a struck one can glow)
+      const m = named(new Mesh(g, this.field.clone()), i === 0 ? 'Ding' : `Field${i}`);
       if (i !== 0) m.rotation.x = -Math.PI / 2;
       m.position.set(q.x, y + (i === 0 ? 0.003 : 0.001), -q.z);
       // tilted with the dome under it
@@ -302,14 +304,17 @@ export class HandpanModel implements DeskModel {
 
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.1 + 0.2 * gain);
+    this.glow[i] = 0.6 + 0.6 * gain;
   }
 
   update(dt: number): void {
     this.spring.step(dt, 1400, 18);
     this.fields.forEach((m, i) => {
-      // a struck field rings: it swells and the shimmer runs round it
+      // a struck field rings: it swells and glows warm, fading in about a sixth of a second
       const s = 1 + Math.abs(this.spring.x[i]) * 12;
       m.scale.set(s, i === 0 ? 1 : s, s);
+      const g = (this.glow[i] = Math.max(0, (this.glow[i] ?? 0) - dt * 6));
+      (m.material as MeshStandardMaterial).emissive.setHex(0xffc27a).multiplyScalar(g);
     });
   }
 }

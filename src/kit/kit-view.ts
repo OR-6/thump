@@ -105,17 +105,15 @@ export class KitView {
   reveal(lanes: readonly Lane[]): void {
     for (const l of lanes) this.pads.get(l)?.appear('fade');
     this.keys.build(this.keyZones);
-    this.keys.reveal();
-    this.keys.group.visible = true;
-    this.keysShown = true;
+    this.keys.group.visible = false;
   }
 
   /** The bars draw in from a point (kit zone coordinates), as part of the kit's first bloom. */
   revealKeys(fromX: number, fromZ: number): void {
+    void fromX;
+    void fromZ;
     this.keys.build(this.keyZones);
-    this.keys.reveal(fromX, fromZ);
-    this.keys.group.visible = this.inst === 'drums';
-    this.keysShown = true;
+    this.keys.group.visible = false;
   }
 
   /**
@@ -155,6 +153,8 @@ export class KitView {
     ['handpan', new HandpanModel()],
   ]);
   private unfoldT = 1;
+  /** How long the unfold takes (quicker when a song is on: the notes are already coming). */
+  unfoldS = 0.5;
 
   /** A note was played on the instrument out (zone i): it moves. */
   instStruck(i: number, gain: number): void {
@@ -194,7 +194,7 @@ export class KitView {
       m.update(dt);
       // it unfolds onto the desk: grows from flat and narrow to full over half a second, overshooting a touch
       if (this.unfoldT < 1) {
-        this.unfoldT = Math.min(1, this.unfoldT + dt / 0.5);
+        this.unfoldT = Math.min(1, this.unfoldT + dt / this.unfoldS);
         const t = this.unfoldT;
         const e = 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2);
         m.root.scale.set(0.6 + 0.4 * e, Math.max(0.05, e), 0.6 + 0.4 * e);

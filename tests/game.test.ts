@@ -110,7 +110,7 @@ describe('the game', () => {
     expect(g.lastTight).toBeGreaterThan(60);
     // the score first and it stays: notes played, then how it sat in time
     g.tick((t += 1.6));
-    expect(g.display.line).toMatch(/^\d+ of \d+$/);
+    expect(g.display.line).toMatch(/^\d+ of \d+ notes$/);
     expect(g.display.sub).toMatch(/On time \d+%|ahead|behind|Loose/);
     expect(g.display.stars).toBe(3);
     // the machine played under it: the parts you don't play live (perc, keys, bass), never the ones you do
@@ -427,7 +427,7 @@ describe('the game', () => {
     expect(g.display.songCard?.name).toBe('Kick Start');
     g.key('next');
     expect(g.display.songCard?.name).toBe('Two Step');
-    g.key('next');
+    g.key('prev');
     expect(g.display.songCard?.name).toBe('Kick Start');
     g.tick(45);
     g.beginBuild(0);
@@ -566,8 +566,9 @@ describe('the game', () => {
     expect(due.every((k) => k.startsWith('kit:'))).toBe(true);
     expect(g.last!.stars).toBe(3);
     g.tick((t += 8));
-    expect(g.display.sub).toBe('Again ▶   Make it yours >');
-    g.key('next');
+    // the results: again, the next song, or make this one your own
+    expect(g.display.page?.items.map((i) => i.id)).toEqual(['again', 'next', 'make', 'nav:main']);
+    g.act('make');
     expect(g.mode).toBe('build');
   });
 

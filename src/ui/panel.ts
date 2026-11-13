@@ -5,7 +5,8 @@
  * count or the results' stars. You poke an item with a fingertip, or pinch it: it lights and clicks. One canvas;
  * presses and pulses are light quads on top, so nothing redraws every frame. Kit-local, centred behind the instrument.
  */
-import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, SRGBColorSpace } from '@iwsdk/core';
+import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace } from '@iwsdk/core';
+import { asLight } from '../art/light.js';
 import { FONT, MARKER, whenFonts } from './fonts.js';
 import { star, type Display } from './module.js';
 import type { Item, Page } from './menu.js';
@@ -39,6 +40,8 @@ function rounded(g: CanvasRenderingContext2D, x: number, y: number, w: number, h
 }
 
 function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: number, min: number, room: number): number {
+  // (never below 30 px: about 7.5 mm on the panel, readable from a seat)
+  min = Math.max(30, min);
   g.font = `${weight} ${px}px ${FONT}`;
   while (g.measureText(text).width > room && px > min) g.font = `${weight} ${--px}px ${FONT}`;
   return px;
@@ -59,6 +62,7 @@ export class Panel {
   shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   private sig = '';
   private itemsSig = '';
+  private barW = 0.3;
   private faceMat: MeshBasicMaterial;
   private face: Mesh;
   /** A new page slides in (0 → 1), the panel grows in when it first shows (0 → 1). */
@@ -94,6 +98,30 @@ export class Panel {
     }
     this.frame.rotation.x = Math.PI / 2;
     this.root.add(this.frame);
+    this.cursor = new Mesh(new RingGeometry(0.8, 1, 32), asLight(new MeshBasicMaterial({ color: 0xfff2dc, toneMapped: false })));
+    this.cursor.renderOrder = 9;
+    this.cursor.visible = false;
+    this.root.add(this.cursor);
+    // the progress bar: a strip anchored at its left end, scaled in x (no canvas redraw as the song goes on)
+    const barGeo = new PlaneGeometry(1, 1);
+    barGeo.translate(0.5, 0, 0);
+    this.bar = new Mesh(barGeo, new MeshBasicMaterial({ color: 0xf2efe6, toneMapped: false, transparent: true }));
+    this.bar.renderOrder = 7;
+    this.bar.visible = false;
+    const bz = itemZone({ x: 40, y: 470, w: CW - 80, h: 22 });
+    this.bar.position.set(bz.x - bz.w / 2, bz.z, 0.0008);
+    this.bar.scale.set(0.0001, bz.h, 1);
+    this.barW = bz.w;
+    this.comboCanvas.width = 512;
+    this.comboCanvas.height = 256;
+    this.comboTex = new CanvasTexture(this.comboCanvas);
+    this.comboTex.colorSpace = SRGBColorSpace;
+    const cz = itemZone({ x: 40, y: 200, w: 480, h: 240 });
+    this.comboMesh = new Mesh(new PlaneGeometry(cz.w, cz.h), new MeshBasicMaterial({ map: this.comboTex, transparent: true, toneMapped: false }));
+    this.comboMesh.position.set(cz.x, cz.z, 0.0008);
+    this.comboMesh.renderOrder = 7;
+    this.comboMesh.visible = false;
+    this.root.add(this.bar, this.comboMesh);
     this.root.position.set(0, PANEL.y, PANEL.z);
     this.root.rotation.x = -PANEL.lean;
     whenFonts(() => {
@@ -111,22 +139,46 @@ export class Panel {
     if (i >= 0 && i < MAX_ITEMS) this.press[i] = 1;
   }
 
-  /** A fingertip near item `i` (−1: none), `k` 0 (5 cm off) … 1 (touching). */
-  hover(i: number, k: number): void {
+  /** A fingertip near item `i` (−1: none), `k` 0 (5 cm off) … 1 (touching), over panel point (x right, z up, m). */
+  hover(i: number, k: number, x = 0, z = 0): void {
     this.hoverI = i;
     this.hoverK = k;
+    this.cursorAt.x = x;
+    this.cursorAt.z = z;
   }
+  private cursorAt = { x: 0, z: 0 };
+  /** A ring where your fingertip will land, shrinking as it nears (and lit on contact). */
+  private cursor: Mesh;
+  private hoverShown = 0;
+  /** The song so far (a bar that grows) and the run of notes in a row (its own little canvas). */
+  private bar: Mesh;
+  private comboCanvas = document.createElement('canvas');
+  private comboTex: CanvasTexture;
+  private comboMesh: Mesh;
+  private lastCombo = -1;
 
   set(d: Display): void {
     this.shown = d;
     const p = d.page;
     if (!p) return;
-    const sig = [p.id, p.title, p.line, d.count, d.stars, d.gold, d.code, Math.round((d.progress ?? 0) * 40), d.combo, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
+    // the song's progress and the run of notes are drawn apart (they change on every hit)
+    const song = p.body === 'song' && d.count <= 0;
+    this.bar.visible = song && d.progress !== undefined && d.progress >= 0;
+    if (this.bar.visible) this.bar.scale.x = Math.max(0.0001, this.barW * Math.min(1, d.progress ?? 0));
+    const combo = song ? (d.combo ?? 0) : 0;
+    this.comboMesh.visible = combo >= 4;
+    if (combo !== this.lastCombo) {
+      this.lastCombo = combo;
+      if (combo >= 4) this.drawCombo(combo);
+    }
+    const sig = [p.id, p.title, p.line, d.count, d.stars, d.gold, d.code, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
     if (p.id !== this.pageId) {
       this.pageId = p.id;
       this.turn = 0;
+      // (a flash left from the last page doesn't land on whatever sits there now)
+      this.press.fill(0);
     }
     this.page = p;
     const isig = p.items.map((i) => `${i.id}@${i.x},${i.y},${i.w},${i.h}`).join(';');
@@ -147,6 +199,17 @@ export class Panel {
 
   update(dt: number): void {
     this.pulseT += dt;
+    // the hover eases in and out (60 ms); the cursor ring sits where the fingertip would land
+    this.hoverShown += ((this.hoverI >= 0 ? this.hoverK : 0) - this.hoverShown) * Math.min(1, dt / 0.06);
+    this.cursor.visible = this.hoverI >= 0 && this.hoverK > 0.02;
+    if (this.cursor.visible) {
+      const r = 0.003 + 0.012 * (1 - this.hoverK);
+      this.cursor.position.set(this.cursorAt.x, this.cursorAt.z, 0.0015);
+      this.cursor.scale.setScalar(r);
+      const mm = this.cursor.material as MeshBasicMaterial;
+      mm.opacity = 0.3 + 0.6 * this.hoverK;
+      mm.color.setHex(this.hoverK > 0.9 ? 0xffa630 : 0xfff2dc);
+    }
     // the panel grows in when it first shows; a new page slides up into place and fades in
     if (this.root.visible && this.grow < 1) this.grow = Math.min(1, this.grow + dt / 0.35);
     const e = 1 - Math.pow(1 - this.grow, 3);
@@ -161,9 +224,9 @@ export class Panel {
       this.press[i] = Math.max(0, this.press[i] - dt * 4);
       const want = items[i] && items[i].id === this.shown.focus;
       const p = want ? 0.5 + 0.5 * Math.sin(this.pulseT * 5) : 0;
-      const h = i === this.hoverI ? this.hoverK : 0;
+      const h = i === this.hoverI ? this.hoverShown : 0;
       const m = this.glows[i];
-      (m.material as MeshBasicMaterial).opacity = Math.max(this.press[i] * 0.55, p * 0.18, h * 0.2) * te;
+      (m.material as MeshBasicMaterial).opacity = Math.max(this.press[i] * 0.55, p * 0.12, h * 0.28) * te;
       const pop = 1 + 0.04 * this.press[i];
       const z = items[i] ? itemZone(items[i]) : null;
       if (z) m.scale.set(z.w * 0.97 * pop, z.h * 0.94 * pop, 1);
@@ -216,29 +279,28 @@ export class Panel {
       return;
     }
     if (d.stars >= 0) for (let i = 0; i < 3; i++) star(g, R - 210 + i * 76, 230, 30, i < d.stars, d.gold);
-    if (d.combo && d.combo >= 4) {
-      g.fillStyle = '#ffd34d';
-      g.font = `700 120px ${FONT}`;
-      const t = `${d.combo}`;
-      g.fillText(t, X, 340);
-      g.fillStyle = SOFT;
-      g.font = `500 36px ${FONT}`;
-      g.fillText('in a row', X + 8, 390);
-    }
-    if (d.progress !== undefined && d.progress >= 0) {
-      g.fillStyle = '#2a2927';
-      rounded(g, X, 470, R - X, 22, 11);
-      g.fill();
-      g.fillStyle = INK;
-      rounded(g, X, 470, Math.max(22, (R - X) * Math.min(1, d.progress)), 22, 11);
-      g.fill();
-    }
+    // (the progress bar's track; its fill and the run of notes are drawn apart)
+    g.fillStyle = '#2a2927';
+    rounded(g, X, 470, R - X, 22, 11);
+    g.fill();
     if (d.meter >= 0) {
       g.fillStyle = '#2a2927';
       g.fillRect(X, 520, R - X, 10);
       g.fillStyle = '#7fe39a';
       g.fillRect(X, 520, (R - X) * d.meter, 10);
     }
+  }
+
+  private drawCombo(n: number): void {
+    const g = this.comboCanvas.getContext('2d')!;
+    g.clearRect(0, 0, 512, 256);
+    g.fillStyle = '#ffd34d';
+    g.font = `700 150px ${FONT}`;
+    g.fillText(String(n), 8, 150);
+    g.fillStyle = SOFT;
+    g.font = `500 48px ${FONT}`;
+    g.fillText('in a row', 14, 220);
+    this.comboTex.needsUpdate = true;
   }
 
   private drawResults(g: CanvasRenderingContext2D, d: Display): void {

@@ -151,25 +151,10 @@ for (const v of chosen.length ? chosen : vert.slice(0, 2)) {
     check('the swap is saved with the room', saved.some((x) => x.as === d?.family) || saved.length === 0, JSON.stringify(saved));
     check('the room map plays the new instrument', s.game.found.includes(d?.family), JSON.stringify(s.game.found));
     shot('room-03b-swap', target);
-    // seated (the airplane test): the desk's bars swap too
+    // (the desk's light bars are retired: the instruments are on the shelf)
     xr('set-transform', { device: 'headset', position: { x: 0, y: 1.2, z: 0 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });
-    const e3 = s.targets.edge3;
-    xr('set-transform', { device: HAND, position: { x: P[0], y: P[1], z: P[2] }, orientation: FLAT });
-    xr('set-select-value', { device: HAND, value: 1 });
-    await wait(400);
-    const pp2 = state().right.pinchPoint;
-    xr('set-select-value', { device: HAND, value: 0 });
-    await wait(300);
-    const o2 = [pp2[0] - P[0], pp2[1] - P[1], pp2[2] - P[2]];
-    xr('set-transform', { device: HAND, position: { x: e3[0] - o2[0], y: e3[1] + 0.02 - o2[1], z: e3[2] - o2[2] }, orientation: FLAT });
-    await wait(300);
-    xr('set-select-value', { device: HAND, value: 1 });
-    await wait(1300);
-    xr('set-select-value', { device: HAND, value: 0 });
-    await wait(300);
     xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
-    s = state();
-    check('seated: pinch and hold the desk bars swaps them (saved)', !!s.progress.desk, `desk=${s.progress.desk} tag=${s.debug.tag}`);
+    await wait(300);
   }
 }
 xr('set-transform', { device: 'headset', position: { x: 0, y: 1.2, z: 0 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });
@@ -214,15 +199,17 @@ if (SONG) {
   s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 60000, 500);
   check('autoplay plays the first song', s.game.mode === 'count' || s.game.mode === 'play', `${s.game.mode} ${s.game.display.line}`);
   s = await until((x) => x.game.mode === 'results', 120000, 1000);
-  check('to the end: stars, notes played', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && /^\d+ of \d+$/.test(s.game.display.line), `${s.game.display.line} / ${s.game.display.sub} stars=${s.game.last?.stars}`);
+  check('to the end: stars, notes played', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && /^\d+ of \d+ notes$/.test(s.game.display.line), `${s.game.display.line} / ${s.game.display.sub} stars=${s.game.last?.stars}`);
   shot('room-07-results', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
   // > on the results: make it your own (Build), and the autoplayer builds it
   await wait(8000);
   run('tools/press-next.mjs');
   s = await until((x) => x.game.mode === 'build', 5000, 250);
-  check('> after a song makes it your own', s.game.mode === 'build', s.game.mode);
+  check('MAKE IT YOURS after a song builds it', s.game.mode === 'build', s.game.mode);
   s = await until((x) => (x.progress.built ?? []).includes('kick-start'), 150000, 1000);
   check('six parts later your machine runs', (s.progress.built ?? []).includes('kick-start'), `${s.game.display.line} / ${s.game.display.sub}`);
+  s = await until((x) => (x.game.display.page?.items ?? []).some((i) => i.id === 'key:play'), 15000, 500);
+  check('and the panel offers PERFORM IT', (s.game.display.page?.items ?? []).some((i) => i.id === 'key:play' && i.label === 'PERFORM IT'), JSON.stringify((s.game.display.page?.items ?? []).map((i) => i.label)));
   shot('room-06-machine', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
 }
 done('E2E room');

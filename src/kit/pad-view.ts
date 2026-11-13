@@ -28,7 +28,7 @@ import { motion } from '../ui/motion.js';
 const HEIGHT = DRUM_H;
 /** Each drum's lacquer (and the kick's dark front head). */
 const SHELL: Record<Lane, { shell: number; head?: number }> = { kick: { shell: 0x6e1a12, head: 0x1f1e22 }, snare: { shell: 0x1d1c20 }, hat: { shell: 0 }, tom: { shell: 0x5a3a22 }, gong: { shell: 0x3a2a18 } };
-const SQUASH_S = 0.1;
+const SQUASH_S = 0.14;
 
 /** Each drum's LED colour. */
 export const LED: Record<Lane, number> = { kick: 0xff4a3a, snare: 0xf4f1ea, hat: 0x5cd6ff, tom: 0xffa630, gong: 0xfff1d0 };
@@ -129,7 +129,7 @@ export class PadView {
     glow.position.y = 0.001;
     glow.renderOrder = 3;
     // a ripple ring that spreads across the head on a hit
-    this.ripple = new Mesh(new RingGeometry(0.9, 1, 48), asLight(new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false })));
+    this.ripple = new Mesh(new RingGeometry(0.9, 1, 48), asLight(new MeshBasicMaterial({ color: this.base.clone(), transparent: true, opacity: 0, depthWrite: false, toneMapped: false })));
     this.ripple.rotation.x = -Math.PI / 2;
     this.ripple.position.y = HEIGHT + 0.0008;
     this.ripple.renderOrder = 4;
@@ -197,23 +197,27 @@ export class PadView {
     if (this.squashT < SQUASH_S) {
       this.squashT += dt;
       const k = Math.min(1, this.squashT / SQUASH_S);
-      const env = Math.sin(k * Math.PI) * (1 - k * 0.3);
+      // dents at once, eases back
+      const env = k < 0.12 ? k / 0.12 : Math.pow((1 - k) / 0.88, 2);
       const amp = (0.04 + 0.08 * this.squashK) * (motion.calm ? 0.5 : 1);
       sy = 1 - amp * env;
       sxz = 1 + amp * 0.3 * env;
     }
     this.body.scale.set(s * sxz, s * sy, s * sxz);
     if (this.rippleT < 1) {
-      this.rippleT = Math.min(1, this.rippleT + dt / 0.3);
-      this.ripple.scale.setScalar(this.radius * (0.15 + 0.82 * this.rippleT));
-      (this.ripple.material as MeshBasicMaterial).opacity = 0.35 * this.squashK * (1 - this.rippleT);
+      this.rippleT = Math.min(1, this.rippleT + dt / 0.22);
+      const r = 1 - Math.pow(1 - this.rippleT, 2);
+      this.ripple.scale.setScalar(this.radius * (0.15 + 0.85 * r));
+      (this.ripple.material as MeshBasicMaterial).opacity = 0.6 * (0.4 + 0.6 * this.squashK) * Math.pow(1 - this.rippleT, 2);
       this.ripple.position.y = HEIGHT * sy + 0.0008;
     }
     this.flash = Math.max(0, this.flash - dt * 4);
     this.white = Math.max(0, this.white - dt * 3);
     this.dim = Math.max(0, this.dim - dt * 2.5);
     const target = Math.max(this.ask * 0.8, this.flash, this.white);
-    this.shown += (target - this.shown) * Math.min(1, dt * 30);
+    // up at once (the frame you hit it), down smoothly
+    if (target > this.shown) this.shown = target;
+    else this.shown += (target - this.shown) * Math.min(1, dt * 12);
     this.ask = 0;
     const lit = this.shown * (1 - 0.7 * this.dim);
     this.led.color.copy(this.base).multiplyScalar((0.06 + 0.94 * lit) * (1 - 0.6 * this.dim)).lerp(_white, this.white * 0.8);

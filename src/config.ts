@@ -94,7 +94,7 @@ export const TIMING = {
   /** Look-ahead for scheduling the backing (s). */
   lookAheadS: 0.12,
   /** A travelling note appears this many beats before it is due. */
-  travelBeats: 2,
+  travelBeats: 3,
   /** A pad glows this many beats before its note. */
   glowBeats: 1,
 } as const;
