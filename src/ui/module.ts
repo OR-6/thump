@@ -109,7 +109,6 @@ export class Module {
 
   private lastMeter = -9;
   private lastFound = -1;
-  private lastLabels: string[] | null = null;
   private lastStr = ['', '', '', '', ''];
   private lastNum = [NaN, NaN, NaN, NaN, NaN];
   set(d: Display): void {

@@ -19,7 +19,6 @@ import {
   InstancedMesh,
   Matrix4,
   MeshBasicMaterial,
-  Quaternion,
   SphereGeometry,
   Vector3,
   VisibilityState,
@@ -46,76 +45,24 @@ import { loadProgress, saveProgress, freshProgress, type Progress } from '../per
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { motion, prefersReducedMotion } from '../ui/motion.js';
 import { Game, type GameStage, type Room, type Unlock } from '../play/game.js';
-import { Surface, outlineOf } from './surface.js';
+import { Surface, surfaceName, swappable } from './surface.js';
+import { SurfaceBuilder, insidePolygon, tuneStrike } from './surface-builder.js';
+import { GameClock } from './game-clock.js';
+import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M } from './params.js';
+import { SwapGesture } from './swaps.js';
 import { Overlay, Sheen } from './overlay.js';
 import { Motes } from './motes.js';
-import { FAMILIES, nextSwap, swapsFor, type Family, type Features } from './classify.js';
+import { FAMILIES, nextSwap, type Family } from './classify.js';
 import { retune, zoneAt, zoneForDegree, type Zone } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
-import { coop, type CoopStatus } from '../net/coop.js';
-import { RateLimit, bassNote, validFromPhone, type JamToPhone } from '../jam/protocol.js';
+import { PhoneLink } from './phone-link.js';
+import { coop } from '../net/coop.js';
 
-const params = new URLSearchParams(location.search);
-/** `?debug=1`: a board behind the module (fps, planes, the last hit's surface and how it was measured). */
-const DEBUG = params.get('debug') === '1';
-/** `?autoplay=1`: a player that discovers your surfaces and hits every note on time (tests and filming only). */
-const AUTOPLAY = params.get('autoplay') === '1';
-/** `?desk=<y>`: a fixed table height (E2E, filming). */
-const FIXED_DESK = params.get('desk');
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
 const RESUME_WINDOW_S = 4;
 const FOVEATION = [0.5, 0.75, 1];
 const SIDES = ['left', 'right'] as const;
 const HOLD_DOTS = 20;
-/** Surfaces within this of the head are played (stand up and walk to the far ones). */
-const ACTIVE_M = 3;
-/** Swaps: a pinch this close to a found instrument, held this long, changes it. */
-const SWAP_NEAR_M = 0.06;
-const SWAP_HOLD_S = 0.7;
-/** Surfaces within this of a seated player's head carry a sheen and count in the room map. */
-const SEATED_M = 1.1;
-/** A hand this close to a surface (along its normal) is tested against it. */
-const NEAR_MIN = -0.12;
-const NEAR_MAX = 0.6;
-
-/** Strike tuning from the address (device sessions): ?speed=0.3 &near=20 (mm) &decel=10 &latch=100 (ms) &rearm=18 (mm). */
-function strikeOverrides(): Partial<Record<keyof typeof STRIKE, number>> {
-  const o: Partial<Record<keyof typeof STRIKE, number>> = {};
-  const num = (k: string) => {
-    const v = params.get(k);
-    const n = v === null ? NaN : Number(v);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-  const sp = num('speed');
-  if (sp !== null) o.minSpeed = sp;
-  const near = num('near');
-  if (near !== null) o.nearM = near / 1000;
-  const dc = num('decel');
-  if (dc !== null) o.minDecel = dc;
-  const la = num('latch');
-  if (la !== null) o.latchS = la / 1000;
-  const re = num('rearm');
-  if (re !== null) o.rearmM = re / 1000;
-  return o;
-}
-const STRIKE_CFG = strikeOverrides();
-
-/** The game clock: the audio clock while audio runs, frame time otherwise, continuous across the switch. */
-class GameClock {
-  t = 0;
-  private base = 0;
-  private wasRunning = false;
-  tick(dt: number, running: boolean, audioNow: number): void {
-    if (running) {
-      if (!this.wasRunning) this.base = this.t - audioNow;
-      this.t = audioNow + this.base;
-    } else this.t += dt;
-    this.wasRunning = running;
-  }
-  toAudio(t: number): number {
-    return this.wasRunning ? t - this.base : 0;
-  }
-}
 
 /** Where a song's target key points: a pad, an edge key, or a zone on a room surface. */
 interface KeyRef {
@@ -165,7 +112,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private fwd = new Vector3();
   private tmp = new Vector3();
   private tmp2 = new Vector3();
-  private tmpQ = new Quaternion();
   private planeInv = new Matrix4();
   private planeYs: number[] = [];
   private sessionTime = 0;
@@ -193,8 +139,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private motes = new Motes();
   private tag = new Tag();
   private board: DebugBoard | null = null;
-  private nextId = 1;
-  private measuredCount = 0;
+  private builder = new SurfaceBuilder({
+    head: this.head,
+    forward: (out) => this.forwardFlat(out),
+    kitWorld: () => this.kit.root.matrixWorld,
+    others: () => this.bySource.values(),
+  });
   private surfT = 0;
   private reachT = 0;
   /** Hand points (world) and a buffer of surface-local points, per hand. */
@@ -278,6 +228,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const onReset = () => this.resetProgress();
     window.addEventListener('thump:reset', onReset);
     this.cleanupFuncs.push(() => window.removeEventListener('thump:reset', onReset));
+    this.cleanupFuncs.push(() => this.phone.dispose());
   }
 
   // ------------------------------------------------------------------ the game's view of the world
@@ -386,7 +337,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const s = surface === 'keys' ? null : this.surfaces.find((x) => x.id === surface);
       const o = s ? this.overlays.get(s) : this.kit.keys;
       if (event === 'claim') {
-        this.openPhoneJam();
+        this.phone.open();
         o?.sweep();
         audio.chirp('hello');
         if (!this.settings.noWords) {
@@ -402,54 +353,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
   };
   /** The phone jam: a code on the module; a friend's phone becomes the bass. */
-  private phoneWired = false;
-  private phoneBeat = -1;
-  private phoneLimit = new RateLimit(12, 1);
-  private openPhoneJam(): void {
-    if (coop.status.state === 'hosting' || coop.status.state === 'connected') return;
-    if (!this.phoneWired) {
-      this.phoneWired = true;
-      const on = (e: Event) => {
-        const st = (e as CustomEvent<CoopStatus>).detail;
-        this.debug.phone = st.state;
-        this.game.code = st.state === 'hosting' && st.code ? st.code : '';
-        if (st.state === 'connected' && coop.transport) {
-          coop.transport.onMessage((m) => this.onPhone(m));
-          coop.transport.send({ k: 'part', part: 'bass' } satisfies JamToPhone);
-          if (!this.settings.noWords) {
-            this.tmp.set(0, 0.12, -0.2).applyMatrix4(this.kit.root.matrixWorld);
-            this.tag.show("A friend's phone is the bass", 0x2ad1b5, this.tmp, this.head, 3);
-          }
-        }
-        this.game.refreshDisplay();
-      };
-      window.addEventListener('thump:coop', on);
-      this.cleanupFuncs.push(() => window.removeEventListener('thump:coop', on));
-    }
-    void coop.host();
-  }
-
-  private onPhone(m: unknown): void {
-    if (!validFromPhone(m) || m.k !== 'note') return;
-    if (!this.phoneLimit.ok(this.clock.t)) return;
-    audio.bass(bassNote(60 + this.game.keyPc, m.n), m.v, -0.3);
-    this.debug.phoneNotes = (this.debug.phoneNotes ?? 0) + 1;
-  }
-
-  /** The beat, to the phone's light (each beat while music plays). */
-  private beatToPhone(): void {
-    const tr = coop.transport;
-    if (!tr || coop.status.state !== 'connected') return;
-    const b = Math.floor(this.game.beatNow);
-    if (Number.isNaN(b)) {
-      if (this.phoneBeat !== -1) tr.send({ k: 'rest' } satisfies JamToPhone);
-      this.phoneBeat = -1;
-      return;
-    }
-    if (b === this.phoneBeat) return;
-    this.phoneBeat = b;
-    tr.send({ k: 'beat', b, bpm: this.game.bpmNow, root: 60 + this.game.keyPc, song: this.game.mode === 'jam' ? 'Jam' : (this.game.song?.name ?? '') } satisfies JamToPhone);
-  }
+  private phone = new PhoneLink({
+    game: () => this.game,
+    now: () => this.clock.t,
+    debug: () => this.debug,
+    connected: () => {
+      if (this.settings.noWords) return;
+      this.tmp.set(0, 0.12, -0.2).applyMatrix4(this.kit.root.matrixWorld);
+      this.tag.show("A friend's phone is the bass", 0x2ad1b5, this.tmp, this.head, 3);
+    },
+  });
 
   /** The bandmate's notes, lit when they play. */
   private pendingLights: { at: number; key: string; vel: number }[] = [];
@@ -463,51 +376,30 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** Pinch and hold an instrument (after Kitchen Clock): it changes to the next that suits it. Off during songs and jams. */
   private watchSwaps(): void {
-    if (!(this.progress.unlocks as string[]).includes('swaps')) return;
-    const busy = this.game.mode !== 'discover' && this.game.mode !== 'results';
-    for (let i = 0; i < 2; i++) {
-      const h = i === 0 ? hands.left : hands.right;
-      const w = this.holds[i];
-      if (busy || !h.tracked || !h.pinch.pinching) {
-        if (w.s) this.endHold(i);
-        continue;
-      }
-      if (!w.s) {
-        // a pinch starting within 6 cm of a found instrument
-        if (h.edge !== 'start') continue;
-        let best: Surface | null = null;
-        let bd = SWAP_NEAR_M;
-        for (const s of this.surfaces) {
-          if (!s.discovered || !swappable(s)) continue;
-          const d = s.distanceTo(h.pinchPoint);
-          if (d < bd) {
-            bd = d;
-            best = s;
-          }
-        }
-        if (!best) continue;
-        w.s = best;
-        w.t0 = this.clock.t;
-        w.at.copy(h.pinchPoint);
-        this.overlays.get(best)?.sweep();
-        audio.tick();
-        continue;
-      }
-      if (h.pinchPoint.distanceTo(w.at) > 0.05) {
-        this.endHold(i);
-        continue;
-      }
-      if (this.clock.t - w.t0 >= SWAP_HOLD_S) {
-        this.swap(w.s);
-        // one change per pinch: let go and pinch again for the next
-        w.t0 = Infinity;
+    const on = (this.progress.unlocks as string[]).includes('swaps') && (this.game.mode === 'discover' || this.game.mode === 'results');
+    const s = this.swaps.update(this.bothHands, on, this.clock.t, this.swapTarget, this.swapStarted);
+    if (s) this.swap(s);
+  }
+  private swaps = new SwapGesture<Surface>();
+  private bothHands = [hands.left, hands.right];
+  /** The found instrument a pinch here would change: the nearest within 6 cm. */
+  private swapTarget = (p: Vector3): Surface | null => {
+    let best: Surface | null = null;
+    let bd = SWAP_NEAR_M;
+    for (const s of this.surfaces) {
+      if (!s.discovered || !swappable(s)) continue;
+      const d = s.distanceTo(p);
+      if (d < bd) {
+        bd = d;
+        best = s;
       }
     }
-  }
-  private holds = [0, 1].map(() => ({ s: null as Surface | null, t0: 0, at: new Vector3() }));
-  private endHold(i: number): void {
-    this.holds[i].s = null;
-  }
+    return best;
+  };
+  private swapStarted = (s: Surface): void => {
+    this.overlays.get(s)?.sweep();
+    audio.tick();
+  };
 
   /** The surface plays the next instrument that suits it; the room map and the saved room follow. */
   private swap(s: Surface): void {
@@ -517,7 +409,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (to === from) return;
     s.as = to === s.natural ? null : to;
     s.setFeatures(s.features);
-    this.tune(s);
+    tuneStrike(s);
     this.hitAt.x = s.anchor.x;
     this.hitAt.z = s.anchor.z;
     s.discovered = false;
@@ -715,7 +607,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.pendingLights.splice(i, 1);
       }
     }
-    this.beatToPhone();
+    this.phone.beat();
     this.kit.module.set(this.game.display);
     this.debug.mode = this.game.mode;
     if (this.debug.found.length !== this.game.found.length) this.debug.found = this.game.found.slice();
@@ -833,7 +725,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
         this.hitAt.x = sx / n;
         this.hitAt.z = sz / n;
-        this.hitHand = i;
         if (s === this.kitSurface) {
           // which pad: kit-local points (zone z is −kit z)
           for (let q = 0; q < this.sample.points.length; q++) {
@@ -923,7 +814,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private prevFamily: Family | null = null;
   private untracked = [0, 0];
   private handLatch = [-Infinity, -Infinity];
-  private hitHand = 0;
   /** Softness from the hand: after a hit, how far the hand goes on past the surface, per hand. */
   private sinkWatch: ({ s: Surface; until: number; deepest: number } | null)[] = [null, null];
 
@@ -1141,7 +1031,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (i.as && i.as in FAMILIES) {
         s.as = i.as as Family;
         s.setFeatures(s.features);
-        this.tune(s);
+        tuneStrike(s);
       }
       this.hitAt.x = this.o.x;
       this.hitAt.z = this.o.z;
@@ -1220,7 +1110,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       obj.updateMatrixWorld();
       if (had && !this.moved(pl, obj)) continue;
       // new, or Quest moved it (a recentre, a better fit): build it afresh, keeping what was found on it
-      const s = this.fromPlane(pl, obj, kitY, this.kitC);
+      const s = this.builder.fromPlane(pl, obj, kitY, this.kitC);
       this.srcPose.set(pl, obj.matrixWorld.clone());
       if (had) for (const old of had) this.orphan(old);
       this.bySource.set(pl, s ? [s] : []);
@@ -1241,7 +1131,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       let list: Surface[] = [];
       if (e.getValue(XRMesh, 'isBounded3D')) {
         const label = String(e.getValue(XRMesh, 'semanticLabel') ?? '').toLowerCase();
-        list = this.fromVolume(label, obj, e.getVectorView(XRMesh, 'min'), e.getVectorView(XRMesh, 'max'));
+        list = this.builder.fromVolume(label, obj, e.getVectorView(XRMesh, 'min'), e.getVectorView(XRMesh, 'max'));
       }
       this.srcPose.set(mesh, obj.matrixWorld.clone());
       this.volumeHead.set(mesh, this.head.clone());
@@ -1272,9 +1162,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         for (const s of list) {
           if (s.discovered || s.source !== 'plane' || s.features.facing !== 'vertical') continue;
           const f = { ...s.features, hollow: 0, glass: 0 };
-          this.measure(s, f);
+          this.builder.measure(s, f);
           s.setFeatures(f);
-          this.tune(s);
+          tuneStrike(s);
         }
     }
     this.debug.planes = planes;
@@ -1318,7 +1208,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (o.features.soft >= 0.5 && s.features.soft < 0.5 && Math.abs(o.normal.dot(s.normal)) > 0.95) {
         s.setFeatures({ ...s.features, soft: o.features.soft });
         s.sink = o.sink;
-        this.tune(s);
+        tuneStrike(s);
       }
       if (o.natural !== s.natural || Math.abs(o.normal.dot(s.normal)) < 0.95) continue;
       const w = this.tmp.set(o.anchor.x, 0, -o.anchor.z).applyMatrix4(o.world);
@@ -1330,7 +1220,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (o.as) {
         s.as = o.as;
         s.setFeatures(s.features);
-        this.tune(s);
+        tuneStrike(s);
       }
       this.hitAt.x = this.o.x;
       this.hitAt.z = this.o.z;
@@ -1341,148 +1231,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
   }
 
-  /** Strike tuning per surface: room planes can sit a few centimetres off; glass wants soft taps. */
-  private tune(s: Surface): void {
-    const c = s.detector.cfg;
-    Object.assign(c, STRIKE, STRIKE_CFG);
-    c.nearM = Math.max(STRIKE_CFG.nearM ?? 0, 0.03);
-    c.surfaceDriftM = 0.05;
-    if (s.voice?.family === 'glock') {
-      c.minSpeed = Math.min(STRIKE_CFG.minSpeed ?? 1, 0.18);
-      c.hardSpeed = 0.7;
-    }
-    // a door frame may be an open doorway, a box's face a soft cover: only a stop is a hit
-    s.detector.stopOnly = s.source === 'volume' || /door/.test(s.label);
-  }
-
-  private fromPlane(pl: XRPlane & { semanticLabel?: string; polygon?: DOMPointReadOnly[] }, obj: Object3D, kitY: number, kitC: Vector3): Surface | null {
-    const label = (pl.semanticLabel ?? '').toLowerCase();
-    if (label === 'ceiling' || /invisible/.test(label)) return null;
-    const poly = pl.polygon ?? [];
-    if (poly.length < 3) return null;
-    const centre = obj.getWorldPosition(new Vector3());
-    const n = new Vector3(0, 1, 0).applyQuaternion(obj.getWorldQuaternion(this.tmpQ));
-    const vertical = Math.abs(n.y) < 0.7;
-    if (vertical && n.dot(this.tmp.copy(this.head).sub(centre)) < 0) n.negate();
-    if (!vertical && n.y < 0) return null; // a ceiling-like face
-    // the kit's own table: the kit plays all of it
-    if (!vertical && Math.abs(centre.y - kitY) < 0.05) {
-      this.planeInv.copy(obj.matrixWorld).invert();
-      const k = this.tmp.copy(kitC).applyMatrix4(this.planeInv);
-      if (insidePolygon(poly, k.x, k.z, 0.05)) return null;
-    }
-    const s = new Surface(`p${this.nextId++}`, 'plane', label, STRIKE_CFG);
-    this.forwardFlat(this.fwd);
-    s.setFrame(centre, n, this.fwd);
-    const world = poly.map((p) => new Vector3(p.x, 0, p.z).applyMatrix4(obj.matrixWorld));
-    outlineOf(s, world);
-    const b = s.bounds;
-    const f: Features = {
-      facing: vertical ? 'vertical' : 'up',
-      width: b.maxX - b.minX,
-      length: b.maxZ - b.minZ,
-      area: Math.abs(shoelace(s.outline)),
-      elevation: centre.y,
-      hollow: 0,
-      glass: 0,
-      soft: 0,
-      curved: 0,
-      bump: false,
-      label,
-    };
-    this.measure(s, f);
-    s.setFeatures(f);
-    this.tune(s);
-    return s.voice ? s : null;
-  }
-
-  /** A room-scan box (a cupboard, a sofa…): its top where it has a real one, and the face turned toward you. */
-  private fromVolume(label: string, obj: Object3D, min: ArrayLike<number>, max: ArrayLike<number>): Surface[] {
-    if (/wall|floor|ceiling|table|desk|invisible/.test(label)) return [];
-    const out: Surface[] = [];
-    const m = obj.matrixWorld;
-    const corner = (x: number, y: number, z: number) => new Vector3(x, y, z).applyMatrix4(m);
-    // the box's six faces, in world space: [normal, centre, corners]
-    const X = [min[0], max[0]];
-    const Y = [min[1], max[1]];
-    const Z = [min[2], max[2]];
-    const faces: { n: Vector3; c: Vector3; pts: Vector3[] }[] = [];
-    for (const ax of [0, 1, 2] as const) {
-      for (const side of [0, 1]) {
-        const nl = [0, 0, 0];
-        nl[ax] = side ? 1 : -1;
-        const pts: Vector3[] = [];
-        const u = (ax + 1) % 3;
-        const v = (ax + 2) % 3;
-        const R = [X, Y, Z];
-        for (const [a, b] of [
-          [0, 0],
-          [1, 0],
-          [1, 1],
-          [0, 1],
-        ]) {
-          const p = [0, 0, 0];
-          p[ax] = R[ax][side];
-          p[u] = R[u][a];
-          p[v] = R[v][b];
-          pts.push(corner(p[0], p[1], p[2]));
-        }
-        const c = pts.reduce((acc, p) => acc.add(p), new Vector3()).multiplyScalar(0.25);
-        faces.push({ n: new Vector3(nl[0], nl[1], nl[2]).transformDirection(m), c, pts });
-      }
-    }
-    const make = (face: { n: Vector3; c: Vector3; pts: Vector3[] }, facing: Features['facing']) => {
-      // never over the kit: the kit always plays its table
-      for (const p of [face.c, ...face.pts]) {
-        this.tmp.copy(p).applyMatrix4(this.tmpM.copy(this.kit.root.matrixWorld).invert());
-        if (Math.abs(this.tmp.x) < 0.45 && Math.abs(this.tmp.z) < 0.32 && Math.abs(this.tmp.y) < 0.12) return;
-      }
-      const s = new Surface(`v${this.nextId++}`, 'volume', label, STRIKE_CFG);
-      this.forwardFlat(this.fwd);
-      s.setFrame(face.c, face.n, this.fwd);
-      outlineOf(s, face.pts);
-      const b = s.bounds;
-      const f: Features = { facing, width: b.maxX - b.minX, length: b.maxZ - b.minZ, area: (b.maxX - b.minX) * (b.maxZ - b.minZ), elevation: face.c.y, hollow: /storage|cabinet|drawer/.test(label) ? 0.9 : 0, glass: 0, soft: 0, curved: 0, bump: false, label };
-      s.setFeatures(f);
-      this.tune(s);
-      if (s.voice) out.push(s);
-    };
-    // the top only where a box really has one to play (a sofa's box top is its backrest, in mid-air)
-    if (!/couch|sofa|bed|lamp|plant|chair|other/.test(label)) {
-      const top = faces.reduce((a, f) => (f.n.y > a.n.y ? f : a));
-      if (top.n.y > 0.85 && top.c.y > 0.15) make(top, 'up');
-    }
-    // the side facing the head
-    let bestDot = 0.3;
-    let best: (typeof faces)[number] | null = null;
-    for (const f of faces) {
-      if (Math.abs(f.n.y) > 0.5) continue;
-      const d = f.n.dot(this.tmp.copy(this.head).sub(f.c).normalize());
-      if (d > bestDot) {
-        bestDot = d;
-        best = f;
-      }
-    }
-    if (best) make(best, 'vertical');
-    return out;
-  }
-
-  /** What geometry says beyond its outline: set into a bigger wall (a door, if door-shaped; else glass). */
-  private measure(s: Surface, f: Features): void {
-    if (f.facing !== 'vertical') return;
-    for (const list of this.bySource.values()) {
-      for (const o of list) {
-        if (o === s || o.features.facing !== 'vertical' || o.features.area <= f.area * 1.6) continue;
-        if (Math.abs(o.normal.dot(s.normal)) < 0.95) continue;
-        this.tmp.copy(s.centre).applyMatrix4(o.inv);
-        if (Math.abs(this.tmp.y) > 0.12 || !o.over(this.tmp.x, -this.tmp.z, 0)) continue;
-        const doorShaped = f.length >= 1.5 && f.width >= 0.5 && f.width <= 1.8;
-        if (doorShaped || /door/.test(f.label)) f.hollow = Math.max(f.hollow, 0.7);
-        // only a window or an unlabelled pane can be glass (never a door, a picture or a board)
-        else if (/window/.test(f.label) || f.label === '') f.glass = Math.max(f.glass, 0.6);
-      }
-    }
-  }
 
   private dropOverlay(s: Surface): void {
     this.overlays.get(s)?.dispose();
@@ -2029,51 +1777,7 @@ function mkPoints(): Point[] {
   return Array.from({ length: 6 }, () => ({ x: 0, y: 1, z: 0, r: 0.01 }));
 }
 
-/** A room surface whose physics suits more than one instrument (the kit's table and the module never swap). */
-function swappable(s: Surface): boolean {
-  return (s.source === 'plane' || s.source === 'volume') && !!s.natural && swapsFor(s.natural).length > 1;
-}
-
-function surfaceName(s: Surface): string {
-  const l = s.label;
-  if (/door/.test(l)) return 'Door';
-  if (/window/.test(l)) return 'Window';
-  if (/storage|cabinet/.test(l)) return 'Cupboard';
-  if (/couch|sofa/.test(l)) return 'Sofa';
-  if (/bed/.test(l)) return 'Bed';
-  if (/screen/.test(l)) return 'Screen';
-  if (/wall art|picture/.test(l)) return 'Picture';
-  if (/table|desk/.test(l)) return 'Table';
-  if (/floor/.test(l)) return 'Floor';
-  if (/wall/.test(l)) return 'Wall';
-  if (s.source === 'kit') return 'Table';
-  return s.features?.facing === 'vertical' ? 'Wall' : 'Top';
-}
-
-function shoelace(p: { x: number; z: number }[]): number {
-  let a = 0;
-  for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += (p[j].x + p[i].x) * (p[j].z - p[i].z);
-  return a / 2;
-}
-
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const r4 = (n: number) => Math.round(n * 1e4) / 1e4;
-
-export function insidePolygon(poly: ReadonlyArray<{ x: number; z: number }> | undefined, x: number, z: number, margin: number): boolean {
-  if (!poly || poly.length < 3) return false;
-  let inside = false;
-  let minD = Infinity;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i];
-    const b = poly[j];
-    if (a.z > z !== b.z > z && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) inside = !inside;
-    const ex = b.x - a.x;
-    const ez = b.z - a.z;
-    const l2 = ex * ex + ez * ez || 1e-9;
-    const t = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / l2));
-    minD = Math.min(minD, Math.hypot(x - (a.x + t * ex), z - (a.z + t * ez)));
-  }
-  return inside || minD <= margin;
-}
 
 void PADS;

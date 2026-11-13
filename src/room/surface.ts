@@ -147,3 +147,24 @@ export function outlineOf(s: Surface, worldPts: Vector3[]): void {
 }
 
 void _q;
+
+/** A room surface whose physics suits more than one instrument (the kit's table and the module never swap). */
+export function swappable(s: Surface): boolean {
+  return (s.source === 'plane' || s.source === 'volume') && !!s.natural && swapsFor(s.natural).length > 1;
+}
+
+export function surfaceName(s: Surface): string {
+  const l = s.label;
+  if (/door/.test(l)) return 'Door';
+  if (/window/.test(l)) return 'Window';
+  if (/storage|cabinet/.test(l)) return 'Cupboard';
+  if (/couch|sofa/.test(l)) return 'Sofa';
+  if (/bed/.test(l)) return 'Bed';
+  if (/screen/.test(l)) return 'Screen';
+  if (/wall art|picture/.test(l)) return 'Picture';
+  if (/table|desk/.test(l)) return 'Table';
+  if (/floor/.test(l)) return 'Floor';
+  if (/wall/.test(l)) return 'Wall';
+  if (s.source === 'kit') return 'Table';
+  return s.features?.facing === 'vertical' ? 'Wall' : 'Top';
+}

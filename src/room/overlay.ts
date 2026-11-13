@@ -61,7 +61,6 @@ export class Overlay {
   private backing: InstancedMesh;
   /** Fine detail: note dots at a bar's ends, a gong's rings and strike spot. */
   private detail: InstancedMesh;
-  private detailN = 0;
   private dim: Float32Array;
   private white: Float32Array;
   private zones: Zone[] = [];
@@ -210,7 +209,7 @@ export class Overlay {
         this.detail.setMatrixAt(d++, _m);
       }
     }
-    this.detail.count = this.detailN = d;
+    this.detail.count = d;
     (this.detail.material as MeshBasicMaterial).color.copy(this.base);
     this.shapes.instanceMatrix.needsUpdate = true;
     this.glow.instanceMatrix.needsUpdate = true;
