@@ -11,11 +11,12 @@ A hands-first mixed-reality music game for Meta Quest. **Every surface in your r
 1. A small black module settles at the back of your table: **Hit anything.** Every surface you can play has a faint sheen.
 2. Hit the table: a drum kit draws itself (left deep, right bright, the edge a rim).
 3. Hit the wall, the door, the window: each becomes its instrument, drawn in light on the real surface (a gong, marimba bars, glockenspiel keys, harp strings) and named for two seconds ("Your door is a marimba"). The module's room map fills.
-4. With two instruments found, tap ▶ on the module: a song is cast onto your room's instruments. Notes fly as light to the exact pad, bar or key and light it a beat ahead. Stars at the end; each song unlocks the next (and a new song of the day).
-5. After the first song, tap **JAM**: a bandmate takes one of your instruments and plays two bars; you answer; it gets busier when you answer well and plays your own phrase back. The module shows a code: a friend types it on this page on their phone and their phone becomes the bass (beta).
+4. With two instruments found, tap ▶ on the module: a song is cast onto your room's instruments. Notes fly as light to the exact pad, bar or key and light it a beat ahead. Every other instrument you found plays along softly; the last chord is the whole room, a wave of light crossing it. Stars at the end, then your room plays your last four bars back to you. Each song unlocks the next (five, and a new song of the day).
+5. After the first song, tap **JAM**: a bandmate's two mallets of light fly from the module to one of your instruments and play two bars; you answer; it gets busier when you answer well and plays your own phrase back. The module shows a code: a friend types it on this page on their phone and their phone becomes the bass (beta).
 6. After *Porch Step*, pinch and hold any instrument you found: it changes to the next one that suits it (a window: glockenspiel, then harp, triangle, chimes, tubular bells…); seated, the desk's bars change too. Saved with the room.
 7. After *Kitchen Clock*, tap **REC**: four bars of whatever you play, anywhere in the room, loop back; layer up to three.
-8. Next time in the same room, the instruments you found are already drawn. In the headset, tap ◀ twice for settings (slow songs, one hand, contrast, words); tap ▶ twice to stop a song.
+8. Any time outside a song, slap the table with both hands at once: the whole room plays one chord.
+9. Next time in the same room, the instruments you found are already drawn. In the headset, tap ◀ twice for settings (slow songs, one hand, contrast, words); tap ▶ twice to stop a song.
 
 ## How it works
 
