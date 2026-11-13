@@ -9,7 +9,8 @@ import { PadView } from './pad-view.js';
 import { Module } from '../ui/module.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
-import { guitarZones, handpanZones, pianoZones, type InstId, type Scale } from './shelf.js';
+import { BoxGeometry, MeshStandardMaterial as BarMaterial } from '@iwsdk/core';
+import { guitarZones, handpanZones, marimbaZones, pianoZones, type InstId, type Scale } from './shelf.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.11 } as const;
@@ -44,6 +45,7 @@ export class KitView {
   inst: InstId = 'drums';
   readonly shelf = new Map<Exclude<InstId, 'drums'>, Overlay>([
     ['piano', new Overlay('keys', 8)],
+    ['marimba', new Overlay('marimba', 8)],
     ['guitar', new Overlay('harp', 10)],
     ['handpan', new Overlay('tongue', 10)],
   ]);
@@ -125,15 +127,49 @@ export class KitView {
       this.instZones = [];
       return;
     }
-    this.instZones = id === 'piano' ? pianoZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : handpanZones(root, scale);
+    this.instZones = id === 'piano' ? pianoZones(root, scale) : id === 'marimba' ? marimbaZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : handpanZones(root, scale);
     const o = this.shelf.get(id)!;
     o.build(this.instZones);
+    // the marimba's bars are wood (the light on them is the song's notes)
+    this.marimbaBars.visible = id === 'marimba';
+    if (id === 'marimba') {
+      this.layBars(this.instZones);
+      o.group.position.y = 0.014;
+    }
     // the piano's keys in warm ivory, not the bars' colour
     if (id === 'piano') o.recolor(0xf3e6c8);
     o.reveal(0, 0.03);
   }
   /** The bars were shown (the kit's first bloom): they come back with the drums. */
   private keysShown = false;
+
+  /** The marimba's wooden bars on two felt rails. */
+  private marimbaBars = new Group();
+  private layBars(zones: readonly Zone[]): void {
+    if (!this.marimbaBars.children.length) {
+      this.marimbaBars.name = 'MarimbaBars';
+      const wood = new BarMaterial({ name: 'Rosewood', color: 0x7a3a1e, roughness: 0.42 });
+      const felt = new BarMaterial({ name: 'Felt', color: 0x2a2624, roughness: 0.95 });
+      for (let i = 0; i < 8; i++) {
+        const bar = new Mesh(new BoxGeometry(1, 1, 1), wood);
+        bar.name = `Bar${i}`;
+        this.marimbaBars.add(bar);
+      }
+      for (const z of [-0.035, 0.07]) {
+        const rail = new Mesh(new BoxGeometry(0.45, 0.004, 0.008), felt);
+        rail.name = 'Rail';
+        rail.position.set(0, 0.002, -z);
+        this.marimbaBars.add(rail);
+      }
+      this.root.add(this.marimbaBars);
+    }
+    zones.forEach((q, i) => {
+      const bar = this.marimbaBars.children[i] as Mesh | undefined;
+      if (!bar) return;
+      bar.scale.set(q.w, 0.009, q.h);
+      bar.position.set(q.x, 0.0085, -q.z);
+    });
+  }
 
   /** The overlay of the instrument on the desk (null for the drums). */
   instOverlay(): Overlay | null {

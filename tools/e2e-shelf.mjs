@@ -62,7 +62,15 @@ check('NOTES changes the scale', /^Notes: (Sad|Bluesy|Dreamy|Happy)$/.test(s.gam
 
 await key('next');
 s = state();
-check('then a guitar', s.targets.inst?.[0] === 2 && s.game.display.line === 'Guitar', `${s.game.display.line} inst=${s.targets.inst}`);
+check('then a marimba', s.targets.inst?.[0] === 2 && s.game.display.line === 'Marimba', `${s.game.display.line} inst=${s.targets.inst}`);
+await slapAt(s.targets.inst0);
+s = state();
+check('its low bar plays', s.debug.lastHit?.family === 'marimba' && s.debug.lastHit?.zone === 0, JSON.stringify(s.debug.lastHit));
+shot('shelf-marimba', look);
+
+await key('next');
+s = state();
+check('then a guitar', s.targets.inst?.[0] === 3 && s.game.display.line === 'Guitar', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst1);
 s = state();
 check('a chord pad picks a chord (and strums it softly)', s.debug.lastHit?.family === 'chord' && s.debug.lastHit?.zone === 1, JSON.stringify(s.debug.lastHit));
@@ -73,7 +81,7 @@ shot('shelf-guitar', look);
 
 await key('next');
 s = state();
-check('then a handpan', s.targets.inst?.[0] === 3 && s.game.display.line === 'Handpan', `${s.game.display.line} inst=${s.targets.inst}`);
+check('then a handpan', s.targets.inst?.[0] === 4 && s.game.display.line === 'Handpan', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst0);
 s = state();
 check('its middle rings', s.debug.lastHit?.family === 'handpan' && s.debug.lastHit?.zone === 0, JSON.stringify(s.debug.lastHit));
@@ -113,6 +121,6 @@ shot('shelf-handpan', look);
 await key('next');
 await wait(500);
 s = state();
-check('and on to the guitar', s.targets.inst?.[0] === 2, `inst=${s.targets.inst}`);
+check('and on to the marimba', s.targets.inst?.[0] === 2, `inst=${s.targets.inst}`);
 check('no frame errors', s.debug.errors === 0, `errors=${s.debug.errors}`);
 done('E2E shelf');

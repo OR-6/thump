@@ -3,7 +3,7 @@ import { PIANO_CHORD, SCALES, SHELF, STRUM, guitarZones, handpanZones, pianoZone
 
 describe('the instrument shelf', () => {
   it('steps through drums, piano, guitar, handpan and wraps', () => {
-    expect(SHELF.map((d) => d.id)).toEqual(['drums', 'piano', 'guitar', 'handpan']);
+    expect(SHELF.map((d) => d.id)).toEqual(['drums', 'piano', 'marimba', 'guitar', 'handpan']);
     expect(stepShelf('drums', 1)).toBe('piano');
     expect(stepShelf('drums', -1)).toBe('handpan');
     expect(stepShelf('handpan', 1)).toBe('drums');

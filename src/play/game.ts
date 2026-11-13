@@ -727,7 +727,7 @@ export class Game {
       found = m.parts.find((p) => p.surface !== 'kit' && p.surface !== 'keys' && PART_INST[p.def.name] === 'drums' && p.def.name !== 'KICK' && p.def.name !== 'SNARE');
       parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found);
       if (found) foundName = say(found.def.name);
-    } else parts = m.parts.filter((p) => PART_INST[p.def.name] === inst && p.def.name !== 'BASS');
+    } else parts = m.parts.filter((p) => PART_INST[p.def.name] === (inst === 'marimba' ? 'piano' : inst) && p.def.name !== 'BASS');
     const rank = (key: string) => {
       const i = parts.findIndex((p) => p.key === key);
       return i >= 0 ? i : parts.findIndex((p) => p.surface !== 'kit' && key.startsWith(p.surface + ':'));
@@ -1039,7 +1039,7 @@ export class Game {
   /** Performing: switch to this instrument at the next loop (the stand's tile, or ◀ ▶). */
   switchTo(id: string): void {
     if (!this.perf || !this.machine || this.perf.queued || id === this.perf.inst) return;
-    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => PART_INST[p.def.name] === id)) return;
+    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => PART_INST[p.def.name] === (id === 'marimba' ? 'piano' : id))) return;
     const beat = this.clock.beatAt(this.t);
     const when = Math.max(0, Math.ceil((beat + 2) / LOOP_BEATS) * LOOP_BEATS);
     if (when >= (this.song?.bars ?? 20) * 4 - 4) return;
@@ -1169,7 +1169,7 @@ export class Game {
     // performing: ◀ ▶ switch what you play (it takes over at the next loop; the part you leave goes back in the machine)
     if ((k === 'prev' || k === 'next') && this.perf && this.machine && (this.mode === 'play' || this.mode === 'count') && !this.perf.queued) {
       const m = this.machine;
-      const order = ['drums', 'piano', 'handpan', 'guitar'].filter((i) => i === 'drums' || i === 'guitar' || m.parts.some((p) => PART_INST[p.def.name] === i));
+      const order = ['drums', 'piano', 'marimba', 'handpan', 'guitar'].filter((i) => i === 'drums' || i === 'guitar' || m.parts.some((p) => PART_INST[p.def.name] === (i === 'marimba' ? 'piano' : i)));
       const at = Math.max(0, order.indexOf(this.perf.inst));
       const next = order[(at + (k === 'next' ? 1 : -1) + order.length) % order.length];
       const beat = this.clock.beatAt(this.t);
@@ -1966,7 +1966,7 @@ export function tightPercent(offsets: readonly number[]): number {
 /** The free-play band's chords, a bar each: the scale's first chord twice, then its second and third. */
 const GROOVE = [0, 0, 1, 2];
 
-const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', handpan: 'Handpan', guitar: 'Guitar' };
+const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', marimba: 'Marimba', handpan: 'Handpan', guitar: 'Guitar' };
 
 /** Which instrument each part is played on (it comes out on the desk when the part is asked for). */
 const PART_INST: Record<string, string> = { KICK: 'drums', SNARE: 'drums', HAT: 'drums', CLAP: 'drums', PERC: 'handpan', 'PERC 2': 'handpan', KEYS: 'piano', 'KEYS 2': 'piano', BASS: 'piano' };

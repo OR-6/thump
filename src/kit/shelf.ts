@@ -7,7 +7,7 @@
 import type { Family } from '../room/classify.js';
 import type { Zone } from '../room/zones.js';
 
-export type InstId = 'drums' | 'piano' | 'guitar' | 'handpan';
+export type InstId = 'drums' | 'piano' | 'marimba' | 'guitar' | 'handpan';
 
 export interface InstSound {
   id: string;
@@ -45,6 +45,18 @@ export const SHELF: readonly InstDef[] = [
     ],
     scales: true,
     color: 0xffa630,
+  },
+  {
+    id: 'marimba',
+    name: 'Marimba',
+    how: 'Pinch for mallets, hit the bars',
+    sounds: [
+      { id: 'marimba', name: 'Marimba', family: 'marimba' },
+      { id: 'xylo', name: 'Xylo', family: 'xylophone', oct: 1 },
+      { id: 'glock', name: 'Glock', family: 'glock', oct: 1 },
+    ],
+    scales: true,
+    color: 0xffc14d,
   },
   {
     id: 'guitar',
@@ -127,6 +139,13 @@ export function pianoZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [];
   for (let i = 0; i < 6; i++) out.push({ i, shape: 'rect', x: -0.085 + i * 0.056, z: 0.03, w: 0.05, h: 0.12, degree: i, midi: scaleMidi(root, scale, i) });
   out.push({ i: PIANO_CHORD, shape: 'rect', x: -0.175, z: 0.03, w: 0.09, h: 0.12, degree: -1, midi: root - 12 });
+  return out;
+}
+
+/** The marimba: eight wooden bars across the tray, low and long on the left, 4.8 cm wide, every one in the scale. */
+export function marimbaZones(root: number, scale: Scale): Zone[] {
+  const out: Zone[] = [];
+  for (let i = 0; i < 8; i++) out.push({ i, shape: 'rect', x: (i - 3.5) * 0.054, z: 0.03, w: 0.048, h: 0.14 - i * 0.008, degree: i, midi: scaleMidi(root, scale, i) });
   return out;
 }
 
