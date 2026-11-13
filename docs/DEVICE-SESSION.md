@@ -65,9 +65,10 @@ Put the piano out. SONGS, Kick Start, EASY, then PLAY. After the count-in, notes
 
 - Watch: each note falls onto the exact key and lands on the beat. Hit it and it bursts.
 - Partway through, poke the DRUMS card. The panel should say "Drums next", the drums come out at the next loop, and "Find it, then join in" gives you a bar before the notes start falling on the drums.
-- "Go wild!" twice: hit anything, fast. The room above eye level should dim (your hands and the desk stay lit) with soft colour, never flickering. On Easy the notes keep falling to the end.
-- "Last one!": the band holds its chord and your instrument pulses. Wait two seconds, then hit it: the band should land on your hit.
-- Read: the results (stars, notes played out of the total, "On time" % or which side of the beat, the song and your best run), "That was you" as your two best bars play back with your notes in gold, and fps min on line 1 straight after.
+- "Solo!" twice (a bar each): hit anything, fast. The room above eye level should dim (your hands and the desk stay lit) with soft colour, never flickering. On Easy the notes keep falling to the end.
+- "Bring it home": the band holds its chord and your instrument pulses. Wait two seconds, then hit it: the band should land on your hit.
+- "That was you": your two best bars play back with your notes in gold, the panel showing nothing else. Then read the results (the song and its %, stars, Perfect and Good, best run, "On time" % or which side of the beat), and fps min on line 1 straight after.
+- The count-in: four stick clicks from a light across the desk, which flashes on each.
 - Good: the notes land on the beat and on the right target, the switch lands at the next loop with a bar to find the drums, the frame rate holds.
 
 ## 5. Make a track (7 min)
@@ -111,7 +112,7 @@ On the panel: PLAY TOGETHER, START A BAND. The panel shows a 4-letter code. On t
 | 3e handpan: middle /10, rim notes, walking the scale | |
 | 3e2 congas: middle vs edge heard?, low left / high right; piano black key plays two notes? | |
 | 3f settings heard and kept? fit, what felt cramped | |
-| Go wild!: room above eye level dims, tray and hands stay lit?, any flicker? | |
+| Solo!: room above eye level dims, tray and hands stay lit?, any flicker? | |
 | tray: panel top row reachable without touching the seat ahead? any presses you didn't mean? | |
 | band: friend's light across the desk, sound from their side? | |
 | 4 notes on target and on the beat?, stars, notes played, On time %, switch landed?, fps min | |

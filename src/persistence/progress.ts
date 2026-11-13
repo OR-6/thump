@@ -75,6 +75,8 @@ export interface Progress {
   pads?: SavedPad[];
   /** Tracks whose machine you've built. */
   built?: string[];
+  /** Best score (% of notes) per song and level ('kick-start:easy'). */
+  best?: Record<string, number>;
 }
 
 const KEY = 'progress.v1';
@@ -90,6 +92,7 @@ export function loadProgress(): Progress {
   p.introDone = r.introDone === true;
   if (Array.isArray(r.unlocks)) p.unlocks = r.unlocks.filter((u): u is Unlock => UNLOCKS.includes(u as Unlock));
   p.stars = numRecord(r.stars, 1, 3);
+  p.best = numRecord(r.best, 0, 100);
   if (r.gold && typeof r.gold === 'object') for (const [k, v] of Object.entries(r.gold)) if (v === true) p.gold[k] = true;
   if (typeof r.next === 'number' && Number.isInteger(r.next) && r.next >= 0 && r.next < 100) p.next = r.next;
   if (typeof r.crowd === 'number' && r.crowd >= 3 && r.crowd <= 12) p.crowd = Math.round(r.crowd);

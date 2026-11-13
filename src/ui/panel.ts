@@ -328,7 +328,7 @@ export class Panel {
     g.fillStyle = '#2a2927';
     rounded(g, X, 470, R - X, 22, 11);
     g.fill();
-    // the song's map on it: the second half a shade lighter, each Go wild! a red stretch marked above
+    // the song's map on it: the second half a shade lighter, each solo a red stretch marked above
     const m = d.map;
     if (m && m.beats > 0) {
       const at = (b: number) => X + ((R - X) * b) / m.beats;
@@ -339,7 +339,7 @@ export class Panel {
         g.fillStyle = '#7a2a1e';
         g.fillRect(at(a), 474, at(z) - at(a), 14);
         g.fillStyle = '#ff7a5c';
-        const t = 'WILD';
+        const t = 'SOLO';
         g.fillText(t, (at(a) + at(z) - g.measureText(t).width) / 2, 458);
       }
     }
@@ -375,12 +375,14 @@ export class Panel {
   }
 
   private drawResults(g: CanvasRenderingContext2D, d: Display): void {
+    // (stars hidden while your replay plays)
+    if (d.stars < 0) return;
     for (let i = 0; i < 3; i++) star(g, CW / 2 - 170 + i * 170, 300, 64, i < Math.max(0, d.stars), d.gold);
     const b = d.best;
     if (!b) return;
-    // the song, and your longest run; a chip when the stars beat your best
+    // how they split, and your longest run; a chip when you beat your best
     g.font = `600 40px ${FONT}`;
-    const parts = [b.song, b.run >= 4 ? `Best run ${b.run}` : ''].filter(Boolean).join('  ·  ');
+    const parts = [`Perfect ${b.perfect}`, `Good ${b.good}`, b.run >= 4 ? `Best run ${b.run}` : ''].filter(Boolean).join('  ·  ');
     const w = g.measureText(parts).width;
     const chip = b.better ? 230 : 0;
     const x = (CW - w - chip) / 2;

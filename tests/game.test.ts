@@ -103,22 +103,24 @@ describe('the game', () => {
       t += 1 / 30;
       g.tick(t);
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t + 0.004, 0.8));
-      if (g.display.line === 'Go wild!') sawFill = true;
-      if (g.display.line === 'Keep it going') sawHold = true;
+      if (g.display.line === 'Solo!') sawFill = true;
+      if (g.display.line === 'No lights now') sawHold = true;
     }
     expect(g.mode).toBe('results');
     expect(sawFill && sawHold).toBe(true);
     expect(g.last?.stars).toBe(3);
     // (hits land up to a 30 fps frame after the note here, so not 100)
     expect(g.lastTight).toBeGreaterThan(60);
-    // the score first and it stays: notes played, then how it sat in time
+    // your replay first; then the score, and it stays: the song and its %, then how it sat in time
+    const songEnd = voiced.length;
+    for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
     g.tick((t += 1.6));
-    expect(g.display.line).toMatch(/^\d+ of \d+ notes$/);
+    expect(g.display.line).toMatch(/: \d+%$/);
     expect(g.display.sub).toMatch(/On time \d+%|ahead|behind|Loose/);
     expect(g.display.stars).toBe(3);
     // the machine played under it: the parts you don't play live (perc, keys, bass), never the ones you do
-    expect(voiced.slice(before).some((k) => k.startsWith('keys:'))).toBe(true);
-    expect(voiced.slice(before).some((k) => k === 'kit:kick' || k.startsWith('t1:'))).toBe(false);
+    expect(voiced.slice(before, songEnd).some((k) => k.startsWith('keys:'))).toBe(true);
+    expect(voiced.slice(before, songEnd).some((k) => k === 'kit:kick' || k.startsWith('t1:'))).toBe(false);
     expect(p.unlocks).toContain('jam');
   });
   it('a song with no hits ends with one star, never a failure', () => {
@@ -310,7 +312,12 @@ describe('the game', () => {
     }
     expect(g.mode).toBe('results');
     expect(Math.max(...at.values())).toBeLessThanOrEqual(2);
-    // a few seconds in, the results name the thing of yours that carried it
+    // your best bars play back first, the panel saying only that; then the results name what carried it
+    g.tick((t += 1 / 30));
+    expect(g.display.line).toBe('That was you');
+    expect(g.display.stars).toBe(-1);
+    for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
+    expect(g.display.line).toMatch(/: \d+%$/);
     g.tick((t += 4.5));
     expect(g.display.sub).toBe('The tick never missed');
     g.key('play');
@@ -355,7 +362,7 @@ describe('the game', () => {
       t += 1 / 30;
       now = t;
       g.tick(t);
-      subs.push(g.display.sub);
+      subs.push(g.display.line);
     }
     expect(log.filter((x) => x === 'drop').length).toBeGreaterThanOrEqual(2);
     expect(voiced.filter((x) => x > end).length).toBeGreaterThan(20);
@@ -627,8 +634,8 @@ describe('the game', () => {
     g.act('nav:songs');
     g.act('play');
     let t = 0;
-    for (let k = 0; k < 6000 && g.display.line !== 'Last one!'; k++) g.tick((t += 1 / 30));
-    expect(g.display.line).toBe('Last one!');
+    for (let k = 0; k < 6000 && g.display.line !== 'Bring it home'; k++) g.tick((t += 1 / 30));
+    expect(g.display.line).toBe('Bring it home');
     expect(g.mode).toBe('play');
     const before = drops;
     g.tick((t += 0.5));
@@ -640,6 +647,21 @@ describe('the game', () => {
     g.act('again');
     for (let k = 0; k < 9000 && g.mode !== 'results'; k++) g.tick((t += 1 / 30));
     expect(g.mode).toBe('results');
+  });
+
+  it("a friend playing the tune live in the same song: this headset's band leaves out just that part", () => {
+    const voiced: string[] = [];
+    const g = new Game({ ...stage([]), voice: (k: string) => voiced.push(k) }, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.friendParts.add('KEYS');
+    g.act('nav:songs');
+    g.act('play');
+    let t = 0;
+    for (let k = 0; k < 900; k++) g.tick((t += 1 / 30));
+    // (Kick Start: KEYS is the friend's; the bass, also on the piano, still plays here)
+    expect(voiced.some((k) => k.startsWith('piano:') && Number(k.slice(6)) < 10)).toBe(false);
+    expect(voiced.some((k) => k.startsWith('piano:') && Number(k.slice(6)) >= 10)).toBe(true);
   });
 
   it('learns a steady lateness', () => {

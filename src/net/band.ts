@@ -67,7 +67,7 @@ export type BandCtl =
   | { k: 'song'; i: number; at: number }
   | { k: 'ask'; i: number }
   /** What a player has out, and the song they're playing on it now ('' none: their instrument then mutes nothing). */
-  | { k: 'inst'; p: string; id: string; s?: string };
+  | { k: 'inst'; p: string; id: string; s?: string; l?: string[] };
 
 export function validCtl(m: unknown): m is BandCtl {
   if (!m || typeof m !== 'object') return false;
@@ -78,7 +78,7 @@ export function validCtl(m: unknown): m is BandCtl {
   if (n.k === 'pong') return num(n.a) && num(n.h) && id;
   if (n.k === 'song') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && num(n.at);
   if (n.k === 'ask') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32;
-  if (n.k === 'inst') return typeof n.p === 'string' && n.p.length <= 12 && typeof n.id === 'string' && /^[a-z]{1,12}$/.test(n.id) && (n.s === undefined || (typeof n.s === 'string' && /^[a-z0-9-]{0,40}$/.test(n.s)));
+  if (n.k === 'inst') return typeof n.p === 'string' && n.p.length <= 12 && typeof n.id === 'string' && /^[a-z]{1,12}$/.test(n.id) && (n.s === undefined || (typeof n.s === 'string' && /^[a-z0-9-]{0,40}$/.test(n.s))) && (n.l === undefined || (Array.isArray(n.l) && n.l.length <= 9 && n.l.every((x) => typeof x === 'string' && /^[A-Z0-9 ]{1,8}$/.test(x))));
   return false;
 }
 

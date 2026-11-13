@@ -50,6 +50,8 @@ export interface MenuInput {
   /** Results: the next song's button ('' none), and whether MAKE IT YOURS is offered. */
   next: string;
   make?: boolean;
+  /** Three stars on Easy: AGAIN goes up to Normal. */
+  harder?: boolean;
   /** Make a track: the machine is in, PERFORM starts it. */
   perform?: boolean;
   /** STOP was pressed once: it asks. */
@@ -186,7 +188,7 @@ export function buildPage(m: MenuInput): Page {
     case 'results': {
       const c = row(m.make ? 4 : 3, 24, W - 24, 18);
       const items: Item[] = [
-        { id: 'again', label: 'AGAIN', kind: 'play', x: c[0].x, y: 590, w: c[0].w, h: 180 },
+        { id: 'again', label: m.harder ? 'AGAIN ON\nNORMAL' : 'AGAIN', kind: 'play', x: c[0].x, y: 590, w: c[0].w, h: 180 },
         { id: 'next', label: m.next, kind: 'button', off: !m.next, x: c[1].x, y: 590, w: c[1].w, h: 180 },
       ];
       if (m.make) items.push({ id: 'make', label: 'MAKE IT\nYOURS', kind: 'button', x: c[2].x, y: 590, w: c[2].w, h: 180 });

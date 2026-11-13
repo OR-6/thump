@@ -1,5 +1,5 @@
 /**
- * Lights down: during Go wild! the room above the desk goes dim (a dark cap over you, eased in over a beat: the desk,
+ * Lights down: during a solo the room above the desk goes dim (a dark cap over you, eased in over a beat: the desk,
  * the tray and your hands below eye level stay as they are), and hits throw a soft wash of their instrument's colour
  * into it, at most three times a second (never a strobe), none at all with calm motion. When the fill lands ("Huge!")
  * the room comes back up.

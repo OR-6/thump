@@ -199,7 +199,9 @@ if (SONG) {
   s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 60000, 500);
   check('autoplay plays the first song', s.game.mode === 'count' || s.game.mode === 'play', `${s.game.mode} ${s.game.display.line}`);
   s = await until((x) => x.game.mode === 'results', 120000, 1000);
-  check('to the end: stars, notes played', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && /^\d+ of \d+ notes$/.test(s.game.display.line), `${s.game.display.line} / ${s.game.display.sub} stars=${s.game.last?.stars}`);
+  check('to the end: your best bars play back first', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && s.game.display.line === 'That was you' && s.game.display.stars === -1, `${s.game.display.line} / ${s.game.display.sub} stars=${s.game.last?.stars}`);
+  s = await until((x) => x.game.display.line !== 'That was you', 30000, 500);
+  check('then the score: the song and its %', /: \d+%$/.test(s.game.display.line), s.game.display.line);
   shot('room-07-results', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
   // > on the results: make it your own (Build), and the autoplayer builds it
   await wait(8000);

@@ -92,7 +92,7 @@ class Engine {
     this.master.connect(pad).connect(clip).connect(ctx.destination);
     this.drums = ctx.createGain();
     this.drums.connect(this.master);
-    // the fill's echo: a dotted-eighth delay on what's played, opened only during Go wild!
+    // the fill's echo: a dotted-eighth delay on what's played, opened only during a solo
     this.echoSend = ctx.createGain();
     this.echoSend.gain.value = 0;
     this.echoDelay = ctx.createDelay(2);
@@ -719,15 +719,17 @@ class Engine {
       const i = mine >= max ? this.voices.findIndex((v) => v.owner === owner) : 0;
       if (i < 0) break;
       const old = this.voices[i];
+      // (the same owner's old note stops when the new one starts, not now: a scheduled strum isn't cut early)
+      const at = old.owner === owner ? Math.max(now, t) : now;
       const gp = old.g.gain as AudioParam & { cancelAndHoldAtTime?: (t: number) => void };
-      if (gp.cancelAndHoldAtTime) gp.cancelAndHoldAtTime(now);
+      if (gp.cancelAndHoldAtTime) gp.cancelAndHoldAtTime(at);
       else {
-        gp.cancelScheduledValues(now);
-        gp.setValueAtTime(gp.value, now);
+        gp.cancelScheduledValues(at);
+        gp.setValueAtTime(gp.value, at);
       }
-      gp.setTargetAtTime(0, now, 0.006);
+      gp.setTargetAtTime(0, at, 0.006);
       // and its partials stop once faded (a gong has a dozen; left running they'd load the audio thread)
-      if (old.oscs) for (const o of old.oscs) try { o.stop(now + 0.05); } catch { /* already stopped */ }
+      if (old.oscs) for (const o of old.oscs) try { o.stop(at + 0.05); } catch { /* already stopped */ }
       this.voices.splice(i, 1);
       if (old.owner === owner) mine--;
     }

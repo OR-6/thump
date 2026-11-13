@@ -34,6 +34,14 @@ export class Tag {
   }
   private accent = 0xffffff;
 
+  /** Let its texture, material and plane go (a tag that's done for good). */
+  dispose(): void {
+    this.mesh.removeFromParent();
+    this.tex.dispose();
+    this.mat.dispose();
+    this.mesh.geometry.dispose();
+  }
+
   /** Show `text` (with an accent colour) at world `at`, facing `head`. Empty text hides it. */
   show(text: string, accent: number, at: Vector3 | null, head: Vector3 | null, hold = this.hold): void {
     this.hold = hold;

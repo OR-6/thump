@@ -76,6 +76,10 @@ describe('playing together', () => {
     expect(validCtl({ k: 'song', i: 99, at: 12.5 })).toBe(false);
     expect(validCtl({ k: 'inst', p: 'abc', id: 'piano' })).toBe(true);
     expect(validCtl({ k: 'inst', p: 'abc', id: '<script>' })).toBe(false);
+    // what a friend plays: the song and the parts, checked
+    expect(validCtl({ k: 'inst', p: 'abc', id: 'piano', s: 'kick-start', l: ['KEYS', 'KEYS 2'] })).toBe(true);
+    expect(validCtl({ k: 'inst', p: 'abc', id: 'piano', s: 'kick-start', l: ['<b>'] })).toBe(false);
+    expect(validCtl({ k: 'inst', p: 'abc', id: 'piano', s: 'Kick Start!' })).toBe(false);
     expect(validCtl({ k: 'pong', a: 1, h: 2, p: 'x' })).toBe(true);
   });
 });

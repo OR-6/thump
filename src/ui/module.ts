@@ -64,10 +64,10 @@ export interface Display {
   /** How far through the song (0..1), and the run of notes hit in a row. */
   progress?: number;
   combo?: number;
-  /** A song's map for the progress bar: its length in beats, the Go wild! stretches, where the second half runs. */
+  /** A song's map for the progress bar: its length in beats, the solo stretches, where the second half runs. */
   map?: { beats: number; wild: readonly (readonly [number, number])[]; second: readonly [number, number] } | null;
   /** Results: the song, your longest run of notes, and whether the stars beat your best. */
-  best?: { song: string; run: number; better: boolean } | null;
+  best?: { song: string; run: number; better: boolean; perfect: number; good: number } | null;
   /** The panel's page (src/ui/menu.ts), and the item that pulses for attention. */
   page?: import('./menu.js').Page;
   focus?: string;
