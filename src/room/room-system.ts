@@ -57,7 +57,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { PIANO_CHORD, SCALES, SHELF, STRUM, guitarZones, handpanZones, instDef, marimbaZones, pianoZones, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { PIANO_CHORD, SCALES, SHELF, STRUM, instDef, instZones, percVoice, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -919,7 +919,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const sid = key.slice(0, i);
     const rest = key.slice(i + 1);
     if (sid === 'clap') r = { surface: null, kind: 'clap', lane: 'kick', zone: 0 };
-    else if (sid === 'piano' || sid === 'marimba' || sid === 'guitar' || sid === 'handpan') r = { surface: null, kind: 'inst', lane: 'kick', zone: Number(rest) };
+    else if (sid === 'piano' || sid === 'marimba' || sid === 'guitar' || sid === 'handpan' || sid === 'congas') r = { surface: null, kind: 'inst', lane: 'kick', zone: Number(rest) };
     else if (sid === 'kit') r = { surface: this.kitSurface, kind: 'pad', lane: rest as Lane, zone: 0 };
     else if (sid === 'keys') r = { surface: this.kitSurface, kind: 'keys', lane: 'kick', zone: Number(rest) };
     else {
@@ -1146,7 +1146,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.labelFaceT -= dt;
       for (const [g, t] of this.labelTags) {
         // a part's tape shows while its instrument is on the desk
-        const shown = g.startsWith('kit:') || g === 'keys' ? this.kit.inst === 'drums' : g === 'piano' || g === 'marimba' || g === 'guitar' || g === 'handpan' ? this.kit.inst === g : true;
+        const shown = g.startsWith('kit:') || g === 'keys' ? this.kit.inst === 'drums' : g === 'piano' || g === 'marimba' || g === 'guitar' || g === 'handpan' || g === 'congas' ? this.kit.inst === g : true;
         if (t.mesh.visible !== shown && t.pinnedNow) t.mesh.visible = shown;
         t.update(dt);
         if (this.labelFaceT <= 0) t.face(this.head);
@@ -1216,7 +1216,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!key.startsWith(this.kit.inst + ':')) return false;
       const z = this.kit.instZones[r.zone % 10];
       if (!z) return false;
-      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : this.kit.inst === 'handpan' ? 0.02 : this.kit.inst === 'guitar' ? 0.024 : 0.013, -z.z);
+      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : this.kit.inst === 'handpan' ? 0.02 : this.kit.inst === 'guitar' ? 0.024 : this.kit.inst === 'congas' ? 0.022 : 0.013, -z.z);
       root.localToWorld(out);
       col.setHex(instDef(this.kit.inst).color);
       t.round = z.shape === 'disc';
@@ -1947,7 +1947,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return root.localToWorld(this.tmp.set(p.x, 0.012, p.z + 0.075));
     }
     if (g === 'keys') return root.localToWorld(this.tmp.set(-0.255, 0.02, KEYS_ROW.z));
-    if (g === 'piano' || g === 'marimba' || g === 'guitar' || g === 'handpan') return root.localToWorld(this.tmp.set(-0.25, 0.02, 0.1));
+    if (g === 'piano' || g === 'marimba' || g === 'guitar' || g === 'handpan' || g === 'congas') return root.localToWorld(this.tmp.set(-0.25, 0.02, 0.1));
     const s = this.surfaces.find((x) => x.id === g);
     if (!s) return null;
     return this.tmp.set((s.bounds.minX + s.bounds.maxX) / 2, 0.065, -(s.bounds.minZ + s.bounds.maxZ) / 2).applyMatrix4(s.world);
@@ -2361,11 +2361,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** The zones of a surface, the desk's bars, or a shelf instrument (as it would be laid out now). */
   private zonesOf(id: string): Zone[] {
     if (id === 'keys') return this.kit.keyZones;
-    if (id === 'piano' || id === 'marimba' || id === 'guitar' || id === 'handpan') {
+    if (id === 'piano' || id === 'marimba' || id === 'guitar' || id === 'handpan' || id === 'congas') {
       if (this.kit.inst === id) return this.kit.instZones;
       const root = this.instRoot(id);
       const scale = scaleById(this.shelfCfg(id).scale);
-      return id === 'piano' ? pianoZones(root, scale) : id === 'marimba' ? marimbaZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : handpanZones(root, scale);
+      return instZones(id, root, scale);
     }
     return this.surfaces.find((s) => s.id === id)?.zones ?? [];
   }
@@ -2415,6 +2415,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const snd = instDef(id).sounds.find((x) => x.id === c.sound) ?? instDef(id).sounds[0];
     const root = this.instRoot(id);
     if (id === 'guitar') return this.strum(Math.max(0, Math.min(2, zone)), vel, pan, when);
+    if (id === 'congas') {
+      const v = percVoice(snd.id, zone);
+      audio.modal(snd.family ?? 'congas', 0, vel, pan, when, v.size, 'congas', v.tone);
+      if (v.slap) audio.drum('rim', vel * 0.3, pan, when, 1);
+      return;
+    }
     if (id === 'piano' && zone === PIANO_CHORD) {
       // the chord pad: the chord the song is on, else the next of the scale's three
       const h = this.game.harmony();

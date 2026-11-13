@@ -86,7 +86,7 @@ export function buildPage(m: MenuInput): Page {
       const c = row(SHELF.length, 24, W - 24, 18);
       const items: Item[] = SHELF.map((d, i) => ({ id: `inst:${d.id}`, label: d.name.toUpperCase(), icon: d.id, color: d.color, on: d.id === m.inst.id, kind: 'card' as const, x: c[i].x, y: 150, w: c[i].w, h: 360 }));
       items.push(back());
-      if (m.inst.id !== 'drums') items.push({ id: 'nav:inst', label: `${m.inst.name.toUpperCase()}: NOTES & SOUND`, kind: 'button', x: 24, y: 560, w: 640, h: 190 });
+      if (m.inst.id !== 'drums') items.push({ id: 'nav:inst', label: `${m.inst.name.toUpperCase()}: ${m.inst.scale ? 'NOTES & SOUND' : 'SOUND'}`, kind: 'button', x: 24, y: 560, w: 640, h: 190 });
       items.push({ id: 'nav:free', label: 'PLAY IT', kind: 'play', x: 696, y: 560, w: 640, h: 190 });
       return { id: 'instruments', title: 'Instruments', line: 'Tap one to put it on the desk', items };
     }
@@ -95,13 +95,19 @@ export function buildPage(m: MenuInput): Page {
       const items: Item[] = [back()];
       // each row named on the left (not pressable)
       const label = (text: string, y: number): Item => ({ id: `label:${text}`, label: text, kind: 'chip', off: true, x: 24, y, w: 216, h: 130 });
-      items.push(label('NOTES', 150), label('SOUND', 310), label('PITCH', 470));
-      const sc = row(SCALES.length, 260, W - 24, 14);
-      SCALES.forEach((s, i) => items.push({ id: `scale:${s.id}`, label: s.name.toUpperCase(), on: s.name === m.inst.scale, kind: 'chip', x: sc[i].x, y: 150, w: sc[i].w, h: 130 }));
+      // (a drum has no notes to pick and no pitch: just its sound)
+      const pitched = d.scales !== false;
+      const soundY = pitched ? 310 : 150;
+      items.push(label('SOUND', soundY));
+      if (pitched) {
+        items.push(label('NOTES', 150), label('PITCH', 470));
+        const sc = row(SCALES.length, 260, W - 24, 14);
+        SCALES.forEach((s, i) => items.push({ id: `scale:${s.id}`, label: s.name.toUpperCase(), on: s.name === m.inst.scale, kind: 'chip', x: sc[i].x, y: 150, w: sc[i].w, h: 130 }));
+        items.push({ id: 'oct:-1', label: 'LOWER', kind: 'chip', off: m.inst.oct <= -1, x: 260, y: 470, w: 300, h: 130 });
+        items.push({ id: 'oct:+1', label: 'HIGHER', kind: 'chip', off: m.inst.oct >= 1, x: 760, y: 470, w: 300, h: 130 });
+      }
       const so = row(d.sounds.length, 260, W - 24, 14);
-      d.sounds.forEach((s, i) => items.push({ id: `sound:${s.id}`, label: s.name.toUpperCase(), on: s.name === m.inst.sound, kind: 'chip', x: so[i].x, y: 310, w: so[i].w, h: 130 }));
-      items.push({ id: 'oct:-1', label: 'LOWER', kind: 'chip', off: m.inst.oct <= -1, x: 260, y: 470, w: 300, h: 130 });
-      items.push({ id: 'oct:+1', label: 'HIGHER', kind: 'chip', off: m.inst.oct >= 1, x: 760, y: 470, w: 300, h: 130 });
+      d.sounds.forEach((s, i) => items.push({ id: `sound:${s.id}`, label: s.name.toUpperCase(), on: s.name === m.inst.sound, kind: 'chip', x: so[i].x, y: soundY, w: so[i].w, h: 130 }));
       items.push({ id: 'nav:free', label: 'PLAY IT', kind: 'play', x: 24, y: 640, w: W - 48, h: 130 });
       return { id: 'inst', title: `${m.inst.name}`, line: '', items };
     }
@@ -142,7 +148,7 @@ export function buildPage(m: MenuInput): Page {
       const c = row(4, 24, W - 24, 18);
       const items: Item[] = [
         { id: 'nav:instruments', label: 'INSTRUMENTS', icon: m.inst.id, kind: 'button', x: c[0].x, y: 560, w: c[0].w, h: 210 },
-        { id: 'nav:inst', label: 'NOTES &\nSOUND', sub: m.inst.id === 'drums' ? '' : `${m.inst.scale}, ${m.inst.sound}`, off: m.inst.id === 'drums', kind: 'button', x: c[1].x, y: 560, w: c[1].w, h: 210 },
+        { id: 'nav:inst', label: m.inst.scale || m.inst.id === 'drums' ? 'NOTES &\nSOUND' : 'SOUND', sub: m.inst.id === 'drums' ? '' : m.inst.scale ? `${m.inst.scale}, ${m.inst.sound}` : m.inst.sound, off: m.inst.id === 'drums', kind: 'button', x: c[1].x, y: 560, w: c[1].w, h: 210 },
         { id: 'nav:songs', label: 'SONGS', kind: 'play', x: c[2].x, y: 560, w: c[2].w, h: 210 },
         { id: 'nav:main', label: 'MENU', kind: 'button', x: c[3].x, y: 560, w: c[3].w, h: 210 },
       ];

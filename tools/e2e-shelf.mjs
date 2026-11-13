@@ -92,11 +92,19 @@ shot('shelf-guitar', look);
 
 await tab('handpan');
 s = state();
-check('then a handpan', s.targets.inst?.[0] === 4 && s.game.display.page?.title === 'Handpan', `${s.game.display.line} inst=${s.targets.inst}`);
+check('then a handpan', s.targets.inst?.[0] === 5 && s.game.display.page?.title === 'Handpan', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst0);
 s = state();
 check('its middle rings', s.debug.lastHit?.family === 'handpan' && s.debug.lastHit?.zone === 0, JSON.stringify(s.debug.lastHit));
 shot('shelf-handpan', look);
+
+await tab('congas');
+s = state();
+check('then congas', s.targets.inst?.[0] === 4 && s.game.display.page?.title === 'Congas', `${s.game.display.page?.title} inst=${s.targets.inst}`);
+await slapAt(s.targets.inst2);
+s = state();
+check('the high drum plays an open tone in its middle', s.debug.lastHit?.family === 'congas' && s.debug.lastHit?.zone === 2, JSON.stringify(s.debug.lastHit));
+shot('shelf-congas', look);
 
 // the stand: a pinch on a tile puts that instrument out
 {

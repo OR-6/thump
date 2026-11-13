@@ -749,6 +749,9 @@ export class Game {
       // (Easy: the hat joins after the first Go wild!; Normal: from the start)
       parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found || p.def.name === 'HAT');
       if (found) foundName = say(found.def.name);
+    } else if (inst === 'congas') {
+      // the congas: the song's extra percussion (its PERC lines), and on Normal the hat's eighths too, as a tumbao
+      parts = m.parts.filter((p) => p.def.name.startsWith('PERC') || (this.level === 'normal' && p.def.name === 'HAT'));
     } else if (inst === 'handpan' && this.level === 'easy') {
       // Easy handpan: the bass line on its notes (on the beat, the low middle mostly), not the off-beat extras
       parts = m.parts.filter((p) => p.def.name === 'BASS');
@@ -771,7 +774,7 @@ export class Game {
           // an arc: kick and snare first; your own thing joins at bar 5
           if (p === found && beat < 16) return;
           if (p.def.name === 'HAT' && this.level === 'easy' && beat < 32) return;
-          notes.push({ beat, part: this.onInst(inst, n.key, k) as never, degree: -1, vel: Math.max(0.6, n.vel) });
+          notes.push({ beat, part: this.onInst(inst, n.key, k, p.def.name) as never, degree: -1, vel: Math.max(0.6, n.vel) });
         });
     }
     notes.sort((a, b) => a.beat - b.beat || rank(a.part as string) - rank(b.part as string));
@@ -781,7 +784,16 @@ export class Game {
   }
 
   /** A recorded note's key, moved onto an instrument (the piano's same scale note; the handpan walked round). */
-  private onInst(inst: string, key: string, k: number): string {
+  private onInst(inst: string, key: string, k: number, part = ''): string {
+    // the congas: the first extra on the low drum (middle, then edge), the second a slap on the high one, the hat's
+    // eighths on the high drum (open, slap); anything else by what it was on the kit
+    if (inst === 'congas') {
+      if (key.startsWith('congas:')) return key;
+      if (part === 'PERC') return `congas:${k % 2}`;
+      if (part === 'PERC 2') return 'congas:3';
+      if (part === 'HAT' || key === 'kit:hat') return `congas:${2 + (k % 2)}`;
+      return key === 'kit:kick' ? 'congas:0' : 'congas:3';
+    }
     if (inst === 'drums' || key.startsWith(inst + ':')) {
       // (the bass's low octave on the piano is played on the same key)
       return inst === 'piano' && key.startsWith('piano:') ? `piano:${Number(key.slice(6)) % 10}` : key;
@@ -1125,7 +1137,7 @@ export class Game {
   private groovePlayed(key: string, t: number): void {
     const f = this.stage.freeHarmony?.();
     if (!this.stage.setting('band', false)) return;
-    if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('handpan:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
+    if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('handpan:') || key.startsWith('congas:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
     if (this.groove) {
       this.groove.last = t;
       return;
@@ -1162,7 +1174,7 @@ export class Game {
       if (g.inst !== 'handpan' && (inBar === 0 || inBar === 2)) this.stage.band({ beat: b, voice: 'bass', midi: root - 12, len: 0.9, vel: inBar === 0 ? 0.7 : 0.55 }, at, spb);
       if (g.inst === 'handpan' && inBar === 0 && bar % 2 === 0) this.stage.voice('handpan:0', at, 0.4);
       if (g.inst !== 'drums') this.stage.band({ beat: b, voice: 'shaker', midi: 0, len: 0.1, vel: b % 1 ? 0.25 : 0.4 }, at, spb);
-      if (g.inst !== 'drums' && g.inst !== 'handpan') {
+      if (g.inst !== 'drums' && g.inst !== 'handpan' && g.inst !== 'congas') {
         if (inBar === 0 || inBar === 2) this.stage.voice('kit:kick', at, 0.45);
         if (inBar === 1 || inBar === 3) this.stage.voice('kit:rim', at, 0.3);
       }
@@ -1310,7 +1322,7 @@ export class Game {
     // performing: ◀ ▶ switch what you play (it takes over at the next loop; the part you leave goes back in the machine)
     if ((k === 'prev' || k === 'next') && this.perf && this.machine && (this.mode === 'play' || this.mode === 'count') && !this.perf.queued) {
       const m = this.machine;
-      const order = ['drums', 'piano', 'marimba', 'handpan', 'guitar'].filter((i) => i === 'drums' || i === 'guitar' || m.parts.some((p) => PART_INST[p.def.name] === (i === 'marimba' ? 'piano' : i)));
+      const order = SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || m.parts.some((p) => plays(i, p.def.name)));
       const at = Math.max(0, order.indexOf(this.perf.inst));
       const next = order[(at + (k === 'next' ? 1 : -1) + order.length) % order.length];
       const beat = this.clock.beatAt(this.t);
@@ -1986,7 +1998,7 @@ export class Game {
     const v = this.stage.shelf?.(0) ?? { id: 'drums', name: 'Drums', how: '', scale: '', sound: '', oct: 0 };
     const pageId: PageId = this.tuneOpen ? 'tune' : this.settingsOpen ? 'settings' : this.mode === 'discover' ? this.menu : this.mode === 'build' ? 'build' : this.mode === 'results' ? 'results' : 'song';
     const band = this.stage.bandState?.() ?? { state: 'idle', players: 1 };
-    const sw = this.machine ? ['drums', 'piano', 'marimba', 'handpan', 'guitar'].filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => PART_INST[p.def.name] === (i === 'marimba' ? 'piano' : i) && p.def.name !== 'BASS')) : [];
+    const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
       page: pageId,
       line: pageId === 'free' ? (this.groove ? "The band's playing along" : '') : pageId === 'main' ? (this.found.includes('kit') ? '' : 'Or just tap the desk') : d.line,
@@ -2258,10 +2270,13 @@ export function tightPercent(offsets: readonly number[]): number {
 /** The free-play band's chords, a bar each: the scale's first chord twice, then its second and third. */
 const GROOVE = [0, 0, 1, 2];
 
-const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', marimba: 'Marimba', handpan: 'Handpan', guitar: 'Guitar' };
+const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', marimba: 'Marimba', handpan: 'Handpan', guitar: 'Guitar', congas: 'Congas' };
 
 /** Which instrument each part is played on (it comes out on the desk when the part is asked for). */
 const PART_INST: Record<string, string> = { KICK: 'drums', SNARE: 'drums', HAT: 'drums', CLAP: 'drums', PERC: 'handpan', 'PERC 2': 'handpan', KEYS: 'piano', 'KEYS 2': 'piano', BASS: 'piano' };
+/** Which instruments a song can be switched to mid-song, in order, and whether one plays a written part. */
+const SWITCH_ORDER = ['drums', 'piano', 'marimba', 'handpan', 'congas', 'guitar'];
+const plays = (inst: string, part: string): boolean => (inst === 'congas' ? part.startsWith('PERC') : PART_INST[part] === (inst === 'marimba' ? 'piano' : inst));
 
 /** Things that ring (a hat on them sounds right) and things that knock (a snare). */
 const RINGS = new Set<string>(['bell', 'tubular', 'glock', 'triangle', 'ride', 'cowbell', 'bowl', 'tongue']);

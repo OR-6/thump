@@ -5,6 +5,6 @@
 import { defineAssets } from '@iwsdk/core';
 import { hihat } from './scene-assets/hihat.scene-asset.js';
 import { snare } from './scene-assets/snare.scene-asset.js';
-import { guitar, handpan, marimba, piano } from './scene-assets/desk-instruments.scene-asset.js';
+import { congas, guitar, handpan, marimba, piano } from './scene-assets/desk-instruments.scene-asset.js';
 
-export default defineAssets({ snare, hihat, piano, guitar, handpan, marimba });
+export default defineAssets({ snare, hihat, piano, guitar, handpan, marimba, congas });

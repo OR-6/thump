@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { PIANO_CHORD, SCALES, SHELF, STRUM, guitarZones, handpanZones, pianoZones, scaleById, scaleMidi, stepShelf, strumNotes } from '../src/kit/shelf.js';
+import { CONGA, PIANO_CHORD, SCALES, SHELF, STRUM, congaZones, guitarZones, handpanZones, percVoice, pianoZones, scaleById, scaleMidi, stepShelf, strumNotes } from '../src/kit/shelf.js';
 
 describe('the instrument shelf', () => {
-  it('steps through drums, piano, guitar, handpan and wraps', () => {
-    expect(SHELF.map((d) => d.id)).toEqual(['drums', 'piano', 'marimba', 'guitar', 'handpan']);
+  it('steps through drums, piano, marimba, guitar, congas, handpan and wraps', () => {
+    expect(SHELF.map((d) => d.id)).toEqual(['drums', 'piano', 'marimba', 'guitar', 'congas', 'handpan']);
     expect(stepShelf('drums', 1)).toBe('piano');
     expect(stepShelf('drums', -1)).toBe('handpan');
     expect(stepShelf('handpan', 1)).toBe('drums');
@@ -24,6 +24,24 @@ describe('the instrument shelf', () => {
     expect(right - left).toBeLessThan(0.46);
     // nothing overlaps
     for (const a of z) for (const b of z) if (a !== b) expect(Math.abs(a.x - b.x)).toBeGreaterThanOrEqual((a.w + b.w) / 2);
+  });
+  it('the congas: two drums apart, each a middle inside its edge; the middle is open, the edge slaps', () => {
+    const z = congaZones();
+    expect(z).toHaveLength(4);
+    // the drums don't touch
+    expect(Math.abs(z[0].x - z[2].x)).toBeGreaterThan(z[1].w + z[3].w);
+    for (const d of [0, 2]) {
+      expect(z[d].x).toBe(z[d + 1].x);
+      expect(z[d].w).toBeLessThan(z[d + 1].w);
+    }
+    expect(z[1].w).toBe(CONGA.r[0]);
+    // the low drum lower, the edge a slap, the cajon's edge its high slap
+    expect(percVoice('congas', 0).tone).toBe(0);
+    expect(percVoice('congas', 2).tone).toBe(2);
+    expect(percVoice('congas', 1).slap).toBe(true);
+    expect(percVoice('congas', 0).slap).toBe(false);
+    expect(percVoice('cajon', 1).tone).toBe(1);
+    expect(percVoice('cajon', 2).size).toBeLessThan(percVoice('cajon', 0).size);
   });
   it('handpan notes never overlap each other or the ding', () => {
     const z = handpanZones(50, scaleById('sad'));

@@ -26,7 +26,7 @@ describe('the panel pages', () => {
   it('instruments: a card each, the one out lit; its settings; play it', () => {
     const p = buildPage(base('instruments'));
     const cards = p.items.filter((i) => i.kind === 'card');
-    expect(cards.map((c) => c.id)).toEqual(['inst:drums', 'inst:piano', 'inst:marimba', 'inst:guitar', 'inst:handpan']);
+    expect(cards.map((c) => c.id)).toEqual(['inst:drums', 'inst:piano', 'inst:marimba', 'inst:guitar', 'inst:congas', 'inst:handpan']);
     expect(cards.find((c) => c.on)?.id).toBe('inst:piano');
     expect(p.items.some((i) => i.id === 'nav:inst')).toBe(true);
   });

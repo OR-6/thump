@@ -379,3 +379,103 @@ export class MarimbaModel implements DeskModel {
     });
   }
 }
+
+/**
+ * Two congas, cut down so your palm lands on the real desk: a staved wood shell with a dark stripe, a rawhide head
+ * (warm, mottled, a faint ring where the edge begins), a black rolled crown hoop and its side plates with lugs. Each
+ * head dips where it is hit; the middle glows for an open tone, the edge ring for a slap. Zones 0/1 the low drum,
+ * 2/3 the high one (see congaZones).
+ */
+export class CongaModel implements DeskModel {
+  readonly root = named(new Group(), 'Congas');
+  private heads: Mesh[] = [];
+  private marks: Mesh[] = [];
+  private spring = new Springs(4);
+  private glow = [0, 0, 0, 0];
+  private readonly wood = mat('Wood', 0x8a4a22, 0.38, 0.05);
+  private readonly stripe = mat('Stripe', 0x3a1c0c, 0.4, 0.05);
+  private readonly crown = mat('Crown', 0x1d1d20, 0.35, 0.8);
+  private readonly lug = mat('Lug', 0xcfd3d8, 0.2, 1);
+  static readonly H = 0.02;
+
+  layout(zones: readonly Zone[]): void {
+    this.root.clear();
+    this.heads = [];
+    this.marks = [];
+    const H = CongaModel.H;
+    for (let d = 0; d * 2 + 1 < zones.length; d++) {
+      const inner = zones[d * 2];
+      const R = zones[d * 2 + 1].w;
+      const drum = named(new Group(), d === 0 ? 'Tumba' : 'Quinto');
+      drum.position.set(inner.x, 0, -inner.z);
+      // the shell: a short barrel (wider at the belly), staves showing as fine dark lines, a stripe round it
+      const pts: Vector2[] = [];
+      for (let k = 0; k <= 8; k++) {
+        const t = k / 8;
+        pts.push(new Vector2(R * (0.96 + 0.06 * Math.sin(Math.PI * t * 0.8)), t * (H - 0.004)));
+      }
+      const shell = named(new Mesh(new LatheGeometry(pts, 48), this.wood), 'Shell');
+      const band = named(new Mesh(new CylinderGeometry(R * 1.035, R * 1.03, 0.0035, 48, 1, true), this.stripe), 'Stripe');
+      band.position.y = H * 0.38;
+      const staves = named(new Group(), 'Staves');
+      const sg = new BoxGeometry(0.0007, H - 0.006, 0.0006);
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        const s = new Mesh(sg, this.stripe);
+        s.position.set(Math.cos(a) * R * 1.012, (H - 0.006) / 2 + 0.001, Math.sin(a) * R * 1.012);
+        s.rotation.y = -a;
+        staves.add(s);
+      }
+      // the head: rawhide, the low drum a shade darker, its own material so it can glow
+      const hide = new MeshStandardMaterial({ name: 'Rawhide', color: d === 0 ? 0xe2c79a : 0xe8d0a6, roughness: 0.82 });
+      const head = named(new Mesh(new CylinderGeometry(R * 0.985, R * 0.985, 0.002, 48), hide), 'Head');
+      head.position.y = H - 0.002;
+      // the slap ring: where the edge begins (a faint darker line on the hide)
+      const ringMat = new MeshStandardMaterial({ name: 'Edge', color: 0xa8875a, roughness: 0.85 });
+      const ring = named(new Mesh(new RingGeometry(inner.w - 0.0015, inner.w + 0.0015, 48), ringMat), 'EdgeLine');
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = H - 0.0008;
+      // the crown hoop: a black rolled rim over the head's edge
+      const crown = named(new Mesh(new TorusGeometry(R * 1.0, 0.0028, 10, 56), this.crown), 'Crown');
+      crown.rotation.x = -Math.PI / 2;
+      crown.position.y = H - 0.0005;
+      // side plates and lugs: four on the low drum, four on the high, each a plate on the shell with a rod to the rim
+      const lugs = named(new Group(), 'Lugs');
+      const plate = new BoxGeometry(0.004, 0.006, 0.0012);
+      const rod = new CylinderGeometry(0.0008, 0.0008, 0.008, 8);
+      for (let i = 0; i < 4; i++) {
+        const a = ((i + 0.5) / 4) * Math.PI * 2;
+        const l = named(new Group(), `Lug${i}`);
+        const p = new Mesh(plate, this.lug);
+        p.position.set(R * 1.04, H * 0.45, 0);
+        const r = new Mesh(rod, this.lug);
+        r.position.set(R * 1.04, H * 0.45 + 0.006, 0);
+        l.add(p, r);
+        l.rotation.y = a;
+        lugs.add(l);
+      }
+      drum.add(shell, band, staves, head, ring, crown, lugs);
+      this.root.add(drum);
+      this.heads.push(head);
+      this.marks.push(ring);
+    }
+  }
+
+  struck(i: number, gain: number): void {
+    const d = i >> 1;
+    this.spring.kick(d, 0.06 + 0.12 * gain);
+    this.glow[i & 3] = 0.5 + 0.6 * gain;
+  }
+
+  update(dt: number): void {
+    this.spring.step(dt, 1800, 30);
+    this.heads.forEach((h, d) => {
+      // the head gives under the hand and comes back
+      h.position.y = CongaModel.H - 0.002 + Math.max(-0.002, this.spring.x[d] * 0.02);
+      const open = (this.glow[d * 2] = Math.max(0, this.glow[d * 2] - dt * 6));
+      const slap = (this.glow[d * 2 + 1] = Math.max(0, this.glow[d * 2 + 1] - dt * 8));
+      (h.material as MeshStandardMaterial).emissive.setHex(0xffb060).multiplyScalar(open * 0.5);
+      (this.marks[d].material as MeshStandardMaterial).emissive.setHex(0xfff0c0).multiplyScalar(slap * 1.2);
+    });
+  }
+}

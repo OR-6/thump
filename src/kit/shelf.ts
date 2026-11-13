@@ -7,7 +7,7 @@
 import type { Family } from '../room/classify.js';
 import type { Zone } from '../room/zones.js';
 
-export type InstId = 'drums' | 'piano' | 'marimba' | 'guitar' | 'handpan';
+export type InstId = 'drums' | 'piano' | 'marimba' | 'guitar' | 'handpan' | 'congas';
 
 export interface InstSound {
   id: string;
@@ -69,6 +69,18 @@ export const SHELF: readonly InstDef[] = [
     ],
     scales: true,
     color: 0x6fa8ff,
+  },
+  {
+    id: 'congas',
+    name: 'Congas',
+    how: 'Middle for open, edge for slap',
+    sounds: [
+      { id: 'congas', name: 'Congas', family: 'congas' },
+      { id: 'cajon', name: 'Cajon', family: 'cajon' },
+      { id: 'frame', name: 'Frame drum', family: 'frame' },
+    ],
+    scales: false,
+    color: 0xff7aa2,
   },
   {
     id: 'handpan',
@@ -149,6 +161,18 @@ export function marimbaZones(root: number, scale: Scale): Zone[] {
   return out;
 }
 
+/** The congas: two drums side by side (the low one left, 15 cm and 13 cm across). Zones 0/1 the low drum's middle and
+ * edge, 2/3 the high drum's (a hit lands on whichever its distance from the centre says). */
+export const CONGA = { x: [-0.085, 0.085], z: 0.02, r: [0.075, 0.065], open: 0.6 } as const;
+export function congaZones(): Zone[] {
+  const out: Zone[] = [];
+  for (let d = 0; d < 2; d++) {
+    out.push({ i: d * 2, shape: 'disc', x: CONGA.x[d], z: CONGA.z, w: CONGA.r[d] * CONGA.open, h: 0, degree: -1, midi: 0 });
+    out.push({ i: d * 2 + 1, shape: 'disc', x: CONGA.x[d], z: CONGA.z, w: CONGA.r[d], h: 0, degree: -1, midi: 0 });
+  }
+  return out;
+}
+
 /** The handpan: a low ding in the middle (9 cm), eight notes round it (6 cm), climbing in a zig-zag left and right. */
 export function handpanZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [{ i: 0, shape: 'disc', x: 0, z: 0.02, w: 0.045, h: 0, degree: 0, midi: scaleMidi(root, scale, 0) }];
@@ -187,4 +211,22 @@ export function strumNotes(root: number, chord: readonly number[]): number[] {
   const seventh = chord.length > 3 ? chord[3] - chord[0] : undefined;
   const shape = bass <= 45 ? [0, 7, seventh ?? 12, 12 + third, 19, 24] : [0, 7, seventh ?? 12, 12 + third, 19];
   return shape.map((o) => bass + o);
+}
+
+/** The zones of an instrument as it comes out (none for the drums: they are the pads). */
+export function instZones(id: InstId, root: number, scale: Scale): Zone[] {
+  return id === 'piano' ? pianoZones(root, scale) : id === 'marimba' ? marimbaZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : id === 'handpan' ? handpanZones(root, scale) : id === 'congas' ? congaZones() : [];
+}
+
+/**
+ * A hand drum's sound by where it was hit (zone 0/1 the low drum's middle and edge, 2/3 the high one's): which
+ * recorded drum, how big (smaller sounds higher), and whether the edge adds a slap's crack.
+ */
+export function percVoice(sound: string, zone: number): { tone: number; size: number; slap: boolean } {
+  const high = zone >= 2;
+  const edge = zone % 2 === 1;
+  if (sound === 'cajon') return { tone: edge ? 1 : 0, size: high ? 0.3 : 0.6, slap: false };
+  if (sound === 'frame') return { tone: high ? 1 : 0, size: edge ? 0.35 : 0.55, slap: edge };
+  // congas: the low drum is the tumba, the high one the quinto; the edge is the conga between, with a crack
+  return { tone: high ? 2 : edge ? 1 : 0, size: edge ? 0.4 : 0.5, slap: edge };
 }

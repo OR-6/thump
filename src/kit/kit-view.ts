@@ -9,10 +9,10 @@ import { PadView } from './pad-view.js';
 import { Panel } from '../ui/panel.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
-import { GuitarModel, HandpanModel, MarimbaModel, PianoModel, type DeskModel } from '../scene-assets/lib/instruments.js';
+import { CongaModel, GuitarModel, HandpanModel, MarimbaModel, PianoModel, type DeskModel } from '../scene-assets/lib/instruments.js';
 import { Tag } from '../ui/tag.js';
 import { Vector3 } from '@iwsdk/core';
-import { guitarZones, handpanZones, marimbaZones, pianoZones, type InstId, type Scale } from './shelf.js';
+import { instZones, type InstId, type Scale } from './shelf.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.11 } as const;
@@ -51,6 +51,7 @@ export class KitView {
     ['marimba', new Overlay('marimba', 8)],
     ['guitar', new Overlay('harp', 10)],
     ['handpan', new Overlay('tongue', 10)],
+    ['congas', new Overlay('tongue', 4)],
   ]);
   /** The zones of the instrument on the desk (none for the drums: they have pads). */
   instZones: Zone[] = [];
@@ -135,7 +136,7 @@ export class KitView {
       this.instZones = [];
       return;
     }
-    this.instZones = id === 'piano' ? pianoZones(root, scale) : id === 'marimba' ? marimbaZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : handpanZones(root, scale);
+    this.instZones = instZones(id, root, scale);
     const o = this.shelf.get(id)!;
     o.build(this.instZones);
     // the instrument itself (the light on it is the song's notes, quiet at rest)
@@ -154,7 +155,7 @@ export class KitView {
         this.chordTag.mesh.scale.setScalar(1);
       }
     }
-    o.group.position.y = id === 'piano' ? 0.0125 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? 0.022 : 0;
+    o.group.position.y = id === 'piano' ? 0.0125 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? 0.022 : id === 'congas' ? 0.021 : 0;
     this.unfoldT = 0;
     o.reveal(0, 0.03);
   }
@@ -167,6 +168,7 @@ export class KitView {
     ['marimba', new MarimbaModel()],
     ['guitar', new GuitarModel()],
     ['handpan', new HandpanModel()],
+    ['congas', new CongaModel()],
   ]);
   private unfoldT = 1;
   private chordTag = new Tag(0.075, 0.022);

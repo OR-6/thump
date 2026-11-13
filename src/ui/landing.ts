@@ -21,7 +21,7 @@ export function mountLanding(world: World): void {
       <section class="sampler" aria-label="Thump">
         <header class="top">
           <span class="brand">THUMP</span>
-          <span class="model">DESK SAMPLER · 5 INSTRUMENTS</span>
+          <span class="model">DESK SAMPLER · 6 INSTRUMENTS</span>
         </header>
         <div class="lcd" aria-live="polite"><span class="lcd-main">A BAND ON YOUR DESK</span><span class="lcd-sub">tap a pad</span></div>
         <div class="pads" role="group" aria-label="Try the instruments">
@@ -55,7 +55,7 @@ export function mountLanding(world: World): void {
         </div>
       </section>
       <section class="manual">
-        <p>Sit at a desk or a tray table with a Quest 3 on. Tap the desk and a drum kit comes up under your hands. Poke the screen floating over the desk to swap it for a piano, a marimba, a guitar or a handpan. Every note fits the others, so there's no wrong one.</p>
+        <p>Sit at a desk or a tray table with a Quest 3 on. Tap the desk and a drum kit comes up under your hands. Poke the screen floating over the desk to swap it for a piano, a marimba, a guitar, congas or a handpan. Every note fits the others, so there's no wrong one.</p>
         <p>Pick a song and the notes fall onto the keys you need, with the band playing the rest. Or make your own track a part at a time and play it live. Switch instruments halfway through if you like.</p>
         <p>With friends: one of you starts a band, the others type the code. Up to four headsets, wherever you all are.</p>
         <p class="note">Put the controllers down: it's hands only. Quest asks once to see your desk. Nothing leaves the headset unless you play together, and then only the notes.</p>

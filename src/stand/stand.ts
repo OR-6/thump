@@ -73,6 +73,20 @@ export const ICON: Record<string, Draw> = {
       g.stroke();
     }
   },
+  congas: (g, S) => {
+    // two tall drums, a little apart, the left one bigger
+    for (const [x, w, h] of [[0.34, 0.17, 0.5], [0.66, 0.14, 0.44]] as const) {
+      g.beginPath();
+      g.ellipse(S * x, S * (0.86 - h), S * w, S * 0.05, 0, 0, Math.PI * 2);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(S * (x - w), S * (0.86 - h));
+      g.quadraticCurveTo(S * (x - w * 1.25), S * (0.86 - h / 2), S * (x - w * 0.8), S * 0.86);
+      g.lineTo(S * (x + w * 0.8), S * 0.86);
+      g.quadraticCurveTo(S * (x + w * 1.25), S * (0.86 - h / 2), S * (x + w), S * (0.86 - h));
+      g.stroke();
+    }
+  },
   marimba: (g, S) => {
     for (let i = 0; i < 6; i++) {
       const h = 0.42 - i * 0.04;
