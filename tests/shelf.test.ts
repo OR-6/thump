@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONGA, PIANO_CHORD, SCALES, SHELF, STRUM, congaZones, guitarZones, handpanZones, percVoice, pianoZones, scaleById, scaleMidi, stepShelf, strumNotes } from '../src/kit/shelf.js';
+import { CONGA, PIANO_CHORD, pianoBlacks, SCALES, SHELF, STRUM, congaZones, guitarZones, handpanZones, percVoice, pianoZones, scaleById, scaleMidi, stepShelf, strumNotes } from '../src/kit/shelf.js';
 
 describe('the instrument shelf', () => {
   it('steps through drums, piano, marimba, guitar, congas, handpan and wraps', () => {
@@ -42,6 +42,19 @@ describe('the instrument shelf', () => {
     expect(percVoice('congas', 0).slap).toBe(false);
     expect(percVoice('cajon', 1).tone).toBe(1);
     expect(percVoice('cajon', 2).size).toBeLessThan(percVoice('cajon', 0).size);
+  });
+  it("the piano's ebony keys: four, at the back between two ivory ones, each playing those two", () => {
+    const z = pianoZones(60, scaleById('happy'));
+    const bl = pianoBlacks(z);
+    expect(bl).toHaveLength(4);
+    for (const k of bl) {
+      expect(k.b).toBe(k.a + 1);
+      expect(k.x).toBeGreaterThan(z[k.a].x);
+      expect(k.x).toBeLessThan(z[k.b].x);
+      // at the back half, narrower than the gap's neighbours
+      expect(k.z).toBeGreaterThan(z[k.a].z);
+      expect(k.w).toBeLessThan(z[k.a].w / 2);
+    }
   });
   it('handpan notes never overlap each other or the ding', () => {
     const z = handpanZones(50, scaleById('sad'));

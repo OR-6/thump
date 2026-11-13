@@ -46,6 +46,8 @@ export class KitView {
   keyZones: Zone[] = [];
   /** The instrument on the desk, and the shelf's other instruments (each its own light on the table). */
   inst: InstId = 'drums';
+  /** The instrument's id and a colon: what its notes' keys start with. */
+  instKey = 'drums:';
   readonly shelf = new Map<Exclude<InstId, 'drums'>, Overlay>([
     ['piano', new Overlay('keys', 8)],
     ['marimba', new Overlay('marimba', 8)],
@@ -132,6 +134,7 @@ export class KitView {
     this.keys.group.visible = drums && this.keyZones.length > 0 && this.keysShown;
     for (const [k, o] of this.shelf) o.group.visible = k === id;
     this.inst = id;
+    this.instKey = `${id}:`;
     if (drums) {
       this.instZones = [];
       return;
@@ -149,7 +152,7 @@ export class KitView {
     if (id === 'piano') {
       const q = this.instZones[this.instZones.length - 1];
       if (q) {
-        const at = new Vector3(q.x, 0.0135, -(q.z - q.h * 0.22));
+        const at = new Vector3(q.x, 0.0188, -(q.z - q.h * 0.22));
         this.chordTag.pin('CHORD', 0xffa630, at, at.clone().add(new Vector3(0, 1, 0)));
         this.chordTag.mesh.rotation.set(-Math.PI / 2, 0, 0.04);
         this.chordTag.mesh.scale.setScalar(1);
@@ -171,13 +174,17 @@ export class KitView {
     ['congas', new CongaModel()],
   ]);
   private unfoldT = 1;
-  private chordTag = new Tag(0.075, 0.022);
+  private chordTag = new Tag(0.075, 0.022, true);
   /** How long the unfold takes (quicker when a song is on: the notes are already coming). */
   unfoldS = 0.5;
 
   /** A note was played on the instrument out (zone i): it moves. */
   instStruck(i: number, gain: number): void {
     this.models.get(this.inst)?.struck(i % 10, gain);
+  }
+  /** The piano's ebony key j went down. */
+  blackStruck(j: number, gain: number): void {
+    if (this.inst === 'piano') this.models.get('piano')?.struck(7 + j, gain);
   }
 
   /** The overlay of the instrument on the desk (null for the drums). */

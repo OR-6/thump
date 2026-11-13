@@ -57,7 +57,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { PIANO_CHORD, SCALES, SHELF, STRUM, instDef, instZones, percVoice, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { PIANO_CHORD, SCALES, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -74,6 +74,7 @@ import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R } from './hand-mallet.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { Dimmer } from './dimmer.js';
+import { FriendSeat } from './friend-seat.js';
 
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
 const RESUME_WINDOW_S = 4;
@@ -118,6 +119,8 @@ export interface RoomDebug {
   phoneNotes?: number;
   /** Friends' notes heard (playing together). */
   friendNotes?: number;
+  /** Seats across the desk (friends, or the band's players). */
+  seats?: number;
 }
 
 export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, meshes: { required: [XRMesh] } }) {
@@ -330,11 +333,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (r.kind === 'pad') this.kit.pad(r.lane)?.setGlow(k);
       else if (r.kind === 'keys') this.kit.keys.light(r.zone, k);
       else if (r.kind === 'inst') {
-        if (key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.light(r.zone % 10, k);
+        if (key.startsWith(this.kit.instKey)) this.kit.instOverlay()?.light(r.zone % 10, k);
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     shelf: (dir) => this.shelfStep(dir),
-    bandState: () => ({ state: coop.status.state, players: coop.status.players ?? 1 }),
+    bandState: () => ({ state: coop.status.state, players: coop.status.players ?? 1, message: coop.status.message ?? '' }),
     saveLevel: (level) => {
       this.settings = { ...this.settings, level };
       saveSettings(this.settings);
@@ -371,7 +374,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // each star lands as a note of the song's own chord, on its melody instrument (the tonic, the third, the fifth, then the ninth)
       const fam = this.melodyFamily();
       const root = 72 + this.game.keyPc;
-      const notes = [0, 4, 7, 14];
+      // (a minor song's chord is minor)
+      const notes = this.game.harmony()?.minor ? [0, 3, 7, 14] : [0, 4, 7, 14];
       for (let i = 0; i < stars; i++) this.later(this.clock.t + 0.45 * (i + 1), () => audio.modal(fam, root + notes[i], 0.75, (i - 1) * 0.3, 0, 0.4, 'stars'));
       if (stars === 3) this.later(this.clock.t + 1.8, () => audio.modal(fam, root + notes[3], 0.6, 0, 0, 0.4, 'stars'));
     },
@@ -386,7 +390,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (r.kind === 'pad') this.kit.pad(r.lane)?.miss();
       else if (r.kind === 'keys') this.kit.keys.miss(r.zone);
       else if (r.kind === 'inst') {
-        if (key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.miss(r.zone % 10);
+        if (key.startsWith(this.kit.instKey)) this.kit.instOverlay()?.miss(r.zone % 10);
       }
       else if (r.surface) this.overlays.get(r.surface)?.miss(r.zone);
     },
@@ -456,7 +460,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         audio.whoosh(-0.4);
       }
     },
-    voice: (key, at, vel, mate) => {
+    voice: (key, at, vel, mate, you) => {
       const r = this.ref(key);
       if (!r) return;
       const when = this.clock.toAudio(at);
@@ -471,6 +475,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         audio.drum(r.lane, vel, p ? Math.max(-0.8, Math.min(0.8, p.x / 0.4)) : 0, when);
         this.later(at, () => {
           p?.hit(vel * 0.8);
+          if (you) p?.perfect();
           if (this.labelTags.size) this.labelTags.get(key)?.bump();
         });
         return;
@@ -488,7 +493,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
       }
       // its note lights where it plays, when it plays (and its tape bumps)
-      this.pendingLights.push({ at, key, vel });
+      this.pendingLights.push({ at, key, vel, you: !!you });
     },
     bandmate: (event, surface) => {
       const s = surface === 'keys' ? null : this.surfaces.find((x) => x.id === surface);
@@ -528,10 +533,53 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
   };
   /** Playing together: friends' headsets' sounds play here (to one side), and a light shows they're playing. */
-  private band = new BandLink(() => {
+  private band = new BandLink((s, vel) => {
     this.friendHits++;
     this.debug.friendNotes = (this.debug.friendNotes ?? 0) + 1;
+    this.friendSeatFor(s)?.pulse(vel);
   });
+  /**
+   * The others in the band, across the desk: a friend's headset (by its id), or on your own the backing band's
+   * players during a song (by 'band:' and the instrument). At most three.
+   */
+  private seats = new Map<string, FriendSeat>();
+  private seat(key: string, inst: string): FriendSeat | null {
+    let s = this.seats.get(key);
+    if (!s) {
+      if (this.seats.size >= 3) return null;
+      const used = new Set([...this.seats.values()].map((x) => x.root.userData.i as number));
+      // (the middle seat first, then left and right)
+      const i = [1, 0, 2].find((k) => !used.has(k)) ?? 0;
+      s = new FriendSeat(i, !this.tableOutline);
+      s.root.userData.i = i;
+      this.kit.root.add(s.root);
+      this.seats.set(key, s);
+      this.debug.seats = this.seats.size;
+    }
+    const d = SHELF.find((x) => x.id === inst);
+    s.set(d?.name ?? inst, d?.color ?? 0xfff2dc);
+    return s;
+  }
+  private dropSeats(band: boolean): void {
+    for (const [k, s] of this.seats)
+      if (k.startsWith('band:') === band) {
+        s.dispose();
+        this.seats.delete(k);
+        this.debug.seats = this.seats.size;
+      }
+  }
+  /** A friend's sound: which friend's seat (the one whose instrument makes it; the first friend if none does). */
+  private friendSeatFor(s: string): FriendSeat | null {
+    const [kind, what] = s.split(':');
+    let first: FriendSeat | null = null;
+    for (const [peer, inst] of this.friendInst) {
+      const seat = this.seats.get(peer);
+      if (!seat) continue;
+      first ??= seat;
+      if (kind === 'd' ? inst === 'drums' || inst === 'congas' : kind === 'p' ? inst === 'guitar' : instDef(inst as InstId)?.sounds.some((x) => x.family === what) || (what === 'harp' && inst === 'guitar')) return seat;
+    }
+    return first;
+  }
   private friendHits = 0;
   private friendFlashT = 0;
   private bandSeen = '';
@@ -540,17 +588,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const playing = st.state === 'connected' && (st.role === 'host' || st.role === 'guest') && !!coop.transport;
     this.band.host = st.role === 'host';
     if (playing) {
+      this.band.panOf = (s) => this.friendSeatFor(s)?.pan ?? 0.45;
       this.band.start(coop.transport!);
       this.band.onCtl = (m) => this.onBandCtl(m);
       this.bandOn = true;
       this.pingT = 0;
       this.pings = 0;
-      this.band.send({ k: 'inst', p: this.band.me, id: this.kit.inst });
+      this.band.send({ k: 'inst', p: this.band.me, id: this.kit.inst, s: this.game.perfTrack });
     } else {
       this.band.stop();
       this.bandOn = false;
       this.friendInst.clear();
       this.game.friendInsts.clear();
+      this.dropSeats(false);
     }
     this.game.code = (st.state === 'hosting' || st.state === 'connected') && st.role !== 'caller' && st.code ? st.code : '';
     this.game.refreshDisplay();
@@ -567,6 +617,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private pingT = 0;
   private pings = 0;
   private friendInst = new Map<string, string>();
+  private friendSong = new Map<string, string>();
+  /** Friends playing the same song as this headset, on what: their parts drop out of this one's backing. */
+  private syncFriends(): void {
+    this.game.friendInsts.clear();
+    const mine = this.game.perfTrack;
+    if (!mine) return;
+    for (const [p, id] of this.friendInst) if (this.friendSong.get(p) === mine) this.game.friendInsts.add(id);
+  }
   /** The band's messages: a song starting on the band's clock, a guest asking for one, what each friend plays. */
   private onBandCtl(m: BandCtl): void {
     if (m.k === 'ask' && this.band.host) {
@@ -583,8 +641,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (m.k === 'inst') {
       if (m.p === this.band.me) return;
       this.friendInst.set(m.p, m.id);
-      this.game.friendInsts.clear();
-      for (const v of this.friendInst.values()) this.game.friendInsts.add(v);
+      this.friendSong.set(m.p, m.s ?? '');
+      this.syncFriends();
+      // their seat across the desk, in their instrument's colour (the band's own players make room)
+      this.dropSeats(true);
+      this.seat(m.p, m.id);
     }
   }
   /** Keep the clock measured: pings every second at first, then every ten. */
@@ -602,6 +663,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private showFriends(): void {
     if (!this.friendHits) return;
     this.friendHits = 0;
+    // (a friend with a seat lights it; the flash is for one not seated yet)
+    if (this.seats.size && [...this.friendInst.keys()].some((p) => this.seats.has(p))) return;
     if (this.clock.t - this.friendFlashT < 0.12 || this.placement.phase !== 'placed') return;
     this.friendFlashT = this.clock.t;
     this.tmp.set(0.2, 0.06, -0.22).applyMatrix4(this.kit.root.matrixWorld);
@@ -621,7 +684,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   });
 
   /** The bandmate's notes, lit when they play. */
-  private pendingLights: { at: number; key: string; vel: number }[] = [];
+  private pendingLights: { at: number; key: string; vel: number; you: boolean }[] = [];
   private timed: { at: number; fn: () => void }[] = [];
   private later(at: number, fn: () => void): void {
     this.timed.push({ at, fn });
@@ -654,16 +717,21 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** The song's end: a ring of light that runs out from the kit across the room. */
   private finale: Mesh | null = null;
   private finaleT = -1;
-  private updateFinale(dt: number): void {
-    if (this.finaleT < 0) return;
+  private makeFinale(): Mesh {
     if (!this.finale) {
       const g = new RingGeometry(0.95, 1, 128);
       g.rotateX(-Math.PI / 2);
       this.finale = new Mesh(g, asLight(new MeshBasicMaterial({ color: 0xfff4dc, transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })));
       this.finale.frustumCulled = false;
       this.finale.renderOrder = 6;
+      this.finale.visible = false;
       this.worldRoot.add(this.finale);
     }
+    return this.finale;
+  }
+  private updateFinale(dt: number): void {
+    if (this.finaleT < 0) return;
+    this.finale = this.makeFinale();
     this.finaleT += dt;
     // the ring travels at the wave's speed (instruments sound as it reaches them), fading as it goes
     const r = 0.2 + this.finaleT * FINALE_SPEED;
@@ -1064,7 +1132,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.updatePlacement(Math.min(dt, 0.05));
       return;
     }
-    this.kit.root.updateMatrixWorld();
+    // (just the kit root and its parents: the renderer updates the hundreds of parts under it anyway)
+    this.kit.root.updateWorldMatrix(true, false);
     // the anchor may nudge the kit: its surfaces follow
     this.kitSurface.world.copy(this.kit.root.matrixWorld);
     this.kitSurface.inv.copy(this.kitSurface.world).invert();
@@ -1113,10 +1182,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const d = this.clock.t - p.at;
       if (d >= 0) {
         const r = this.ref(p.key);
+        // on your own in a song: the band's player for this part lights across the desk
+        if (!this.bandOn && !p.you && (this.game.mode === 'play' || this.game.mode === 'results') && !p.key.startsWith(this.kit.instKey) && !(this.kit.inst === 'drums' && (p.key.startsWith('kit:') || p.key.startsWith('clap:')))) {
+          const inst = p.key.startsWith('kit:') || p.key.startsWith('clap:') ? 'drums' : p.key.slice(0, p.key.indexOf(':'));
+          if (inst === 'drums' || inst === 'piano' || inst === 'handpan') this.seat(`band:${inst}`, inst)?.pulse(p.vel);
+        }
         if (r?.kind === 'keys') this.kit.keys.hit(r.zone, p.vel);
-        else if (r?.kind === 'inst' && p.key.startsWith(this.kit.inst + ':')) {
+        else if (r?.kind === 'inst' && p.key.startsWith(this.kit.instKey)) {
           // the band playing it: the keys move by themselves (watch, then play)
           this.kit.instOverlay()?.hit(r.zone % 10, p.vel);
+          if (p.you) this.kit.instOverlay()?.perfect(r.zone % 10);
           this.kit.instStruck(this.kit.inst === 'guitar' ? 3 : r.zone % 10, p.vel * 0.6);
         }
         else if (r?.surface) this.overlays.get(r.surface)?.hit(r.zone, p.vel);
@@ -1136,11 +1211,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.watchClaps(dt);
     this.watchCovers(dt);
     this.showFriends();
+    if (this.seats.size) {
+      // the band's players leave when the song's over
+      if (this.game.mode === 'discover' || this.game.mode === 'build') this.dropSeats(true);
+      for (const s of this.seats.values()) s.update(dt, this.head);
+    }
     this.panelHover();
     this.tickBand(dt);
-    if (this.bandOn && this.kit.inst !== this.lastSentInst) {
-      this.lastSentInst = this.kit.inst;
-      this.band.send({ k: 'inst', p: this.band.me, id: this.kit.inst });
+    if (this.bandOn && `${this.kit.inst}|${this.game.perfTrack}` !== this.lastSentInst) {
+      this.lastSentInst = `${this.kit.inst}|${this.game.perfTrack}`;
+      this.band.send({ k: 'inst', p: this.band.me, id: this.kit.inst, s: this.game.perfTrack });
+      this.syncFriends();
     }
     if (this.labelTags.size) {
       this.labelFaceT -= dt;
@@ -1174,6 +1255,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.root.getWorldQuaternion(this.kitQ);
     this.waterfall.update(this.game.motes, this.game.moteCount, this.kitQ, this.resolveNote);
     this.dimmer.update(dt, this.head, motion.calm);
+    audio.idle();
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
     if (this.debug.anchored) this.saveKitPose();
     if (this.unsaved.length && this.roomAnchor()) {
@@ -1213,7 +1295,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return true;
     }
     if (r.kind === 'inst') {
-      if (!key.startsWith(this.kit.inst + ':')) return false;
+      if (!key.startsWith(this.kit.instKey)) return false;
       const z = this.kit.instZones[r.zone % 10];
       if (!z) return false;
       out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : this.kit.inst === 'handpan' ? 0.02 : this.kit.inst === 'guitar' ? 0.024 : this.kit.inst === 'congas' ? 0.022 : 0.013, -z.z);
@@ -2060,13 +2142,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** A quick ring of light at a point, facing you (a clap). */
   private flashMesh: Mesh | null = null;
   private flashT = -1;
-  private flash(at: Vector3, color: number): void {
+  private makeFlash(): Mesh {
     if (!this.flashMesh) {
       const g = new RingGeometry(0.7, 1, 40);
       this.flashMesh = new Mesh(g, asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })));
       this.flashMesh.renderOrder = 6;
+      this.flashMesh.visible = false;
       this.worldRoot.add(this.flashMesh);
     }
+    return this.flashMesh;
+  }
+  private flash(at: Vector3, color: number): void {
+    this.flashMesh = this.makeFlash();
+    this.flashMesh.visible = true;
     this.flashMesh.position.copy(at);
     this.flashMesh.lookAt(this.head);
     (this.flashMesh.material as MeshBasicMaterial).color.setHex(color);
@@ -2101,6 +2189,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private hitKit(side: Side, gain: number, st: Strike, t: number): void {
+    this.handHitT[side === 'left' ? 0 : 1] = this.clock.t;
     // both hands slam the table together, outside a song, anywhere on it (pads or bars): the whole orchestra answers
     if (gain > 0.5 && side !== this.slamSide && t - this.slamT < 0.07 && t - this.lastTutti > 4 && (this.game.mode === 'discover' || this.game.mode === 'results') && this.game.looper.state === 'off') {
       this.slamT = -9;
@@ -2168,7 +2257,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const pc = this.game.keyPc;
     // (the piano's tune sits above the band's chords: its root between F4 and E5); your octave on top
     const oct = (this.settings.shelf[id]?.oct ?? 0) * 12;
-    return (id === 'piano' ? 65 + ((pc + 7) % 12) : 48 + pc) + oct;
+    // (the marimba carries the tune too: an octave over the bass, not on it)
+    return (id === 'piano' ? 65 + ((pc + 7) % 12) : id === 'marimba' ? 60 + pc : 48 + pc) + oct;
   }
   private shelfView(): ShelfView {
     const id = this.kit.inst;
@@ -2191,6 +2281,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (tuning === this.instTuning) return;
     this.instTuning = tuning;
     this.kit.setInstrument(want, root, scale);
+    // the guitar's strings, made a frame at a time while it unfolds
+    if (want === 'guitar') {
+      const snd = instDef('guitar').sounds.find((x) => x.id === this.shelfCfg('guitar').sound);
+      if (snd?.string) audio.prepareStrings(snd.string);
+    }
   }
   private instTuning = '';
 
@@ -2219,17 +2314,29 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const h = i === 0 ? hands.left : hands.right;
         if (!h.tracked || h.controller) {
           this.tipOff[i] = 1;
+          this.tipArmed[i] = false;
           continue;
         }
         this.moduleSurface.toZone(h.indexTip, this.o);
         const off = this.o.y - h.tipRadius;
-        const was = this.tipOff[i];
+        // which way the tip moved: into the panel, or along it (a hand on its way down to the instrument)
+        const dIn = this.tipOff[i] - off;
+        const dAlong = Math.hypot(this.o.x - this.tipX[i], this.o.z - this.tipZ[i]);
+        this.tipX[i] = this.o.x;
+        this.tipZ[i] = this.o.z;
         this.tipOff[i] = off;
+        if (dAlong > 0.004 && dAlong > dIn * 1.5) this.tipArmed[i] = false;
+        // the fingertip came from a centimetre or more in front and reached the face: a press, however slowly
+        // (like a touch screen); it re-arms when the finger comes back out
+        if (off > 0.012) this.tipArmed[i] = true;
+        const fire = this.tipArmed[i] && off <= 0;
+        if (off <= 0) this.tipArmed[i] = false;
         if (off < -0.02 || off > 0.05) continue;
         const k = this.panelItemAt(this.o.x, this.o.z);
         if (k < 0) continue;
-        // the fingertip went through the face: that's a press, however gently (like a touch screen)
-        if (was > 0.012 && off <= 0) this.pressPanel(k);
+        // (mid-song, a hand that just hit the instrument is playing, not pressing: a wild fill can't switch you)
+        const playing = (this.game.mode === 'play' || this.game.mode === 'count') && this.clock.t - this.handHitT[i] < 0.35;
+        if (fire && !playing) this.pressPanel(k);
         const near = 1 - Math.max(0, off) / 0.05;
         if (near > bk) {
           bk = near;
@@ -2284,6 +2391,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private tipOff = [1, 1];
+  private tipArmed = [false, false];
+  private tipX = [0, 0];
+  private tipZ = [0, 0];
+  /** When each hand (left, right) last hit the desk or an instrument. */
+  private handHitT = [-9, -9];
   private hoverX = 0;
   private hoverZ = 0;
   private panelPressT = -9;
@@ -2293,7 +2405,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (!it || it.off) return;
     // one press per poke (the touch and the strike can both see it), and none just after the page changed (the
     // finger that pressed is still there, over something new)
-    if ((k === this.panelPressK && this.clock.t - this.panelPressT < 0.15) || this.clock.t - this.panelPressT < 0.08 || this.clock.t - this.pageT < 0.3) return;
+    if ((k === this.panelPressK && this.clock.t - this.panelPressT < 0.15) || this.clock.t - this.panelPressT < 0.08 || this.clock.t - this.pageT < 0.45) return;
     this.panelPressT = this.clock.t;
     this.panelPressK = k;
     this.kit.module.pressKey(k);
@@ -2319,7 +2431,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       this.putOut(arg as InstId);
       this.game.shelfPicked(this.shelfView());
-      this.game.menu = 'free';
+      // (picked from the songs page: back to the songs, with it)
+      this.game.menu = this.game.instFrom === 'songs' ? 'songs' : 'free';
       this.game.refreshDisplay();
       return;
     }
@@ -2443,17 +2556,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const cfg = this.shelfCfg('guitar');
     const scale = scaleById(cfg.scale);
     const snd = instDef('guitar').sounds.find((x) => x.id === cfg.sound) ?? instDef('guitar').sounds[0];
-    const h = this.game.harmony();
+    // (the chord and the up-strum read at the note's own time, not when it was scheduled)
+    const at = this.clock.t + (when ? Math.max(0, when - audio.now()) : 0);
+    const h = this.game.harmony(at);
     const notes = h && this.clock.t - this.chordPickedT > 2 ? strumNotes(h.chord, h.chordMinor ? [0, 3, 7] : [0, 4, 7]) : strumNotes(this.instRoot('guitar'), scale.chords[c % scale.chords.length]);
     const t0 = when || audio.now();
     const gap = 0.006 + 0.012 * (1 - Math.min(1, vel));
     // in a track, a strum on an 'and' is an up-strum: the top four strings, high to low, lighter
-    const b = h ? this.game.clock.beatAt(this.clock.t) : 0;
+    const b = h ? this.game.clock.beatAt(at) : 0;
     const up = !!h && Math.abs(b - Math.floor(b) - 0.5) < 0.2;
     const play = up ? notes.slice(-4).reverse() : notes;
     for (let k = 0; k < play.length; k++) {
       const v = vel * (up ? 0.7 : 1) * (0.85 - k * 0.04);
-      if (snd.string) audio.pluck(play[k], v, pan, t0 + k * gap, snd.string);
+      // (each string its own voice: a new strum damps the last, like a hand on a real guitar)
+      if (snd.string) audio.pluck(play[k], v, pan, t0 + k * gap, snd.string, `string${up ? 5 - k : k}`);
       else audio.modal(snd.family ?? 'harp', play[k], v, pan, t0 + k * gap, 0.5, `guitar${k}`, k);
     }
   }
@@ -2465,6 +2581,24 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const x = this.hitAt.x;
     const z = this.hitAt.z;
     const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
+    // the piano's ebony keys (outside a song: in one, the back of a key is that key, so the notes you're shown stay
+    // easy to hit): both its neighbours at once
+    if (id === 'piano' && !this.game.harmony()?.song) {
+      const bl = pianoBlacks(this.kit.instZones);
+      for (let j = 0; j < bl.length; j++) {
+        const k = bl[j];
+        if (Math.abs(x - k.x) > k.w / 2 + 0.002 || Math.abs(z - k.z) > k.h / 2 + 0.006) continue;
+        if (this.flam('piano', 20 + j, side, t)) return;
+        this.playInst(id, k.a, gain * 0.85, pan, 0);
+        this.playInst(id, k.b, gain * 0.8, pan, audio.now() + 0.012);
+        this.dimmer.hit(instDef(id).color, gain);
+        o?.hit(k.a, gain * 0.6);
+        o?.hit(k.b, gain * 0.6);
+        this.kit.blackStruck(j, gain);
+        this.record(this.kitSurface, 20 + j, gain, st, this.game.hit(`piano:${k.a}`, t, gain), 'piano-black');
+        return;
+      }
+    }
     // the nearest zone the hand is on (with a little give round each)
     let best = -1;
     let bd = Infinity;
@@ -3044,6 +3178,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       root.rotation.set(0, pose.yaw, 0);
       root.updateMatrixWorld(true);
       this.fitToTable();
+      // (no table found: a tray, most likely; the panel and the friends' seats come in close)
+      this.kit.module.compact(!this.tableOutline);
     }
     root.visible = true;
     root.updateMatrixWorld(true);
@@ -3178,12 +3314,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     try {
       const r = this.renderer as unknown as { compileAsync?: (s: unknown, c: unknown) => Promise<unknown>; compile?: (s: unknown, c: unknown) => void };
       const hidden: Object3D[] = [];
-      this.kit.root.traverse((o) => {
-        if (!o.visible) {
-          hidden.push(o);
-          o.visible = true;
-        }
-      });
+      // (the song's effects too: the falling notes, lights down, the clap ring and the end ring, so none of them
+      // builds its shader at a musical moment)
+      this.makeFlash();
+      this.makeFinale();
+      for (const root of [this.kit.root, this.worldRoot])
+        root.traverse((o) => {
+          if (!o.visible) {
+            hidden.push(o);
+            o.visible = true;
+          }
+        });
       // compile synchronously while they're shown, then hide them again in the same frame
       r.compile?.(this.world.scene, this.world.camera);
       for (const o of hidden) o.visible = false;
@@ -3412,6 +3553,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.debug.degrade = lvl;
     audio.setReverb(lvl < 1);
     occluderState.enabled = lvl < 2;
+    // (lights down costs a blend over both eyes: at the lowest levels the fill keeps only its sound and colours)
+    this.dimmer.enabled = lvl < 2;
     for (const sh of this.sheens.values()) sh.group.visible = lvl < 1;
     try {
       this.renderer.xr.setFoveation(FOVEATION[Math.min(2, lvl)]);

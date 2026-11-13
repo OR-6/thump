@@ -66,7 +66,8 @@ export type BandCtl =
   | { k: 'pong'; a: number; h: number; p: string }
   | { k: 'song'; i: number; at: number }
   | { k: 'ask'; i: number }
-  | { k: 'inst'; p: string; id: string };
+  /** What a player has out, and the song they're playing on it now ('' none: their instrument then mutes nothing). */
+  | { k: 'inst'; p: string; id: string; s?: string };
 
 export function validCtl(m: unknown): m is BandCtl {
   if (!m || typeof m !== 'object') return false;
@@ -77,7 +78,7 @@ export function validCtl(m: unknown): m is BandCtl {
   if (n.k === 'pong') return num(n.a) && num(n.h) && id;
   if (n.k === 'song') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && num(n.at);
   if (n.k === 'ask') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32;
-  if (n.k === 'inst') return typeof n.p === 'string' && n.p.length <= 12 && typeof n.id === 'string' && /^[a-z]{1,12}$/.test(n.id);
+  if (n.k === 'inst') return typeof n.p === 'string' && n.p.length <= 12 && typeof n.id === 'string' && /^[a-z]{1,12}$/.test(n.id) && (n.s === undefined || (typeof n.s === 'string' && /^[a-z0-9-]{0,40}$/.test(n.s)));
   return false;
 }
 
@@ -106,8 +107,9 @@ export class BandLink {
   private depth = 0;
   private originals: Partial<Record<'drum' | 'modal' | 'pluck' | 'band', Fn>> = {};
   private flood = new Flood(80);
-  /** Friends' sounds play this far to the side (they're sitting next to you). */
+  /** Friends' sounds play this far to the side (they're sitting next to you), or from their seat's side. */
   pan = 0.45;
+  panOf: (s: string) => number = () => this.pan;
 
   constructor(private readonly onFriend: (s: string, vel: number) => void = () => {}) {}
 
@@ -198,11 +200,12 @@ export class BandLink {
     const [kind, what] = m.s.split(':');
     const a = audio as unknown as Record<string, Fn>;
     const call = (name: 'drum' | 'modal' | 'pluck' | 'band', ...x: unknown[]) => (this.originals[name] ?? a[name]).apply(audio, x as never[]);
+    const pan = this.panOf(m.s);
     replaying = true;
     try {
-      if (kind === 'd') call('drum', what, m.v * 0.9, this.pan, at, m.z ?? 1);
-      else if (kind === 'm') call('modal', what, m.m, m.v * 0.9, this.pan, at, m.z ?? 0.5, 'friend');
-      else if (kind === 'p') call('pluck', m.m, m.v * 0.9, this.pan, at, what);
+      if (kind === 'd') call('drum', what, m.v * 0.9, pan, at, m.z ?? 1);
+      else if (kind === 'm') call('modal', what, m.m, m.v * 0.9, pan, at, m.z ?? 0.5, 'friend');
+      else if (kind === 'p') call('pluck', m.m, m.v * 0.9, pan, at, what);
       else if (kind === 'b') call('band', { beat: 0, voice: what as BedVoice, midi: m.m, len: m.z ?? 1, vel: m.v, minor: m.mi } satisfies BedEvent, at, m.spb ?? 0.6);
     } finally {
       replaying = false;

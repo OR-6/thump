@@ -110,7 +110,8 @@ export const TRACKS: readonly TrackDef[] = [
       { name: 'SNARE', pattern: '..X...X.|..X...X.', pitched: 'no' },
       { name: 'HAT', pattern: 'x.x.x.x.|x.x.x.x.', pitched: 'no' },
       { name: 'PERC', pattern: '..x...x.|..x.....', pitched: 'no' },
-      { name: 'KEYS', pattern: '0.2.4...|5.4.2...', pitched: 'yes' },
+      // (bar 2 is over G major: its tune leans on the G and D, not the C that rubs the B)
+      { name: 'KEYS', pattern: '0.2.4...|5.3.2...', pitched: 'yes' },
       { name: 'KEYS 2', pattern: '....5...|....5...', pitched: 'yes' },
       { name: 'BASS', pattern: '0..0..3.|2..2..0.', pitched: 'if-it-can' },
     ],
@@ -145,7 +146,19 @@ export interface Step {
 }
 
 /** A part's pattern as steps (beat within the loop, degree or −1, velocity); `swing` pushes the off-beat eighths late. */
+const stepCache = new Map<string, Step[]>();
+/** A pattern's steps (worked out once per pattern and swing: callers read them every frame, never change them). */
 export function steps(pattern: string, swing = 0.5): Step[] {
+  const id = `${pattern}~${swing}`;
+  let got = stepCache.get(id);
+  if (!got) {
+    got = parseSteps(pattern, swing);
+    if (stepCache.size > 256) stepCache.clear();
+    stepCache.set(id, got);
+  }
+  return got;
+}
+function parseSteps(pattern: string, swing: number): Step[] {
   const out: Step[] = [];
   const bars = pattern.split('|');
   bars.forEach((bar, b) => {
@@ -269,6 +282,13 @@ export function assign(part: PartDef, hitKey: string, zones: (surface: string) =
  * from pools that sit right together (a backbeat always on 2 and 4; a tune that walks the scale; a bass on the chord
  * roots), seeded from the date.
  */
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Today's date (UTC: everyone in a band has the same today), for today's song. */
+export function songDay(d = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
 export function dailyTrack(day: string): TrackDef {
   let seed = 2166136261;
   for (let i = 0; i < day.length; i++) seed = Math.imul(seed ^ day.charCodeAt(i), 16777619) >>> 0;
@@ -278,26 +298,34 @@ export function dailyTrack(day: string): TrackDef {
   const key = pick([0, 2, 5, 7, 9]);
   const bpm = pick([84, 88, 92, 96, 100, 104]);
   const r = 48 + key;
-  // a tune: two bars of eighths, walking the scale a step or two at a time, resting between phrases
+  // a tune: two bars of eighths, from a chord tone, walking the scale a step or two at a time (turning back at the
+  // ends, as likely down as up), each bar opening on a note, and the second landing on its chord before a rest
   const tune = (): string => {
-    let d = pick([0, 2, 4]);
+    let d = pick(minor ? [0, 1, 3] : [0, 2, 3]);
     let out = '';
     for (let b = 0; b < 2; b++) {
       for (let k = 0; k < 8; k++) {
-        if (k % 2 === 1 || rnd() < 0.3 || (b === 1 && k >= 6)) out += '.';
-        else {
-          d = Math.max(0, Math.min(5, d + pick([-2, -1, 1, 1, 2, 0])));
+        if (k % 2 === 1 || (k > 0 && rnd() < 0.3) || (b === 1 && k >= 6)) out += '.';
+        else if (b === 1 && k === 4) {
+          // the cadence: the nearest note of the second chord (vi in major, iv in minor)
+          const land = minor ? [2, 5] : [2, 4];
+          d = Math.abs(land[0] - d) <= Math.abs(land[1] - d) ? land[0] : land[1];
           out += String(d);
+        } else {
+          out += String(d);
+          d += pick([-2, -1, -1, 1, 1, 2]);
+          if (d < 0) d = -d;
+          if (d > 5) d = 10 - d;
         }
       }
       if (b === 0) out += '|';
     }
     return out;
   };
-  const doy = Math.floor((Date.parse(`${day}T12:00:00Z`) - Date.parse(`${day.slice(0, 4)}-01-01T00:00:00Z`)) / 86400000) + 1;
+  const wd = new Date(`${day}T12:00:00Z`).getUTCDay();
   return {
     id: `daily-${day}`,
-    name: `Daily ${Number.isFinite(doy) ? doy : 1}`,
+    name: `${Number.isFinite(wd) ? WEEKDAYS[wd] : 'Today'}'s song`,
     bpm,
     key,
     minor,

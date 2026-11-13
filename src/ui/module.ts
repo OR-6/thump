@@ -64,6 +64,8 @@ export interface Display {
   /** How far through the song (0..1), and the run of notes hit in a row. */
   progress?: number;
   combo?: number;
+  /** Results: the song, your longest run of notes, and whether the stars beat your best. */
+  best?: { song: string; run: number; better: boolean } | null;
   /** The panel's page (src/ui/menu.ts), and the item that pulses for attention. */
   page?: import('./menu.js').Page;
   focus?: string;

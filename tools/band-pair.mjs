@@ -31,6 +31,10 @@ export default async function run({ page }) {
     await a.waitForTimeout(2500);
     out.aHeard = await heard(a);
     out.bHeard = await heard(b);
+    // each sees the other across the desk
+    const seats = (p) => p.evaluate(() => window.__thump?.debug?.seats ?? 0);
+    out.aSeats = await seats(a);
+    out.bSeats = await seats(b);
     // one beat: the friend presses play; the host starts the song for both, on the band's clock
     await b.waitForTimeout(2500);
     await b.evaluate(() => window.__thump.game.game.key('play'));

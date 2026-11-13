@@ -76,6 +76,8 @@ describe('the game', () => {
     const p = freshProgress();
     const g = new Game(st, p, room([{ id: 't1', family: 'bell', zones: 1 }]));
     g.start(0);
+    // (Normal: its last four bars are the hold-it, no lights)
+    g.act('level:normal');
     g.discovered('kit', 'table', 0);
     g.tick(45);
     g.beginBuild(0);
@@ -227,7 +229,7 @@ describe('the game', () => {
     expect(g.display.line).toBe('Play a song?');
     g.beginBuild(0);
     expect(g.mode).toBe('build');
-    expect(g.display.sub).toBe('Pick the big boom');
+    expect(g.display.sub).toBe('Hit a drum for BOOM');
     let t = 45.1;
     const parts = ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom'];
     for (const key of parts) {
@@ -577,7 +579,7 @@ describe('the game', () => {
     expect(g.mode).toBe('build');
   });
 
-  it('listen first: the song plays itself (your part too), nothing scored, then back to Songs for your turn', () => {
+  it('listen first: the song plays itself (your part too), nothing scored, then straight into your turn', () => {
     const voiced: string[] = [];
     const g = new Game({ ...stage([]), voice: (k: string) => voiced.push(k) }, freshProgress(), room([]));
     g.start(0);
@@ -586,9 +588,10 @@ describe('the game', () => {
     g.act('listen');
     expect(g.mode).toBe('count');
     let t = 0;
-    for (let k = 0; k < 2000 && g.mode !== 'discover'; k++) g.tick((t += 1 / 30));
-    expect(g.mode).toBe('discover');
-    expect(g.menu).toBe('songs');
+    for (let k = 0; k < 2000 && g.listening; k++) g.tick((t += 1 / 30));
+    expect(g.listening).toBe(false);
+    expect(g.mode).toBe('count');
+    expect(g.display.sub).toBe('Your turn');
     // the drums you'd play were played for you
     expect(voiced.filter((k) => k === 'kit:kick').length).toBeGreaterThan(4);
     expect(g.performed('kick-start')).toBe(false);

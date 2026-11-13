@@ -45,7 +45,7 @@ export interface MenuInput {
   songs: { name: string; meta: string; stars: number; locked: boolean }[];
   songSel: number;
   level: 'easy' | 'normal';
-  band: { state: string; code: string; players: number };
+  band: { state: string; code: string; players: number; message?: string };
   settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean };
   /** Results: the next song's button ('' none), and whether MAKE IT YOURS is offered. */
   next: string;
@@ -113,7 +113,7 @@ export function buildPage(m: MenuInput): Page {
     }
     case 'songs': {
       const items: Item[] = [back()];
-      m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.locked ? 'Play the one before it' : s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24, y: 136 + i * 106, w: 860, h: 96 }));
+      m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.locked ? 'Play the one before it' : s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24, y: 136 + i * 110, w: 860, h: 92 }));
       items.push({ id: 'level:easy', label: 'EASY', on: m.level === 'easy', kind: 'chip', x: 910, y: 130, w: 205, h: 110 });
       items.push({ id: 'level:normal', label: 'NORMAL', on: m.level === 'normal', kind: 'chip', x: 1131, y: 130, w: 205, h: 110 });
       items.push({ id: 'nav:instruments', label: m.inst.name.toUpperCase(), sub: 'You play this', icon: m.inst.id, kind: 'button', x: 910, y: 262, w: 426, h: 150 });
@@ -129,7 +129,18 @@ export function buildPage(m: MenuInput): Page {
         items.push({ id: 'nav:songs', label: 'PICK A SONG', sub: 'Everyone plays it, on one beat', kind: 'big', x: 24, y: 470, w: 640, h: 290 });
         items.push({ id: 'band:leave', label: 'LEAVE', kind: 'button', x: 696, y: 470, w: 640, h: 290 });
       }
-      const line = m.band.state === 'connected' ? `${m.band.players} in the band, code ${m.band.code}` : m.band.state === 'hosting' ? `Code ${m.band.code}: friends type it on the Thump page` : m.band.state === 'joining' ? 'Connecting' : 'Play with friends, wherever they are';
+      // (the code only once the connection service has it; a failure says what went wrong)
+      const msg = m.band.message ?? '';
+      const line =
+        m.band.state === 'connected'
+          ? `${m.band.players} in the band, code ${m.band.code}`
+          : m.band.state === 'hosting'
+            ? msg.startsWith('Connecting') ? 'Connecting…' : `Code ${m.band.code}: friends type it on the Thump page`
+            : m.band.state === 'joining'
+              ? 'Connecting…'
+              : (m.band.state === 'error' || m.band.state === 'closed') && msg
+                ? msg
+                : 'Play with friends, wherever they are';
       return { id: 'band', title: 'Play together', line, items };
     }
     case 'settings': {

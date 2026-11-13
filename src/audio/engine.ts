@@ -96,12 +96,16 @@ class Engine {
     this.echoSend = ctx.createGain();
     this.echoSend.gain.value = 0;
     this.echoDelay = ctx.createDelay(2);
-    const fb = ctx.createGain();
-    fb.gain.value = 0.38;
+    const fb = (this.echoFb = ctx.createGain());
+    fb.gain.value = 0;
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass';
     tone.frequency.value = 3800;
-    this.drums.connect(this.echoSend).connect(this.echoDelay).connect(tone).connect(this.master);
+    // (no kick body in the repeats: they'd smear the low end)
+    const thin = ctx.createBiquadFilter();
+    thin.type = 'highpass';
+    thin.frequency.value = 350;
+    this.drums.connect(this.echoSend).connect(thin).connect(this.echoDelay).connect(tone).connect(this.master);
     tone.connect(fb).connect(this.echoDelay);
     this.bedBus = ctx.createGain();
     this.bedBus.gain.value = this.bedOn ? 0.55 : 0;
@@ -124,13 +128,16 @@ class Engine {
 
   private echoSend: GainNode | null = null;
   private echoDelay: DelayNode | null = null;
+  private echoFb: GainNode | null = null;
   /** Open (or close) the fill's echo, a dotted eighth at this tempo (seconds per beat). */
   echo(on: boolean, spb: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.echoSend || !this.echoDelay) return;
     const t = ctx.currentTime;
     this.echoDelay.delayTime.setTargetAtTime(Math.min(1.9, 0.75 * spb), t, 0.01);
-    this.echoSend.gain.setTargetAtTime(on ? 0.42 : 0, t, on ? 0.05 : 0.2);
+    this.echoSend.gain.setTargetAtTime(on ? 0.32 : 0, t, 0.05);
+    // closing, the repeats die quickly too (they'd fall over the drop otherwise)
+    this.echoFb?.gain.setTargetAtTime(on ? 0.3 : 0, t, on ? 0.05 : 0.08);
   }
 
   setBed(on: boolean): void {
@@ -574,13 +581,35 @@ class Engine {
     return b;
   }
 
-  /** One plucked string (the guitar): `midi`, loudness 0..1, at audio time `when`. */
-  pluck(midi: number, vel: number, pan = 0, when = 0, kind: 'nylon' | 'steel' = 'nylon'): void {
+  /**
+   * Make a guitar's strings ahead of time (every note a strum can use), one a frame from `idle()`, so the first strum
+   * of a chord doesn't stop the frame to build them.
+   */
+  prepareStrings(kind: 'nylon' | 'steel'): void {
+    for (let m = 40; m <= 81; m++) if (!this.strings.has(`${kind}:${m}`)) this.stringQueue.push(m, kind === 'steel' ? 1 : 0);
+  }
+  private stringQueue: number[] = [];
+  /** A little background work, once a frame. */
+  idle(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.stringQueue.length < 2) return;
+    const m = this.stringQueue.shift()!;
+    const k = this.stringQueue.shift()!;
+    this.stringBuffer(ctx, m, k ? 'steel' : 'nylon');
+  }
+
+  /**
+   * One plucked string (the guitar): `midi`, loudness 0..1, at audio time `when`. `owner` (a string of the guitar):
+   * a new note on it stops the last, as a string does.
+   */
+  pluck(midi: number, vel: number, pan = 0, when = 0, kind: 'nylon' | 'steel' = 'nylon', owner = ''): void {
     const ctx = this.ready();
     if (!ctx) return;
+    const buf = this.stringBuffer(ctx, midi, kind);
+    // (the time read after the string is made: a fresh one takes a moment, and it mustn't land in the past)
     const t = Math.max(ctx.currentTime, when || ctx.currentTime);
     const src = ctx.createBufferSource();
-    src.buffer = this.stringBuffer(ctx, midi, kind);
+    src.buffer = buf;
     const v = Math.max(0.05, Math.min(1, vel));
     const level = 0.9 * (0.15 + 0.85 * v);
     const g = this.out(ctx, this.drums, pan, 0.5, t, level);
@@ -599,6 +628,7 @@ class Engine {
     src.connect(body).connect(lp).connect(g);
     src.start(t);
     src.stop(t + dur);
+    if (owner) this.claimVoice(owner, g, t, t + dur, [src], 1);
     this.lastGain = v;
     this.lastAt = t;
   }
@@ -672,20 +702,21 @@ class Engine {
     const hold = len > spb * 1.5;
     // a held chord rolls very slightly, low to high, like a hand on the keys
     best.forEach((m, k) => {
-      note(m, e.vel * (k === 2 ? 0.9 : 0.8), len, hold ? 0.2 : 0.17, (k - 1) * 0.25, t + (hold ? k * 0.018 : 0));
+      // (the held chords sit a little up under the tune: at 0.2 they were 16 dB down, felt more than heard)
+      note(m, e.vel * (k === 2 ? 0.9 : 0.8), len, hold ? 0.3 : 0.17, (k - 1) * 0.25, t + (hold ? k * 0.018 : 0));
     });
   }
 
   /** Ringing voices (gongs, bowls): at most 3 per surface and 24 in all; the oldest fades out to make room. */
   private voices: { owner: string; g: GainNode; end: number; oscs: AudioScheduledSourceNode[] | null }[] = [];
-  private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: AudioScheduledSourceNode[] | null = null): void {
+  private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: AudioScheduledSourceNode[] | null = null, max = 3): void {
     const ctx = this.ctx!;
     const now = ctx.currentTime;
     for (let i = this.voices.length - 1; i >= 0; i--) if (this.voices[i].end < now) this.voices.splice(i, 1);
     let mine = 0;
     for (const v of this.voices) if (v.owner === owner) mine++;
-    while (mine >= 3 || this.voices.length >= 24) {
-      const i = mine >= 3 ? this.voices.findIndex((v) => v.owner === owner) : 0;
+    while (mine >= max || this.voices.length >= 24) {
+      const i = mine >= max ? this.voices.findIndex((v) => v.owner === owner) : 0;
       if (i < 0) break;
       const old = this.voices[i];
       const gp = old.g.gain as AudioParam & { cancelAndHoldAtTime?: (t: number) => void };

@@ -46,6 +46,8 @@ export class Waterfall {
       m.renderOrder = 6;
       m.name = 'Waterfall';
     }
+    // (each one's colour buffer made now, so the first falling note doesn't build a new shader mid-song)
+    for (const m of [this.slabs, this.discs, this.beams]) m.setColorAt(0, _c.setHex(0xffffff));
     this.slabs.name = 'WaterfallSlabs';
     this.discs.name = 'WaterfallDiscs';
     this.beams.name = 'WaterfallBeams';

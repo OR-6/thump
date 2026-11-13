@@ -28,15 +28,15 @@ export function mountLanding(world: World): void {
           <button class="pad" data-k="d" data-v="kick" style="--c:#ff5a3c"><i>BOOM</i></button>
           <button class="pad" data-k="d" data-v="snare" style="--c:#f4f1ea"><i>SMACK</i></button>
           <button class="pad" data-k="d" data-v="hat" style="--c:#2ad1d1"><i>TICK</i></button>
-          <button class="pad" data-k="p" data-v="60" style="--c:#ffa630"><i>PIANO</i></button>
-          <button class="pad" data-k="p" data-v="64" style="--c:#ffa630"><i>PIANO</i></button>
-          <button class="pad" data-k="p" data-v="67" style="--c:#ffa630"><i>PIANO</i></button>
-          <button class="pad" data-k="g" data-v="0" style="--c:#6fa8ff"><i>GUITAR</i></button>
-          <button class="pad" data-k="g" data-v="9" style="--c:#6fa8ff"><i>GUITAR</i></button>
-          <button class="pad" data-k="g" data-v="5" style="--c:#6fa8ff"><i>GUITAR</i></button>
+          <button class="pad" data-k="c" data-v="2" style="--c:#ff7aa2"><i>CONGAS</i></button>
+          <button class="pad" data-k="p" data-v="60" style="--c:#ffa630"><i>PIANO C</i></button>
+          <button class="pad" data-k="p" data-v="64" style="--c:#ffa630"><i>PIANO E</i></button>
+          <button class="pad" data-k="p" data-v="67" style="--c:#ffa630"><i>PIANO G</i></button>
+          <button class="pad" data-k="m" data-v="72" style="--c:#ffa630"><i>MARIMBA</i></button>
+          <button class="pad" data-k="g" data-v="0" style="--c:#6fa8ff"><i>GUITAR C</i></button>
+          <button class="pad" data-k="g" data-v="9" style="--c:#6fa8ff"><i>GUITAR Am</i></button>
+          <button class="pad" data-k="g" data-v="5" style="--c:#6fa8ff"><i>GUITAR F</i></button>
           <button class="pad" data-k="h" data-v="62" style="--c:#2ad1b5"><i>HANDPAN</i></button>
-          <button class="pad" data-k="h" data-v="69" style="--c:#2ad1b5"><i>HANDPAN</i></button>
-          <button class="pad" data-k="h" data-v="74" style="--c:#2ad1b5"><i>HANDPAN</i></button>
         </div>
         <div class="go">
           <button id="enter-xr" class="power" type="button"><span class="led"></span>Enter mixed reality</button>
@@ -71,7 +71,7 @@ export function mountLanding(world: World): void {
             <label><input type="checkbox" data-k="highContrast" /> High contrast</label>
             <label><input type="checkbox" data-k="calmMotion" /> Less movement</label>
             <label><input type="checkbox" data-k="noWords" /> No words in the headset</label>
-            <label><input type="checkbox" data-k="band" /> Piano and bass under tracks</label>
+            <label><input type="checkbox" data-k="band" /> Backing band (off: just you)</label>
             <label><input type="checkbox" data-k="placeFresh" /> Set up the desk fresh each time</label>
             <p class="small-print">Timing: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
           </div>
@@ -104,7 +104,7 @@ export function mountLanding(world: World): void {
   // the pads on the page play the real instruments (the same sounds the headset uses)
   const lcdMain = el.querySelector<HTMLElement>('.lcd-main')!;
   const lcdSub = el.querySelector<HTMLElement>('.lcd-sub')!;
-  const say: Record<string, string> = { d: 'DRUMS', p: 'PIANO', g: 'GUITAR', h: 'HANDPAN' };
+  const say: Record<string, string> = { d: 'DRUMS', p: 'PIANO', g: 'GUITAR', h: 'HANDPAN', m: 'MARIMBA', c: 'CONGAS' };
   for (const pad of el.querySelectorAll<HTMLButtonElement>('.pad')) {
     pad.addEventListener('pointerdown', () => asPlayer(() => {
       audio.resume();
@@ -113,6 +113,8 @@ export function mountLanding(world: World): void {
       if (k === 'd') audio.drum(v as Voice, 0.85, 0);
       else if (k === 'p') audio.modal('keys', Number(v), 0.8, 0, 0, 0.5, 'page');
       else if (k === 'h') audio.modal('tongue', Number(v), 0.8, 0, 0, 0.5, 'page');
+      else if (k === 'm') audio.modal('marimba', Number(v), 0.8, 0, 0, 0.5, 'page');
+      else if (k === 'c') audio.modal('congas', 0, 0.85, 0, 0, 0.5, 'page', Number(v));
       else if (k === 'g') {
         // a strum: C, A minor, F
         const root = 48 + Number(v);

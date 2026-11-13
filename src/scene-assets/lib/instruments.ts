@@ -8,6 +8,7 @@
  */
 import { BoxGeometry, CircleGeometry, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
+import { pianoBlacks } from '../../kit/shelf.js';
 
 const mat = (name: string, color: number, roughness: number, metalness = 0) => new MeshStandardMaterial({ name, color, roughness, metalness });
 const named = <T extends { name: string }>(o: T, n: string): T => {
@@ -47,7 +48,9 @@ export class PianoModel implements DeskModel {
   readonly root = named(new Group(), 'Piano');
   private keys: Mesh[] = [];
   private keyY: number[] = [];
-  private spring = new Springs(8);
+  private spring = new Springs(12);
+  private blackKeys: Mesh[] = [];
+  private blackY = 0;
   private case_: Mesh;
   private felt: Mesh;
   private board: Mesh;
@@ -95,21 +98,21 @@ export class PianoModel implements DeskModel {
       this.keyY[i] = 0.008 + (H - 0.002) / 2;
       k.position.set(q.x, this.keyY[i], -q.z);
     });
-    // ebony keys between the ivory ones, at the back, the way a keyboard looks (two, a gap, three)
+    // ebony keys between the ivory ones, at the back (each plays its two neighbours: see pianoBlacks)
     this.blacks.clear();
+    this.blackKeys = [];
     const box = new BoxGeometry(1, 1, 1);
-    const white = zones.filter((q) => q.degree >= 0);
-    for (let i = 0; i < white.length - 1; i++) {
-      if (i === 2) continue;
-      const a = white[i];
-      const b = white[i + 1];
-      const m = named(new Mesh(box, this.ebony), `Black${i}`);
-      m.scale.set(0.018, 0.012, a.h * 0.55);
-      m.position.set((a.x + b.x) / 2, 0.008 + H + 0.003, -(a.z + a.h * 0.225));
+    this.blackY = 0.008 + H + 0.003;
+    pianoBlacks(zones).forEach((k, j) => {
+      const m = named(new Mesh(box, this.ebony), `Black${j}`);
+      m.scale.set(k.w, 0.012, k.h);
+      m.position.set(k.x, this.blackY, -k.z);
       this.blacks.add(m);
-    }
+      this.blackKeys.push(m);
+    });
   }
 
+  /** Key i (0–6 the ivory keys and the chord key; 7+ the ebony keys) goes down. */
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.3 + 0.3 * gain);
   }
@@ -122,6 +125,7 @@ export class PianoModel implements DeskModel {
       if (this.keyY[i] === undefined) continue;
       k.position.y = this.keyY[i] + Math.max(-0.006, Math.min(0, this.spring.x[i]));
     }
+    for (let j = 0; j < this.blackKeys.length; j++) this.blackKeys[j].position.y = this.blackY + Math.max(-0.006, Math.min(0, this.spring.x[7 + j]));
   }
 }
 

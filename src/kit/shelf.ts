@@ -123,8 +123,8 @@ export const SCALES: readonly Scale[] = [
   // minor pentatonic; i VI VII
   { id: 'sad', name: 'Sad', steps: [0, 3, 5, 7, 10], chords: [[0, 3, 7], [8, 12, 15], [10, 14, 17]] },
   // the blues scale; I7 IV7 V7
-  // (the blues' flat fifth clashes with the chords on a full-size key: the I7 IV7 V7 make it bluesy)
-  { id: 'bluesy', name: 'Bluesy', steps: [0, 3, 5, 7, 10], chords: [[0, 4, 7, 10], [5, 9, 12, 15], [7, 11, 14, 17]] },
+  // the major blues (its minor third the blue note; no flat fifth: that clashes on a full-size key), over I7 IV7 V7
+  { id: 'bluesy', name: 'Bluesy', steps: [0, 2, 3, 4, 7, 9], chords: [[0, 4, 7, 10], [5, 9, 12, 15], [7, 11, 14, 17]] },
   // lydian; Imaj7 II vi
   { id: 'dreamy', name: 'Dreamy', steps: [0, 2, 4, 6, 7, 9, 11], chords: [[0, 4, 7, 11], [2, 6, 9, 12], [9, 12, 16, 19]] },
 ];
@@ -151,6 +151,22 @@ export function pianoZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [];
   for (let i = 0; i < 6; i++) out.push({ i, shape: 'rect', x: -0.085 + i * 0.056, z: 0.03, w: 0.05, h: 0.12, degree: i, midi: scaleMidi(root, scale, i) });
   out.push({ i: PIANO_CHORD, shape: 'rect', x: -0.175, z: 0.03, w: 0.09, h: 0.12, degree: -1, midi: root - 12 });
+  return out;
+}
+
+/**
+ * The piano's ebony keys, at the back between the ivory ones the way a keyboard looks (two, a gap, two): each plays
+ * the two keys either side of it together (in the scale, so never a wrong note). Zone coordinates; `a`, `b` the two.
+ */
+export function pianoBlacks(zones: readonly Zone[]): { a: number; b: number; x: number; z: number; w: number; h: number }[] {
+  const white = zones.filter((q) => q.degree >= 0);
+  const out: { a: number; b: number; x: number; z: number; w: number; h: number }[] = [];
+  for (let i = 0; i < white.length - 1; i++) {
+    if (i === 2) continue;
+    const a = white[i];
+    const b = white[i + 1];
+    out.push({ a: a.i, b: b.i, x: (a.x + b.x) / 2, z: a.z + a.h * 0.225, w: 0.018, h: a.h * 0.55 });
+  }
   return out;
 }
 

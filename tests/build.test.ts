@@ -154,6 +154,8 @@ describe("today's song", () => {
   it('is the same all day, different the next, with a backbeat, a tune in the scale, the bass on the roots', () => {
     const a = dailyTrack('2026-11-14');
     expect(dailyTrack('2026-11-14')).toEqual(a);
+    // named for its day, not numbered
+    expect(a.name).toBe("Saturday's song");
     const days = ['2026-11-15', '2026-11-16', '2026-11-17', '2026-11-18'].map(dailyTrack);
     expect(days.some((d) => JSON.stringify(d.parts) !== JSON.stringify(a.parts) || d.bpm !== a.bpm)).toBe(true);
     for (const d of [a, ...days]) {
@@ -162,6 +164,9 @@ describe("today's song", () => {
       const tune = steps(d.parts.find((p) => p.name === 'KEYS')!.pattern);
       expect(tune.length).toBeGreaterThan(2);
       expect(tune.every((s) => s.degree >= 0 && s.degree <= 5)).toBe(true);
+      // each bar opens on a note (no five-note tunes)
+      const pat = d.parts.find((p) => p.name === 'KEYS')!.pattern.split('|');
+      expect(pat.every((bar) => bar[0] !== '.')).toBe(true);
       expect(d.chords).toHaveLength(2);
     }
   });

@@ -5,7 +5,7 @@
  * count or the results' stars. You poke an item with a fingertip, or pinch it: it lights and clicks. One canvas;
  * presses and pulses are light quads on top, so nothing redraws every frame. Kit-local, centred behind the instrument.
  */
-import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace } from '@iwsdk/core';
+import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
 import { FONT, MARKER, whenFonts } from './fonts.js';
 import { star, type Display } from './module.js';
@@ -61,6 +61,10 @@ export class Panel {
   version = 0;
   shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   private sig = '';
+  private lastCount = -1;
+  private lastStars = -9;
+  /** Each item's zone on the panel (worked out when the items move, not every frame). */
+  private zones: ReturnType<typeof itemZone>[] = [];
   private itemsSig = '';
   private barW = 0.3;
   private faceMat: MeshBasicMaterial;
@@ -121,13 +125,39 @@ export class Panel {
     this.comboMesh.position.set(cz.x, cz.z, 0.0008);
     this.comboMesh.renderOrder = 7;
     this.comboMesh.visible = false;
-    this.root.add(this.bar, this.comboMesh);
+    // (both change often: no mipmaps to rebuild on each upload)
+    this.comboTex.generateMipmaps = false;
+    this.comboTex.minFilter = LinearFilter;
+    // the count-in's number, on its own: the page isn't redrawn on each beat just before the first note
+    this.countCanvas.width = 256;
+    this.countCanvas.height = 256;
+    this.countTex = new CanvasTexture(this.countCanvas);
+    this.countTex.colorSpace = SRGBColorSpace;
+    this.countTex.generateMipmaps = false;
+    this.countTex.minFilter = LinearFilter;
+    const nz = itemZone({ x: CW / 2 - 160, y: 190, w: 320, h: 320 });
+    this.countMesh = new Mesh(new PlaneGeometry(nz.w, nz.h), new MeshBasicMaterial({ map: this.countTex, transparent: true, toneMapped: false }));
+    this.countMesh.position.set(nz.x, nz.z, 0.0008);
+    this.countMesh.renderOrder = 7;
+    this.countMesh.visible = false;
+    this.root.add(this.bar, this.comboMesh, this.countMesh);
     this.root.position.set(0, PANEL.y, PANEL.z);
     this.root.rotation.x = -PANEL.lean;
     whenFonts(() => {
       this.sig = '';
+      this.page = null;
       this.set(this.shown);
     });
+  }
+
+  /**
+   * Pulled in for a tray (no table found: probably a seat with one in front of it): its top row a few centimetres
+   * nearer and higher, more upright, so it's short of the seatback ahead.
+   */
+  compact(on: boolean): void {
+    // (higher rather than nearer: its bottom edge stays clear of hands at the back of the instrument)
+    this.root.position.set(0, on ? 0.26 : PANEL.y, on ? -0.18 : PANEL.z);
+    this.root.rotation.x = -(on ? 0.3 : PANEL.lean);
   }
 
   /** The item a press landed on (by its index in the page). */
@@ -153,6 +183,10 @@ export class Panel {
   /** The song so far (a bar that grows) and the run of notes in a row (its own little canvas). */
   private bar: Mesh;
   private comboCanvas = document.createElement('canvas');
+  private countCanvas = document.createElement('canvas');
+  private countTex: CanvasTexture;
+  private countMesh: Mesh;
+  private lastDigit = 0;
   private comboTex: CanvasTexture;
   private comboMesh: Mesh;
   private lastCombo = -1;
@@ -165,13 +199,24 @@ export class Panel {
     const song = p.body === 'song' && d.count <= 0;
     this.bar.visible = song && d.progress !== undefined && d.progress >= 0;
     if (this.bar.visible) this.bar.scale.x = Math.max(0.0001, this.barW * Math.min(1, d.progress ?? 0));
+    const digit = p.body === 'song' && d.count > 0 ? d.count : 0;
+    this.countMesh.visible = digit > 0;
+    if (digit !== this.lastDigit) {
+      this.lastDigit = digit;
+      if (digit > 0) this.drawCount(digit);
+    }
     const combo = song ? (d.combo ?? 0) : 0;
     this.comboMesh.visible = combo >= 4;
     if (combo !== this.lastCombo) {
       this.lastCombo = combo;
       if (combo >= 4) this.drawCombo(combo);
     }
-    const sig = [p.id, p.title, p.line, d.count, d.stars, d.gold, d.code, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
+    // (the page object is rebuilt only when the display changes: the same one, the same count and stars, is no change)
+    // (the count-in's number is its own: the page only cares whether there is one)
+    if (p === this.page && d.count > 0 === this.lastCount > 0 && d.stars === this.lastStars) return;
+    this.lastCount = d.count;
+    this.lastStars = d.stars;
+    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
     if (p.id !== this.pageId) {
@@ -185,11 +230,12 @@ export class Panel {
     if (isig !== this.itemsSig) {
       this.itemsSig = isig;
       this.version++;
+      this.zones = p.items.map((it) => itemZone(it));
       this.glows.forEach((m, i) => {
         const it = p.items[i];
         m.visible = !!it;
         if (!it) return;
-        const z = itemZone(it);
+        const z = this.zones[i];
         m.position.set(z.x, z.z, 0.0012);
         m.scale.set(z.w * 0.97, z.h * 0.94, 1);
       });
@@ -203,7 +249,8 @@ export class Panel {
     this.hoverShown += ((this.hoverI >= 0 ? this.hoverK : 0) - this.hoverShown) * Math.min(1, dt / 0.06);
     this.cursor.visible = this.hoverI >= 0 && this.hoverK > 0.02;
     if (this.cursor.visible) {
-      const r = 0.003 + 0.012 * (1 - this.hoverK);
+      // (never smaller than a fingertip: it would hide under your own finger)
+      const r = 0.012 + 0.006 * (1 - this.hoverK);
       this.cursor.position.set(this.cursorAt.x, this.cursorAt.z, 0.0015);
       this.cursor.scale.setScalar(r);
       const mm = this.cursor.material as MeshBasicMaterial;
@@ -226,10 +273,13 @@ export class Panel {
       const p = want ? 0.5 + 0.5 * Math.sin(this.pulseT * 5) : 0;
       const h = i === this.hoverI ? this.hoverShown : 0;
       const m = this.glows[i];
-      (m.material as MeshBasicMaterial).opacity = Math.max(this.press[i] * 0.55, p * 0.12, h * 0.28) * te;
+      const op = Math.max(this.press[i] * 0.55, p * 0.12, h * 0.28) * te;
+      (m.material as MeshBasicMaterial).opacity = op;
+      // (an unlit glow isn't drawn at all)
+      m.visible = !!items[i] && op > 0.002;
       const pop = 1 + 0.04 * this.press[i];
-      const z = items[i] ? itemZone(items[i]) : null;
-      if (z) m.scale.set(z.w * 0.97 * pop, z.h * 0.94 * pop, 1);
+      const z = items[i] ? this.zones[i] : null;
+      if (z && this.press[i] > 0) m.scale.set(z.w * 0.97 * pop, z.h * 0.94 * pop, 1);
     }
   }
 
@@ -271,13 +321,8 @@ export class Panel {
   private drawSong(g: CanvasRenderingContext2D, d: Display): void {
     const X = 40;
     const R = CW - 40;
-    if (d.count > 0) {
-      g.fillStyle = INK;
-      g.font = `700 300px ${FONT}`;
-      const t = String(d.count);
-      g.fillText(t, (CW - g.measureText(t).width) / 2, 470);
-      return;
-    }
+    // (the count-in's number is drawn on its own canvas)
+    if (d.count > 0) return;
     if (d.stars >= 0) for (let i = 0; i < 3; i++) star(g, R - 210 + i * 76, 230, 30, i < d.stars, d.gold);
     // (the progress bar's track; its fill and the run of notes are drawn apart)
     g.fillStyle = '#2a2927';
@@ -289,6 +334,17 @@ export class Panel {
       g.fillStyle = '#7fe39a';
       g.fillRect(X, 520, (R - X) * d.meter, 10);
     }
+  }
+
+  private drawCount(n: number): void {
+    const g = this.countCanvas.getContext('2d')!;
+    g.clearRect(0, 0, 256, 256);
+    g.fillStyle = INK;
+    g.font = `700 240px ${FONT}`;
+    const t = String(n);
+    g.textBaseline = 'alphabetic';
+    g.fillText(t, (256 - g.measureText(t).width) / 2, 214);
+    this.countTex.needsUpdate = true;
   }
 
   private drawCombo(n: number): void {
@@ -304,7 +360,25 @@ export class Panel {
   }
 
   private drawResults(g: CanvasRenderingContext2D, d: Display): void {
-    for (let i = 0; i < 3; i++) star(g, CW / 2 - 170 + i * 170, 330, 70, i < Math.max(0, d.stars), d.gold);
+    for (let i = 0; i < 3; i++) star(g, CW / 2 - 170 + i * 170, 300, 64, i < Math.max(0, d.stars), d.gold);
+    const b = d.best;
+    if (!b) return;
+    // the song, and your longest run; a chip when the stars beat your best
+    g.font = `600 40px ${FONT}`;
+    const parts = [b.song, b.run >= 4 ? `Best run ${b.run}` : ''].filter(Boolean).join('  ·  ');
+    const w = g.measureText(parts).width;
+    const chip = b.better ? 230 : 0;
+    const x = (CW - w - chip) / 2;
+    g.fillStyle = SOFT;
+    g.fillText(parts, x, 452);
+    if (b.better) {
+      rounded(g, x + w + 30, 408, 200, 60, 30);
+      g.fillStyle = '#ffd34d';
+      g.fill();
+      g.fillStyle = '#16140f';
+      g.font = `700 32px ${FONT}`;
+      g.fillText('NEW BEST', x + w + 30 + (200 - g.measureText('NEW BEST').width) / 2, 449);
+    }
   }
 
   private drawItem(g: CanvasRenderingContext2D, it: Item): void {
@@ -347,11 +421,18 @@ export class Panel {
       return;
     }
     if (it.kind === 'row') {
-      g.font = `${Math.min(56, it.h * 0.55)}px ${MARKER}`;
+      // the name in its column (shrunk to fit), the line after it, both clear of the stars
+      let px = Math.min(56, it.h * 0.55);
+      g.font = `${px}px ${MARKER}`;
+      const nw = g.measureText(it.label).width;
+      if (nw > 370) {
+        px = Math.max(30, (px * 370) / nw);
+        g.font = `${px}px ${MARKER}`;
+      }
       g.fillText(it.label, it.x + 28, it.y + it.h * 0.62);
       if (it.sub) {
         g.fillStyle = it.off ? DIMI : SOFT;
-        g.font = `500 30px ${FONT}`;
+        fit(g, it.sub, '500', 30, 18, it.w - 420 - 190);
         g.fillText(it.sub, it.x + 420, it.y + it.h * 0.6);
       }
       if (it.stars !== undefined && !it.off) for (let i = 0; i < 3; i++) star(g, it.x + it.w - 150 + i * 50, it.y + it.h / 2, 18, i < it.stars);

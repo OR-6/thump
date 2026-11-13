@@ -18,12 +18,13 @@ export class Tag {
   hold = 2.2;
 
   /** `widthM` is the room a tag has: text keeps its size and only shrinks past it (it's drawn centred, the rest clear). */
-  constructor(readonly widthM = 0.46, readonly heightM = 0.05) {
+  /** `onSurface`: tape on something (it hides behind your fingers like the thing it's on); else a label over all. */
+  constructor(readonly widthM = 0.46, readonly heightM = 0.05, onSurface = false) {
     this.canvas.width = Math.round((768 * widthM) / 0.2);
     this.canvas.height = Math.round((768 * heightM) / 0.2);
     this.tex = new CanvasTexture(this.canvas);
     this.tex.colorSpace = SRGBColorSpace;
-    this.mat = new MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, depthTest: false, toneMapped: false, opacity: 0 });
+    this.mat = new MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, depthTest: onSurface, toneMapped: false, opacity: 0 });
     this.mesh = new Mesh(new PlaneGeometry(widthM, heightM), this.mat);
     this.mesh.renderOrder = 20;
     this.mesh.visible = false;
