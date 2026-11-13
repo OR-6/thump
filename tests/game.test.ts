@@ -69,31 +69,51 @@ describe('the game', () => {
     expect(g.display.pulse).toBe('play');
   });
 
-  it('PLAY casts the song onto the room, a good player gets 3 stars and the tom, and the next song unlocks', () => {
-    const log: string[] = [];
+  it('perform: on the machine you built, the kit parts on your things, fills, hold it, stars and Tight %', () => {
+    const voiced: string[] = [];
+    const st = { ...stage([]), voice: (key: string) => voiced.push(key) };
     const p = freshProgress();
-    p.built = ['kick-start'];
-    const g = new Game(stage(log), p, room([{ id: 'p1', family: 'marimba', zones: 8 }]));
+    const g = new Game(st, p, room([{ id: 't1', family: 'bell', zones: 1 }]));
     g.start(0);
     g.discovered('kit', 'table', 0);
-    g.discovered('marimba', 'door', 0);
-    g.tick(0.1);
+    g.tick(30);
+    g.key('play');
+    let t = 30.1;
+    for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
+      g.tick(t);
+      g.hit(key, t, 0.8);
+      for (let k = 0; k < 600 && g.buildAsks() === null && !g.buildRunning(); k++) {
+        t += 1 / 30;
+        g.tick(t);
+        g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+      }
+    }
+    expect(g.buildRunning()).toBe(true);
+    // ▶: perform
     g.key('play');
     expect(g.mode).toBe('count');
-    expect(g.cast.melody?.surface).toBe('p1');
-    play(g, 0.2, 120, 0.01, (x) => x.mode === 'results');
+    expect(g.display.sub).toBe('Play the lit things');
+    let sawFill = false;
+    let sawHold = false;
+    const before = voiced.length;
+    for (let k = 0; k < 4000 && g.mode !== 'results'; k++) {
+      t += 1 / 30;
+      g.tick(t);
+      g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t + 0.004, 0.8));
+      if (g.display.line === 'Fill!') sawFill = true;
+      if (g.display.line === 'Hold it') sawHold = true;
+    }
     expect(g.mode).toBe('results');
+    expect(sawFill && sawHold).toBe(true);
     expect(g.last?.stars).toBe(3);
-    expect(p.stars['porch-step']).toBe(3);
-    expect(p.unlocks).toContain('tom');
-    expect(log).toContain('unlock tom');
-    expect(g.available()).toBe(3); // Kitchen Clock, and today's song
-    expect(g.selected).toBe(1);
-    // back to free play after the results
-    g.tick(200);
-    expect(g.mode).toBe('discover');
+    // (hits land up to a 30 fps frame after the note here, so not 100)
+    expect(g.lastTight).toBeGreaterThan(60);
+    expect(g.display.line).toMatch(/Tight \d+%/);
+    // the machine played under it: the parts you don't play live (perc, keys, bass), never the ones you do
+    expect(voiced.slice(before).some((k) => k.startsWith('keys:'))).toBe(true);
+    expect(voiced.slice(before).some((k) => k === 'kit:kick' || k.startsWith('t1:'))).toBe(false);
+    expect(p.unlocks).toContain('jam');
   });
-
   it('a song with no hits ends with one star, never a failure', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

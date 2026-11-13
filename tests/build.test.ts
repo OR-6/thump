@@ -60,3 +60,17 @@ describe('build: making a part', () => {
     }
   });
 });
+
+describe('perform: fills and Tight %', async () => {
+  const { fillScore, tightPercent } = await import('../src/play/game.js');
+  it('a fill is good with six or more eighths, mostly on the grid', () => {
+    expect(fillScore([0, 0.5, 1, 1.5, 2, 2.5]).good).toBe(true);
+    expect(fillScore([0, 0.5, 1]).good).toBe(false);
+    expect(fillScore([0.2, 0.7, 1.3, 1.8, 2.2, 2.7, 3.3]).good).toBe(false);
+  });
+  it('Tight % is 100 minus the median error in ms', () => {
+    expect(tightPercent([0.01, -0.02, 0.03])).toBe(80);
+    expect(tightPercent([0.2, 0.3])).toBe(0);
+    expect(tightPercent([])).toBe(0);
+  });
+});

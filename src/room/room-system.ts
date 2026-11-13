@@ -327,6 +327,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       saveSettings(this.settings);
     },
     tune: (k) => this.tunePage(k),
+    flourish: () => {
+      for (const o of this.overlays.values()) o.sweep();
+      this.kit.keys.sweep();
+      let k = 0;
+      for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.05 * k++, () => p.hit(0.6));
+    },
     changeSound: (dir) => this.changeSound(dir),
     setting: (name, flip) => {
       const s = this.settings;
@@ -2395,6 +2401,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   // ------------------------------------------------------------------ tests and filming
 
   private autoT = 0;
+  private autoRunAt = -1;
   private autoNext = 0;
   /** ?autoplay=1: discovers each surface in reach in turn, presses play when offered, hits every note on time. */
   private autoplay(): void {
@@ -2422,7 +2429,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         // drums on the kit's pads, everything else on the desk's bars
         const lane = want === 'KICK' ? 'kick' : want === 'SNARE' ? 'snare' : want === 'HAT' ? 'hat' : null;
         this.autoHit(lane ? `kit:${lane}` : 'keys:2', t);
-      } else if (this.game.buildRunning()) this.autoNext = t + 99;
+      } else if (this.game.buildRunning()) {
+        // let the machine run a moment, then perform on it
+        if (this.autoRunAt < 0) this.autoRunAt = t;
+        else if (t - this.autoRunAt > 3) {
+          this.autoRunAt = -1;
+          this.game.key('play');
+        }
+      }
     }
     if (this.game.mode === 'play' || this.game.mode === 'count' || this.game.mode === 'jam' || this.game.mode === 'build') {
       this.game.dueBetween(from, t, (key) => this.autoHit(key, t));

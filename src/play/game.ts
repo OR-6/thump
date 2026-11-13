@@ -7,7 +7,7 @@
  * through `GameStage` and `Room`, so unit tests drive it with fakes and a bot.
  */
 import { TIMING } from '../config.js';
-import { oneHanded, secPerBeat, type BedEvent, type Song } from '../songs/chart.js';
+import { oneHanded, secPerBeat, type BedEvent, type Note, type Song } from '../songs/chart.js';
 import { EventCursor, SongClock } from '../songs/sequencer.js';
 import { NoteJudge, windows, type Grade, type JudgeNote, type Summary } from '../songs/judge.js';
 import { SONGS, dailySong } from '../songs/songs.js';
@@ -54,6 +54,8 @@ export interface GameStage {
   setting(name: 'oneHand' | 'contrast' | 'words', flip: boolean): boolean;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
   bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave' | 'turn', surface?: string): void;
+  /** A good fill: a light sweep over every ring on the desk (no sound: the fill was the sound). */
+  flourish?(): void;
   /** ◀ ▶ on the pad last hit: the next sound in the bank on it; its name, or null when there's no pad. */
   changeSound?(dir: 1 | -1): string | null;
   /** The tuning page: act on a key (null: just read), and what the page shows. */
@@ -195,7 +197,7 @@ export class Game {
     moved: boolean;
     recStart: number;
     hits: RawHit[];
-    parts: { def: PartDef; surface: string; notes: MachineNote[] }[];
+    parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[];
     /** The machine's notes are scheduled up to this beat. */
     sched: number;
     /** The last count-in click scheduled. */
@@ -245,8 +247,9 @@ export class Game {
     const b = this.bld;
     if (!b) return;
     if (k === 'play') {
-      // ▶ twice stops; once while the machine runs ends it (Perform comes next)
-      if (twice || b.phase === 'run') this.endBuild();
+      // ▶ while the machine runs: perform on it; ▶ twice while building stops
+      if (b.phase === 'run') this.beginPerform();
+      else if (twice) this.endBuild();
       else {
         this.stopAsked = this.t;
         this.display.sub = 'Tap ▶ again to stop';
@@ -356,12 +359,13 @@ export class Game {
       } else if (beat >= b.recStart + LOOP_BEATS + 0.35) {
         // the part is in: snapped, filled, looping from the next loop on
         const notes = quantise(steps(def.pattern), b.hits, (s) => this.keyFor(target.surface, target.key, s));
-        b.parts.push({ def, surface: target.surface, notes });
+        b.parts.push({ def, surface: target.surface, key: target.key, notes });
         b.sched = Math.min(b.sched, beat);
         b.part++;
         b.target = null;
         if (b.part >= b.track.parts.length) {
           b.phase = 'run';
+          this.machine = { track: b.track, parts: b.parts.slice() };
           const list = this.progress.built ?? (this.progress.built = []);
           if (!list.includes(b.track.id)) list.push(b.track.id);
           this.stage.save(this.progress);
@@ -396,6 +400,145 @@ export class Game {
     }
     d.sub = 'Play along';
   }
+
+  // ---------------------------------------------------------------- perform
+
+  /** The machine you built this session (its parts on your things). */
+  private machine: { track: TrackDef; parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[] } | null = null;
+  private perf: {
+    track: TrackDef;
+    /** Parts you play live (the chart); the rest is the bed. */
+    live: Set<string>;
+    fills: [number, number][];
+    fillHits: number[];
+    fillsJudged: number;
+    goodFills: number;
+    holdFrom: number;
+    sched: number;
+  } | null = null;
+
+  /** Perform on the machine: it drops to a bed, the kit parts are yours to play on your own things. */
+  beginPerform(): void {
+    const m = this.machine;
+    if (!m) return;
+    const t = m.track;
+    this.bld = null;
+    const live = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p.def.name === 'HAT');
+    // 16 bars with a fill in bars 7–8 and 15–16, then 4 bars of hold it (scored, never shown)
+    const bars = 20;
+    const fills: [number, number][] = [
+      [24, 32],
+      [56, 64],
+    ];
+    const holdFrom = 64;
+    const notes: Note[] = [];
+    for (const p of live)
+      for (let L = 0; L < bars / 2; L++)
+        for (const s of steps(p.def.pattern)) {
+          const beat = L * LOOP_BEATS + s.beat;
+          if (fills.some(([a, z]) => beat >= a && beat < z)) continue;
+          notes.push({ beat, part: p.key as never, degree: -1, vel: s.vel });
+        }
+    notes.sort((a, b) => a.beat - b.beat);
+    const song: Song = { id: t.id, name: t.name, mood: 'yours', bpm: t.bpm, bars, beatsPerBar: 4, key: t.key, parts: [], notes, bed: [] };
+    this.perf = { track: t, live: new Set(live.map((p) => p.key)), fills, fillHits: [], fillsJudged: 0, goodFills: 0, holdFrom, sched: -0.01 };
+    // the song engine, with each note on the thing you chose
+    this.looper.clear();
+    this.song = song;
+    this.cast = {};
+    this.accompanists = [];
+    this.played.length = 0;
+    this.encore.length = 0;
+    this.encoreAt = -1;
+    this.stage.retune(t.key);
+    const spb = secPerBeat(t.bpm, this.opts.tempo);
+    this.tempoAtStart = this.opts.tempo;
+    this.clock.set(this.t + 0.4 + 4 * spb, spb);
+    this.bedCursor = new EventCursor([0, 1, 2, 3].map((k) => ({ beat: k - 4, voice: 'shaker' as const, midi: 0, len: 0.2, vel: k === 0 ? 0.9 : 0.6 })));
+    this.bedCursor.seek(-4);
+    const chart = this.stage.setting('oneHand', false) ? oneHanded(notes) : notes;
+    this.judge = new NoteJudge(chart.map((n) => ({ beat: n.beat, lane: n.part as string, vel: n.vel })), spb, windows(this.opts.tempo < 0.95));
+    this.graded.perfect = this.graded.good = this.graded.extra = 0;
+    this.energy = 0.5;
+    this.mode = 'count';
+    this.modeT = this.t;
+    this.refreshDisplay();
+  }
+
+  /** The machine's bed under the performance, and each fill judged as it closes. */
+  private tickPerform(beat: number): void {
+    const p = this.perf!;
+    const m = this.machine!;
+    const ahead = beat + TIMING.lookAheadS / this.clock.spb;
+    const end = (this.song?.bars ?? 20) * 4;
+    if (ahead > p.sched) {
+      for (let L = Math.max(0, Math.floor(p.sched / LOOP_BEATS)); L * LOOP_BEATS <= Math.min(ahead, end); L++)
+        for (const part of m.parts) {
+          if (p.live.has(part.key)) continue;
+          for (const n of part.notes) {
+            const at = L * LOOP_BEATS + n.beat;
+            if (at > p.sched && at <= ahead && at < end) this.stage.voice(n.key, this.clock.timeAt(at), (n.filled ? n.vel * 0.85 : n.vel) * 0.55);
+          }
+        }
+      p.sched = ahead;
+    }
+    // a fill just closed: was it a good one?
+    const f = p.fills[p.fillsJudged];
+    if (f && beat >= f[1]) {
+      p.fillsJudged++;
+      const r = fillScore(p.fillHits.filter((b) => b >= f[0] - 0.25 && b < f[1]));
+      if (r.good) {
+        p.goodFills++;
+        this.stage.flourish?.();
+      }
+      this.refreshDisplay();
+    }
+    // the display follows: Fill!, Hold it
+    const key = p.fills.some(([a, z]) => beat >= a && beat < z) ? 1 : beat >= p.holdFrom ? 2 : 0;
+    if (key !== this.perfShown) {
+      this.perfShown = key;
+      this.refreshDisplay();
+    }
+  }
+  private perfShown = 0;
+
+  private endPerform(): void {
+    const p = this.perf!;
+    const j = this.judge!;
+    const s = j.summary();
+    // three stars needs a good fill and a held groove, not only accuracy
+    const hidden = j.notes.filter((n) => n.beat >= p.holdFrom);
+    const held = hidden.length ? hidden.filter((n) => n.grade === 'perfect' || n.grade === 'good').length / hidden.length : 1;
+    let stars = s.stars;
+    if (stars === 3 && (p.goodFills < 1 || held < 0.6)) stars = 2;
+    const tight = tightPercent(j.notes.filter((n) => n.grade === 'perfect' || n.grade === 'good').map((n) => n.offset));
+    this.last = { ...s, stars };
+    this.lastTight = tight;
+    const pr = this.progress;
+    pr.stars[p.track.id] = Math.max(pr.stars[p.track.id] ?? 0, stars);
+    if (stars === 3 && this.tempoAtStart >= 0.999) pr.gold[p.track.id] = true;
+    const today = dayKey();
+    if (!pr.days.includes(today)) pr.days.push(today);
+    pr.introDone = true;
+    this.newUnlocks = [];
+    for (const u of ['tom', 'jam', 'swaps'] as Unlock[]) if (!(pr.unlocks as string[]).includes(u)) {
+      (pr.unlocks as string[]).push(u);
+      this.newUnlocks.push(u);
+    }
+    this.stage.save(pr);
+    this.stage.celebrate(stars);
+    for (const u of this.newUnlocks) this.stage.unlock(u);
+    this.startEncore(stars, this.song!);
+    this.perf = null;
+    this.mode = 'results';
+    this.modeT = this.t;
+    this.moteCount = 0;
+    this.judge = null;
+    this.refreshDisplay();
+    this.display.stars = 0;
+  }
+  /** Tight %, last performance. */
+  lastTight = -1;
 
   /** A pad on a thing was hit: show its sound, with ◀ ▶ to change it. */
   focusPad(name: string, t: number): void {
@@ -484,8 +627,10 @@ export class Game {
       this.buildKey(k, twice);
       return;
     }
-    if (k === 'play' && this.mode === 'discover' && !this.built(TRACKS[0].id)) {
-      this.beginBuild(0);
+    if (k === 'play' && this.mode === 'discover') {
+      if (this.machine) this.beginPerform();
+      else this.beginBuild(0);
+      this.lastTap.play = -9;
       return;
     }
     if (k === 'play') {
@@ -749,6 +894,14 @@ export class Game {
     if (this.mode === 'build') return this.hitBuild(key, t, gain);
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
+    if (this.perf) {
+      const b = this.clock.beatAt(t - this.opts.offset);
+      if (this.perf.fills.some(([a, z]) => b >= a - 0.25 && b < z)) {
+        this.perf.fillHits.push(b);
+        const off = Math.abs(b * 2 - Math.round(b * 2)) / 2;
+        return off < 0.08 ? 'perfect' : 'good';
+      }
+    }
     const at = t - this.opts.offset - this.clock.start;
     const r = this.judge.hit(key, at);
     if (!r) {
@@ -838,6 +991,7 @@ export class Game {
       const d = n.beat - beat;
       if (d > TIMING.travelBeats + 0.01) break;
       if (d < -0.6) continue;
+      if (this.perf && n.beat >= this.perf.holdFrom) continue;
       if (n.grade === null && d <= TIMING.glowBeats && d > -0.3) this.stage.light(n.lane, 1 - Math.max(0, d) / TIMING.glowBeats);
       if (k < MAX_MOTES) {
         const m = this.motes[k++];
@@ -849,7 +1003,11 @@ export class Game {
     this.moteCount = k;
     this.energy += (0.5 - this.energy) * 0.002;
     this.display.meter = this.energy;
-    if (beat >= song.bars * 4 + 1) this.end();
+    if (this.perf) this.tickPerform(beat);
+    if (beat >= song.bars * 4 + 1) {
+      if (this.perf) this.endPerform();
+      else this.end();
+    }
   }
 
   private leaveResults(): void {
@@ -1021,7 +1179,14 @@ export class Game {
       this.buildDisplay(d);
       return;
     }
-    if (this.mode === 'discover' && this.offered && !this.built(TRACKS[0].id)) {
+    if (this.mode === 'discover' && this.offered && this.machine) {
+      d.line = this.machine.track.name;
+      d.sub = 'Perform? Tap ▶';
+      d.pulse = 'play';
+      d.stars = this.progress.stars[this.machine.track.id] ?? 0;
+      return;
+    }
+    if (this.mode === 'discover' && this.offered) {
       d.line = 'Build a track?';
       d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : 'Tap ▶';
       d.pulse = 'play';
@@ -1051,11 +1216,25 @@ export class Game {
         }
         break;
       case 'count':
+        if (this.perf) {
+          d.line = this.song!.name;
+          d.sub = 'Play the lit things';
+          d.count = Math.max(1, Math.min(4, Math.ceil(-this.clock.beatAt(this.t))));
+          break;
+        }
         d.line = this.song!.name;
         d.sub = this.song!.id in this.progress.stars ? `${Math.round(this.song!.bpm * this.opts.tempo)} bpm` : 'Hit what lights up';
         d.count = Math.max(1, Math.min(4, Math.ceil(-this.clock.beatAt(this.t))));
         break;
       case 'play':
+        if (this.perf) {
+          const b = this.clock.beatAt(this.t);
+          const inFill = this.perf.fills.some(([a, z]) => b >= a && b < z);
+          d.line = inFill ? 'Fill!' : b >= this.perf.holdFrom ? 'Hold it' : this.song!.name;
+          d.sub = inFill ? 'Anything counts' : b >= this.perf.holdFrom ? 'No lights. Keep going' : `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
+          d.meter = this.energy;
+          break;
+        }
         d.line = this.song!.name;
         d.sub = this.song!.id in this.progress.stars ? `${Math.round(this.song!.bpm * this.opts.tempo)} bpm` : 'Hit what lights up';
         d.meter = this.energy;
@@ -1068,10 +1247,9 @@ export class Game {
         break;
       case 'results': {
         const s = this.last!;
-        d.line = s.stars === 3 ? 'In the pocket' : s.stars === 2 ? 'Nearly there' : 'Once more?';
+        d.line = this.lastTight >= 0 ? `Tight ${this.lastTight}%` : `${s.perfect + s.good} of ${s.total}`;
         d.stars = s.stars;
-        const next = this.selected < this.available() ? this.songAt(this.selected) : null;
-        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: a tom, and JAM' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
+        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: a tom, and JAM' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : s.stars < 3 ? 'Again? Tap ▶' : `${s.perfect + s.good} of ${s.total}`;
         break;
       }
     }
@@ -1097,6 +1275,15 @@ export class Game {
       return;
     }
     if (!this.judge) return;
+    // (performing: the autoplayer fills on the eighths when a fill window is open)
+    if (this.perf) {
+      const live = [...this.perf.live];
+      for (const [fa, fz] of this.perf.fills)
+        for (let x = fa; x < fz; x += 0.5) {
+          const due = this.clock.timeAt(x) + this.opts.offset;
+          if (due > a && due <= b) fn(live[Math.round(x * 2) % live.length]);
+        }
+    }
     for (const n of this.judge.notes) {
       if (n.grade !== null) continue;
       const due = n.t + this.clock.start + this.opts.offset;
@@ -1128,6 +1315,22 @@ function found(f: { family: Family; label: string }): string {
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** A fill: how many of its sixteen eighths you hit, and how many of your hits were on the grid. Good: six or more, mostly on it. */
+export function fillScore(beats: readonly number[]): { slots: number; onGrid: number; good: boolean } {
+  const slots = new Set(beats.map((b) => Math.round(b * 2))).size;
+  const on = beats.filter((b) => Math.abs(b * 2 - Math.round(b * 2)) < 0.25).length;
+  const onGrid = beats.length ? on / beats.length : 0;
+  return { slots, onGrid, good: slots >= 6 && onGrid >= 0.6 };
+}
+
+/** Tight %: 100 minus the median timing error in milliseconds (offsets in seconds), never below 0. */
+export function tightPercent(offsets: readonly number[]): number {
+  if (!offsets.length) return 0;
+  const a = offsets.map((o) => Math.abs(o) * 1000).sort((x, y) => x - y);
+  const med = a[Math.floor(a.length / 2)];
+  return Math.max(0, Math.round(100 - med));
 }
 
 /** What the module asks for each part. */

@@ -221,5 +221,8 @@ if (SONG) {
   s = await until((x) => (x.progress.built ?? []).includes('kick-start'), 120000, 1000);
   check('six parts later the machine runs', (s.progress.built ?? []).includes('kick-start') && /Kick Start/.test(s.game.display.line), `${s.game.display.line} / ${s.game.display.sub}`);
   shot('room-06-machine', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
+  s = await until((x) => x.game.mode === 'results', 120000, 1000);
+  check('then you perform on it: stars and Tight %', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && /Tight \d+%/.test(s.game.display.line), `${s.game.display.line} stars=${s.game.last?.stars}`);
+  shot('room-07-results', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
 }
 done('E2E room');
