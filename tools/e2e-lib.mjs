@@ -1,6 +1,6 @@
 /** Shared helpers for emulator E2E scripts (IWSDK CLI + IWER, hands only). */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 export const cli = (...args) =>
   JSON.parse(execFileSync('npx', ['@iwsdk/cli', ...args, '--raw'], { encoding: 'utf8' }));
@@ -110,4 +110,28 @@ export async function until(ok, ms = 8000, step = 250) {
     s = state();
   }
   return s;
+}
+
+/** Load the app with a query string (e.g. 'autoplay=1&debug=1'), storage cleared first if asked. */
+export async function goto(query = '', { clear = true } = {}) {
+  try {
+    if (xr('status').sessionActive) {
+      xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
+      xr('set-transform', { device: 'hand-left', position: { x: -0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: 90 } });
+    }
+  } catch {
+    /* no session yet */
+  }
+  if (clear) run('tools/clear-storage.mjs');
+  // the app runs in a frame of the managed window: navigate the frame itself
+  writeFileSync('tools/.goto.mjs', `export default async function run({ page, frame }) { const f = frame ?? page; return await f.evaluate((q) => { const u = new URL(location.href); u.search = q; u.hash = ''; setTimeout(() => (location.href = u.toString()), 50); return u.toString(); }, ${JSON.stringify(query)}); }\n`);
+  run('tools/.goto.mjs');
+  await wait(3000);
+  if (run('tools/unblock-storage.mjs') === 'unblocked') console.log('note: storage unblocked after goto');
+  if (!xr('status').sessionActive) xr('enter');
+  xr('set-input-mode', { mode: 'hand' });
+  xr('set-transform', { device: 'headset', position: { x: 0, y: 1.2, z: 0 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });
+  xr('set-transform', { device: 'hand-left', position: { x: -0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: 90 } });
+  xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
+  xr('set-select-value', { device: HAND, value: 0 });
 }

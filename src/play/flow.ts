@@ -622,6 +622,22 @@ export class Flow {
     }
   }
 
+  /** Notes due between game times `a` and `b` (the autoplayer for tests and filming only). */
+  dueBetween(a: number, b: number, fn: (lane: Lane) => void): void {
+    const j = this.phase === 'play' ? this.judge : this.phase === 'copy-turn' || this.phase === 'copy-demo' ? this.turnJudge : null;
+    if (!j) return;
+    for (const n of j.notes) {
+      if (n.grade !== null) continue;
+      const due = n.t + this.clock.start + this.opts.offset;
+      if (due > a && due <= b) fn(n.lane);
+    }
+  }
+
+  /** The pad asking for a hit now, if any. */
+  get waiting(): Lane | null {
+    return this.waitHit;
+  }
+
   /** Did the last copy pass? (debug/E2E) */
   get copied(): boolean {
     return this.copyPassed;

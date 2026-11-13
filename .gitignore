@@ -51,3 +51,5 @@ assets-src/
 # capture leftovers (tools/site-photos.mjs)
 public/site/.pip-*.jpg
 public/site/.raw/
+tools/.goto.mjs
+tools/.url.mjs

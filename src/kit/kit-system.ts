@@ -44,6 +44,8 @@ import { lanesFor } from '../play/progression.js';
 const params = new URLSearchParams(location.search);
 /** `?debug=1`: a tag behind the kit with fps (now and lowest), hits per second, the last hit, planes, timing. */
 const DEBUG = params.get('debug') === '1';
+/** `?autoplay=1`: a player that hits every note on time (tests and filming only; never in the judges' link). */
+const AUTOPLAY = params.get('autoplay') === '1';
 /** `?desk=<y>`: a fixed table height (E2E, filming). */
 const FIXED_DESK = params.get('desk');
 /** IWSDK keeps its persistent room anchor's handle here. */
@@ -53,6 +55,30 @@ const RESUME_WINDOW_S = 4;
 const FOVEATION = [0.5, 0.75, 1];
 const SIDES = ['left', 'right'] as const;
 const HOLD_DOTS = 20;
+
+/**
+ * Strike tuning from the address, for device sessions (docs/DEVICE-SESSION.md): `?speed=0.3` (m/s),
+ * `?near=20` (mm), `?decel=10` (m/s²), `?latch=80` (ms), `?rearm=10` (mm). Unset: the defaults in config.ts.
+ */
+function strikeOverrides(): Partial<Record<keyof typeof STRIKE, number>> {
+  const o: Partial<Record<keyof typeof STRIKE, number>> = {};
+  const num = (k: string) => {
+    const v = params.get(k);
+    const n = v === null ? NaN : Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const sp = num('speed');
+  if (sp !== null) o.minSpeed = sp;
+  const near = num('near');
+  if (near !== null) o.nearM = near / 1000;
+  const dc = num('decel');
+  if (dc !== null) o.minDecel = dc;
+  const la = num('latch');
+  if (la !== null) o.latchS = la / 1000;
+  const re = num('rearm');
+  if (re !== null) o.rearmM = re / 1000;
+  return o;
+}
 
 /**
  * The game clock: the audio clock while audio runs (sample-accurate scheduling), frame time
@@ -117,8 +143,8 @@ export class KitSystem extends createSystem({ planes: { required: [XRPlane] } })
   flow!: Flow;
   progress!: Progress;
   settings!: Settings;
-  readonly detector = new StrikeDetector();
-  private gongDet = new StrikeDetector();
+  readonly detector = new StrikeDetector(strikeOverrides());
+  private gongDet = new StrikeDetector(strikeOverrides());
   placement = new Placement();
   readonly clock = new GameClock();
   private kitEntity!: Entity;
@@ -396,6 +422,7 @@ export class KitSystem extends createSystem({ planes: { required: [XRPlane] } })
       }
     }
     this.readHands(dt);
+    if (AUTOPLAY) this.autoplay();
     if (this.cal) this.tickCalibration();
     else this.flow.tick(this.clock.t);
     this.debug.flow = this.cal ? 'calibrate' : this.flow.phase;
@@ -500,6 +527,25 @@ export class KitSystem extends createSystem({ planes: { required: [XRPlane] } })
     }
     this.debug.lastHit = { lane, gain: round3(gain), speed: round3(speed), kind, grade };
     if (grade === 'perfect') this.view.fx.confetti(at.x, at.y + 0.01, at.z, 6, 0.25, true);
+  }
+
+  private autoT = 0;
+  private autoWait = 0;
+  /** Tests and filming: hit every due note, and any pad that asks, through the same path as a real hit. */
+  private autoplay(): void {
+    const t = this.clock.t;
+    const from = this.autoT || t;
+    this.autoT = t;
+    if (this.cal) {
+      for (const c of this.cal.clicks) if (c > from && c <= t) this.hitPad('kick', 'right', 0.8, 1, 'auto');
+      return;
+    }
+    this.flow.dueBetween(from, t, (lane) => this.hitPad(lane, lane === 'hat' ? 'right' : 'left', 0.85, 1, 'auto'));
+    const w = this.flow.waiting;
+    if (w && this.view.pad(w)?.visible && t - this.autoWait > 1.4) {
+      this.autoWait = t;
+      this.hitPad(w, 'right', 0.85, 1, 'auto');
+    }
   }
 
   /** A tap that landed on a control (not a pad). */
@@ -974,8 +1020,9 @@ export class KitSystem extends createSystem({ planes: { required: [XRPlane] } })
         this.hitTimes = this.hitTimes.filter((x) => now - x < 1000);
         const lh = this.debug.lastHit;
         const lat = Math.round(audio.outputLatency() * 1000);
+        const c = this.detector.cfg;
         this.view.debug.set(
-          `${fps} fps (min ${this.debug.fpsMin}) · ${this.hitTimes.length} hits/s · last ${lh ? lh.speed.toFixed(2) : '-'} m/s · ${this.queries.planes.entities.size} planes · offset ${this.debug.offsetMs} ms · out ${lat} ms · q${this.debug.degrade}`,
+          `${fps} fps (min ${this.debug.fpsMin}) · ${this.hitTimes.length} hits/s · last ${lh ? lh.speed.toFixed(2) : '-'} m/s ${lh ? lh.kind : ''} · ${this.queries.planes.entities.size} planes · table ${this.debug.surfaceMm} mm · offset ${this.debug.offsetMs} ms · out ${lat} ms · q${this.debug.degrade} · ${c.minSpeed}/${Math.round(c.nearM * 1000)}/${c.minDecel}`,
         );
       }
     }

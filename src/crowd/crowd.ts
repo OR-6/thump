@@ -111,7 +111,7 @@ export class Crowd {
       // a hop on every beat, bigger when the crowd's into it; a slow sway with no music
       const bob = free ? 0.0015 * Math.sin(ph * Math.PI * 2) + 0.0015 : (0.002 + 0.008 * this.energy) * Math.sin(f * Math.PI) * k;
       const sag = 1 - Math.max(0, 0.35 - this.energy) * 0.5; // a little droop when it's gone quiet
-      const s = 0.018 * m.size * m.in;
+      const s = 0.024 * m.size * m.in;
       const lean = free ? Math.sin(ph * 3) * 0.06 : Math.sin(beat * Math.PI) * 0.12 * this.energy * k;
       const y = Math.max(0, bob + m.jump);
       _e.set(0, 0, lean);

@@ -14,11 +14,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "check:reach": "vitest run tests/reach.test.ts",
-    "test:e2e": "node tools/e2e-landing.mjs && node tools/e2e-m0.mjs && node tools/e2e-m1.mjs && node tools/e2e-m2.mjs && node tools/e2e-cloth.mjs && node tools/e2e-m3.mjs",
-    "check:rules": "node tools/check-rules.mjs",
-    "test:e2e:coop": "node tools/e2e-coop.mjs",
-    "e2e": "node tools/e2e-all.mjs"
+    "test:e2e": "node tools/e2e-all.mjs",
+    "check:rules": "node tools/check-rules.mjs"
   },
   "dependencies": {
     "@iwsdk/core": "1.0.1",

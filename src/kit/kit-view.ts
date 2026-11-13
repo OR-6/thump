@@ -55,7 +55,7 @@ export class KitView {
   readonly title = new Card(0.16, 0.115);
   readonly cards: Card[] = [];
   readonly hint = new Label(0.26, 0.036);
-  readonly debug = new Label(0.4, 0.05);
+  readonly debug = new Label(0.52, 0.075);
   readonly ribbon = new Label(0.24, 0.05);
   private stars: Mesh[] = [];
   private starT = -1;

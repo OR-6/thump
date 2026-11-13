@@ -151,7 +151,7 @@ export const CROWD = {
   z: -0.25,
   start: 3,
   max: 12,
-  spacing: 0.042,
+  spacing: 0.058,
 } as const;
 
 /** Seated reach limit (the airplane seat test: everything within 2 ft of the player). */
