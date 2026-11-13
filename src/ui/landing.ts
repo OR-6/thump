@@ -16,11 +16,21 @@ export function mountLanding(world: World): void {
   el.innerHTML = `
     <main class="sheet">
       <header class="mast">
+        <p class="kicker">Tonight, in your room</p>
         <h1>Thump</h1>
         <p class="tag">Play your room.</p>
       </header>
-      <ul class="kit" aria-hidden="true"><li style="--c:#ff5a3c">Table · drum kit</li><li style="--c:#e8a44a">Wall · gong</li><li style="--c:#ffc14d">Door · marimba</li><li style="--c:#6fa8ff">Window · harp</li><li style="--c:#2ad1b5">Cupboard · kalimba</li><li style="--c:#d4703a">Next wall · timpani</li></ul>
-      <p class="lede">Every surface in your room is an instrument. Hit anything to find out what it plays, then play songs across your own room, with your hands.</p>
+      <ol class="bill" aria-label="What your room might play">
+        <li><span class="who">Your table</span><i></i><span class="what" style="--c:#ff5a3c">drum kit</span></li>
+        <li><span class="who">The wall</span><i></i><span class="what" style="--c:#e8a44a">gong</span></li>
+        <li><span class="who">The next wall</span><i></i><span class="what" style="--c:#d4703a">timpani</span></li>
+        <li><span class="who">Your door</span><i></i><span class="what" style="--c:#ffc14d">marimba</span></li>
+        <li><span class="who">The window</span><i></i><span class="what" style="--c:#6fa8ff">harp, played gently</span></li>
+        <li><span class="who">The cupboard</span><i></i><span class="what" style="--c:#2ad1b5">kalimba</span></li>
+        <li><span class="who">The lamp</span><i></i><span class="what" style="--c:#b28dff">vibraphone</span></li>
+      </ol>
+      <p class="conductor">Conducted by your two hands.</p>
+      <p class="lede">Every surface in your room is an instrument. Hit anything to find out what it plays, then play songs across your own room.</p>
       <div class="go">
         <button id="enter-xr" class="patch" type="button">Enter mixed reality</button>
         <p class="xr-fail" role="alert" hidden>Mixed reality didn't start. Allow what Quest asks for, then press Enter again.</p>

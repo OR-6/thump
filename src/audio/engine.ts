@@ -496,13 +496,13 @@ class Engine {
   }
 
   /** A recorded clip: on its note, louder and brighter with the hit (soft hits are darker), through the room. */
-  private playSample(ctx: AudioContext, key: string, midi: number | null, v: number, tone: number, size: number, pan: number, wet: number, level: number, t: number, owner: string): void {
+  private playSample(ctx: AudioContext, key: string, midi: number | null, v: number, tone: number, size: number, pan: number, wet: number, level: number, t: number, owner: string, bus: AudioNode = this.drums): void {
     const c = this.sampler.pick(key, { midi, vel: v, tone, size });
     if (!c) return;
     const src = ctx.createBufferSource();
     src.buffer = c.buffer;
     src.playbackRate.value = c.rate * Math.pow(2, ((Math.random() - 0.5) * 8) / 1200);
-    const g = this.out(ctx, this.drums, pan, wet, t, level * (0.12 + 0.88 * v));
+    const g = this.out(ctx, bus, pan, wet, t, level * (0.12 + 0.88 * v));
     // a soft hit is darker as well as quieter (the recordings have 2–3 layers; this fills between them)
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
@@ -711,6 +711,11 @@ class Engine {
         break;
       }
       case 'shaker': {
+        // a real shaker when its clips are in (soft, off to one side, like a player next to you)
+        if (this.sampler.has('shaker')) {
+          this.playSample(ctx, 'shaker', null, 0.35 + 0.4 * e.vel, 0, 0.6, 0.35, 0.15, 0.32, t, '', this.bedBus);
+          break;
+        }
         const n = this.noiseSrc(ctx, t, 0.05);
         const bp = ctx.createBiquadFilter();
         bp.type = 'bandpass';
@@ -722,6 +727,10 @@ class Engine {
         break;
       }
       case 'pluck': {
+        if (this.sampler.has('tongue')) {
+          this.playSample(ctx, 'tongue', e.midi + 12, 0.5 * e.vel + 0.2, 0, 0.5, -0.3, 0.6, 0.35, t, '', this.bedBus);
+          break;
+        }
         // a soft kalimba-ish pluck: sine with a fast-fading bright partial
         const o = ctx.createOscillator();
         o.frequency.value = midiHz(e.midi + 12);

@@ -98,10 +98,11 @@ export const BIG_ROOM: Song = {
         grid({ tom: b === 12 ? 'x.x.x.x.' : 'x.x.x...' }, b + 3),
       ),
     ),
-    grid({ melody: '0.......|2.......|4.......|2...0...' }, 4),
-    grid({ melody: '5.......|4.......|2.......|0.......' }, 12),
+    // a figure that leaps a sixth and falls back, twice; then it climbs over the top and comes home
+    grid({ melody: '0.4.3...|2.......|0.4.5...|4.......' }, 4),
+    grid({ melody: '0.4.3...|2.3.4...|5...4.3.|0.......' }, 12),
   ),
-  bed: bed({ roots: [55, 55, 48, 50], bass: 'x.......', chord: 'hold', shaker: false }, 16),
+  bed: bed({ roots: [55, 55, 48, 50, 55, 55, 48, 50, 55, 55, 48, 50, 55, 55, 48, 55], bass: 'x.......', chord: 'hold', shaker: false }, 16),
 };
 
 /** Titles for the song of the day (written, not generated). */
