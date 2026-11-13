@@ -68,7 +68,7 @@ import { retune, zoneAt, zoneForDegree, type Zone, setMinor } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
 import { PhoneLink } from './phone-link.js';
 import { coop, type CoopStatus } from '../net/coop.js';
-import { BandLink } from '../net/band.js';
+import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R } from './hand-mallet.js';
 
@@ -328,6 +328,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     shelf: (dir) => this.shelfStep(dir),
+    bandSong: (i) => {
+      if (!this.bandOn || this.band.host) return 'local';
+      this.band.send({ k: 'ask', i });
+      return 'wait';
+    },
+    songStarted: (i, beat0) => {
+      if (!this.bandOn || !this.band.host) return;
+      // beat 0 on the band's clock (the host's steady clock)
+      this.band.send({ k: 'song', i, at: performance.now() / 1000 + (beat0 - this.clock.t) });
+    },
     freeHarmony: () => {
       const id = this.kit.inst;
       const sc = scaleById(id === 'drums' ? 'happy' : (this.settings.shelf[id]?.scale ?? 'happy'));
@@ -513,8 +523,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** The band's state: start or stop the link, keep the code on the module, say who joined. */
   private onBand(st: CoopStatus): void {
     const playing = st.state === 'connected' && (st.role === 'host' || st.role === 'guest') && !!coop.transport;
-    if (playing) this.band.start(coop.transport!);
-    else this.band.stop();
+    this.band.host = st.role === 'host';
+    if (playing) {
+      this.band.start(coop.transport!);
+      this.band.onCtl = (m) => this.onBandCtl(m);
+      this.bandOn = true;
+      this.pingT = 0;
+      this.pings = 0;
+      this.band.send({ k: 'inst', p: this.band.me, id: this.kit.inst });
+    } else {
+      this.band.stop();
+      this.bandOn = false;
+      this.friendInst.clear();
+      this.game.friendInsts.clear();
+    }
     this.game.code = (st.state === 'hosting' || st.state === 'connected') && st.role !== 'caller' && st.code ? st.code : '';
     this.game.refreshDisplay();
     const key = `${st.state}:${st.players ?? 0}`;
@@ -526,6 +548,41 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     else if (playing) this.tag.show("You're in the band", 0x2ad1b5, this.tmp, this.head, 3);
     else if (before.startsWith('connected') && (st.state === 'closed' || st.state === 'hosting')) this.tag.show(st.message ?? 'Band stopped', 0xfff2dc, this.tmp, this.head, 3);
   }
+  private bandOn = false;
+  private pingT = 0;
+  private pings = 0;
+  private friendInst = new Map<string, string>();
+  /** The band's messages: a song starting on the band's clock, a guest asking for one, what each friend plays. */
+  private onBandCtl(m: BandCtl): void {
+    if (m.k === 'ask' && this.band.host) {
+      if (this.game.mode === 'discover' || this.game.mode === 'results') this.game.playSong(m.i);
+      return;
+    }
+    if (m.k === 'song' && !this.band.host) {
+      // beat 0 on the band's clock, as this headset's game time
+      const local = this.band.toLocal(m.at);
+      const beat0 = this.clock.t + (local - performance.now() / 1000);
+      if (this.game.mode === 'results' || this.game.mode === 'discover') this.game.playSong(m.i, beat0);
+      return;
+    }
+    if (m.k === 'inst') {
+      if (m.p === this.band.me) return;
+      this.friendInst.set(m.p, m.id);
+      this.game.friendInsts.clear();
+      for (const v of this.friendInst.values()) this.game.friendInsts.add(v);
+    }
+  }
+  /** Keep the clock measured: pings every second at first, then every ten. */
+  private tickBand(dt: number): void {
+    if (!this.bandOn || this.band.host) return;
+    this.pingT -= dt;
+    if (this.pingT > 0) return;
+    this.band.ping();
+    this.pings++;
+    this.pingT = this.pings < 12 ? 1 : 10;
+  }
+  private lastSentInst = '';
+
   /** A friend played: a little light at the module's right, now and then (not every note). */
   private showFriends(): void {
     if (!this.friendHits) return;
@@ -1058,6 +1115,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.watchClaps(dt);
     this.watchCovers(dt);
     this.showFriends();
+    this.tickBand(dt);
+    if (this.bandOn && this.kit.inst !== this.lastSentInst) {
+      this.lastSentInst = this.kit.inst;
+      this.band.send({ k: 'inst', p: this.band.me, id: this.kit.inst });
+    }
     if (this.labelTags.size) {
       this.labelFaceT -= dt;
       for (const [g, t] of this.labelTags) {
@@ -1408,6 +1470,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** A strike on a surface: discover it (the first time), sound it, show it, judge it. */
   private onHit(s: Surface, side: Side, st: Strike): void {
+    // (what you play goes to the band; the backing doesn't)
+    asPlayer(() => this.onHitNow(s, side, st));
+  }
+  private onHitNow(s: Surface, side: Side, st: Strike): void {
     this.lastSide = side;
     const t = st.t;
     const gain = st.gain;

@@ -8,6 +8,7 @@ import { audio, type Voice } from '../audio/engine.js';
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { loadProgress, saveProgress, freshProgress } from '../persistence/progress.js';
 import { coop, normaliseCode, type CoopStatus } from '../net/coop.js';
+import { asPlayer } from '../net/band.js';
 import { strumNotes } from '../kit/shelf.js';
 
 const LIVE_URL = 'or-6.github.io/thump';
@@ -105,7 +106,7 @@ export function mountLanding(world: World): void {
   const lcdSub = el.querySelector<HTMLElement>('.lcd-sub')!;
   const say: Record<string, string> = { d: 'DRUMS', p: 'PIANO', g: 'GUITAR', h: 'HANDPAN' };
   for (const pad of el.querySelectorAll<HTMLButtonElement>('.pad')) {
-    pad.addEventListener('pointerdown', () => {
+    pad.addEventListener('pointerdown', () => asPlayer(() => {
       audio.resume();
       const k = pad.dataset.k ?? '';
       const v = pad.dataset.v ?? '';
@@ -124,7 +125,7 @@ export function mountLanding(world: World): void {
       pad.classList.add('hit');
       lcdMain.textContent = say[k] ?? '';
       lcdSub.textContent = 'on your desk, under your hands';
-    });
+    }));
   }
 
   // playing together: start a band (a code for friends) or join one, then everyone enters

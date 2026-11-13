@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BandLink, Flood, validNote } from '../src/net/band.js';
+import { BandLink, Flood, asPlayer, validCtl, validNote } from '../src/net/band.js';
 import { audio } from '../src/audio/engine.js';
 import type { Transport } from '../src/net/transport.js';
 
@@ -37,9 +37,13 @@ describe('playing together', () => {
     theirs.onMessage((m) => got.push(m));
     const link = new BandLink();
     link.start(mine);
-    audio.modal('keys', 64, 0.7);
-    audio.drum('kick', 0.9);
-    audio.pluck(40, 0.6, 0, 0, 'steel');
+    asPlayer(() => {
+      audio.modal('keys', 64, 0.7);
+      audio.drum('kick', 0.9);
+      audio.pluck(40, 0.6, 0, 0, 'steel');
+    });
+    // the backing this headset plays for itself stays home
+    audio.modal('keys', 60, 0.5);
     expect(got).toHaveLength(3);
     expect(got.map((m) => (m as { s: string }).s)).toEqual(['m:keys', 'd:kick', 'p:steel']);
     // a friend's note arrives: it plays here, and nothing goes back out
@@ -52,5 +56,26 @@ describe('playing together', () => {
     link.stop();
     audio.modal('keys', 64, 0.7);
     expect(got).toHaveLength(3);
+  });
+  it('one beat: a guest measures the host clock by ping; songs and asks and instruments are checked', () => {
+    const [hostSide, guestSide] = pipe();
+    const host = new BandLink();
+    host.host = true;
+    host.start(hostSide);
+    const guest = new BandLink();
+    guest.start(guestSide);
+    guest.ping();
+    // (an in-memory pipe: no delay, so the offset is ~0)
+    expect(Math.abs(guest.offset)).toBeLessThan(0.01);
+    expect(guest.toLocal(guest.bandNow())).toBeCloseTo(performance.now() / 1000, 1);
+    const asks: unknown[] = [];
+    host.onCtl = (m) => asks.push(m);
+    guest.send({ k: 'ask', i: 2 });
+    expect(asks).toEqual([{ k: 'ask', i: 2 }]);
+    expect(validCtl({ k: 'song', i: 1, at: 12.5 })).toBe(true);
+    expect(validCtl({ k: 'song', i: 99, at: 12.5 })).toBe(false);
+    expect(validCtl({ k: 'inst', p: 'abc', id: 'piano' })).toBe(true);
+    expect(validCtl({ k: 'inst', p: 'abc', id: '<script>' })).toBe(false);
+    expect(validCtl({ k: 'pong', a: 1, h: 2, p: 'x' })).toBe(true);
   });
 });

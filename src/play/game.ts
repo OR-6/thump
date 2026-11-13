@@ -70,6 +70,13 @@ export interface GameStage {
   shelfSet?(which: 'scale' | 'sound'): ShelfView;
   /** Put this instrument on the desk for a song or a build (null: back to the one chosen in free play). */
   useInstrument?(id: string | null): void;
+  /**
+   * Playing together: a song is about to start here. 'wait' when this headset is a guest (it has asked the band's
+   * host, who starts it for everyone); otherwise it starts here.
+   */
+  bandSong?(i: number): 'local' | 'wait';
+  /** A song started here (the host tells the band when beat 0 is). */
+  songStarted?(i: number, beat0: number): void;
   /** Free play: the instrument on the desk, its key's root (MIDI, near C3) and the three chords of its scale. */
   freeHarmony?(): { inst: string; root: number; chords: readonly (readonly number[])[] };
   /** The tuning page: act on a key (null: just read), and what the page shows. */
@@ -767,9 +774,14 @@ export class Game {
    * A song, ready to play: the track's parts as written (the beat on the drums, the tune and the bass on the piano,
    * the extra on the handpan), and you play your part on the instrument that's out; the band plays the rest.
    */
-  playSong(i: number): void {
+  playSong(i: number, beat0 = -1): void {
     const track = TRACKS[i];
     if (!track) return;
+    // in a band, a guest asks the host; the host's start is everyone's
+    if (beat0 < 0 && this.stage.bandSong?.(i) === 'wait') {
+      this.display.sub = 'Starting for the band';
+      return;
+    }
     const parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[] = [];
     for (const def of track.parts) {
       const st = steps(def.pattern, track.swing);
@@ -788,8 +800,12 @@ export class Game {
     }
     this.machine = { track, parts, written: true };
     const out = this.stage.shelf?.(0).id ?? 'drums';
-    this.beginPerform(out);
+    this.beginPerform(out, beat0);
+    this.stage.songStarted?.(i, this.clock.start);
   }
+
+  /** Instruments friends in the band are playing (their parts don't play in this headset's backing). */
+  readonly friendInsts = new Set<string>();
 
   /** The next song to play: the first you haven't played, else the last you did. */
   nextSong(): number {
@@ -797,7 +813,7 @@ export class Game {
     return i < 0 ? TRACKS.length - 1 : i;
   }
 
-  beginPerform(inst = 'drums'): void {
+  beginPerform(inst = 'drums', beat0 = -1): void {
     const m = this.machine;
     if (!m) return;
     this.groove = null;
@@ -831,7 +847,7 @@ export class Game {
     this.stage.retune(t.key, t.minor);
     const spb = secPerBeat(t.bpm, this.opts.tempo);
     this.tempoAtStart = this.opts.tempo;
-    this.clock.set(this.t + 0.4 + 4 * spb, spb);
+    this.clock.set(beat0 >= 0 ? beat0 : this.t + 0.4 + 4 * spb, spb);
     // the count-in, then the track's chords under everything (held, one a bar)
     this.bedCursor = new EventCursor(chordBed({ roots: [...t.chords], minor: t.minorChords ? [...t.minorChords] : [], bass: '........', chord: 'hold', shaker: false }, bars));
     this.bedCursor.seek(-4);
@@ -876,6 +892,8 @@ export class Game {
       for (let L = Math.max(0, Math.floor(p.sched / LOOP_BEATS)); L * LOOP_BEATS <= Math.min(ahead, end); L++)
         for (const part of m.parts) {
           if (p.live.has(part.key) || this.room.muted?.(part.surface)) continue;
+          // a friend in the band is playing this part live: theirs is the one you hear
+          if (this.friendInsts.size && this.friendInsts.has(PART_INST[part.def.name] === 'piano' && this.friendInsts.has('marimba') ? 'marimba' : PART_INST[part.def.name] ?? '')) continue;
           if (thin && (part.def.name.startsWith('PERC') || part.def.name.startsWith('KEYS'))) continue;
           for (const n of part.notes) {
             const at = L * LOOP_BEATS + n.beat;

@@ -8,7 +8,7 @@ export default async function run({ page }) {
   base.search = '';
   const a = await ctx.newPage();
   const b = await ctx.newPage();
-  const out = { host: '', join: '', aHeard: 0, bHeard: 0, code: '', err: '' };
+  const out = { host: '', join: '', aHeard: 0, bHeard: 0, code: '', err: '', aMode: '', bMode: '', beatGap: -1 };
   try {
     await a.goto(base.href, { waitUntil: 'load' });
     await b.goto(base.href, { waitUntil: 'load' });
@@ -31,6 +31,19 @@ export default async function run({ page }) {
     await a.waitForTimeout(2500);
     out.aHeard = await heard(a);
     out.bHeard = await heard(b);
+    // one beat: the friend presses play; the host starts the song for both, on the band's clock
+    await b.waitForTimeout(2500);
+    await b.evaluate(() => window.__thump.game.game.key('play'));
+    await a.waitForTimeout(2500);
+    const beat = (p) => p.evaluate(() => {
+      const r = window.__thump.game;
+      return { mode: r.game.mode, beat: r.game.clock.beatAt(r.clock.t), at: performance.now() };
+    });
+    const [ra, rb] = await Promise.all([beat(a), beat(b)]);
+    out.aMode = ra.mode;
+    out.bMode = rb.mode;
+    // (the two reads are a few ms apart: allow for that at the song's tempo)
+    out.beatGap = Math.abs(ra.beat - rb.beat - ((ra.at - rb.at) / 1000) * (92 / 60));
   } catch (e) {
     out.err = String(e).slice(0, 300);
   } finally {

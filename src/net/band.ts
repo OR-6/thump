@@ -60,6 +60,41 @@ export class Flood {
 
 type Fn = (...a: never[]) => void;
 
+/** Band control: clock pings, a song starting on the band's clock, asking the host for one, what each plays. */
+export type BandCtl =
+  | { k: 'ping'; a: number; p: string }
+  | { k: 'pong'; a: number; h: number; p: string }
+  | { k: 'song'; i: number; at: number }
+  | { k: 'ask'; i: number }
+  | { k: 'inst'; p: string; id: string };
+
+export function validCtl(m: unknown): m is BandCtl {
+  if (!m || typeof m !== 'object') return false;
+  const n = m as Record<string, unknown>;
+  const num = (x: unknown) => typeof x === 'number' && Number.isFinite(x);
+  const id = typeof n.p === 'string' && n.p.length <= 12;
+  if (n.k === 'ping') return num(n.a) && id;
+  if (n.k === 'pong') return num(n.a) && num(n.h) && id;
+  if (n.k === 'song') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && num(n.at);
+  if (n.k === 'ask') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32;
+  if (n.k === 'inst') return typeof n.p === 'string' && n.p.length <= 12 && typeof n.id === 'string' && /^[a-z]{1,12}$/.test(n.id);
+  return false;
+}
+
+/** Sounds a player made (a hit) go to the band; the backing each headset plays for itself stays home. */
+let playerDepth = 0;
+export function asPlayer<T>(fn: () => T): T {
+  playerDepth++;
+  try {
+    return fn();
+  } finally {
+    playerDepth--;
+  }
+}
+
+/** Seconds on this device's steady clock. */
+const nowS = () => performance.now() / 1000;
+
 /** A friend's sound is playing (whatever link plays it): nothing it makes goes back out. */
 let replaying = false;
 
@@ -80,7 +115,7 @@ export class BandLink {
     if (this.originals.drum) return;
     const a = audio as unknown as Record<string, Fn>;
     const send = (n: BandNote) => {
-      if (replaying || this.depth > 0) return;
+      if (replaying || this.depth > 0 || playerDepth === 0) return;
       tr.send(n);
     };
     const ahead = (when: number) => Math.round(Math.max(0, (when || audio.now()) - audio.now()) * 1000);
@@ -103,7 +138,57 @@ export class BandLink {
     wrap('pluck', ((midi: number, vel: number, _pan?: number, when?: number, kind?: string) => ({ k: 'n', s: `p:${kind ?? 'nylon'}`, m: midi, v: vel, d: ahead(when ?? 0) })) as never);
     // (the chords under a track stay on this headset: friends' tracks would clash in two keys)
     wrap('band', (() => null) as never);
-    tr.onMessage((m) => this.play(m));
+    tr.onMessage((m) => {
+      if (validCtl(m)) this.control(m);
+      else this.play(m);
+    });
+    this.tr = tr;
+  }
+
+  /** This player's id in the band, and the link to send on. */
+  readonly me = Math.random().toString(36).slice(2, 8);
+  private tr: Transport | null = null;
+  /** The host's steady clock minus this device's (s), from the quickest ping so far. */
+  offset = 0;
+  private bestRtt = Infinity;
+  /** Control messages for the room (songs, instruments). */
+  onCtl: (m: BandCtl) => void = () => {};
+  /** Is this headset the band's host (its clock is the band's)? */
+  host = false;
+
+  send(m: BandCtl): void {
+    this.tr?.send(m);
+  }
+  /** The band's clock now (the host's steady clock), s. */
+  bandNow(): number {
+    return nowS() + (this.host ? 0 : this.offset);
+  }
+  /** A time on the band's clock, as this device's steady clock. */
+  toLocal(at: number): number {
+    return at - (this.host ? 0 : this.offset);
+  }
+  /** Measure the clock against the host (a guest sends these now and then). */
+  ping(): void {
+    if (!this.host) this.send({ k: 'ping', a: nowS(), p: this.me });
+  }
+  private control(m: BandCtl): void {
+    if (m.k === 'ping') {
+      if (this.host) this.send({ k: 'pong', a: m.a, h: nowS(), p: m.p });
+      return;
+    }
+    if (m.k === 'pong') {
+      // (the host passes pongs to everyone: only mine)
+      if (m.p !== this.me) return;
+      const rtt = nowS() - m.a;
+      if (rtt < 0 || rtt > 2) return;
+      // the quickest round trip gives the truest offset
+      if (rtt <= this.bestRtt * 1.2) {
+        this.bestRtt = Math.min(this.bestRtt, rtt);
+        this.offset = m.h + rtt / 2 - nowS();
+      }
+      return;
+    }
+    this.onCtl(m);
   }
 
   /** A friend's sound: play it (a hair later than it was meant, the same for every note, so their timing holds). */
