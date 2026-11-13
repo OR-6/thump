@@ -17,6 +17,15 @@ export interface SavedKit {
   yaw: number;
 }
 
+/** An instrument found in a room, saved relative to that room's persistent anchor. */
+export interface SavedInstrument {
+  family: string;
+  /** Where its zones were centred (anchor-local metres). */
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface Progress {
   /** The first steps (kick, snare, hat, the crowd) are done. */
   introDone: boolean;
@@ -34,12 +43,14 @@ export interface Progress {
   /** Days a song was played (yyyy-mm-dd), for the tally (never a streak to lose). */
   days: string[];
   kit?: SavedKit;
+  /** Instruments found per room (keyed by the room anchor's handle); the kit counts as 'kit'. */
+  rooms: Record<string, SavedInstrument[]>;
 }
 
 const KEY = 'progress.v1';
 
 export function freshProgress(): Progress {
-  return { introDone: false, unlocks: [], stars: {}, gold: {}, next: 0, crowd: 3, moved: {}, days: [] };
+  return { introDone: false, unlocks: [], stars: {}, gold: {}, next: 0, crowd: 3, moved: {}, days: [], rooms: {} };
 }
 
 export function loadProgress(): Progress {
@@ -61,6 +72,13 @@ export function loadProgress(): Progress {
   if (Array.isArray(r.days)) p.days = r.days.filter((d): d is string => typeof d === 'string' && /^\d{4}-\d\d-\d\d$/.test(d)).slice(-400);
   const k = r.kit as SavedKit | undefined;
   if (k && typeof k.uuid === 'string' && [k.x, k.y, k.z, k.yaw].every((n) => typeof n === 'number' && Number.isFinite(n))) p.kit = { uuid: k.uuid, x: k.x, y: k.y, z: k.z, yaw: k.yaw };
+  if (r.rooms && typeof r.rooms === 'object') {
+    for (const [uuid, list] of Object.entries(r.rooms as Record<string, unknown>)) {
+      if (!Array.isArray(list)) continue;
+      const ok = list.filter((i): i is SavedInstrument => !!i && typeof i.family === 'string' && [i.x, i.y, i.z].every((n: unknown) => typeof n === 'number' && Number.isFinite(n))).slice(0, 40);
+      if (ok.length) p.rooms[uuid.slice(0, 80)] = ok;
+    }
+  }
   if (!p.introDone) {
     // an interrupted first session starts the first steps again (they take a minute)
     p.unlocks = [];

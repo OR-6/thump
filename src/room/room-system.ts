@@ -358,7 +358,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** "Start over" on the page: forget progress here too (the kit stays where it is). */
   private resetProgress(): void {
     const kitPose = this.progress.kit;
-    this.progress = { ...freshProgress(), kit: kitPose };
+    this.progress = { ...freshProgress(), kit: kitPose, rooms: {} };
     saveProgress(this.progress);
     this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset });
     for (const s of this.surfaces) s.discovered = false;
@@ -692,6 +692,52 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   // ------------------------------------------------------------------ discovery
 
+  /** Save a found instrument under the room's anchor, so it's there next time in this room. */
+  private remember(s: Surface): void {
+    const a = this.roomAnchor();
+    if (!a || !s.voice) return;
+    const list = (this.progress.rooms[a.uuid] ??= []);
+    if (s === this.kitSurface) {
+      if (!list.some((i) => i.family === 'kit')) list.push({ family: 'kit', x: 0, y: 0, z: 0 });
+    } else {
+      a.group.updateMatrixWorld(true);
+      const w = this.tmp2.set(s.anchor.x, 0, -s.anchor.z).applyMatrix4(s.world);
+      const local = w.applyMatrix4(this.tmpM2.copy(a.group.matrixWorld).invert());
+      list.push({ family: s.voice.family, x: r4(local.x), y: r4(local.y), z: r4(local.z) });
+    }
+    saveProgress(this.progress);
+  }
+  private tmpM2 = new Matrix4();
+
+  /** Instruments found here before come back already drawn (no tag, no chime; the room map counts them). */
+  private restore(s: Surface): boolean {
+    const a = this.roomAnchor();
+    const list = a ? this.progress.rooms[a.uuid] : undefined;
+    if (!a || !list || !s.voice || s.discovered) return false;
+    a.group.updateMatrixWorld(true);
+    if (s === this.kitSurface) {
+      if (!list.some((i) => i.family === 'kit')) return false;
+      this.restoring = true;
+      this.discover(s);
+      this.restoring = false;
+      return true;
+    }
+    for (const i of list) {
+      if (i.family !== s.voice.family) continue;
+      const w = this.tmp2.set(i.x, i.y, i.z).applyMatrix4(a.group.matrixWorld);
+      s.toZone(w, this.o);
+      if (Math.abs(this.o.y) > 0.1 || !s.over(this.o.x, this.o.z, 0.05)) continue;
+      this.hitAt.x = this.o.x;
+      this.hitAt.z = this.o.z;
+      this.restoring = true;
+      this.discover(s);
+      this.restoring = false;
+      return true;
+    }
+    return false;
+  }
+  private restoring = false;
+
   /** A surface's first hit: its instrument draws itself in, named for two seconds; the room map fills. */
   private discover(s: Surface): void {
     s.discovered = true;
@@ -721,8 +767,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.sheens.delete(s);
       }
     }
-    audio.chime([84, 91], 0.07, 0.4);
-    if (!this.settings.noWords) {
+    if (!this.restoring) audio.chime([84, 91], 0.07, 0.4);
+    if (!this.settings.noWords && !this.restoring) {
       const name = `${surfaceName(s)} · ${FAMILIES[v.family].name}`;
       // the tag stands just off the surface where it was hit, facing you
       this.tmp.set(this.hitAt.x, 0.05, -this.hitAt.z).applyMatrix4(s.world);
@@ -732,6 +778,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.debug.tag = name;
     }
     if (DEBUG) console.log(`[thump] discovered ${s.id} '${s.label}' → ${v.family} (${v.why}) size ${v.size.toFixed(2)}`);
+    if (!this.restoring) this.remember(s);
     this.game.discovered(v.family, s === this.kitSurface ? 'table' : surfaceName(s).toLowerCase(), this.clock.t);
     this.refreshDebugSurfaces();
   }
@@ -791,6 +838,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.debug.meshes = meshes;
     this.surfaces = [this.kitSurface, this.moduleSurface];
     for (const list of this.bySource.values()) for (const s of list) this.surfaces.push(s);
+    for (const s of this.surfaces) if (!s.discovered && s.source !== 'module') this.restore(s);
     this.updateReach();
     this.rebuildSheens();
   }
