@@ -11,7 +11,7 @@ export function mountPhoneJam(host: HTMLElement): void {
   box.className = 'jam';
   box.innerHTML = `
     <h2>Got a code from a friend's headset?</h2>
-    <p class="jam-lede">Your phone plays the bass. When they tap JAM, type the 4 letters on their drum module.</p>
+    <p class="jam-lede">Your phone plays the bass. When they tap JAM, type the 4 letters on their module.</p>
     <form class="jam-join">
       <input id="jam-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Headset code" />
       <button class="patch small" type="submit">Join</button>
@@ -40,7 +40,7 @@ export function mountPhoneJam(host: HTMLElement): void {
     e.preventDefault();
     const code = normaliseCode(input.value);
     if (!code) {
-      status.textContent = 'Type the 4 letters on their drum module';
+      status.textContent = 'Type the 4 letters on their module';
       return;
     }
     void coop.join(code, 'caller');
@@ -64,7 +64,7 @@ export function mountPhoneJam(host: HTMLElement): void {
   window.addEventListener('thump:coop', (e) => {
     const s = (e as CustomEvent<CoopStatus>).detail;
     if (s.role !== 'caller' && s.state !== 'error' && s.state !== 'closed' && s.state !== 'idle') return;
-    status.textContent = s.state === 'connected' ? 'You are the bass. Tap in time with the light.' : (s.message ?? '');
+    status.textContent = s.state === 'connected' ? "You're on bass. Tap with the light." : (s.message ?? '');
     const on = s.state === 'connected';
     pads.hidden = !on;
     form.hidden = on;
@@ -77,7 +77,7 @@ export function mountPhoneJam(host: HTMLElement): void {
           light.classList.remove('pulse');
           void light.offsetWidth; // restart the pulse animation
           light.classList.add('pulse');
-        } else if (m.k === 'rest') song.textContent = 'Waiting for the next song';
+        } else if (m.k === 'rest') song.textContent = 'Waiting for the next track';
       });
     }
     if (!on) wired = false;

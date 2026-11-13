@@ -51,7 +51,7 @@ describe('the game', () => {
     g.start(0);
     expect(g.display.line).toBe('Hit something');
     g.discovered('kit', 'table', 1);
-    expect(g.display.sub).toMatch(/drum kit/);
+    expect(g.display.sub).toMatch(/kit/i);
     expect(g.display.pulse).toBeNull();
     g.discovered('marimba', 'door', 2);
     g.tick(2.1);
@@ -60,13 +60,13 @@ describe('the game', () => {
     expect(g.display.found).toEqual(['kit', 'marimba']);
   });
 
-  it('a lone table still gets a song after a while', () => {
+  it('a lone desk still gets a track after a while', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 1);
-    g.tick(20);
+    g.tick(30);
     expect(g.display.pulse).toBeNull();
-    g.tick(27);
+    g.tick(42);
     expect(g.display.pulse).toBe('play');
   });
 
@@ -77,9 +77,9 @@ describe('the game', () => {
     const g = new Game(st, p, room([{ id: 't1', family: 'bell', zones: 1 }]));
     g.start(0);
     g.discovered('kit', 'table', 0);
-    g.tick(30);
+    g.tick(45);
     g.key('play');
-    let t = 30.1;
+    let t = 45.1;
     for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
       g.tick(t);
       g.hit(key, t, 0.8);
@@ -102,7 +102,7 @@ describe('the game', () => {
       g.tick(t);
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t + 0.004, 0.8));
       if (g.display.line === 'Fill!') sawFill = true;
-      if (g.display.line === 'Hold it') sawHold = true;
+      if (g.display.line === 'Keep it going') sawHold = true;
     }
     expect(g.mode).toBe('results');
     expect(sawFill && sawHold).toBe(true);
@@ -223,12 +223,12 @@ describe('the game', () => {
     const g = new Game(st, p, room([{ id: 't1', family: 'bell', zones: 1 }]));
     g.start(0);
     g.discovered('kit', 'table', 0);
-    g.tick(30);
+    g.tick(45);
     expect(g.display.line).toBe('Build a track?');
     g.key('play');
     expect(g.mode).toBe('build');
     expect(g.display.sub).toBe('Hit what plays the kick');
-    let t = 30.1;
+    let t = 45.1;
     const parts = ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom'];
     for (const key of parts) {
       g.tick(t);

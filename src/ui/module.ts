@@ -26,7 +26,7 @@ export type ModuleKey = 'prev' | 'play' | 'next' | 'jam' | 'loop';
 export const KEYS: readonly ModuleKey[] = ['prev', 'play', 'next', 'jam', 'loop'];
 const KEY_X = [-0.116, -0.058, 0, 0.058, 0.116];
 /** Printed under each key on the module's front edge: what tapping it twice does. */
-const LEGEND = ['SET ×2', 'STOP ×2', 'SONGS', '', 'CLEAR ×2'];
+const LEGEND = ['SETTINGS ×2', 'STOP ×2', 'TRACKS', '', 'CLEAR ×2'];
 
 export interface Display {
   /** The big line (≤ 18 characters). */
@@ -160,6 +160,7 @@ export class Module {
   private lastLabels: string[] | null = null;
   private lastLocked: readonly string[] | null = null;
   private lastKeys = '#';
+  private lastDraw = 0;
   private lastNum = [NaN, NaN, NaN, NaN, NaN];
   set(d: Display): void {
     this.shown = d;
@@ -168,8 +169,11 @@ export class Module {
     const same =
       d.line === this.lastStr[0] && d.sub === this.lastStr[1] && d.code === this.lastStr[2] && keysSame &&
       d.total === this.lastNum[0] && d.stars === this.lastNum[1] && d.count === this.lastNum[2] && d.day === this.lastNum[3] && (d.gold ? 1 : 0) === this.lastNum[4] &&
-      meter === this.lastMeter && d.found.length === this.lastFound;
-    if (same) return;
+      d.found.length === this.lastFound;
+    // the meter alone moving redraws at most four times a second (it moves on every hit)
+    const now = performance.now();
+    if (same && (meter === this.lastMeter || now - this.lastDraw < 250)) return;
+    this.lastDraw = now;
     this.lastStr[0] = d.line;
     this.lastStr[1] = d.sub;
     this.lastStr[2] = d.code;
@@ -208,15 +212,20 @@ export class Module {
     for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 1);
     g.textBaseline = 'alphabetic';
     if (d.count > 0) {
-      // the count-in, big
+      // the count-in: the number big on the right, what it's counting in to on the left
       g.fillStyle = INK;
-      g.font = `700 190px ${FONT}`;
+      g.font = `700 200px ${FONT}`;
       const txt = String(d.count);
-      g.fillText(txt, (W - g.measureText(txt).width) / 2, d.sub && /again/.test(d.sub) ? 180 : 210);
-      if (d.sub && /again/.test(d.sub)) {
-        g.font = `500 44px ${FONT}`;
-        g.fillText(d.sub, (W - g.measureText(d.sub).width) / 2, 262);
-      }
+      g.fillText(txt, W - 40 - g.measureText(txt).width, 222);
+      let px = 70;
+      g.font = `600 ${px}px ${FONT}`;
+      while (g.measureText(d.line).width > W - 260 && px > 36) g.font = `600 ${--px}px ${FONT}`;
+      g.fillText(d.line, 28, 104);
+      let sp = 50;
+      g.font = `500 ${sp}px ${FONT}`;
+      while (g.measureText(d.sub).width > W - 260 && sp > 30) g.font = `500 ${--sp}px ${FONT}`;
+      g.fillStyle = '#d6d2c8';
+      g.fillText(d.sub, 28, 176);
       this.tex.needsUpdate = true;
       return;
     }

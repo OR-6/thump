@@ -34,6 +34,8 @@ export interface SavedPad {
   tone: number;
   /** What its position said it was ('cup', 'flat', 'knee'…). */
   what: string;
+  /** Its footprint in its own frame: minX, maxX, minZ, maxZ (m). */
+  box?: [number, number, number, number];
 }
 
 export interface SavedInstrument {
@@ -106,7 +108,10 @@ export function loadProgress(): Progress {
     p.pads = (r.pads as SavedPad[])
       .filter((q) => !!q && [q.x, q.y, q.z, q.nx, q.ny, q.nz, q.w, q.size, q.tone].every((n) => typeof n === 'number' && Number.isFinite(n)) && typeof q.sound === 'string' && typeof q.what === 'string')
       .slice(-24)
-      .map((q) => ({ x: q.x, y: q.y, z: q.z, nx: q.nx, ny: q.ny, nz: q.nz, w: q.w, sound: q.sound.slice(0, 16), size: q.size, tone: q.tone, what: q.what.slice(0, 12) }));
+      .map((q) => ({
+        x: q.x, y: q.y, z: q.z, nx: q.nx, ny: q.ny, nz: q.nz, w: q.w, sound: q.sound.slice(0, 16), size: q.size, tone: q.tone, what: q.what.slice(0, 12),
+        ...(Array.isArray(q.box) && q.box.length === 4 && q.box.every((v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1) ? { box: q.box } : {}),
+      }));
   if (typeof r.bandLevel === 'number' && r.bandLevel >= 0 && r.bandLevel <= 3) p.bandLevel = Math.round(r.bandLevel);
   if (r.rooms && typeof r.rooms === 'object') {
     for (const [uuid, list] of Object.entries(r.rooms as Record<string, unknown>)) {

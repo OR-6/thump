@@ -23,7 +23,7 @@ export interface TuneItem {
 export const TUNE_ITEMS: readonly TuneItem[] = [
   { key: 'minSpeed', name: 'Speed', unit: 'm/s', scale: 1, step: 0.05, min: 0.15, max: 1.2, help: 'Lower: softer hits play' },
   { key: 'minDecel', name: 'Stop', unit: 'm/s²', scale: 1, step: 2, min: 4, max: 40, help: 'Lower: a gentle stop plays' },
-  { key: 'nearM', name: 'Near', unit: 'mm', scale: 1000, step: 2, min: 6, max: 40, help: 'Higher: stops further above play' },
+  { key: 'nearM', name: 'Near', unit: 'mm', scale: 1000, step: 2, min: 6, max: 40, help: 'Higher: stops higher up count' },
   { key: 'latchS', name: 'Latch', unit: 'ms', scale: 1000, step: 10, min: 40, max: 250, help: 'Higher: fewer double hits' },
   { key: 'rearmM', name: 'Re-arm', unit: 'mm', scale: 1000, step: 2, min: 8, max: 40, help: 'Lower: fast repeats play' },
   { key: 'offset', name: 'Timing', unit: 'ms', scale: 1000, step: 5, min: -150, max: 150, help: 'Your hits land this late' },

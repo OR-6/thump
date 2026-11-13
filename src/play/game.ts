@@ -76,6 +76,8 @@ export interface Room {
   everything?(): RoomInstrument[];
   /** The zone of a surface that sounds one of these pitch classes (a chord tone), or −1. */
   chordZone?(surface: string, pcs: readonly number[]): number;
+  /** How many things on the desk you've found and kept (the gate for the next track). */
+  things?(): number;
 }
 
 export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam' | 'build';
@@ -204,6 +206,24 @@ export class Game {
     clicked: number;
   } | null = null;
 
+  /** The first track not built yet that the things you've found open, or −1. */
+  nextTrack(): number {
+    const have = this.room.things?.() ?? 0;
+    for (let i = 0; i < TRACKS.length; i++) if (!this.built(TRACKS[i].id)) return have >= TRACKS[i].needs ? i : -1;
+    return -1;
+  }
+
+  /** Things still to find before the next track opens (0: none, or nothing left to open). */
+  gate(): number {
+    const have = this.room.things?.() ?? 0;
+    const t = TRACKS.find((x) => !this.built(x.id));
+    return t ? Math.max(0, t.needs - have) : 0;
+  }
+
+  performed(id: string): boolean {
+    return id in this.progress.stars;
+  }
+
   /** The part the module is asking for a thing for (the autoplayer), or null. */
   buildAsks(): string | null {
     return this.bld?.phase === 'assign' ? this.bld.track.parts[this.bld.part].name : null;
@@ -211,6 +231,12 @@ export class Game {
 
   buildRunning(): boolean {
     return this.bld?.phase === 'run';
+  }
+
+  /** Does the machine (or the track being built) use this thing? (Such a thing is kept, never faded.) */
+  uses(surface: string): boolean {
+    if (this.bld?.target?.surface === surface || this.bld?.parts.some((p) => p.surface === surface)) return true;
+    return !!this.machine?.parts.some((p) => p.surface === surface);
   }
 
   /** Has this track been built (its machine kept)? */
@@ -360,7 +386,12 @@ export class Game {
         // the part is in: snapped, filled, looping from the next loop on
         const notes = quantise(steps(def.pattern), b.hits, (s) => this.keyFor(target.surface, target.key, s));
         b.parts.push({ def, surface: target.surface, key: target.key, notes });
-        b.sched = Math.min(b.sched, beat);
+        // the new part's notes already inside the scheduled window (its next loop's downbeat) go out now, once
+        const from = b.recStart + LOOP_BEATS;
+        for (const n of notes) {
+          const at = from + n.beat;
+          if (at > beat - 0.02 && at <= b.sched) this.stage.voice(n.key, this.clock.timeAt(at), n.filled ? n.vel * 0.85 : n.vel);
+        }
         b.part++;
         b.target = null;
         if (b.part >= b.track.parts.length) {
@@ -383,7 +414,7 @@ export class Game {
     d.pulse = null;
     if (b.phase === 'run') {
       d.line = b.track.name;
-      d.sub = 'Perform? Tap ▶';
+      d.sub = 'Your track. Perform? ▶';
       d.pulse = 'play';
       return;
     }
@@ -394,8 +425,9 @@ export class Game {
     }
     if (b.phase === 'count') {
       d.count = Math.max(1, Math.min(4, Math.ceil(b.recStart - this.clock.beatAt(this.t))));
-      d.sub = b.moved ? 'Keys go on the bars' : 'Play along';
+      d.sub = b.moved ? 'Play this one on the keys' : 'Play along';
       if (d.count > 4) d.count = 0;
+      d.line = def.name;
       return;
     }
     d.sub = 'Play along';
@@ -437,7 +469,9 @@ export class Game {
         for (const s of steps(p.def.pattern)) {
           const beat = L * LOOP_BEATS + s.beat;
           if (fills.some(([a, z]) => beat >= a && beat < z)) continue;
-          notes.push({ beat, part: p.key as never, degree: -1, vel: s.vel });
+          // the bar or pad you played this step on when you recorded it
+          const rec = p.notes.find((n) => Math.abs(n.beat - s.beat) < 0.01);
+          notes.push({ beat, part: (rec?.key ?? p.key) as never, degree: -1, vel: s.vel });
         }
     notes.sort((a, b) => a.beat - b.beat);
     const song: Song = { id: t.id, name: t.name, mood: 'yours', bpm: t.bpm, bars, beatsPerBar: 4, key: t.key, parts: [], notes, bed: [] };
@@ -599,6 +633,10 @@ export class Game {
       this.refreshDisplay();
       return;
     }
+    if (this.mode === 'build') {
+      this.buildKey(k, twice);
+      return;
+    }
     // (not while a pad's sound is up: then ◀ ◀ is stepping through sounds)
     if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam' && this.t >= this.pad.until) {
       // tap ◀ twice: the settings page (and the first tap's step back is undone)
@@ -623,12 +661,10 @@ export class Game {
       this.refreshDisplay();
       return;
     }
-    if (this.mode === 'build') {
-      this.buildKey(k, twice);
-      return;
-    }
     if (k === 'play' && this.mode === 'discover') {
-      if (this.machine) this.beginPerform();
+      const next = this.nextTrack();
+      if (next >= 0 && (!this.machine || this.performed(this.machine.track.id))) this.beginBuild(next);
+      else if (this.machine) this.beginPerform();
       else this.beginBuild(0);
       this.lastTap.play = -9;
       return;
@@ -839,6 +875,9 @@ export class Game {
   begin(i: number): void {
     const song = this.songAt(i);
     if (!song) return;
+    this.perf = null;
+    this.perfShown = 0;
+    this.lastTight = -1;
     this.looper.clear();
     this.song = song;
     this.selected = i;
@@ -871,6 +910,8 @@ export class Game {
 
   /** Stop the song now (no stars). */
   stop(): void {
+    this.perf = null;
+    this.perfShown = 0;
     this.stage.casting({});
     this.mode = 'discover';
     this.song = null;
@@ -938,7 +979,7 @@ export class Game {
     }
     if (this.mode === 'discover') {
       // the first song is offered once there are two instruments (or the table alone has had a while)
-      if (!this.offered && (this.found.length >= 2 || (this.kitAt >= 0 && t - this.kitAt > 25))) {
+      if (!this.offered && ((this.room.things?.() ?? 0) >= 2 || (this.kitAt >= 0 && t - this.kitAt > 40) || (!this.room.things && this.found.length >= 2))) {
         this.offered = true;
         this.refreshDisplay();
       }
@@ -1171,7 +1212,7 @@ export class Game {
     }
     if (this.mode === 'discover' && this.t < this.pad.until) {
       d.line = this.pad.name;
-      d.sub = '◀ ▶ to change it';
+      d.sub = 'Arrows change the sound';
       d.keyLabels = null;
       return;
     }
@@ -1179,9 +1220,17 @@ export class Game {
       this.buildDisplay(d);
       return;
     }
+    const nextT = this.nextTrack();
+    if (this.mode === 'discover' && this.offered && nextT >= 0 && this.machine && this.performed(this.machine.track.id)) {
+      d.line = `Build ${TRACKS[nextT].name}?`;
+      d.sub = `${TRACKS[nextT].parts.length} parts · Tap ▶`;
+      d.pulse = 'play';
+      return;
+    }
     if (this.mode === 'discover' && this.offered && this.machine) {
       d.line = this.machine.track.name;
-      d.sub = 'Perform? Tap ▶';
+      const gate = this.gate();
+      d.sub = gate > 0 && this.performed(this.machine.track.id) ? `Find ${gate} more thing${gate === 1 ? '' : 's'}` : 'Your track. Perform? ▶';
       d.pulse = 'play';
       d.stars = this.progress.stars[this.machine.track.id] ?? 0;
       return;
@@ -1230,8 +1279,8 @@ export class Game {
         if (this.perf) {
           const b = this.clock.beatAt(this.t);
           const inFill = this.perf.fills.some(([a, z]) => b >= a && b < z);
-          d.line = inFill ? 'Fill!' : b >= this.perf.holdFrom ? 'Hold it' : this.song!.name;
-          d.sub = inFill ? 'Anything counts' : b >= this.perf.holdFrom ? 'No lights. Keep going' : `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
+          d.line = inFill ? 'Fill!' : b >= this.perf.holdFrom ? 'Keep it going' : this.song!.name;
+          d.sub = inFill ? 'Anything counts' : b >= this.perf.holdFrom ? 'No lights now' : `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
           d.meter = this.energy;
           break;
         }
@@ -1338,9 +1387,12 @@ const ASK: Record<string, string> = {
   KICK: 'Hit what plays the kick',
   SNARE: 'Hit what plays the snare',
   HAT: 'Hit what plays the hat',
-  PERC: 'Find something new',
+  PERC: 'Hit something new for perc',
   KEYS: 'Hit what plays the keys',
   BASS: 'Hit what plays the bass',
+  'PERC 2': 'Hit something else for perc',
+  CLAP: 'Clap, or hit what claps',
+  'KEYS 2': 'Hit what plays the high keys',
 };
 
 const NO_KEYS: ModuleKey[] = [];
@@ -1349,5 +1401,5 @@ const JAM_LOCKED: ModuleKey[] = ['jam'];
 const BOTH_LOCKED: ModuleKey[] = ['jam', 'loop'];
 
 function unlockLine(u: Unlock): string {
-  return u === 'tom' ? 'New: a tom on your table' : u === 'loops' ? 'New: REC loops what you play' : u === 'swaps' ? 'New: pinch and hold to change a sound' : 'New: JAM with a bandmate';
+  return u === 'tom' ? 'New: a tom on the desk' : u === 'loops' ? 'New: REC loops what you play' : u === 'swaps' ? 'New: pinch and hold to change' : 'New: JAM with a bandmate';
 }

@@ -174,7 +174,7 @@ class Engine {
     const key = `kit:${voice}`;
     if (this.sampler.has(key)) {
       // a big surface's drum (a wall) is a little lower and roomier
-      this.playSample(ctx, key, null, v, 0, Math.min(1, (big - 1) / 2) * 0.6 + 0.5, pan, voice === 'hat' ? 0.25 : 0.45, DRUM_LEVEL[voice] ?? 0.8, t, '');
+      this.playSample(ctx, key, null, v, 0, Math.min(1, (big - 1) / 2) * 0.6 + 0.5, pan, voice === 'hat' ? 0.25 : 0.45, DRUM_LEVEL[voice] ?? 0.8, t, key);
       // the cajon's bass tone gets a sub underneath: a kick you feel
       if (voice !== 'kick') return;
       const o = ctx.createOscillator();
@@ -504,10 +504,12 @@ class Engine {
     src.playbackRate.value = c.rate * Math.pow(2, ((Math.random() - 0.5) * 8) / 1200);
     const g = this.out(ctx, bus, pan, wet, t, level * (0.12 + 0.88 * v));
     // a soft hit is darker as well as quieter (the recordings have 2–3 layers; this fills between them)
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 2500 + 15000 * v * v;
-    src.connect(lp).connect(g);
+    if (v < 0.75) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 2500 + 15000 * v * v;
+      src.connect(lp).connect(g);
+    } else src.connect(g);
     src.start(t);
     const end = t + c.buffer.duration / c.rate;
     src.stop(end + 0.02);

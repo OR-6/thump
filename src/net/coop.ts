@@ -64,7 +64,7 @@ class CoopSession {
       if (live()) listeners.forEach((cb) => cb(d));
     });
     conn.on('close', () => {
-      if (live()) this.closed('The other side hung up');
+      if (live()) this.closed('Your friend left');
     });
     conn.on('error', () => {
       if (live()) this.closed('Connection lost');
@@ -114,7 +114,7 @@ class CoopSession {
         else this.fail("Can't reach the connection service. Try again in a minute");
       });
     } catch {
-      this.set({ state: 'error', message: "Calling a friend doesn't work in this browser" });
+      this.set({ state: 'error', message: "This browser can't join a jam" });
     }
   }
 
@@ -151,7 +151,7 @@ class CoopSession {
         this.fail(type === 'peer-unavailable' ? "No headset has that code. Check the 4 letters" : "Can't reach the connection service. Try again in a minute");
       });
     } catch {
-      this.set({ state: 'error', message: "Calling a friend doesn't work in this browser" });
+      this.set({ state: 'error', message: "This browser can't join a jam" });
     }
   }
 

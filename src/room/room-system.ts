@@ -53,7 +53,7 @@ import { SurfaceBuilder, insidePolygon, tuneStrike } from './surface-builder.js'
 import { GameClock } from './game-clock.js';
 import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M, URL_STRIKE } from './params.js';
 import { SwapGesture } from './swaps.js';
-import { TouchFinder, becomesKeys, grow, isClap, touchVoice, type Touch } from './touch.js';
+import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -75,7 +75,7 @@ const HOLD_DOTS = 20;
 /** Where a song's target key points: a pad, an edge key, or a zone on a room surface. */
 interface KeyRef {
   surface: Surface | null;
-  kind: 'pad' | 'keys' | 'zone';
+  kind: 'pad' | 'keys' | 'zone' | 'clap';
   lane: Lane;
   zone: number;
 }
@@ -261,6 +261,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (const s of this.surfaces) if (s.discovered && s.voice && s.source !== 'kit' && s.source !== 'module' && s.reach <= PLAY_REACH_M) out.push({ id: s.id, family: s.voice.family, zones: s.zones.length });
       return out;
     },
+    things: () => {
+      // things kept by touch, and anything else in the room you've played (a window, a door)
+      let n = 0;
+      for (const s of this.touched) if (s.confirmed) n++;
+      for (const s of this.surfaces) if (s.source !== 'touch' && s !== this.kitSurface && s !== this.moduleSurface && s.voice && s.discovered) n++;
+      return n;
+    },
     everything: () => {
       // the three nearest found instruments (a room of eight playing along at once is a wall of sound, not an orchestra)
       const list = this.surfaces.filter((s) => s.discovered && s.voice && s.source !== 'kit' && s.source !== 'module').sort((a, b) => a.reach - b.reach);
@@ -373,6 +380,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const when = this.clock.toAudio(at);
       // the bandmate's own notes: its mallets fly there and strike on the note
       if (mate && !motion.calm) this.malletTo(r, at);
+      if (r.kind === 'clap') {
+        audio.modal('clap', 60, vel, 0, when, 0.5, 'clap');
+        return;
+      }
       if (r.kind === 'pad') {
         const p = this.kit.pad(r.lane);
         audio.drum(r.lane, vel, p ? Math.max(-0.8, Math.min(0.8, p.x / 0.4)) : 0, when);
@@ -413,7 +424,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (!this.settings.noWords) {
           if (s) this.tmp.set(s.anchor.x, 0.05, -s.anchor.z - 0.12).applyMatrix4(s.world);
           else this.tmp.set(0, 0.06, -0.12).applyMatrix4(this.kit.root.matrixWorld);
-          this.tag.show('Listen, then answer.', 0xf2efe6, this.tmp, this.head, 3);
+          this.tag.show('Listen, then play it back', 0xf2efe6, this.tmp, this.head, 3);
         }
       } else if (event === 'happy') {
         // pleased: up to the top and back
@@ -438,7 +449,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     connected: () => {
       if (this.settings.noWords) return;
       this.tmp.set(0, 0.12, -0.2).applyMatrix4(this.kit.root.matrixWorld);
-      this.tag.show("A friend's phone is the bass", 0x2ad1b5, this.tmp, this.head, 3);
+      this.tag.show('Your friend is on bass', 0x2ad1b5, this.tmp, this.head, 3);
     },
   });
 
@@ -707,13 +718,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (s) {
       this.tmp.set(s.anchor.x, 0.06, -s.anchor.z).applyMatrix4(s.world);
       this.tmp.y = Math.min(this.tmp.y, this.head.y);
-      this.tag.show('Pinch and hold: new sound', FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
+      this.tag.show('Pinch and hold to change it', FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
       return;
     }
     if (!this.kit.keys.group.visible) return;
     const q = this.kit.keyZones[3];
     this.tmp.set(q ? q.x : 0, 0.07, q ? -q.z : -0.16).applyMatrix4(this.kit.root.matrixWorld);
-    this.tag.show('Pinch and hold: new sound', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
+    this.tag.show('Pinch and hold to change it', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
     this.kit.keys.sweep();
   }
 
@@ -726,7 +737,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.later(this.clock.t + 5, () => {
       this.tmp.set((far.bounds.minX + far.bounds.maxX) / 2, 0.06, -(far.bounds.minZ + far.bounds.maxZ) / 2).applyMatrix4(far.world);
       this.tmp.y = Math.min(this.tmp.y, this.head.y);
-      this.tag.show(`Stand up. Try the ${surfaceName(far).toLowerCase()}.`, FAMILIES[far.voice!.family].color, this.tmp, this.head, 6);
+      this.tag.show(`The ${surfaceName(far).toLowerCase()} plays too`, FAMILIES[far.voice!.family].color, this.tmp, this.head, 6);
     });
   }
 
@@ -737,7 +748,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const i = key.indexOf(':');
     const sid = key.slice(0, i);
     const rest = key.slice(i + 1);
-    if (sid === 'kit') r = { surface: this.kitSurface, kind: 'pad', lane: rest as Lane, zone: 0 };
+    if (sid === 'clap') r = { surface: null, kind: 'clap', lane: 'kick', zone: 0 };
+    else if (sid === 'kit') r = { surface: this.kitSurface, kind: 'pad', lane: rest as Lane, zone: 0 };
     else if (sid === 'keys') r = { surface: this.kitSurface, kind: 'keys', lane: 'kick', zone: Number(rest) };
     else {
       if (this.refMiss.has(key)) return null;
@@ -793,6 +805,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (let k = this.surfaces.length - 1; k >= 0; k--) if (this.surfaces[k].source === 'touch') this.surfaces.splice(k, 1);
     this.touched.length = 0;
     this.touchFinder.clear();
+    this.clapFound = false;
+    this.focused = null;
     for (const o of this.overlays.values()) o.dispose();
     for (const s of this.surfaces) {
       s.discovered = false;
@@ -946,7 +960,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.tuttiTold = true;
       if (!this.settings.noWords) {
         this.tmp.set(0, 0.08, 0.02).applyMatrix4(this.kit.root.matrixWorld);
-        this.tag.show('Slam both hands down.', 0xff5a3c, this.tmp, this.head, 4);
+        this.tag.show('Slam both hands down', 0xff5a3c, this.tmp, this.head, 4);
       }
     }
     for (const sh of this.sheens.values()) sh.update(dt);
@@ -965,7 +979,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   private resolveMote = (key: string, out: Vector3, col: Color): boolean => {
     const r = this.ref(key);
-    if (!r) return false;
+    if (!r || r.kind === 'clap') return false;
     if (r.kind === 'pad') {
       const p = this.kit.pad(r.lane);
       if (!p || !p.visible) return false;
@@ -1072,7 +1086,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.candHits.length = 0;
       // nothing known was hit: maybe something unknown was (a cup, a book, your knee)
       const free = this.game.mode === 'discover' || this.game.mode === 'results' || this.game.mode === 'build';
-      const touch = this.touchFinder.update(hand, h.tracked && !this.sample.pinching && !struck ? h.indexTip : null, t);
+      // (a hand that just hit something known is still landing on it for a few frames: not a new thing)
+      const touch = this.touchFinder.update(hand, h.tracked && !this.sample.pinching && !struck && t - this.handLatch[i] > 0.25 ? h.indexTip : null, t);
       if (touch && free) this.onTouch(touch, side);
       this.trackSink(i, h);
     }
@@ -1353,6 +1368,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** Things found by touch this session (cups, books, your lap, a seat back). */
   private touched: Surface[] = [];
   private touchId = 1;
+  private keepTold = false;
+  private lastTouchSide: Side = 'right';
 
   /**
    * A hand stopped dead somewhere unknown: something is there. It plays at once (the sound physics picks from where it
@@ -1360,49 +1377,77 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
    * desk); never again and it fades (a hand stopping in the air: one sound, no harm).
    */
   private onTouch(touch: Touch, side: Side): void {
-    this.tmp.set(touch.at.x, touch.at.y, touch.at.z);
+    // the thing faces back along the way the hand came; the contact is a fingertip's radius below its centre
+    const n = this.tmp2.set(-touch.dir.x, -touch.dir.y, -touch.dir.z);
+    this.tmp.set(touch.at.x, touch.at.y, touch.at.z).addScaledVector(n, -hands.left.tipRadius);
+    // a hand pulled back toward you and stopping is not knocking on anything (things from the side are out in front)
+    if (touch.dir.y > -0.6 && touch.dir.x * (this.tmp.x - this.head.x) + touch.dir.z * (this.tmp.z - this.head.z) < 0) return;
+    // both hands landing on one new thing together: the first one found it
+    const last = this.touched[this.touched.length - 1];
+    if (last && side !== this.lastTouchSide && this.clock.t - last.bornT < 0.04 && last.distanceTo(this.tmp) < 0.2) return;
     // the table, the module and every surface already known have their own hits
     this.kitSurface.toZone(this.tmp, this.o);
     const above = this.o.y - this.kitSurface.detector.surfaceY;
     if (this.kitSurface.over(this.o.x, this.o.z, 0.03) && Math.abs(above) < 0.025) return;
     this.moduleSurface.toZone(this.tmp, this.o);
     if (this.moduleSurface.over(this.o.x, this.o.z, 0.04) && Math.abs(this.o.y) < 0.08) return;
-    for (const s of this.surfaces) if (s !== this.kitSurface && s !== this.moduleSurface && s.voice && s.distanceTo(this.tmp) < 0.04) return;
-    const n = this.tmp2.set(-touch.dir.x, -touch.dir.y, -touch.dir.z);
+    for (const s of this.surfaces) {
+      if (s === this.kitSurface || s === this.moduleSurface || !s.voice || s.distanceTo(this.tmp) >= 0.04) continue;
+      // a second tap on a thing just found, that its own pad missed (a short lift): it's that thing again
+      if (s.source === 'touch') {
+        s.toZone(this.tmp, this.o);
+        this.hitAt.x = this.o.x;
+        this.hitAt.z = this.o.z;
+        this.onHit(s, side, { kind: 'stop', speed: touch.speed, gain: speedToGain(touch.speed, s.detector.cfg), point: 0, height: 0, t: touch.t });
+      }
+      return;
+    }
     // to your side or in front (for the knees and the chair's arms)
     this.forwardFlat(this.fwd);
     const lateral = (this.tmp.x - this.head.x) * -this.fwd.z + (this.tmp.z - this.head.z) * this.fwd.x;
     const v = touchVoice(above, n.y, lateral);
     if (!v) return;
     this.makePad(this.tmp, n, v.sound, v.size, v.tone, v.what, false);
+    this.lastTouchSide = side;
     const s = this.touched[this.touched.length - 1];
     this.hitAt.x = 0;
     this.hitAt.z = 0;
     this.onHit(s, side, { kind: 'stop', speed: touch.speed, gain: speedToGain(touch.speed, s.detector.cfg), point: 0, height: 0, t: touch.t });
+    if (!this.keepTold && !this.settings.noWords) {
+      this.keepTold = true;
+      this.later(this.clock.t + 1.6, () => {
+        if (s.confirmed || !this.touched.includes(s)) return;
+        this.tmp.set(0, 0.07, 0).applyMatrix4(s.world);
+        this.tag.show('Again to keep it', soundById(s.sound)?.color ?? 0xffffff, this.tmp, this.head, 3);
+      });
+    }
   }
 
   /** A pad on a thing: a small surface at the point, facing `n`, playing `sound` (a bank id). */
-  private makePad(at: Vector3, n: Vector3, sound: string, size0: number, tone: number, what: string, confirmed: boolean, extent = 0): Surface {
-    // no two the same: a second cup rings a different note, a second block is a clave
+  private makePad(at: Vector3, n: Vector3, sound: string, size0: number, tone: number, what: string, confirmed: boolean, extent = 0, box?: { minX: number; maxX: number; minZ: number; maxZ: number }): Surface {
     let id = sound;
     let size = size0;
-    const same = this.touched.filter((x) => x.sound === id).length;
-    if (soundById(id)?.pitched) size = (size + same * 0.27) % 1.0001;
-    else if (same && id === 'block') id = 'clave';
-    else if (same && id === 'cowbell') id = 'clave';
+    // no two the same: a second cup rings a different note, a second block is a clave (not for one coming back)
+    if (!box) {
+      const same = this.touched.filter((x) => x.confirmed && x.sound === id).length;
+      if (soundById(id)?.pitched) size = (size + same * 0.27) % 1.0001;
+      else if (same && id === 'block') id = 'clave';
+      else if (same && id === 'cowbell') id = 'clave';
+    }
     const snd = soundById(id) ?? soundById('block')!;
     const up = n.y;
-    const s = new Surface(`t${this.touchId++}`, 'touch', what, STRIKE_CFG);
+    const s = new Surface(`t${this.touchId++}`, 'touch', what, { ...STRIKE_CFG, rearmM: Math.min(STRIKE_CFG.rearmM ?? STRIKE.rearmM, 0.012) });
     s.setFrame(at, n, this.forwardFlat(this.fwd));
     const r = Math.max(up > 0.6 ? (what === 'knee' ? 0.08 : 0.04) : 0.08, extent / 2);
-    s.bounds = { minX: -r, maxX: r, minZ: -r, maxZ: r };
+    s.bounds = box ? { ...box } : { minX: -r, maxX: r, minZ: -r, maxZ: r };
+    const b = s.bounds;
     s.outline = [
-      { x: -r, z: -r },
-      { x: r, z: -r },
-      { x: r, z: r },
-      { x: -r, z: r },
+      { x: b.minX, z: b.minZ },
+      { x: b.maxX, z: b.minZ },
+      { x: b.maxX, z: b.maxZ },
+      { x: b.minX, z: b.maxZ },
     ];
-    s.features = { facing: up > 0.6 ? 'up' : 'vertical', width: r * 2, length: r * 2, area: r * r * 4, elevation: at.y, hollow: 0, glass: what === 'lid' ? 1 : 0, soft: 0, curved: 0, bump: true, label: what };
+    s.features = { facing: up > 0.6 ? 'up' : 'vertical', width: b.maxX - b.minX, length: b.maxZ - b.minZ, area: (b.maxX - b.minX) * (b.maxZ - b.minZ), elevation: at.y, hollow: 0, glass: what === 'lid' ? 1 : 0, soft: 0, curved: 0, bump: true, label: what };
     s.voice = { family: snd.family ?? 'block', size, why: `${what}, ${Math.round(this.heightOver(at) * 100)} cm over the desk` };
     s.natural = s.voice.family;
     s.sound = snd.id;
@@ -1463,8 +1508,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (from) this.game.rediscovered(from, this.surfaces.some((x) => x !== s && x.discovered && x.voice?.family === from));
     this.playPad(s, 0, 0.7, 0, 0);
     s.confirmed = true;
-    this.savePads();
-    this.refreshDebugSurfaces();
+    this.savePadsSoon();
   }
 
   private heightOver(p: Vector3): number {
@@ -1476,8 +1520,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private touchedAgain(s: Surface): void {
     if (!s.confirmed && this.clock.t - s.bornT > 0.15) {
       s.confirmed = true;
-      this.savePads();
-      this.refreshDebugSurfaces();
+      this.savePadsSoon();
     }
     const g = grow(s.bounds, this.hitAt.x, this.hitAt.z);
     if (!g) return;
@@ -1494,7 +1537,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.hitAt.x = (s.bounds.minX + s.bounds.maxX) / 2;
       this.hitAt.z = (s.bounds.minZ + s.bounds.maxZ) / 2;
       this.discover(s);
-      this.savePads();
+      this.savePadsSoon();
     }
   }
 
@@ -1503,6 +1546,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (let k = this.touched.length - 1; k >= 0; k--) {
       const s = this.touched[k];
       if (s.confirmed || this.clock.t - s.bornT < 20) continue;
+      // a part of the machine is kept whether or not you hit it again
+      if (this.game.uses(s.id)) {
+        s.confirmed = true;
+        this.savePadsSoon();
+        continue;
+      }
       this.forgetPad(s);
     }
   }
@@ -1516,6 +1565,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (fam) this.game.rediscovered(fam, this.surfaces.some((x) => x.discovered && x.voice?.family === fam));
   }
 
+  /** Save the desk a second from now (several changes, one write; never on the frame of a hit). */
+  private saveQueued = false;
+  private savePadsSoon(): void {
+    if (this.saveQueued) return;
+    this.saveQueued = true;
+    this.later(this.clock.t + 1, () => {
+      this.saveQueued = false;
+      this.savePads();
+      this.refreshDebugSurfaces();
+    });
+  }
+
   /** Kept pads, saved with the desk (in the kit's frame, so they come back where the kit is). */
   private savePads(): void {
     const inv = this.tmpM.copy(this.kit.root.matrixWorld).invert();
@@ -1524,7 +1585,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!s.confirmed) continue;
       const c = this.tmp.set(0, 0, 0).applyMatrix4(s.world).applyMatrix4(inv);
       const nn = this.tmp2.copy(s.normal).transformDirection(inv);
-      out.push({ x: r4(c.x), y: r4(c.y), z: r4(c.z), nx: r4(nn.x), ny: r4(nn.y), nz: r4(nn.z), w: r4(Math.max(s.bounds.maxX - s.bounds.minX, s.bounds.maxZ - s.bounds.minZ)), sound: s.sound ?? 'block', size: r4(s.voice?.size ?? 0.5), tone: s.tone, what: s.label });
+      const b = s.bounds;
+      out.push({ x: r4(c.x), y: r4(c.y), z: r4(c.z), nx: r4(nn.x), ny: r4(nn.y), nz: r4(nn.z), w: r4(Math.max(b.maxX - b.minX, b.maxZ - b.minZ)), sound: s.sound ?? 'block', size: r4(s.voice?.size ?? 0.5), tone: s.tone, what: s.label, box: [r4(b.minX), r4(b.maxX), r4(b.minZ), r4(b.maxZ)] });
     }
     this.progress.pads = out.slice(-24);
     saveProgress(this.progress);
@@ -1537,7 +1599,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (const p of this.progress.pads) {
       const at = new Vector3(p.x, p.y, p.z).applyMatrix4(this.kit.root.matrixWorld);
       const n = new Vector3(p.nx, p.ny, p.nz).transformDirection(this.kit.root.matrixWorld);
-      const s = this.makePad(at, n, p.sound, p.size, p.tone, p.what, true, p.w > 0.12 ? p.w : 0);
+      const box = p.box ? { minX: p.box[0], maxX: p.box[1], minZ: p.box[2], maxZ: p.box[3] } : { minX: -p.w / 2, maxX: p.w / 2, minZ: -p.w / 2, maxZ: p.w / 2 };
+      const s = this.makePad(at, n, p.sound, p.size, p.tone, p.what, true, 0, box);
       if (p.sound === 'keys') {
         s.single = false;
         s.voice = { ...s.voice!, family: 'keys' };
@@ -1563,14 +1626,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     const d = l.palm.distanceTo(r.palm);
     const clap = isClap(d, this.clapPrev, dt) && this.clock.t - this.clapT > 0.2;
-    const speed = (this.clapPrev - d) / Math.max(dt, 1e-3);
+    const speed = Number.isFinite(this.clapPrev) ? (this.clapPrev - d) / Math.max(dt, 1e-3) : 0;
     this.clapPrev = d;
     if (!clap) return;
     this.clapT = this.clock.t;
     this.tmp.addVectors(l.palm, r.palm).multiplyScalar(0.5);
-    audio.modal('clap', 60, Math.min(1, 0.35 + speed * 0.35), this.panOf(this.tmp), 0, 0.5, 'clap');
+    const wait = clapIn(d, speed);
+    audio.modal('clap', 60, Math.min(1, 0.35 + speed * 0.35), this.panOf(this.tmp), wait > 0 ? audio.now() + wait : 0, 0.5, 'clap');
     this.flash(this.tmp, 0xff9e7a);
-    this.game.hit('clap:0', this.clock.t, 0.8);
+    this.game.hit('clap:0', this.clock.t + wait, 0.8);
     if (!this.clapFound) {
       this.clapFound = true;
       this.game.discovered('clap', 'hands', this.clock.t);
@@ -1604,7 +1668,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (k >= 1) this.flashT = -1;
   }
 
-  /** Both hands on the same pad or bar within 25 ms is one note (a flam reads as a double otherwise). */
+  /** Both hands on the same pad or bar within 40 ms is one note (a flam reads as a double otherwise). */
   private flamSurface = '';
   private flamZone = -1;
   private flamSide: Side = 'left';
@@ -1770,7 +1834,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.later(this.clock.t + 5, () => {
       if (this.touched.length || this.settings.noWords || this.game.mode !== 'discover' || this.tag.shownText) return;
       this.tmp.set(0.22, 0.09, 0.05).applyMatrix4(this.kit.root.matrixWorld);
-      this.tag.show("Now hit what's on it", 0xfff2dc, this.tmp, this.head, 5);
+      this.tag.show('Now hit things on the desk', 0xfff2dc, this.tmp, this.head, 5);
     });
     const fx = this.hitAt.x;
     const fz = this.hitAt.z;
@@ -1834,7 +1898,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (!this.settings.noWords && !this.restoring) {
       // one word, the sound's name (a desk is a Kit; glass says to go gently)
-      const name = s.source === 'touch' ? (soundById(s.sound)?.name ?? cap(FAMILIES[v.family].name)) : s === this.kitSurface ? 'Kit' : `${cap(FAMILIES[v.family].name)}${isGlass(s) ? '. Gently' : ''}`;
+      const name = s.source === 'touch' ? (soundById(s.sound)?.name ?? cap(FAMILIES[v.family].name)) : s === this.kitSurface ? 'Kit' : `${cap(FAMILIES[v.family].name)}${isGlass(s) ? ': hit softly' : ''}`;
       // the tag never covers what it names: above an instrument on a wall, over one on a top, facing you
       if (s === this.kitSurface) this.tmp.set(0, 0.1, 0.05).applyMatrix4(s.world);
       else {
@@ -2097,7 +2161,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.tmp.y = this.head.y - 0.28;
     if (!this.settings.noWords) {
       const low = performance.now() - this.placement.rejectedAt < 1500;
-      this.hint.show(low ? 'Sit at a table, palm flat' : 'Rest your palm on the table', 0xf2efe6, this.tmp, this.head, 0.5);
+      this.hint.show(low ? 'Sit at a desk, palm flat' : 'Rest a palm on the desk', 0xf2efe6, this.tmp, this.head, 0.5);
     }
     let placed = false;
     // one hand at a time: the one already steadying keeps the hold (a second hand never resets it)
@@ -2441,6 +2505,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private autoHit(key: string, t: number): void {
     const r = this.ref(key);
     if (!r) return;
+    if (r.kind === 'clap') {
+      audio.modal('clap', 60, 0.8, 0, 0, 0.5, 'clap');
+      this.game.hit('clap:0', t, 0.8);
+      return;
+    }
     if (r.kind === 'pad' || r.kind === 'keys') {
       if (r.kind === 'pad') {
         const p = this.kit.pad(r.lane);

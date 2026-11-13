@@ -1,29 +1,28 @@
 # Video: shot list and voice-over (real passthrough on a Quest 3)
 
-Target **2:20** (judges may stop at 3:00). Real gameplay only, recorded in the headset; no AI video. The first second is a real hand hitting a real door, and a marimba note. "Every surface in your room is an instrument" by second three.
+Target **2:00** (judges may stop at 3:00). Real gameplay only, recorded in the headset; no AI video. The first second is a finger tapping a real mug, a ring of light round it, and a bell. "Your desk is a drum machine" by second three.
 
 ## Before you record
 
-- **Room:** a desk near a wall, with a door and a window you can reach (stand for them). Warm light, nothing branded in view. Run **Space setup** first and mark the table, walls, door and window.
+- **Desk:** your own, a mug, a book, a bottle, a keyboard, the laptop open. Warm light, nothing branded in view. No room scan needed.
 - **Headset:** charged, lenses clean, hand tracking on, controllers out of reach.
-- **Recording:** Meta button → Camera → Record video, landscape, highest resolution, **microphone on** (the real knock under the instrument is the point; we can lay the clean game audio under it).
+- **Recording:** Meta button → Camera → Record video, landscape, highest resolution, **microphone on** (the real knock under the sound is the point).
 - **Move slowly.** Turn your head half as fast as feels natural; hold each shot a beat before and after.
-- **Fresh start** for shots 1–5: on the 2D page open Settings → *Start over*. Film at `https://or-6.github.io/thump/` (no `?debug`).
+- **Fresh start** for shots 1–3: on the 2D page open Settings → *Start over*. Film at `https://or-6.github.io/thump/` (no `?debug`).
 
-## Voice-over (short, warm; the hook by second 3)
+## Voice-over (short, dry, the hook by second 3)
 
-- 0:00 (a hand on the door, a marimba note; no words for one beat)
-- 0:02 "This is Thump. Every surface in your room is an instrument."
-- 0:08 "Hit anything. Your table is a drum kit."
-- 0:16 "Your wall, a gong. Your window, a glockenspiel. Your door, a marimba."
-- 0:36 "Then songs are written for your room: the notes fly to whatever you've found."
-- 1:05 "A bandmate takes one of your instruments, and listens to you."
-- 1:25 "A friend's phone can be the bass."
-- 1:40 "Next time, your room remembers what it plays."
-- 1:55 "One hand, slow songs, no words: made for every pair of hands."
-- 2:10 "Thump. Play your room."
+- 0:00 (a finger on the mug, a bell; no words for one beat)
+- 0:02 "This is Thump. Your desk is a drum machine."
+- 0:06 "Hit the desk, it's a kit. Hit your mug, it rings. Anything in reach plays."
+- 0:24 "Pick what anything sounds like."
+- 0:30 "Then build a track out of it, one part at a time."
+- 1:00 "And play it live. Fills. Then the lights go off."
+- 1:25 "Someone to play with, too."
+- 1:40 "It works in an airplane seat."
+- 1:52 "Thump."
 
-Feature chips (top right): **hand tracking** on shots 1–2, **plane detection** on 3, **scene understanding** on 4–5 (the wall, door and window), **passthrough** on 6, **persistent anchor** on 9.
+Feature chips (top right): **hand tracking** on shots 1–4, **passthrough** on 2 and 5–6, **persistent anchor** when your kept things come back.
 
 ## Shots, in story order
 

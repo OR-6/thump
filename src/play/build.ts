@@ -5,7 +5,7 @@
  * broken, and it loops. When every part is in, the desk plays the track by itself. Pure logic, unit-tested.
  */
 
-export type PartName = 'KICK' | 'SNARE' | 'HAT' | 'PERC' | 'KEYS' | 'BASS';
+export type PartName = 'KICK' | 'SNARE' | 'HAT' | 'PERC' | 'PERC 2' | 'CLAP' | 'KEYS' | 'KEYS 2' | 'BASS';
 
 export interface PartDef {
   name: PartName;
@@ -22,6 +22,8 @@ export interface TrackDef {
   /** Pitch class of the key (0 = C). */
   key: number;
   parts: PartDef[];
+  /** Things you must have found on the desk to build it (the only gate in the game). */
+  needs: number;
 }
 
 /** Beats in the loop: two bars. */
@@ -40,6 +42,73 @@ export const TRACKS: readonly TrackDef[] = [
       { name: 'PERC', pattern: '...x..x.|.x....x.', pitched: 'no' },
       { name: 'KEYS', pattern: '2.3..4..|3...2...', pitched: 'yes' },
       { name: 'BASS', pattern: '0.....0.|3.....2.', pitched: 'if-it-can' },
+    ],
+    needs: 0,
+  },
+  {
+    id: 'two-step',
+    name: 'Two Step',
+    bpm: 100,
+    key: 7,
+    needs: 1,
+    parts: [
+      { name: 'KICK', pattern: 'X...x...|X...x...', pitched: 'no' },
+      { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
+      { name: 'HAT', pattern: '.x.x.x.x|.x.x.x.x', pitched: 'no' },
+      { name: 'PERC', pattern: 'x..x..x.|..x..x..', pitched: 'no' },
+      { name: 'PERC 2', pattern: '......x.|...x....', pitched: 'no' },
+      { name: 'KEYS', pattern: '0.2.3...|4.3.2.0.', pitched: 'yes' },
+      { name: 'BASS', pattern: '0...0...|3...4...', pitched: 'if-it-can' },
+    ],
+  },
+  {
+    id: 'boom-bap-88',
+    name: 'Boom Bap 88',
+    bpm: 88,
+    key: 9,
+    needs: 3,
+    parts: [
+      { name: 'KICK', pattern: 'X.....x.|..x.x...', pitched: 'no' },
+      { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
+      { name: 'HAT', pattern: 'x.x.x.x.|x.x.x.xx', pitched: 'no' },
+      { name: 'CLAP', pattern: '....x...|....x...', pitched: 'no' },
+      { name: 'PERC', pattern: '.x......|.x....x.', pitched: 'no' },
+      { name: 'PERC 2', pattern: '...x....|.......x', pitched: 'no' },
+      { name: 'KEYS', pattern: '0..2..4.|3.......', pitched: 'yes' },
+      { name: 'BASS', pattern: '0.....0.|2...3...', pitched: 'if-it-can' },
+    ],
+  },
+  {
+    id: 'lowrider',
+    name: 'Lowrider',
+    bpm: 80,
+    key: 2,
+    needs: 4,
+    parts: [
+      { name: 'KICK', pattern: 'X..x....|X..x..x.', pitched: 'no' },
+      { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
+      { name: 'HAT', pattern: 'x.x.x.x.|x.x.x.x.', pitched: 'no' },
+      { name: 'PERC', pattern: '..x...x.|..x.....', pitched: 'no' },
+      { name: 'KEYS', pattern: '0.2.4...|5.4.2...', pitched: 'yes' },
+      { name: 'KEYS 2', pattern: '....7...|....5...', pitched: 'yes' },
+      { name: 'BASS', pattern: '0..0..3.|2..2..0.', pitched: 'if-it-can' },
+    ],
+  },
+  {
+    id: 'night-shift',
+    name: 'Night Shift',
+    bpm: 110,
+    key: 5,
+    needs: 5,
+    parts: [
+      { name: 'KICK', pattern: 'X..x..x.|X..x....', pitched: 'no' },
+      { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
+      { name: 'HAT', pattern: 'x.xxx.x.|x.xxx.xx', pitched: 'no' },
+      { name: 'CLAP', pattern: '....x...|....x..x', pitched: 'no' },
+      { name: 'PERC', pattern: '.x...x..|.x...x..', pitched: 'no' },
+      { name: 'KEYS', pattern: '2.3.4.3.|2...0...', pitched: 'yes' },
+      { name: 'KEYS 2', pattern: '7.......|5...4...', pitched: 'yes' },
+      { name: 'BASS', pattern: '0.0...3.|2.2...0.', pitched: 'if-it-can' },
     ],
   },
 ];
@@ -91,9 +160,14 @@ export interface RawHit {
 export function quantise(pattern: readonly Step[], hits: readonly RawHit[], keyFor: (s: Step) => string): MachineNote[] {
   const used = new Set<number>();
   const out: MachineNote[] = [];
-  for (const st of pattern) {
+  const n = pattern.length;
+  for (let k = 0; k < n; k++) {
+    const st = pattern[k];
+    // a hit belongs to this step if it's within a third of a beat, and nearer this step than its neighbours
+    const prev = n > 1 ? (st.beat - pattern[(k - 1 + n) % n].beat + LOOP_BEATS) % LOOP_BEATS || LOOP_BEATS : LOOP_BEATS;
+    const next = n > 1 ? (pattern[(k + 1) % n].beat - st.beat + LOOP_BEATS) % LOOP_BEATS || LOOP_BEATS : LOOP_BEATS;
     let best = -1;
-    let bd = 0.34;
+    let bd = Math.min(0.34, prev / 2 + 1e-6, next / 2 + 1e-6);
     hits.forEach((h, i) => {
       if (used.has(i)) return;
       const d = Math.min(Math.abs(h.beat - st.beat), Math.abs(h.beat - st.beat - LOOP_BEATS), Math.abs(h.beat - st.beat + LOOP_BEATS));

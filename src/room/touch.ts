@@ -24,10 +24,14 @@ const FRAMES = 6;
 
 /** Coming in at least this fast (m/s)… */
 const MIN_IN = 0.45;
-/** …and within two frames moving at most this fast: a stop against something, not a hand slowing in the air. */
-const MAX_OUT = 0.12;
-/** A knock from the side has to come in at least this fast. */
-const SIDE_IN = 0.8;
+/** …and over the last two frames moving at most this fast: a stop against something (tracking jitters ~1 mm a frame). */
+const MAX_OUT = 0.25;
+/** A knock from the side has to come in at least this fast (a laptop lid takes soft taps; a hand stops sideways a lot). */
+const SIDE_IN = 0.55;
+/** …and of that, at most this fast still on the way it was going (m/s). */
+const MAX_ON = 0.1;
+/** A sample that moved less than this (m) is the tracker repeating itself, not a hand standing still. */
+const SAME_M = 0.0002;
 /** The second tap must land this close to the first (m), within this long (s). */
 const SAME_SPOT = 0.035;
 const WITHIN_S = 20;
@@ -76,30 +80,46 @@ export class TouchFinder {
       tr.reset();
       return null;
     }
+    // the tracker running slower than the frame repeats a sample: skip it (a real hand is never perfectly still),
+    // unless it's held long enough that the hand really has stopped
+    if (tr.n > 0) {
+      const l = tr.at(0);
+      if (Math.abs(p.x - tr.x[l]) + Math.abs(p.y - tr.y[l]) + Math.abs(p.z - tr.z[l]) < SAME_M && t - tr.t[l] < 0.04) return null;
+    }
     tr.push(p.x, p.y, p.z, t);
-    if (tr.n < 4) return null;
+    if (tr.n < 6) return null;
+    // a, b, c: the newest three (stopped); d: the last frame still moving; e, f: the approach
     const a = tr.at(0);
-    const b = tr.at(1);
     const c = tr.at(2);
     const d = tr.at(3);
+    const e = tr.at(4);
+    const f = tr.at(5);
     const sp = (i: number, j: number) => {
       const dt = Math.max(1e-3, tr.t[i] - tr.t[j]);
       return Math.hypot(tr.x[i] - tr.x[j], tr.y[i] - tr.y[j], tr.z[i] - tr.z[j]) / dt;
     };
-    const now = sp(a, b);
-    const s1 = sp(c, d);
-    const s2 = sp(b, c);
+    // coming in: the two frames before contact (the frame it touched in is partly stopped, so it's left out), still
+    // fast on the last of them (a hand easing to a halt in the air has already slowed by then)
+    const s1 = sp(e, f);
+    const s2 = sp(d, e);
     const before = Math.max(s1, s2);
     // a real approach is a steady motion over the frames before, at a human speed (a tracking jump is one huge step)
-    const steady = Math.min(s1, s2) >= MIN_IN * 0.5 && before <= 4;
-    // re-armed once it has moved 4 cm from where it last stopped
-    if (!tr.armed && Math.hypot(p.x - tr.lastStop.x, p.y - tr.lastStop.y, p.z - tr.lastStop.z) > 0.04) tr.armed = true;
-    if (!tr.armed || !steady || before < MIN_IN || now > MAX_OUT) return null;
+    const steady = Math.min(s1, s2) >= MIN_IN * 0.5 && s2 >= MIN_IN * 0.9 && before <= 4;
+    // re-armed once it has lifted 1.5 cm from where it last stopped (a tap's natural lift is 1–3 cm)
+    if (!tr.armed && Math.hypot(p.x - tr.lastStop.x, p.y - tr.lastStop.y, p.z - tr.lastStop.z) > 0.015) tr.armed = true;
+    if (!tr.armed || !steady || before < MIN_IN) return null;
     // which way it was going (the frames before the stop)
-    const dx = tr.x[b] - tr.x[d];
-    const dy = tr.y[b] - tr.y[d];
-    const dz = tr.z[b] - tr.z[d];
+    const dx = tr.x[d] - tr.x[f];
+    const dy = tr.y[d] - tr.y[f];
+    const dz = tr.z[d] - tr.z[f];
     const len = Math.hypot(dx, dy, dz) || 1;
+    // stopped: over the last two frames it hardly moved (one frame alone is mostly tracking noise), and in particular
+    // not still creeping on the way it was going (that's a hand slowing in the air)
+    const span = Math.max(1e-3, tr.t[a] - tr.t[c]);
+    const ax = tr.x[a] - tr.x[c];
+    const ay = tr.y[a] - tr.y[c];
+    const az = tr.z[a] - tr.z[c];
+    if (Math.hypot(ax, ay, az) / span > MAX_OUT || (ax * dx + ay * dy + az * dz) / len / span > MAX_ON) return null;
     // a hand lifting and pausing is not hitting anything above it: things are found coming down or from the front
     if (dy / len > 0.3) return null;
     // from the side (a seat back, a laptop lid) it takes a firmer knock: hands stop in the air sideways a lot
@@ -114,7 +134,8 @@ export class TouchFinder {
     o.dir.y = dy / len;
     o.dir.z = dz / len;
     o.speed = before;
-    o.t = t;
+    // it touched between the last moving frame and the first stopped one
+    o.t = tr.t[d] + (tr.t[c] - tr.t[d]) * 0.5;
     o.found = false;
     // the second tap on the same spot, coming the same way: something is there
     for (let k = this.candidates.length - 1; k >= 0; k--) {
@@ -190,5 +211,10 @@ export function becomesKeys(b: Box, top: boolean, sound: string | null, what: st
 
 /** Two palms meeting fast: a clap (distance now and a frame ago, m; dt, s). */
 export function isClap(d: number, dPrev: number, dt: number): boolean {
-  return d < 0.07 && dt > 0 && (dPrev - d) / dt > 0.7;
+  return Number.isFinite(dPrev) && d < 0.07 && dt > 0 && (dPrev - d) / dt > 0.7;
+}
+
+/** How long until palms closing at this speed (m/s) from this distance meet (palm centres touch at ~3.5 cm), capped. */
+export function clapIn(d: number, speed: number): number {
+  return Math.max(0, Math.min(0.05, (d - 0.035) / Math.max(speed, 0.1)));
 }

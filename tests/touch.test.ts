@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TouchFinder, becomesKeys, grow, isClap, touchVoice, type P3 } from '../src/room/touch.js';
+import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type P3 } from '../src/room/touch.js';
 
 const DT = 1 / 72;
 
@@ -96,5 +96,43 @@ describe('finding things by touch', () => {
     expect(isClap(0.05, 0.08, 1 / 72)).toBe(true);
     expect(isClap(0.05, 0.052, 1 / 72)).toBe(false);
     expect(isClap(0.12, 0.2, 1 / 72)).toBe(false);
+  });
+  it('a hand coming back into tracking near the other is not a clap', () => {
+    expect(isClap(0.05, Infinity, 1 / 72)).toBe(false);
+  });
+  it('the clap sounds when the palms meet, not on the way in', () => {
+    expect(clapIn(0.035, 1)).toBe(0);
+    expect(clapIn(0.065, 1)).toBeCloseTo(0.03, 3);
+    expect(clapIn(0.065, 0.01)).toBeLessThanOrEqual(0.05);
+  });
+  it('a tap still lands through a millimetre of tracking jitter', () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.002;
+    let found = 0;
+    for (let trial = 0; trial < 40; trial++) {
+      const f = new TouchFinder();
+      let t = trial * 0.003;
+      let y = 1.0;
+      for (let k = 0; k < 8; k++, t += DT) f.update(1, { x: rnd(), y: y + rnd(), z: -0.3 + rnd() }, t);
+      let hit = false;
+      for (let k = 0; k < 40; k++, t += DT) {
+        y = Math.max(0.9, y - 0.8 * DT);
+        if (f.update(1, { x: rnd(), y: y + rnd(), z: -0.3 + rnd() }, t)) hit = true;
+      }
+      if (hit) found++;
+    }
+    expect(found).toBeGreaterThanOrEqual(36);
+  });
+  it('a tracker repeating samples under a faster frame rate neither hides taps nor makes ghosts', () => {
+    const f = new TouchFinder();
+    let hits = 0;
+    let t = 0;
+    let y = 1.0;
+    // the tracker updates every other frame
+    for (let k = 0; k < 60; k++, t += DT) {
+      if (k % 2 === 0) y = Math.max(0.9, y - 0.7 * DT * 2);
+      if (f.update(1, { x: 0, y, z: -0.3 }, t)) hits++;
+    }
+    expect(hits).toBe(1);
   });
 });

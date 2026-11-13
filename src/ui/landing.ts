@@ -19,13 +19,13 @@ export function mountLanding(world: World): void {
       <section class="sampler" aria-label="Thump">
         <header class="top">
           <span class="brand">THUMP</span>
-          <span class="model">DESK SAMPLER · 29 SOUNDS</span>
+          <span class="model">DESK SAMPLER · 28 SOUNDS</span>
         </header>
         <div class="lcd" aria-live="polite"><span class="lcd-main">YOUR DESK IS A DRUM MACHINE</span><span class="lcd-sub">tap a pad</span></div>
         <div class="pads" role="group" aria-label="Try the sounds">
-          <button class="pad" data-s="kick" style="--c:#ff5a3c"><i>DESK</i></button>
-          <button class="pad" data-s="snare" style="--c:#f4f1ea"><i>DESK, MIDDLE</i></button>
-          <button class="pad" data-s="hat" style="--c:#2ad1d1"><i>DESK, RIGHT</i></button>
+          <button class="pad" data-s="kick" style="--c:#ff5a3c"><i>DESK LEFT</i></button>
+          <button class="pad" data-s="snare" style="--c:#f4f1ea"><i>DESK MIDDLE</i></button>
+          <button class="pad" data-s="hat" style="--c:#2ad1d1"><i>DESK RIGHT</i></button>
           <button class="pad" data-s="bell" style="--c:#9ef0e0"><i>MUG</i></button>
           <button class="pad" data-s="block" style="--c:#ff8a3c"><i>BOOK</i></button>
           <button class="pad" data-s="chime" style="--c:#b8c4ff"><i>BOTTLE</i></button>
@@ -38,21 +38,22 @@ export function mountLanding(world: World): void {
         </div>
         <div class="go">
           <button id="enter-xr" class="power" type="button"><span class="led"></span>Enter mixed reality</button>
-          <p class="xr-fail" role="alert" hidden>That didn't start. Allow what Quest asks for, then try again.</p>
+          <p class="xr-fail" role="alert" hidden>It didn't start. Say yes to Quest's prompts and try again.</p>
         </div>
         <div class="nohead" id="xr-unsupported" hidden>
-          <p class="quest">The real one runs on a Meta Quest 3. In the headset's browser, go to <span class="url">${LIVE_URL}</span></p>
+          <p class="quest">It plays on a Meta Quest 3. In its browser, go to <span class="url">${LIVE_URL}</span></p>
           <button type="button" id="copy-link" class="power small">Copy the link</button>
         </div>
       </section>
       <section class="manual">
         <p>Sit at your desk with a Quest 3 on. Hit the desk and it's a kit. Hit your mug and it rings. Every thing in reach plays the first time you hit it, and you pick its sound.</p>
         <p>Then build a track on your stuff, one part at a time, and play it live.</p>
-        <p class="note">Hands only. Quest asks once to use your room.</p>
+        <p class="note">Put the controllers down: it's hands only. Quest asks once for permission to see your desk; nothing leaves the headset.</p>
+        <p class="note">On your Quest, open the Browser and go to <span class="url">${LIVE_URL}</span></p>
         <details class="prep">
           <summary>Settings</summary>
           <div class="opts">
-            <label><input type="checkbox" data-k="oneHand" /> One hand (the whole kit within reach of one)</label>
+            <label><input type="checkbox" data-k="oneHand" /> One hand (kit sized for one hand)</label>
             <label class="row">Lead hand
               <select data-k="hand"><option value="auto">Whichever you rest first</option><option value="right">Right</option><option value="left">Left</option></select>
             </label>
@@ -61,7 +62,7 @@ export function mountLanding(world: World): void {
             <label><input type="checkbox" data-k="calmMotion" /> Less movement</label>
             <label><input type="checkbox" data-k="noWords" /> No words in the headset</label>
             <label><input type="checkbox" data-k="band" /> Piano and bass under tracks</label>
-            <label><input type="checkbox" data-k="placeFresh" /> Find the desk again next time</label>
+            <label><input type="checkbox" data-k="placeFresh" /> Set up the desk fresh each time</label>
             <p class="small-print">Timing: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
           </div>
         </details>
@@ -104,7 +105,7 @@ export function mountLanding(world: World): void {
       void pad.offsetWidth;
       pad.classList.add('hit');
       lcdMain.textContent = `${pad.querySelector('i')!.textContent} · ${snd.name.toUpperCase()}`;
-      lcdSub.textContent = 'that, on your real desk';
+      lcdSub.textContent = 'your real one plays this';
     });
   }
 
@@ -125,7 +126,7 @@ export function mountLanding(world: World): void {
   const tempoOut = el.querySelector<HTMLOutputElement>('#tempo-out')!;
   const show = (st: Settings) => {
     offOut.textContent = `${Math.round(st.offset * 1000)} ms`;
-    tempoOut.textContent = st.tempo >= 0.999 ? 'full' : `${Math.round(st.tempo * 100)}%`;
+    tempoOut.textContent = st.tempo >= 0.999 ? '100%' : `${Math.round(st.tempo * 100)}%`;
   };
   for (const input of el.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-k]')) {
     const k = input.dataset.k as keyof Settings;
@@ -152,7 +153,7 @@ export function mountLanding(world: World): void {
     const p = loadProgress();
     saveProgress({ ...freshProgress(), kit: p.kit });
     window.dispatchEvent(new Event('thump:reset'));
-    b.textContent = 'Done. A fresh start.';
+    b.textContent = 'Done. Progress cleared.';
     b.dataset.sure = '';
   });
 

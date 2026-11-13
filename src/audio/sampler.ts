@@ -45,7 +45,11 @@ export class Sampler {
     const first = ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:rim', 'keys', 'band:piano'];
     const keys = [...first.filter((k) => SAMPLES[k]), ...Object.keys(SAMPLES).filter((k) => !first.includes(k))];
     const files: string[] = [];
-    for (const k of keys) for (const s of SAMPLES[k]) files.push(s.file);
+    for (const k of keys)
+      for (const s of SAMPLES[k]) {
+        files.push(s.file);
+        this.keyOfFile.set(s.file, k);
+      }
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < files.length) {
@@ -55,6 +59,9 @@ export class Sampler {
           if (!res.ok) continue;
           const buf = await ctx.decodeAudioData(await res.clone().arrayBuffer());
           this.buffers.set(f, buf);
+          // that instrument's grouping includes it from now on
+          const k = this.keyOfFile.get(f);
+          if (k) this.groups.delete(k);
         } catch {
           /* that clip stays synthesised */
         }
@@ -74,37 +81,67 @@ export class Sampler {
     return this.buffers.size;
   }
 
-  /** The clip for a hit and the playback rate that puts it on its note. Null: none loaded for it. */
-  pick(key: string, hit: SampleHit): Chosen | null {
+  /**
+   * Per instrument, what's loaded, grouped once: by drum of a set, then by loudness layer (soft to hard). Rebuilt when
+   * one of its clips arrives, so a note itself does no sorting or filtering.
+   */
+  private groups = new Map<string, { tones: number[]; byTone: Map<number, Sample[][]> }>();
+  private keyOfFile = new Map<string, string>();
+
+  private group(key: string): { tones: number[]; byTone: Map<number, Sample[][]> } | null {
+    let g = this.groups.get(key);
+    if (g) return g;
     const list = SAMPLES[key];
     if (!list) return null;
-    const ready = list.filter((s) => this.buffers.has(s.file));
-    if (!ready.length) return null;
-    // the drum of a set it landed on
-    const tones = new Set(ready.map((s) => s.tone));
-    let pool = ready;
-    if (tones.size > 1) {
-      const want = Math.min(Math.max(...tones), Math.max(0, Math.round(hit.tone)));
-      pool = pool.filter((s) => s.tone === want);
-      if (!pool.length) pool = ready;
+    const byTone = new Map<number, Sample[][]>();
+    for (const s of list) {
+      if (!this.buffers.has(s.file)) continue;
+      let t = byTone.get(s.tone);
+      if (!t) byTone.set(s.tone, (t = []));
+      t.push([s]);
     }
+    if (!byTone.size) return null;
+    // within a drum, one array per layer, soft first
+    for (const [tone, singles] of byTone) {
+      const layers = new Map<number, Sample[]>();
+      for (const [s] of singles) (layers.get(s.layer) ?? layers.set(s.layer, []).get(s.layer)!).push(s);
+      byTone.set(tone, [...layers.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]));
+    }
+    g = { tones: [...byTone.keys()].sort((a, b) => a - b), byTone };
+    this.groups.set(key, g);
+    return g;
+  }
+
+  /** The clip for a hit and the playback rate that puts it on its note. Null: none loaded for it. */
+  pick(key: string, hit: SampleHit): Chosen | null {
+    const g = this.group(key);
+    if (!g) return null;
+    // the drum of a set it landed on
+    const tones = g.tones;
+    let tone = tones[0];
+    const want = Math.max(0, Math.round(hit.tone));
+    for (let k = 0; k < tones.length; k++) if (tones[k] <= want) tone = tones[k];
+    const layers = g.byTone.get(tone)!;
     // the loudness layer from how hard it was hit
-    const layers = [...new Set(pool.map((s) => s.layer))].sort((a, b) => a - b);
-    const top = layers.length - 1;
-    const li = Math.min(top, Math.floor(Math.max(0, Math.min(0.999, hit.vel)) * (top + 1)));
-    pool = pool.filter((s) => s.layer === layers[li]);
-    // pitched: the nearest note; else any (never the one played last when there's another)
-    let s: Sample;
+    const li = Math.min(layers.length - 1, Math.floor(Math.max(0, Math.min(0.999, hit.vel)) * layers.length));
+    const pool = layers[li];
+    const last = this.last.get(key);
+    let s = pool[0];
     if (hit.midi !== null && pool[0].midi !== null) {
-      let best = pool[0];
-      for (const c of pool) if (Math.abs((c.midi ?? 0) - hit.midi) < Math.abs((best.midi ?? 0) - hit.midi)) best = c;
-      // two clips equally near (round robin): alternate
-      const near = pool.filter((c) => Math.abs((c.midi ?? 0) - (best.midi ?? 0)) < 0.5);
-      s = near.length > 1 ? (near.find((c) => c.file !== this.last.get(key)) ?? best) : best;
-    } else {
-      const others = pool.filter((c) => c.file !== this.last.get(key));
-      const from = others.length ? others : pool;
-      s = from[Math.floor(Math.random() * from.length)];
+      // the nearest note; of two equally near (round robin), not the one played last
+      let bd = Infinity;
+      for (const c of pool) {
+        const d = Math.abs((c.midi ?? 0) - hit.midi) + (c.file === last ? 0.01 : 0);
+        if (d < bd) {
+          bd = d;
+          s = c;
+        }
+      }
+    } else if (pool.length > 1) {
+      // any, never the same twice running
+      const k = Math.floor(Math.random() * (pool.length - 1));
+      const lastIdx = pool.findIndex((c) => c.file === last);
+      s = pool[lastIdx >= 0 && k >= lastIdx ? k + 1 : k];
     }
     this.last.set(key, s.file);
     const buffer = this.buffers.get(s.file)!;

@@ -83,7 +83,7 @@ shot('room-02-kit', look);
   let pads = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
   const rang = (x) => (x.bell ?? 0) + (x.tubular ?? 0);
   check('seated: one tap on a mug plays it and draws its ring', pads.length === 1 && pads[0].discovered && /bell|chime/.test(pads[0].sound) && rang(s.played) > rang(before), JSON.stringify(pads) + ' tag=' + s.debug.tag);
-  check('the module shows its sound with ◀ ▶', /Bell|Chime/.test(s.game.display.line) && /◀ ▶/.test(s.game.display.sub), `${s.game.display.line} / ${s.game.display.sub}`);
+  check('the module shows its sound with ◀ ▶', /Bell|Chime/.test(s.game.display.line) && /◀ ▶|Arrows/.test(s.game.display.sub), `${s.game.display.line} / ${s.game.display.sub}`);
   await tapCup();
   s = state();
   pads = s.debug.surfaces.filter((x) => x.id.startsWith('t'));

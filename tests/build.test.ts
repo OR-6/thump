@@ -74,3 +74,32 @@ describe('perform: fills and Tight %', async () => {
     expect(tightPercent([])).toBe(0);
   });
 });
+
+describe('every track', () => {
+  it('parts two bars, never faster than eighths, gates rising, names like a sample pack', () => {
+    let prev = -1;
+    for (const t of TRACKS) {
+      expect(t.parts.length).toBeGreaterThanOrEqual(6);
+      expect(t.parts.length).toBeLessThanOrEqual(8);
+      expect(t.needs).toBeGreaterThanOrEqual(prev);
+      prev = t.needs;
+      for (const p of t.parts) {
+        const s = steps(p.pattern);
+        expect(s.every((x) => x.beat >= 0 && x.beat < LOOP_BEATS)).toBe(true);
+        for (let k = 1; k < s.length; k++) expect(s[k].beat - s[k - 1].beat).toBeGreaterThanOrEqual(0.5);
+        if (p.pitched !== 'no') expect(s.every((x) => x.degree >= 0)).toBe(true);
+      }
+    }
+    expect(TRACKS.map((t) => t.name)).toEqual(['Kick Start', 'Two Step', 'Boom Bap 88', 'Lowrider', 'Night Shift']);
+  });
+});
+
+describe('build: close notes', () => {
+  it('an early hit on the next step is never taken by the step before it', () => {
+    // hats on 0, 0.5, 1: the 0.5 played early at 0.3, the 1 played early at 0.75
+    const hat = steps('xxx.....|........');
+    const n = quantise(hat, [{ beat: 0, key: 'h', vel: 0.8 }, { beat: 0.3, key: 'h', vel: 0.8 }, { beat: 0.75, key: 'h', vel: 0.8 }], () => 'h');
+    expect(n.filter((x) => x.filled)).toHaveLength(0);
+  });
+});
+

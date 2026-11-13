@@ -78,7 +78,7 @@ export const STRIKE = {
   /** The speed of a hard slap (full loudness), m/s. */
   hardSpeed: 1.4,
   /** Two hands on one pad within this long are one note (played once, at the louder of the two). */
-  flamS: 0.025,
+  flamS: 0.04,
 } as const;
 
 /** Song timing (DESIGN.md §3.2, §4). */
