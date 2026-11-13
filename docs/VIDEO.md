@@ -41,3 +41,9 @@ Feature chips (top right): **hand tracking** on shots 1–2, **plane detection**
 | 10 | 2:10–2:20 | The link, big | Title card | "or-6.github.io/thump" |
 
 Record 2–3 takes of each. Keep your head still during the action; move only between shots.
+
+## Assembling it
+
+1. Copy the headset recordings into `artifacts/video/` named as in `docs/video-shots.json` (or edit that file), and set each shot's `in`/`out` seconds.
+2. Make the cards once (with the dev server up): `npx @iwsdk/cli browser run tools/video-cards.mjs` → `artifacts/video-cards/`.
+3. `node tools/video-assemble.mjs docs/video-shots.json artifacts/video/thump.mp4` (needs ffmpeg). Title card, each shot with its caption and feature chip, end card, at 1920×1080, with the game's own sound.
