@@ -13,6 +13,19 @@ import { PinchDetector, type PinchEdge } from './pinch.js';
 
 export type Side = 'left' | 'right';
 
+/** The joints read each frame: thumb tip, index tip, wrist, middle metacarpal, middle tip, ring tip, middle, index and pinky knuckles. */
+const JOINTS: XRHandJoint[] = [
+  'thumb-tip',
+  'index-finger-tip',
+  'wrist',
+  'middle-finger-metacarpal',
+  'middle-finger-tip',
+  'ring-finger-tip',
+  'middle-finger-phalanx-proximal',
+  'index-finger-phalanx-proximal',
+  'pinky-finger-phalanx-proximal',
+];
+
 export class HandState {
   tracked = false;
   /** Thumb–index distance (m), or null when untracked. */
@@ -87,6 +100,42 @@ export class HandTrackerSystem extends createSystem({}) {
   private handSide: Record<Side, boolean> = { left: false, right: false };
   private dropout: Record<Side, number> = { left: 0, right: 0 };
 
+  private jointSpaces: Record<Side, XRJointSpace[]> = { left: [], right: [] };
+  private joints: Record<Side, Vector3[]> = { left: JOINTS.map(() => new Vector3()), right: JOINTS.map(() => new Vector3()) };
+  private radii: Record<Side, Float32Array> = { left: new Float32Array(JOINTS.length), right: new Float32Array(JOINTS.length) };
+  private poses: Record<Side, Float32Array> = { left: new Float32Array(JOINTS.length * 16), right: new Float32Array(JOINTS.length * 16) };
+  private wristUp: Record<Side, number> = { left: 0, right: 0 };
+
+  /** Read the joints into `joints`/`radii`/`wristUp`; false if any pose is missing this frame. */
+  private readJoints(frame: XRFrame, ref: XRReferenceSpace, side: Side): boolean {
+    const sp = this.jointSpaces[side];
+    const out = this.joints[side];
+    const rad = this.radii[side];
+    const f = frame as XRFrame & { fillPoses?: (s: XRSpace[], b: XRSpace, o: Float32Array) => boolean; fillJointRadii?: (s: XRJointSpace[], o: Float32Array) => boolean };
+    if (f.fillPoses && f.fillJointRadii) {
+      const m = this.poses[side];
+      if (f.fillPoses(sp, ref, m) && f.fillJointRadii(sp, rad)) {
+        for (let k = 0; k < out.length; k++) out[k].set(m[k * 16 + 12], m[k * 16 + 13], m[k * 16 + 14]);
+        // the wrist's up (its matrix's second column), as the world's up sees it
+        this.wristUp[side] = m[2 * 16 + 5];
+        return true;
+      }
+    }
+    for (let k = 0; k < out.length; k++) {
+      const p = frame.getJointPose?.(sp[k], ref);
+      if (!p) return false;
+      const t = p.transform.position;
+      out[k].set(t.x, t.y, t.z);
+      rad[k] = p.radius ?? 0;
+      if (k === 2) {
+        const o = p.transform.orientation;
+        this.q.set(o.x, o.y, o.z, o.w);
+        this.wristUp[side] = this.up.set(0, 1, 0).applyQuaternion(this.q).y;
+      }
+    }
+    return true;
+  }
+
   update(delta: number) {
     try {
       this.step(delta);
@@ -122,38 +171,31 @@ export class HandTrackerSystem extends createSystem({}) {
             continue;
           }
         }
-        const thumb = src.hand.get('thumb-tip');
-        const index = src.hand.get('index-finger-tip');
-        const wrist = src.hand.get('wrist');
-        const meta = src.hand.get('middle-finger-metacarpal');
-        const midTip = src.hand.get('middle-finger-tip');
-        const ringTip = src.hand.get('ring-finger-tip');
-        const midKnuckle = src.hand.get('middle-finger-phalanx-proximal');
-        const idxKnuckle = src.hand.get('index-finger-phalanx-proximal');
-        const pinkyKnuckle = src.hand.get('pinky-finger-phalanx-proximal');
-        const tp = thumb && frame.getJointPose(thumb, ref);
-        const ip = index && frame.getJointPose(index, ref);
-        const wp = wrist && frame.getJointPose(wrist, ref);
-        const mp = meta && frame.getJointPose(meta, ref);
-        if (!tp || !ip || !wp || !mp) continue;
-        const mtp = midTip && frame.getJointPose(midTip, ref);
-        const rtp = ringTip && frame.getJointPose(ringTip, ref);
-        const mkp = midKnuckle && frame.getJointPose(midKnuckle, ref);
-        const ikp = idxKnuckle && frame.getJointPose(idxKnuckle, ref);
-        const pkp = pinkyKnuckle && frame.getJointPose(pinkyKnuckle, ref);
+        // the nine joints we use, in one batched read where the browser has it (no objects made per frame),
+        // else one pose at a time
+        const sp = this.jointSpaces[side];
+        let all = true;
+        for (let k = 0; k < JOINTS.length; k++) {
+          const js = src.hand.get(JOINTS[k]);
+          if (!js) all = false;
+          else sp[k] = js;
+        }
+        if (!all) continue;
+        if (!this.readJoints(frame, ref, side)) continue;
+        const J = this.joints[side];
+        const tp = J[0];
+        const ip = J[1];
+        const mp = J[3];
+        const mtp = J[4];
+        const rtp = J[5];
+        const mkp = J[6];
+        const ikp = J[7];
+        const pkp = J[8];
         this.seen[side] = true;
         const h = hands[side];
         h.controller = false;
-        this.tmpThumb.set(
-          tp.transform.position.x,
-          tp.transform.position.y,
-          tp.transform.position.z,
-        );
-        this.tmpIndex.set(
-          ip.transform.position.x,
-          ip.transform.position.y,
-          ip.transform.position.z,
-        );
+        this.tmpThumb.copy(tp);
+        this.tmpIndex.copy(ip);
         if (NOISE) {
           const s = 0.003;
           this.tmpThumb.x += gauss() * s;
@@ -179,22 +221,14 @@ export class HandTrackerSystem extends createSystem({}) {
           h.indexVel.set(0, 0, 0);
         }
         // the palm's true centre: halfway from the middle metacarpal (near the wrist) to its knuckle
-        h.palm.set(mp.transform.position.x, mp.transform.position.y, mp.transform.position.z);
-        if (mkp) h.palm.set((h.palm.x + mkp.transform.position.x) / 2, (h.palm.y + mkp.transform.position.y) / 2, (h.palm.z + mkp.transform.position.z) / 2);
-        if (ikp) h.knuckleIndex.set(ikp.transform.position.x, ikp.transform.position.y, ikp.transform.position.z);
-        else h.knuckleIndex.copy(h.palm);
-        if (pkp) h.knucklePinky.set(pkp.transform.position.x, pkp.transform.position.y, pkp.transform.position.z);
-        else h.knucklePinky.copy(h.palm);
-        h.palmRadius = mp.radius ?? 0.02;
-        h.tipRadius = ip.radius ?? 0.008;
-        if (mtp) h.middleTip.set(mtp.transform.position.x, mtp.transform.position.y, mtp.transform.position.z);
-        else h.middleTip.copy(h.indexTip);
-        if (rtp) h.ringTip.set(rtp.transform.position.x, rtp.transform.position.y, rtp.transform.position.z);
-        else h.ringTip.copy(h.indexTip);
-        const o = wp.transform.orientation;
-        this.q.set(o.x, o.y, o.z, o.w);
-        this.up.set(0, 1, 0).applyQuaternion(this.q);
-        h.upDot = this.up.y;
+        h.palm.set((mp.x + mkp.x) / 2, (mp.y + mkp.y) / 2, (mp.z + mkp.z) / 2);
+        h.knuckleIndex.copy(ikp);
+        h.knucklePinky.copy(pkp);
+        h.palmRadius = this.radii[side][3] || 0.02;
+        h.tipRadius = this.radii[side][1] || 0.008;
+        h.middleTip.copy(mtp);
+        h.ringTip.copy(rtp);
+        h.upDot = this.wristUp[side];
       }
     }
 
