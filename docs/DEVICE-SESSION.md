@@ -99,6 +99,11 @@ Mid-song, take the headset off for 5 s, then put it back on.
 2. The module shows a 4-letter code. On your phone open **https://or-6.github.io/thump/**, type the code. Good: the phone shows a bass pad pulsing on the beat; your taps play bass in the headset, in time and in key.
 - Read: how long from a phone tap to the sound (feel: tight / loose / late).
 
+## 7b. The whole room (1 min)
+
+With three or more instruments found, slap the table hard with both hands at the same moment.
+- Good: every instrument you found sounds one chord, each as a ring of light reaches it. Say if it fired when you didn't mean it (a two-hand groove on the kit), or didn't when you did.
+
 ## 8. Before you take it off (2 min)
 
 - Swaps: tap ◀ twice on the module, and if it says swaps are new, pinch and hold the door for a second. Good: it changes (marimba → glockenspiel → …) and a second pinch changes it again.
