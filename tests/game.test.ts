@@ -572,6 +572,23 @@ describe('the game', () => {
     expect(g.mode).toBe('build');
   });
 
+  it('listen first: the song plays itself (your part too), nothing scored, then back to Songs for your turn', () => {
+    const voiced: string[] = [];
+    const g = new Game({ ...stage([]), voice: (k: string) => voiced.push(k) }, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.act('nav:songs');
+    g.act('listen');
+    expect(g.mode).toBe('count');
+    let t = 0;
+    for (let k = 0; k < 2000 && g.mode !== 'discover'; k++) g.tick((t += 1 / 30));
+    expect(g.mode).toBe('discover');
+    expect(g.menu).toBe('songs');
+    // the drums you'd play were played for you
+    expect(voiced.filter((k) => k === 'kit:kick').length).toBeGreaterThan(4);
+    expect(g.performed('kick-start')).toBe(false);
+  });
+
   it('learns a steady lateness', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

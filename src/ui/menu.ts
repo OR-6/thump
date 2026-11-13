@@ -110,8 +110,9 @@ export function buildPage(m: MenuInput): Page {
       m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.locked ? 'Play the one before it' : s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24, y: 140 + i * 124, w: 860, h: 108 }));
       items.push({ id: 'level:easy', label: 'EASY', on: m.level === 'easy', kind: 'chip', x: 910, y: 130, w: 205, h: 110 });
       items.push({ id: 'level:normal', label: 'NORMAL', on: m.level === 'normal', kind: 'chip', x: 1131, y: 130, w: 205, h: 110 });
-      items.push({ id: 'nav:instruments', label: m.inst.name.toUpperCase(), sub: 'You play this', icon: m.inst.id, kind: 'button', x: 910, y: 262, w: 426, h: 190 });
-      items.push({ id: 'play', label: 'PLAY', kind: 'play', x: 910, y: 474, w: 426, h: 294 });
+      items.push({ id: 'nav:instruments', label: m.inst.name.toUpperCase(), sub: 'You play this', icon: m.inst.id, kind: 'button', x: 910, y: 262, w: 426, h: 150 });
+      items.push({ id: 'listen', label: 'LISTEN FIRST', kind: 'button', x: 910, y: 432, w: 426, h: 110 });
+      items.push({ id: 'play', label: 'PLAY', kind: 'play', x: 910, y: 562, w: 426, h: 208 });
       return { id: 'songs', title: 'Songs', line: '', items };
     }
     case 'band': {

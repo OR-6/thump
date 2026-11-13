@@ -829,6 +829,24 @@ export class Game {
   /** Instruments friends in the band are playing (their parts don't play in this headset's backing). */
   readonly friendInsts = new Set<string>();
 
+  /**
+   * Listen first: the song plays itself once through (eight bars) on the instrument that's out: your part too, the
+   * keys moving and the notes falling, nothing scored. Then it's your turn.
+   */
+  listening = false;
+  listenSong(i: number): void {
+    this.listening = true;
+    // (on this headset only: it doesn't start the band's song)
+    this.playSong(i, this.t + 0.4 + 4 * secPerBeat(TRACKS[i]?.bpm ?? 90, this.opts.tempo));
+  }
+  private endListen(): void {
+    this.listening = false;
+    this.stop();
+    this.menu = 'songs';
+    this.display.sub = 'Your turn';
+    this.refreshDisplay();
+  }
+
   /** The next song to play: the first you haven't played, else the last you did. */
   nextSong(): number {
     const i = TRACKS.findIndex((t) => !this.performed(t.id));
@@ -853,11 +871,13 @@ export class Game {
       [56, 64],
     ];
     const holdFrom = 64;
-    const first = this.chartFor(inst, 0, bars * 4, fills);
+    const listen = this.listening;
+    const first = this.chartFor(inst, 0, (listen ? 8 : bars) * 4, listen ? [] : fills);
     const notes = first.notes;
     const found = first.found;
-    const song: Song = { id: t.id, name: t.name, mood: 'yours', bpm: t.bpm, bars, beatsPerBar: 4, key: t.key, parts: [], notes, bed: [] };
-    this.perf = { track: t, live: first.live, fills, fillHits: [], fillsJudged: 0, goodFills: 0, holdFrom, sched: -0.01, big: -1, joins: found, inst, queued: null, switchAt: -1, graceTo: -1 };
+    const song: Song = { id: t.id, name: t.name, mood: 'yours', bpm: t.bpm, bars: listen ? 8 : bars, beatsPerBar: 4, key: t.key, parts: [], notes, bed: [] };
+    // listening: everything plays from the band (your part included), so the keys move by themselves
+    this.perf = { track: t, live: listen ? new Set<string>() : first.live, fills: listen ? [] : fills, fillHits: [], fillsJudged: 0, goodFills: 0, holdFrom: listen ? 999 : holdFrom, sched: -0.01, big: -1, joins: listen ? '' : found, inst, queued: null, switchAt: -1, graceTo: -1 };
     // the song engine, with each note on the thing you chose
     this.looper.clear();
     this.song = song;
@@ -1513,6 +1533,7 @@ export class Game {
 
   /** Stop the song now (no stars). */
   stop(): void {
+    this.listening = false;
     this.perf = null;
     this.perfShown = 0;
     this.stage.casting({});
@@ -1540,6 +1561,8 @@ export class Game {
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
     if (this.mode === 'discover' && this.looper.state === 'off') this.groovePlayed(key, t);
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
+    // listening: you can play along, nothing's scored
+    if (this.listening) return null;
     if (this.perf) {
       const b = this.clock.beatAt(t - this.opts.offset);
       if (this.perf.fills.some(([a, z]) => b >= a - 0.25 && b < z)) {
@@ -1661,7 +1684,8 @@ export class Game {
     this.display.meter = this.energy;
     if (this.perf) this.tickPerform(beat);
     if (beat >= song.bars * 4 + 1) {
-      if (this.perf) this.endPerform();
+      if (this.perf && this.listening) this.endListen();
+      else if (this.perf) this.endPerform();
       else this.end();
     }
   }
@@ -1708,6 +1732,7 @@ export class Game {
     });
   }
   private onMiss = (n: { lane: string }): void => {
+    if (this.listening) return;
     this.combo = 0;
     this.energy = Math.max(0.15, this.energy - 0.05);
     this.stage.missed(n.lane);
@@ -1846,6 +1871,7 @@ export class Game {
       return;
     }
     if (id === 'play') return this.playSong(this.songSel);
+    if (id === 'listen') return this.listenSong(this.songSel);
     if (id === 'stop') {
       // two presses: a stray arm in a fill never ends the song
       if (!(this.stopAsked > 0 && this.t - this.stopAsked < 2)) {
@@ -2055,6 +2081,11 @@ export class Game {
             d.line = this.perf.queued ? this.song!.name : nm;
             d.sub = this.perf.queued ? `${nm} next` : 'Find it, then join in';
             d.meter = this.energy;
+            break;
+          }
+          if (this.listening) {
+            d.line = this.song!.name;
+            d.sub = 'Listen, then it\'s your turn';
             break;
           }
           d.line = inFill ? 'Go wild!' : big ? 'Huge!' : b >= this.perf.holdFrom ? 'Keep it going' : this.song!.name;
