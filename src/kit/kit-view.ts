@@ -9,7 +9,7 @@ import { PadView } from './pad-view.js';
 import { Panel } from '../ui/panel.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
-import { BoxGeometry, MeshStandardMaterial as BarMaterial } from '@iwsdk/core';
+import { GuitarModel, HandpanModel, MarimbaModel, PianoModel, type DeskModel } from '../scene-assets/lib/instruments.js';
 import { guitarZones, handpanZones, marimbaZones, pianoZones, type InstId, type Scale } from './shelf.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
@@ -81,6 +81,10 @@ export class KitView {
       o.rest = 0.45;
       this.root.add(o.group);
     }
+    for (const m of this.models.values()) {
+      m.root.visible = false;
+      this.root.add(m.root);
+    }
     const g = new PlaneGeometry(1, 1);
     g.rotateX(-Math.PI / 2);
     for (let i = 0; i < 2; i++) {
@@ -131,45 +135,30 @@ export class KitView {
     this.instZones = id === 'piano' ? pianoZones(root, scale) : id === 'marimba' ? marimbaZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : handpanZones(root, scale);
     const o = this.shelf.get(id)!;
     o.build(this.instZones);
-    // the marimba's bars are wood (the light on them is the song's notes)
-    this.marimbaBars.visible = id === 'marimba';
-    if (id === 'marimba') {
-      this.layBars(this.instZones);
-      o.group.position.y = 0.014;
-    }
-    // the piano's keys in warm ivory, not the bars' colour
-    if (id === 'piano') o.recolor(0xf3e6c8);
+    // the instrument itself (the light on it is the song's notes, quiet at rest)
+    for (const [k, m] of this.models) m.root.visible = k === id;
+    const model = this.models.get(id);
+    model?.layout(this.instZones);
+    o.rest = 0.12;
+    o.group.position.y = id === 'piano' ? 0.0125 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? 0.022 : 0;
+    this.unfoldT = 0;
     o.reveal(0, 0.03);
   }
   /** The bars were shown (the kit's first bloom): they come back with the drums. */
   private keysShown = false;
 
-  /** The marimba's wooden bars on two felt rails. */
-  private marimbaBars = new Group();
-  private layBars(zones: readonly Zone[]): void {
-    if (!this.marimbaBars.children.length) {
-      this.marimbaBars.name = 'MarimbaBars';
-      const wood = new BarMaterial({ name: 'Rosewood', color: 0x7a3a1e, roughness: 0.42 });
-      const felt = new BarMaterial({ name: 'Felt', color: 0x2a2624, roughness: 0.95 });
-      for (let i = 0; i < 8; i++) {
-        const bar = new Mesh(new BoxGeometry(1, 1, 1), wood);
-        bar.name = `Bar${i}`;
-        this.marimbaBars.add(bar);
-      }
-      for (const z of [-0.035, 0.07]) {
-        const rail = new Mesh(new BoxGeometry(0.45, 0.004, 0.008), felt);
-        rail.name = 'Rail';
-        rail.position.set(0, 0.002, -z);
-        this.marimbaBars.add(rail);
-      }
-      this.root.add(this.marimbaBars);
-    }
-    zones.forEach((q, i) => {
-      const bar = this.marimbaBars.children[i] as Mesh | undefined;
-      if (!bar) return;
-      bar.scale.set(q.w, 0.009, q.h);
-      bar.position.set(q.x, 0.0085, -q.z);
-    });
+  /** The real instruments (models), one shown at a time; and the half-second unfold when one comes out. */
+  readonly models = new Map<string, DeskModel>([
+    ['piano', new PianoModel()],
+    ['marimba', new MarimbaModel()],
+    ['guitar', new GuitarModel()],
+    ['handpan', new HandpanModel()],
+  ]);
+  private unfoldT = 1;
+
+  /** A note was played on the instrument out (zone i): it moves. */
+  instStruck(i: number, gain: number): void {
+    this.models.get(this.inst)?.struck(i % 10, gain);
   }
 
   /** The overlay of the instrument on the desk (null for the drums). */
@@ -200,6 +189,17 @@ export class KitView {
     for (const p of this.pads.values()) p.update(dt);
     this.keys.update(dt);
     for (const o of this.shelf.values()) if (o.group.visible) o.update(dt);
+    const m = this.models.get(this.inst);
+    if (m && m.root.visible) {
+      m.update(dt);
+      // it unfolds onto the desk: grows from flat and narrow to full over half a second, overshooting a touch
+      if (this.unfoldT < 1) {
+        this.unfoldT = Math.min(1, this.unfoldT + dt / 0.5);
+        const t = this.unfoldT;
+        const e = 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2);
+        m.root.scale.set(0.6 + 0.4 * e, Math.max(0.05, e), 0.6 + 0.4 * e);
+      } else m.root.scale.setScalar(1);
+    }
     this.module.update(dt);
   }
 }

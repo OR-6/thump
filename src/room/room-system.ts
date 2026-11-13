@@ -1108,7 +1108,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (d >= 0) {
         const r = this.ref(p.key);
         if (r?.kind === 'keys') this.kit.keys.hit(r.zone, p.vel);
-        else if (r?.kind === 'inst' && p.key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.hit(r.zone % 10, p.vel);
+        else if (r?.kind === 'inst' && p.key.startsWith(this.kit.inst + ':')) {
+          // the band playing it: the keys move by themselves (watch, then play)
+          this.kit.instOverlay()?.hit(r.zone % 10, p.vel);
+          this.kit.instStruck(this.kit.inst === 'guitar' ? 3 : r.zone % 10, p.vel * 0.6);
+        }
         else if (r?.surface) this.overlays.get(r.surface)?.hit(r.zone, p.vel);
         if (this.labelTags.size && r) this.labelTags.get(r.kind === 'keys' ? 'keys' : (r.surface?.id ?? ''))?.bump();
         this.pendingLights.splice(i, 1);
@@ -1204,7 +1208,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!key.startsWith(this.kit.inst + ':')) return false;
       const z = this.kit.instZones[r.zone % 10];
       if (!z) return false;
-      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : 0.008, -z.z);
+      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : this.kit.inst === 'handpan' ? 0.02 : this.kit.inst === 'guitar' ? 0.024 : 0.013, -z.z);
       root.localToWorld(out);
       col.setHex(instDef(this.kit.inst).color);
       t.round = z.shape === 'disc';
@@ -2448,6 +2452,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (this.flam('guitar', best, side, t)) return;
         this.strum(best, gain * 0.45, pan, 0);
         o?.hit(best, gain);
+        this.kit.instStruck(best, gain);
         this.record(this.kitSurface, best, gain, st, this.game.hit(`guitar:${best}`, t, gain), 'chord');
         return;
       }
@@ -2455,6 +2460,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (this.flam('guitar', 9, side, t)) return;
         this.strum(this.guitarChord, gain, pan, 0);
         for (let s = 3; s < 9; s++) o?.hit(s, gain * (1 - (s - 3) * 0.08));
+        this.kit.instStruck(3, gain);
         // (in a track a strum is just a strum: it plays the chord under the bar)
         this.record(this.kitSurface, 9, gain, st, this.game.hit(this.game.harmony() ? 'guitar:9' : `guitar:${this.guitarChord}`, t, gain), 'strum');
         return;
@@ -2467,6 +2473,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // (the bass part being built on the piano is heard where it will play: two octaves down)
       this.playInst(id, best + (id === 'piano' && best !== PIANO_CHORD ? this.game.pianoLow() : 0), gain, pan, 0);
       o?.hit(best, gain);
+      this.kit.instStruck(best, gain);
       const g = this.game.hit(`${id}:${best}`, t, gain);
       if (g === 'perfect') o?.perfect(best);
       this.record(this.kitSurface, best, gain, st, g, id);

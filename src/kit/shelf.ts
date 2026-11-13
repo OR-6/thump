@@ -162,14 +162,16 @@ export function handpanZones(root: number, scale: Scale): Zone[] {
   return out;
 }
 
-/** Where the guitar's strum band is (x from, x to, z from, z to): hit or brush down anywhere here to strum. */
-export const STRUM = { x0: 0.0, x1: 0.2, z0: -0.07, z1: 0.14 } as const;
+/** Where the guitar's strum band is (x from, x to, z from, z to): over the soundhole, hit or brush down to strum. */
+export const STRUM = { x0: 0.02, x1: 0.2, z0: -0.04, z1: 0.11 } as const;
+/** The neck's line (kit-local zone z) and the three chord positions along it (x), like frets. */
+export const NECK = { z: 0.035, x: [-0.205, -0.143, -0.081], w: 0.056, h: 0.07 } as const;
 
-/** The guitar: three chord pads for the left hand (0–2, unnamed, coloured), then six strings across the strum band (3–8). */
+/** The guitar: three chord positions along the neck for the left hand (0–2), then the six strings over the body (3–8). */
 export function guitarZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [];
-  for (let c = 0; c < 3; c++) out.push({ i: c, shape: 'rect', x: -0.15, z: 0.105 - c * 0.07, w: 0.09, h: 0.06, degree: c, midi: root + scale.chords[c][0] });
-  for (let s = 0; s < 6; s++) out.push({ i: 3 + s, shape: 'rect', x: (STRUM.x0 + STRUM.x1) / 2, z: STRUM.z1 - 0.02 - s * 0.034, w: STRUM.x1 - STRUM.x0, h: 0.006, degree: -1, midi: 0 });
+  for (let c = 0; c < 3; c++) out.push({ i: c, shape: 'rect', x: NECK.x[c], z: NECK.z, w: NECK.w, h: NECK.h, degree: c, midi: root + scale.chords[c][0] });
+  for (let s = 0; s < 6; s++) out.push({ i: 3 + s, shape: 'rect', x: (STRUM.x0 + STRUM.x1) / 2, z: NECK.z + (s - 2.5) * 0.011, w: STRUM.x1 - STRUM.x0, h: 0.003, degree: -1, midi: 0 });
   return out;
 }
 
