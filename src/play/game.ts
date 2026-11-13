@@ -672,7 +672,7 @@ export class Game {
   // ---------------------------------------------------------------- perform
 
   /** The machine you built this session (its parts on your things). */
-  private machine: { track: TrackDef; parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[] } | null = null;
+  private machine: { track: TrackDef; parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[]; written?: boolean } | null = null;
   private perf: {
     track: TrackDef;
     /** Parts you play live (the chart); the rest is the bed. */
@@ -763,11 +763,48 @@ export class Game {
   }
 
   /** Perform on the machine: it drops to a bed, the kit parts are yours to play on your own things. */
-  beginPerform(): void {
+  /**
+   * A song, ready to play: the track's parts as written (the beat on the drums, the tune and the bass on the piano,
+   * the extra on the handpan), and you play your part on the instrument that's out; the band plays the rest.
+   */
+  playSong(i: number): void {
+    const track = TRACKS[i];
+    if (!track) return;
+    const parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[] = [];
+    for (const def of track.parts) {
+      const st = steps(def.pattern, track.swing);
+      const keyOf = (s: Step, k: number): string => {
+        if (def.name === 'KICK') return 'kit:kick';
+        if (def.name === 'SNARE') return 'kit:snare';
+        if (def.name === 'HAT') return 'kit:hat';
+        if (def.name === 'CLAP') return 'clap:0';
+        if (def.name.startsWith('PERC')) return `handpan:${1 + ((k * 3) % 8)}`;
+        const z = Math.max(0, this.room.zoneFor('piano', Math.max(0, s.degree)));
+        return `piano:${z + (def.name === 'BASS' ? 10 : 0)}`;
+      };
+      const notes = st.map((s, k) => ({ key: keyOf(s, k), beat: s.beat, vel: s.vel, filled: false }));
+      const key = notes[0]?.key ?? 'kit:kick';
+      parts.push({ def, surface: key.slice(0, key.indexOf(':')), key, notes });
+    }
+    this.machine = { track, parts, written: true };
+    const out = this.stage.shelf?.(0).id ?? 'drums';
+    this.beginPerform(out);
+  }
+
+  /** The next song to play: the first you haven't played, else the last you did. */
+  nextSong(): number {
+    const i = TRACKS.findIndex((t) => !this.performed(t.id));
+    return i < 0 ? TRACKS.length - 1 : i;
+  }
+
+  beginPerform(inst = 'drums'): void {
     const m = this.machine;
     if (!m) return;
     this.groove = null;
-    this.stage.useInstrument?.('drums');
+    // (the guitar plays over any song; another instrument needs a part of the song on it)
+    const has = (i: string) => i === 'drums' || i === 'guitar' || m.parts.some((p) => PART_INST[p.def.name] === (i === 'marimba' ? 'piano' : i) && p.def.name !== 'BASS');
+    if (!has(inst)) inst = 'drums';
+    this.stage.useInstrument?.(inst);
     const t = m.track;
     this.bld = null;
     // 16 bars with a fill in bars 7–8 and 15–16, then 4 bars of hold it (scored, never shown)
@@ -777,11 +814,11 @@ export class Game {
       [56, 64],
     ];
     const holdFrom = 64;
-    const first = this.chartFor('drums', 0, bars * 4, fills);
+    const first = this.chartFor(inst, 0, bars * 4, fills);
     const notes = first.notes;
     const found = first.found;
     const song: Song = { id: t.id, name: t.name, mood: 'yours', bpm: t.bpm, bars, beatsPerBar: 4, key: t.key, parts: [], notes, bed: [] };
-    this.perf = { track: t, live: first.live, fills, fillHits: [], fillsJudged: 0, goodFills: 0, holdFrom, sched: -0.01, big: -1, joins: found, inst: 'drums', queued: null, switchAt: -1, graceTo: -1 };
+    this.perf = { track: t, live: first.live, fills, fillHits: [], fillsJudged: 0, goodFills: 0, holdFrom, sched: -0.01, big: -1, joins: found, inst, queued: null, switchAt: -1, graceTo: -1 };
     // the song engine, with each note on the thing you chose
     this.looper.clear();
     this.song = song;
@@ -888,6 +925,7 @@ export class Game {
     this.lastLean = lean(j.notes.filter((n) => n.grade === 'perfect' || n.grade === 'good').map((n) => n.offset));
     this.fromPerform = true;
     this.resultsStage = -1;
+    this.perfInst = p.inst;
     this.carried = this.whoCarried(j.notes, p.live);
     this.learnOffset();
     const pr = this.progress;
@@ -918,6 +956,8 @@ export class Game {
   }
   /** Tight %, last performance. */
   lastTight = -1;
+  /** The instrument the last performance ended on (Again plays it on that). */
+  private perfInst = 'drums';
   /** After a performance: the machine's two loops at full (from beat `from`). */
   private lap: { from: number; sched: number; dropped: boolean } | null = null;
   private tickLap(t: number): void {
@@ -1085,10 +1125,13 @@ export class Game {
     const twice = this.t - (this.lastTap[k] ?? -9) < 0.9;
     this.lastTap[k] = this.t;
     if (this.mode === 'results' && this.fromPerform && this.machine && (k === 'play' || k === 'next')) {
-      const next = this.nextTrack();
+      const m = this.machine;
+      const inst = this.perfInst;
       this.leaveResults();
-      if (k === 'next' && next >= 0) this.beginBuild(next);
-      else this.beginPerform();
+      if (k === 'play') this.beginPerform(inst);
+      // > after a song: make it your own (build it); after your own: the next song
+      else if (m.written) this.beginBuild(TRACKS.indexOf(m.track));
+      else this.playSong(this.nextSong());
       return;
     }
     if (this.mode === 'results') this.leaveResults();
@@ -1190,10 +1233,7 @@ export class Game {
     }
     if (k === 'play' && this.mode === 'discover' && !this.offered) return;
     if (k === 'play' && this.mode === 'discover') {
-      const next = this.nextTrack();
-      if (next >= 0 && (!this.machine || this.performed(this.machine.track.id))) this.beginBuild(next);
-      else if (this.machine) this.beginPerform();
-      else this.beginBuild(0);
+      this.playSong(this.nextSong());
       this.lastTap.play = -9;
       return;
     }
@@ -1771,25 +1811,12 @@ export class Game {
     }
     this.shelfWhat = '';
     if (this.mode === 'discover' && this.stage.shelf && this.found.includes('kit') && this.stage.shelf(0).id !== 'drums') d.keyLabels = ['', '', '', 'NOTES', 'SOUND'];
-    const nextT = this.nextTrack();
-    if (this.mode === 'discover' && this.offered && nextT >= 0 && this.machine && this.performed(this.machine.track.id)) {
-      d.line = `Build ${TRACKS[nextT].name}?`;
-      d.sub = `${TRACKS[nextT].parts.length} parts · Tap ▶`;
-      d.pulse = 'play';
-      return;
-    }
-    if (this.mode === 'discover' && this.offered && this.machine) {
-      d.line = this.machine.track.name;
-      const gate = this.gate();
-      d.sub = gate > 0 && this.performed(this.machine.track.id) ? `Find ${gate} more thing${gate === 1 ? '' : 's'}` : 'Your track. Perform? ▶';
-      d.pulse = 'play';
-      d.stars = this.progress.stars[this.machine.track.id] ?? 0;
-      return;
-    }
     if (this.mode === 'discover' && this.offered) {
-      d.line = 'Build a track?';
-      d.sub = 'Tap ▶';
+      const song = TRACKS[this.nextSong()];
+      d.line = 'Play a song?';
+      d.sub = `${song.name}: tap ▶`;
       d.pulse = 'play';
+      d.stars = this.progress.stars[song.id] ?? 0;
       return;
     }
     switch (this.mode) {
@@ -1865,11 +1892,11 @@ export class Game {
         // how it felt in time: a number when it was close, a word that says which way when it wasn't
         const feel = this.lastTight >= 70 ? `On time ${this.lastTight}%` : this.lastLean < 0 ? 'A bit ahead of the beat' : this.lastLean > 0 ? 'A bit behind the beat' : 'Loose';
         const fresh = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: JAM and REC' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : '';
-        const next = this.fromPerform && this.nextTrack() >= 0 && !this.built(TRACKS[this.nextTrack()].id);
+        const next = this.fromPerform;
         if (st <= 1) d.sub = this.fromPerform && this.lastTight >= 0 ? feel : s.stars < 3 ? 'Again? Tap ▶' : `${s.perfect + s.good} of ${s.total}`;
         else if (st === 2 && this.fromPerform && this.carried) d.sub = this.carried;
         else if (st <= 3 && fresh) d.sub = fresh;
-        else d.sub = this.fromPerform ? (next ? 'Again ▶   Next track >' : 'Again? Tap ▶') : 'Again? Tap ▶';
+        else d.sub = this.fromPerform ? (this.machine?.written ? 'Again ▶   Make it yours >' : 'Again ▶   Next song >') : 'Again? Tap ▶';
         if (st <= 2 && this.fromPerform) d.pulse = null;
         else d.pulse = next && st >= 4 ? 'next' : 'play';
         break;

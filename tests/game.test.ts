@@ -55,7 +55,7 @@ describe('the game', () => {
     g.discovered('marimba', 'door', 2);
     g.tick(2.1);
     expect(g.display.pulse).toBe('play');
-    expect(g.display.line).toBe('Build a track?');
+    expect(g.display.line).toBe('Play a song?');
     expect(g.display.found).toEqual(['kit', 'marimba']);
   });
 
@@ -77,7 +77,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    g.key('play');
+    g.beginBuild(0);
     let t = 45.1;
     for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
       g.tick(t);
@@ -227,8 +227,8 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    expect(g.display.line).toBe('Build a track?');
-    g.key('play');
+    expect(g.display.line).toBe('Play a song?');
+    g.beginBuild(0);
     expect(g.mode).toBe('build');
     expect(g.display.sub).toBe('Pick the big boom');
     let t = 45.1;
@@ -260,7 +260,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    g.key('play');
+    g.beginBuild(0);
     let t = 45.1;
     g.tick(t);
     g.hit('kit:kick', t, 0.8);
@@ -287,7 +287,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    g.key('play');
+    g.beginBuild(0);
     let t = 45.1;
     for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
       g.tick(t);
@@ -327,7 +327,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    g.key('play');
+    g.beginBuild(0);
     let t = 45.1;
     for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
       g.tick(t);
@@ -370,7 +370,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    g.key('play');
+    g.beginBuild(0);
     let t = 45.1;
     for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
       g.tick(t);
@@ -429,7 +429,7 @@ describe('the game', () => {
     // and its NOTES and SOUND keys stay labelled
     expect(g.display.keyLabels).toEqual(['', '', '', 'NOTES', 'SOUND']);
     g.tick(45);
-    g.key('play');
+    g.beginBuild(0);
     expect(g.mode).toBe('build');
     expect(used).toContain('drums');
   });
@@ -442,7 +442,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    g.key('play');
+    g.beginBuild(0);
     let t = 45.1;
     for (const [n, key] of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom'].entries()) {
       g.tick(t);
@@ -475,7 +475,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    g.key('play');
+    g.beginBuild(0);
     let t = 45.1;
     for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'piano:2', 'piano:0']) {
       g.tick(t);
@@ -541,6 +541,33 @@ describe('the game', () => {
     for (let k = 0; k < 60; k++) g.tick((t += 1 / 30));
     expect(band.length).toBe(after);
     expect(after).toBeGreaterThan(n);
+  });
+
+  it('play a song: ▶ plays Kick Start as written on the drums; > after it makes it your own', () => {
+    const g = new Game(stage([]), freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    expect(g.display.sub).toBe('Kick Start: tap ▶');
+    g.key('play');
+    expect(g.mode).toBe('count');
+    let t = 45;
+    const due: string[] = [];
+    for (let k = 0; k < 4000 && g.mode !== 'results'; k++) {
+      t += 1 / 30;
+      g.tick(t);
+      g.dueBetween(t - 1 / 30, t, (kk) => {
+        due.push(kk);
+        g.hit(kk, t, 0.8);
+      });
+    }
+    expect(g.mode).toBe('results');
+    expect(due.every((k) => k.startsWith('kit:'))).toBe(true);
+    expect(g.last!.stars).toBe(3);
+    g.tick((t += 8));
+    expect(g.display.sub).toBe('Again ▶   Make it yours >');
+    g.key('next');
+    expect(g.mode).toBe('build');
   });
 
   it('learns a steady lateness', () => {

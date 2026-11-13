@@ -200,29 +200,32 @@ shot('room-04-module', look);
   s = state();
 }
 
-// tap PLAY on the module: Build starts and asks for the kick
+// tap PLAY on the module: a song starts (Kick Start, as written), the band in, your part on the drums
 const play = s.targets['key-play'];
 await slapAt(play, [0, 1, 0], { speed: 0.6, from: 0.05 });
-s = await until((x) => x.game.mode === 'build', 3000);
-check('PLAY on the module starts building a track', s.game.mode === 'build' && /boom/.test(s.game.display.sub), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
-// slap the kick: it's assigned, the count-in starts and the part's notes fly to it
-await slapAt([s.targets.kick[0], DESK_Y, s.targets.kick[2]], [0, 1, 0]);
+s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 3000);
+check('PLAY on the module plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && /Kick Start/.test(s.game.display.line), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
 s = await until((x) => x.game.motes > 0, 8000);
-check('the kick is assigned and its notes fly to it', s.game.motes > 0 && /BOOM/.test(s.game.display.line), `motes=${s.game.motes} ${s.game.display.line} / ${s.game.display.sub}`);
-shot('room-05-build', look);
+check("the song's notes fly to the drums", s.game.motes > 0, `motes=${s.game.motes} ${s.game.display.line} / ${s.game.display.sub}`);
+shot('room-05-song', look);
 s = state();
 check('no frame errors', s.debug.errors === 0, `errors=${s.debug.errors}`);
 
 if (SONG) {
   await goto('autoplay=1&debug=1');
   s = await placeKit();
-  s = await until((x) => x.game.mode === 'build', 30000, 500);
-  check('autoplay finds things and starts building', s.game.mode === 'build', `${s.game.mode} found=${s.game.found}`);
-  s = await until((x) => (x.progress.built ?? []).includes('kick-start'), 120000, 1000);
-  check('six parts later the machine runs', (s.progress.built ?? []).includes('kick-start') && /Kick Start/.test(s.game.display.line), `${s.game.display.line} / ${s.game.display.sub}`);
-  shot('room-06-machine', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
+  s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 60000, 500);
+  check('autoplay plays the first song', s.game.mode === 'count' || s.game.mode === 'play', `${s.game.mode} ${s.game.display.line}`);
   s = await until((x) => x.game.mode === 'results', 120000, 1000);
-  check('then you perform on it: stars and Tight %', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && /^\d+ of \d+$/.test(s.game.display.line), `${s.game.display.line} / ${s.game.display.sub} stars=${s.game.last?.stars}`);
+  check('to the end: stars, notes played', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && /^\d+ of \d+$/.test(s.game.display.line), `${s.game.display.line} / ${s.game.display.sub} stars=${s.game.last?.stars}`);
   shot('room-07-results', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
+  // > on the results: make it your own (Build), and the autoplayer builds it
+  await wait(8000);
+  run('tools/press-next.mjs');
+  s = await until((x) => x.game.mode === 'build', 5000, 250);
+  check('> after a song makes it your own', s.game.mode === 'build', s.game.mode);
+  s = await until((x) => (x.progress.built ?? []).includes('kick-start'), 150000, 1000);
+  check('six parts later your machine runs', (s.progress.built ?? []).includes('kick-start'), `${s.game.display.line} / ${s.game.display.sub}`);
+  shot('room-06-machine', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
 }
 done('E2E room');
