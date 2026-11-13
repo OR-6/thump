@@ -67,6 +67,9 @@ export class Tag {
     this.pinned = false;
     this.mesh.visible = false;
   }
+  get pinnedNow(): boolean {
+    return this.pinned;
+  }
   /** Its part just played. */
   bump(): void {
     this.kick = 1;

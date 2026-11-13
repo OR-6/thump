@@ -467,6 +467,46 @@ describe('the game', () => {
     expect(chords.length - before).toBeGreaterThanOrEqual(20);
   });
 
+  it('performing: ▶ switches to the piano at the next loop; a bar to find it, then the tune is yours to play', () => {
+    const used: (string | null)[] = [];
+    const st = { ...stage([]), useInstrument: (id: string | null) => used.push(id) };
+    const rm = { ...room([{ id: 't1', family: 'bell', zones: 1 }]), zones: (id: string) => (id === 'keys' || id === 'piano' ? 7 : id === 't1' ? 1 : 0) };
+    const g = new Game(st, freshProgress(), rm);
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    g.key('play');
+    let t = 45.1;
+    for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'piano:2', 'piano:0']) {
+      g.tick(t);
+      g.hit(key, t, 0.8);
+      for (let k = 0; k < 900 && g.buildAsks() === null && !g.buildRunning(); k++) {
+        t += 1 / 30;
+        g.tick(t);
+        g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+      }
+    }
+    // the tune and the low notes were built on the piano (its instrument came out for them)
+    expect(used).toContain('piano');
+    g.key('play');
+    for (let k = 0; k < 200; k++) g.tick((t += 1 / 30));
+    g.key('next');
+    expect(g.display.sub).toBe('Piano next');
+    const due: string[] = [];
+    for (let k = 0; k < 4000 && g.mode !== 'results'; k++) {
+      t += 1 / 30;
+      g.tick(t);
+      g.dueBetween(t - 1 / 30, t, (kk) => {
+        due.push(kk);
+        g.hit(kk, t, 0.8);
+      });
+    }
+    expect(used[used.length - 1] === 'piano' || used.includes('piano')).toBe(true);
+    expect(due.some((k) => k.startsWith('piano:'))).toBe(true);
+    expect(g.mode).toBe('results');
+    expect(g.last!.stars).toBeGreaterThanOrEqual(2);
+  });
+
   it('learns a steady lateness', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

@@ -55,7 +55,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { PIANO_CHORD, SCALES, STRUM, instDef, scaleById, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { PIANO_CHORD, SCALES, STRUM, guitarZones, handpanZones, instDef, pianoZones, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -294,9 +294,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       return -1;
     },
-    zones: (id) => (id === 'keys' ? this.kit.keyZones.length : (this.surfaces.find((s) => s.id === id)?.zones.length ?? 0)),
-    zoneFor: (id, degree) => zoneForDegree(id === 'keys' ? this.kit.keyZones : (this.surfaces.find((s) => s.id === id)?.zones ?? []), degree),
-    degreeOf: (id, zone) => (id === 'keys' ? this.kit.keyZones : (this.surfaces.find((s) => s.id === id)?.zones ?? []))[zone]?.degree ?? 0,
+    zones: (id) => this.zonesOf(id).length,
+    zoneFor: (id, degree) => zoneForDegree(this.zonesOf(id), degree),
+    degreeOf: (id, zone) => this.zonesOf(id)[zone % 10]?.degree ?? 0,
   };
 
   private stage: GameStage = {
@@ -307,7 +307,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (r.kind === 'pad') this.kit.pad(r.lane)?.setGlow(k);
       else if (r.kind === 'keys') this.kit.keys.light(r.zone, k);
       else if (r.kind === 'inst') {
-        if (key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.light(r.zone, k);
+        if (key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.light(r.zone % 10, k);
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     shelf: (dir) => this.shelfStep(dir),
@@ -344,7 +344,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (r.kind === 'pad') this.kit.pad(r.lane)?.miss();
       else if (r.kind === 'keys') this.kit.keys.miss(r.zone);
       else if (r.kind === 'inst') {
-        if (key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.miss(r.zone);
+        if (key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.miss(r.zone % 10);
       }
       else if (r.surface) this.overlays.get(r.surface)?.miss(r.zone);
     },
@@ -978,7 +978,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (d >= 0) {
         const r = this.ref(p.key);
         if (r?.kind === 'keys') this.kit.keys.hit(r.zone, p.vel);
-        else if (r?.kind === 'inst' && p.key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.hit(r.zone, p.vel);
+        else if (r?.kind === 'inst' && p.key.startsWith(this.kit.inst + ':')) this.kit.instOverlay()?.hit(r.zone % 10, p.vel);
         else if (r?.surface) this.overlays.get(r.surface)?.hit(r.zone, p.vel);
         if (this.labelTags.size && r) this.labelTags.get(r.kind === 'keys' ? 'keys' : (r.surface?.id ?? ''))?.bump();
         this.pendingLights.splice(i, 1);
@@ -996,7 +996,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.watchCovers(dt);
     if (this.labelTags.size) {
       this.labelFaceT -= dt;
-      for (const t of this.labelTags.values()) {
+      for (const [g, t] of this.labelTags) {
+        // a part's tape shows while its instrument is on the desk
+        const shown = g.startsWith('kit:') || g === 'keys' ? this.kit.inst === 'drums' : g === 'piano' || g === 'guitar' || g === 'handpan' ? this.kit.inst === g : true;
+        if (t.mesh.visible !== shown && t.pinnedNow) t.mesh.visible = shown;
         t.update(dt);
         if (this.labelFaceT <= 0) t.face(this.head);
       }
@@ -1715,6 +1718,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return root.localToWorld(this.tmp.set(p.x, 0.012, p.z + 0.075));
     }
     if (g === 'keys') return root.localToWorld(this.tmp.set(-0.255, 0.02, KEYS_ROW.z));
+    if (g === 'piano' || g === 'guitar' || g === 'handpan') return root.localToWorld(this.tmp.set(-0.25, 0.02, 0.1));
     const s = this.surfaces.find((x) => x.id === g);
     if (!s) return null;
     return this.tmp.set((s.bounds.minX + s.bounds.maxX) / 2, 0.065, -(s.bounds.minZ + s.bounds.maxZ) / 2).applyMatrix4(s.world);
@@ -1888,12 +1892,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   // ------------------------------------------------------------------ the instrument shelf
 
+  /** When a chord pad was last picked (in a track, the guitar follows the track's chords unless you pick). */
+  private chordPickedT = -9;
   /** The guitar's chord (0–2) and the piano chord pad's next chord. */
   private guitarChord = 0;
   private pianoChord = 0;
   private shelfCfg(id: InstId): { scale: string; sound: string } {
     const d = instDef(id);
-    return this.settings.shelf[id] ?? { scale: SCALES[0].id, sound: d.sounds[0].id };
+    const c = this.settings.shelf[id] ?? { scale: SCALES[0].id, sound: d.sounds[0].id };
+    // inside a track the instruments play its notes (its major or minor), with your sound
+    const h = this.game.harmony();
+    return h ? { scale: h.minor ? 'sad' : 'happy', sound: c.sound } : c;
   }
   /** Lowest notes: the piano round middle C, the handpan and guitar an octave down, all in the song's key. */
   private instRoot(id: InstId): number {
@@ -1909,13 +1918,32 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** A song or a build wants this instrument out (null: the one you chose in free play). Not saved. */
   private useInstrument(id: InstId | null): void {
     const want = id ?? ((['drums', 'piano', 'guitar', 'handpan'] as InstId[]).includes(this.settings.inst as InstId) ? (this.settings.inst as InstId) : 'drums');
-    if (want === this.kit.inst && (want === 'drums' || this.kit.instZones.length)) return;
-    this.kit.setInstrument(want, this.instRoot(want), scaleById(this.shelfCfg(want).scale));
+    const root = this.instRoot(want);
+    const scale = scaleById(this.shelfCfg(want).scale);
+    // (already out in this tuning: leave it be)
+    const tuning = `${want}:${root}:${scale.id}`;
+    if (tuning === this.instTuning) return;
+    this.instTuning = tuning;
+    this.kit.setInstrument(want, root, scale);
+  }
+  private instTuning = '';
+
+  /** The zones of a surface, the desk's bars, or a shelf instrument (as it would be laid out now). */
+  private zonesOf(id: string): Zone[] {
+    if (id === 'keys') return this.kit.keyZones;
+    if (id === 'piano' || id === 'guitar' || id === 'handpan') {
+      if (this.kit.inst === id) return this.kit.instZones;
+      const root = this.instRoot(id);
+      const scale = scaleById(this.shelfCfg(id).scale);
+      return id === 'piano' ? pianoZones(root, scale) : id === 'guitar' ? guitarZones(root, scale) : handpanZones(root, scale);
+    }
+    return this.surfaces.find((s) => s.id === id)?.zones ?? [];
   }
 
   /** Put an instrument on the desk (saved for next time). */
   private putOut(id: InstId): void {
-    this.kit.setInstrument(id, this.instRoot(id), scaleById(this.shelfCfg(id).scale));
+    this.instTuning = '';
+    this.useInstrument(id);
     if (this.settings.inst !== id) {
       this.settings = { ...this.settings, inst: id };
       saveSettings(this.settings);
@@ -1959,13 +1987,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (id === 'guitar') return this.strum(Math.max(0, Math.min(2, zone)), vel, pan, when);
     if (id === 'piano' && zone === PIANO_CHORD) {
       // the chord pad: the chord the song is on, else the next of the scale's three
-      const ch = scale.chords[this.pianoChord % scale.chords.length];
-      for (const n of ch) audio.modal(snd.family ?? 'keys', root - 12 + n, vel * 0.7, pan, when, 0.5, `piano-chord`, n);
+      const h = this.game.harmony();
+      const ch = h ? (h.chordMinor ? [0, 3, 7] : [0, 4, 7]) : scale.chords[this.pianoChord % scale.chords.length];
+      const base = h ? h.chord - 12 : root - 12;
+      for (const n of ch) audio.modal(snd.family ?? 'keys', base + n, vel * 0.7, pan, when, 0.5, `piano-chord`, n);
       return;
     }
-    const z = this.kit.inst === id ? this.kit.instZones[zone] : null;
-    const midi = z?.midi ?? root + scale.steps[zone % scale.steps.length];
-    audio.modal(snd.family ?? 'keys', midi, vel, pan, when, 0.5, `${id}`, zone);
+    // (zone + 10 on the piano: the same key an octave and more down, for a bass line)
+    const low = id === 'piano' && zone >= 10;
+    const zi = low ? zone - 10 : zone;
+    const z = this.kit.inst === id ? this.kit.instZones[zi] : null;
+    const midi = (z?.midi ?? scaleMidi(root, scale, zi)) - (low ? 24 : 0);
+    audio.modal(low ? 'keys' : (snd.family ?? 'keys'), midi, vel, pan, when, 0.5, `${id}${low ? 'lo' : ''}`, zi);
   }
 
   /** The guitar: six strings low to high, a hair apart (a slow hand spreads them more), from chord `c`. */
@@ -1973,7 +2006,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const cfg = this.shelfCfg('guitar');
     const scale = scaleById(cfg.scale);
     const snd = instDef('guitar').sounds.find((x) => x.id === cfg.sound) ?? instDef('guitar').sounds[0];
-    const notes = strumNotes(this.instRoot('guitar'), scale.chords[c % scale.chords.length]);
+    const h = this.game.harmony();
+    const notes = h && this.clock.t - this.chordPickedT > 2 ? strumNotes(h.chord, h.chordMinor ? [0, 3, 7] : [0, 4, 7]) : strumNotes(this.instRoot('guitar'), scale.chords[c % scale.chords.length]);
     const t0 = when || audio.now();
     const gap = 0.009 + 0.02 * (1 - Math.min(1, vel));
     for (let k = 0; k < notes.length; k++) {
@@ -2009,6 +2043,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (best >= 0) {
         // a chord pad: that chord, and a soft strum of it so the hand that picks is heard too
         this.guitarChord = best;
+        this.chordPickedT = this.clock.t;
         if (this.flam('guitar', best, side, t)) return;
         this.strum(best, gain * 0.45, pan, 0);
         o?.hit(best, gain);
@@ -2019,7 +2054,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (this.flam('guitar', 9, side, t)) return;
         this.strum(this.guitarChord, gain, pan, 0);
         for (let s = 3; s < 9; s++) o?.hit(s, gain * (1 - (s - 3) * 0.08));
-        this.record(this.kitSurface, 9, gain, st, this.game.hit(`guitar:${this.guitarChord}`, t, gain), 'strum');
+        // (in a track a strum is just a strum: it plays the chord under the bar)
+        this.record(this.kitSurface, 9, gain, st, this.game.hit(this.game.harmony() ? 'guitar:9' : `guitar:${this.guitarChord}`, t, gain), 'strum');
         return;
       }
     } else if (best >= 0) {
@@ -2820,6 +2856,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (r.kind === 'clap') {
       audio.modal('clap', 60, 0.8, 0, 0, 0.5, 'clap');
       this.game.hit('clap:0', t, 0.8);
+      return;
+    }
+    if (r.kind === 'inst') {
+      const id = key.slice(0, key.indexOf(':')) as InstId;
+      const q = this.kit.inst === id ? this.kit.instZones[r.zone % 10] : null;
+      if (q) {
+        this.hitAt.x = q.x;
+        this.hitAt.z = q.z;
+        this.hitAt.pad = -1;
+        this.onHit(this.kitSurface, 'left', fakeStrike(t));
+      } else {
+        this.playInst(id, r.zone, 0.8, 0, 0);
+        this.game.hit(key, t, 0.8);
+      }
       return;
     }
     if (r.kind === 'pad' || r.kind === 'keys') {

@@ -69,6 +69,13 @@ export class NoteJudge {
     this.add(notes);
   }
 
+  /** Take out every note not yet played from `beat` on (you switched instrument: those are someone else's now). */
+  dropFrom(beat: number): void {
+    for (let i = this.notes.length - 1; i >= 0; i--) if (this.notes[i].beat >= beat - 1e-6 && this.notes[i].grade === null) this.notes.splice(i, 1);
+    this.cursor = 0;
+    while (this.cursor < this.notes.length && this.notes[this.cursor].grade !== null) this.cursor++;
+  }
+
   /** Add notes (an answer written live); kept sorted by time. */
   add(notes: readonly JudgeNote[]): void {
     for (const n of notes) this.notes.push({ beat: n.beat, lane: n.lane, vel: n.vel, t: n.beat * this.spb, grade: null, offset: 0 });
