@@ -12,7 +12,7 @@ import { StrikeDetector } from '../kit/strike.js';
 import { classify, swapsFor, type Family, type Features, type Voice } from './classify.js';
 import { zonesFor, type Bounds, type Zone } from './zones.js';
 
-export type SurfaceSource = 'plane' | 'volume' | 'kit' | 'module';
+export type SurfaceSource = 'plane' | 'volume' | 'kit' | 'module' | 'touch';
 
 const _up = new Vector3(0, 1, 0);
 const _a = new Vector3();
@@ -111,7 +111,15 @@ export class Surface {
   layZones(anchor: { x: number; z: number }, keyPc = 0): void {
     this.anchor = { x: anchor.x, z: anchor.z };
     this.zones = this.voice ? zonesFor(this.voice.family, this.bounds, this.anchor, this.voice.size, keyPc) : [];
+    // a thing found by touch (a cup, a book) is one note, the size of the thing, right where you tapped
+    if (this.single && this.zones.length) {
+      const z = this.zones[0];
+      this.zones = [{ ...z, i: 0, x: anchor.x, z: anchor.z, shape: 'disc', w: this.singleR, h: 0 }];
+    }
   }
+  /** Found by touch: one zone of this radius. */
+  single = false;
+  singleR = 0.035;
 
   /** Closest distance from a world point to the surface's rectangle. */
   distanceTo(p: Vector3): number {
@@ -156,7 +164,7 @@ void _q;
 
 /** A room surface whose physics suits more than one instrument (the kit's table and the module never swap). */
 export function swappable(s: Surface): boolean {
-  return (s.source === 'plane' || s.source === 'volume') && !!s.natural && swapsFor(s.natural).length > 1;
+  return (s.source === 'plane' || s.source === 'volume' || s.source === 'touch') && !!s.natural && swapsFor(s.natural).length > 1;
 }
 
 export function surfaceName(s: Surface): string {

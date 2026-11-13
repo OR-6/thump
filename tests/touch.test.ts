@@ -1,0 +1,81 @@
+import { describe, expect, it } from 'vitest';
+import { TouchFinder, touchVoice, type P3 } from '../src/room/touch.js';
+
+const DT = 1 / 72;
+
+/** A fingertip comes down at `speed` onto something at height `top`, stops dead there, holds, then lifts. */
+function tap(f: TouchFinder, t0: number, top: number, speed = 0.8, x = 0, hold = 0.12) {
+  const out: { t: number; found: boolean; at: P3 }[] = [];
+  let t = t0;
+  let y = top + 0.12;
+  // lifted, then coming down
+  for (let k = 0; k < 8; k++, t += DT) f.update(1, { x, y, z: -0.3 }, t);
+  while (y > top) {
+    y = Math.max(top, y - speed * DT);
+    const r = f.update(1, { x, y, z: -0.3 }, t);
+    if (r) out.push({ t, found: r.found, at: { ...r.at } });
+    t += DT;
+  }
+  for (let k = 0; k < hold / DT; k++, t += DT) {
+    const r = f.update(1, { x, y: top, z: -0.3 }, t);
+    if (r) out.push({ t, found: r.found, at: { ...r.at } });
+  }
+  // and up again
+  for (let k = 0; k < 10; k++, t += DT) f.update(1, { x, y: top + k * 0.01, z: -0.3 }, t);
+  return { out, t };
+}
+
+describe('finding things by touch', () => {
+  it('a tap on a cup lights a spot; a second tap there finds it', () => {
+    const f = new TouchFinder();
+    const a = tap(f, 0, 0.9);
+    expect(a.out).toHaveLength(1);
+    expect(a.out[0].found).toBe(false);
+    const b = tap(f, a.t + 0.4, 0.9);
+    expect(b.out).toHaveLength(1);
+    expect(b.out[0].found).toBe(true);
+    expect(b.out[0].at.y).toBeCloseTo(0.9, 2);
+  });
+  it('a second tap somewhere else is a new first tap, not a find', () => {
+    const f = new TouchFinder();
+    const a = tap(f, 0, 0.9);
+    const b = tap(f, a.t + 0.4, 0.9, 0.8, 0.1);
+    expect(b.out[0].found).toBe(false);
+  });
+  it('a hand slowing down in the air (over ~100 ms) is not a stop', () => {
+    const f = new TouchFinder();
+    let t = 0;
+    let y = 1.1;
+    let v = 0.8;
+    let hits = 0;
+    for (let k = 0; k < 80; k++, t += DT) {
+      v = Math.max(0, v - 8 * DT);
+      y -= v * DT;
+      if (f.update(1, { x: 0, y, z: -0.3 }, t)) hits++;
+    }
+    expect(hits).toBe(0);
+  });
+  it('a resting hand never taps twice; a pinching or lost hand forgets', () => {
+    const f = new TouchFinder();
+    const a = tap(f, 0, 0.9, 0.8, 0, 2);
+    expect(a.out).toHaveLength(1);
+    expect(f.update(1, null, a.t + 0.1)).toBeNull();
+  });
+  it('a tracking jump (one huge step, then still) is never a tap', () => {
+    const f = new TouchFinder();
+    let t = 0;
+    let hits = 0;
+    for (let rep = 0; rep < 3; rep++) {
+      for (let k = 0; k < 10; k++, t += DT) if (f.update(1, { x: 0.5, y: 1.4, z: 0 }, t)) hits++;
+      for (let k = 0; k < 10; k++, t += DT) if (f.update(1, { x: 0.05, y: 0.9, z: -0.3 }, t)) hits++;
+    }
+    expect(hits).toBe(0);
+  });
+  it('what a found thing plays, by how high it is and which way it faces', () => {
+    expect(touchVoice(0.03, 1).family).toBe('block');
+    expect(touchVoice(0.1, 1).family).toBe('bell');
+    expect(touchVoice(0.22, 1).size).toBeGreaterThan(touchVoice(0.1, 1).size);
+    expect(touchVoice(-0.2, 1).family).toBe('congas');
+    expect(touchVoice(0.1, 0).family).toBe('frame');
+  });
+});

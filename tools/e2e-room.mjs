@@ -64,6 +64,31 @@ check('the pads are drawn', !!s.targets.snare && !!s.targets.kick, Object.keys(s
 await wait(600);
 shot('room-02-kit', look);
 
+// a cup on the table (12 cm tall) that the room scan never saw: tap it once (a light), twice (it's an instrument)
+{
+  const k0 = s.debug.kitOrigin;
+  const cup = [k0[0] + 0.28, DESK_Y + 0.12, k0[2] + 0.02];
+  const tapCup = async () => {
+    xr('set-transform', { device: HAND, position: { x: cup[0], y: cup[1] + 0.12, z: cup[2] }, orientation: FLAT });
+    await wait(350);
+    xr('animate-to', { device: HAND, position: { x: cup[0], y: cup[1], z: cup[2] }, duration: 0.18 });
+    await wait(450);
+    xr('set-transform', { device: HAND, position: { x: cup[0], y: cup[1] + 0.15, z: cup[2] }, orientation: FLAT });
+    await wait(300);
+  };
+  const n0 = state().debug.surfaces.filter((x) => x.id.startsWith('t')).length;
+  await tapCup();
+  await tapCup();
+  s = state();
+  const found = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
+  check('seated: a cup tapped twice becomes an instrument (no room scan needed)', found.length > n0 && found.some((x) => x.discovered), JSON.stringify(found.map((x) => `${x.id}:${x.family}`)) + ' tag=' + s.debug.tag);
+  check('and it plays', (s.played.bell ?? 0) + (s.played.tubular ?? 0) + (s.played.block ?? 0) > 0, JSON.stringify(s.played));
+  shot('room-02b-cup', [cup[0], DESK_Y, cup[2]]);
+  xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
+  await wait(300);
+  s = state();
+}
+
 // a real vertical surface: the nearest within reach (a wall or the window), slapped along its normal
 const vert = s.debug.surfaces.filter((x) => x.family && !x.discovered && x.id !== 'kit' && s.targets[`normal-${x.id}`] && Math.abs(s.targets[`normal-${x.id}`][1]) < 0.5).sort((a, b) => a.reach - b.reach);
 check('a wall-like surface within reach of the room', vert.length > 0, vert.map((x) => `${x.id}:${x.label}→${x.family}`).join(' '));
