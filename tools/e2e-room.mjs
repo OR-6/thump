@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * The room is the instrument, in the emulator (living_room: tables, walls, a window, a couch):
- * rest a palm → the kit is placed and the module says "Hit anything"; slap the table → the kit is
+ * rest a palm → the kit is placed and the module says "Hit something"; slap the table → the kit is
  * discovered (pads, edge keys, a name tag, the room map counts it) and a drum sounds; slap a real
  * wall or window along its normal → its instrument is discovered and plays; tap PLAY on the module →
  * a song is cast onto the room; with ?autoplay the song reaches stars.
@@ -19,7 +19,7 @@ s = await until((x) => x.debug.surfaces.length > 0, 5000);
 const fams = s.debug.surfaces.map((x) => `${x.id}:${x.label || '-'}→${x.family}@${x.reach}`);
 console.log(`surfaces: ${fams.join('  ')}`);
 check('the room has surfaces (planes found)', s.debug.planes > 0 && s.debug.surfaces.length > 1, `planes=${s.debug.planes} meshes=${s.debug.meshes}`);
-check('the module says hit anything', s.game.display.line === 'Hit anything', s.game.display.line);
+check('the module says hit something', s.game.display.line === 'Hit something', s.game.display.line);
 const look = [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05];
 shot('room-01-placed', look);
 
@@ -59,7 +59,7 @@ await slapAt([s.targets.table[0] + 0.09, DESK_Y, s.targets.table[2]], [0, 1, 0])
 s = await until((x) => x.game.found.includes('kit'), 3000);
 check('a slap on the table discovers the kit', s.game.found.includes('kit'), JSON.stringify(s.game.found));
 check('and plays a drum', s.debug.hits > before && /kick|snare|hat|tom|rim|keys/.test(s.debug.lastHit?.family ?? ''), JSON.stringify(s.debug.lastHit));
-check('a name tag says what it is', /drum kit/.test(s.debug.tag), s.debug.tag);
+check('a one-word tag says what it is', s.debug.tag === 'Kit', s.debug.tag);
 check('the pads are drawn', !!s.targets.snare && !!s.targets.kick, Object.keys(s.targets).join(','));
 await wait(600);
 shot('room-02-kit', look);

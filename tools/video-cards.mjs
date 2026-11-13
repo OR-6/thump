@@ -45,7 +45,7 @@ export default async function run({ page, frame }) {
     };
     const caps = {
       '01-instrument': 'Every surface is an instrument.',
-      '02-hit': 'Hit anything.',
+      '02-hit': 'Hit something.',
       '03-kit': 'Your table is a drum kit.',
       '04-wall': 'Your wall, a gong. Your window, keys.',
       '05-song': 'Songs cast onto your room.',

@@ -1,141 +1,87 @@
-# Device session: 45 minutes with the Quest 3
+# Device session: 45 minutes at your desk
 
-One session that does the work of two: feel first, tuned in the headset (no URL editing, no headset off), then everything else in order. Read the numbers out as you go; a voice memo is perfect. Each step says which numbers to read and what **good** looks like.
+Everything happens sitting at your own desk. Put a mug, a book and a bottle on it; keep the laptop open if you have one. Read the numbers out as you go (a voice memo is perfect). Each step says what to read and what **good** looks like.
 
 ## Before the clock starts (5 min, not counted)
 
-- Quest 3 charged, lenses clean, **hand tracking on**, controllers put down.
-- **Room scan:** Settings → Physical space → Space setup. Mark the table, the walls, a door and a window (Quest asks you to label them). This is where the game's surfaces come from.
-- Sit at a table near a wall, ideally with a door or window within a step.
-- Quest Browser: **https://or-6.github.io/thump/?debug=1** → **Enter mixed reality** → allow what it asks (it asks once to use your room).
-- Optional, for latency: prop your phone beside you to film in slow motion (240 fps) during step 1c.
+- Quest 3 charged, lenses clean, **hand tracking on**, controllers down.
+- Quest Browser: **https://or-6.github.io/thump/?debug=1** → **Enter mixed reality** → allow what it asks.
+- Optional, for latency: your phone propped up filming in slow motion (240 fps) for step 1c.
 
 ### What you'll be reading
 
-**The debug board** (dark glass behind the module, three lines):
+**The debug board** (dark glass behind the module, three lines): line 1 `fps (min) · hits/s · q · out ms · offset ms`; line 2 `planes · meshes · surfaces · table mm · thresholds`; line 3 the last hit, and for a thing found by touch its height over the desk (`cup, 9 cm over the desk`).
 
-| Line | Example | Means |
-|---|---|---|
-| 1 | `72 fps (min 70) · 3 hits/s · q0 · out 12 ms · offset 0 ms` | frame rate now (lowest), hits in the last second, quality level (0 = full), the browser's audio output latency, the timing correction |
-| 2 | `14 planes · 9 meshes · 12 surfaces · table 4 mm · anchor yes · 0.35/18/12` | what Quest gave the game, how many became instruments, how far the table was nudged to match your hands, whether the kit is anchored, speed/near/stop thresholds |
-| 3 | `last: p4 wall → gong z0 · stop 0.84 m/s · 3.20 m² hol 0 gl 0 soft 0` | the last surface hit, its label, its instrument and note, how the hit was caught (`cross`/`stop`) and how fast, its size, hollowness, glass, softness |
+**The tuning page** (debug only): tap **◀ twice** on the module for Settings, then **◀ twice** again: Speed, Stop, Near, Latch, Re-arm, Timing, Defaults; **− +** change each, live and saved; the second line shows readouts from your last hits.
 
-**The tuning page** (on the module): tap **◀ twice** for Settings, then **◀ twice again** for Tuning. The keys say what they do: **Prev · Done · Next · − · +**. Each change applies at once and is saved. The second line shows readouts from your last hits:
+## 1. The desk (10 min)
 
-| Page | Readout | Lower it when… | Raise it when… |
-|---|---|---|---|
-| Speed (0.35 m/s) | last and softest hit speed | soft taps don't sound | sounds you didn't play |
-| Stop (12 m/s²) | how many recent hits were stops | gentle hits on a pad that seems to float don't sound | resting or leaning makes sounds |
-| Near (18 mm) | how far above the surface the last hit was caught | — | hits just above the surface don't count |
-| Latch (120 ms) | doubles in the recent hits | fast drumming drops hits | one slap plays twice |
-| Re-arm (22 mm) | doubles | fast repeats drop | one slap plays twice |
-| Timing (0 ms) | the offset the songs learned, and fps | — | (set it from step 4 if songs feel early or late) |
-| Defaults | | | tap + to reset everything |
+**1a. First slap.** *Hit something.* Slap the desk. Good: the kit appears (three pads, a row of keys behind), a tag *Kit*, a drum **with** your palm. Read line 2.
 
-Tune, then re-test the same ten hits. Read out the final values at the end.
+**1b. Ten per pad.** Ten medium slaps on each pad, then ten soft fingertip taps on the snare. Read: heard /10, doubles (tuning page, Latch readout), line 3 `m/s`. Good: 10/10, no doubles; soft ≥ 8/10. If not, tune and repeat; say what you changed.
 
-## 1. Feel first: the table (15 min)
+**1c. Latency.** Ten slaps, filmed if you can. Say: *with*, *just after*, *late*. From the film: frames from contact to sound (240 fps: 1 frame ≈ 4 ms). Good: feels *with*; under 50 ms.
 
-**1a. The first slap (1 min).** The module says *Hit anything*. Slap the table.
-- Good: the kit draws itself (black pads with coloured rims, amber bars at the back), a tag "Your table is a drum kit", a drum sound **with** your palm.
-- Read: line 2 (planes, meshes, surfaces, table mm, anchor).
+**1d. Nothing you didn't play.** Rest a hand flat 5 s, lean on the desk, reach across it, type on the keyboard a few seconds. Good: silence, and **no new rings** from typing or reaching.
 
-**1b. Ten per pad (5 min).** Ten medium slaps on each pad (kick, snare, hat), about one per second; then ten soft fingertip taps on the snare.
-- Read after each set: heard /10, doubles (tuning page, Latch readout), line 3 `m/s` and `cross`/`stop` for the last one.
-- Good: medium 10/10 heard, 0 doubles; soft ≥ 8/10; softest speed shown ≥ 0.2 m/s.
-- If not: tune (see the table above), repeat the set, and say what you changed.
+## 2. Your things (10 min)
 
-**1c. Latency (2 min).** Ten slaps, filmed in slow motion if you can.
-- Say: the drum lands **with** your palm, **just after**, or **clearly late**. From the film: frames from palm contact to the sound (at 240 fps, 1 frame ≈ 4 ms). Read `out … ms` on line 1.
-- Good: feels "with"; under 50 ms filmed.
+For each: one hit, then a second.
 
-**1d. Across the table (2 min).** Slap the bare table far left, middle, far right, and the front edge.
-- Good: deep (kick) → snare → bright (hat), a rim click at the edge.
+**2a. The mug.** Good: the first hit rings at once and draws a ring round it at its height with a tag (*Bell* or *Chime*); the second keeps it. Read line 3 (its height). Is the ring where the mug is? Say how far off.
 
-**1e. Nothing you didn't play (2 min).** Rest a hand flat for 5 s; lean on the table; reach across it slowly; pinch near a pad.
-- Good: silence. Any sound: say which, then raise Stop or Speed one step and repeat.
+**2b. The book, the phone.** Good: a knock (*Block*, then *Clave* for a second one).
 
-**1f. Fast (1 min).** Alternate both hands as fast as is comfortable for 5 s.
-- Read: hits/s (line 1), doubles. Good: ≥ 8 hits/s, no missed beats you can hear.
+**2c. The keyboard.** Tap along it left to right a few times. Good: it starts as *Block* and becomes eight *Keys* across it once you've tapped wider than about 25 cm.
 
-**1g. Table bars (2 min).** Tap the amber bars along the back, left to right.
-- Good: a tag "The bars are a balafon" on the first, notes climbing left to right.
+**2d. The bottle, the laptop lid.** Good: *Chime*; *Ride* on the lid (soft taps; never asks for hard).
 
-## 2. Placement on two tables (5 min)
+**2e. Your knees under the desk.** Good: *Congas*, left lower than right. The chair arms: *Cowbell*.
 
-1. On the 2D page (take the headset's browser out of XR with the Meta button, or on your laptop at the same address): Settings → *Start over*. Re-enter.
-2. Rest your palm flat on the table. Good: the kit appears under your hand within 2 s, pads flush with the wood (line 2 `table` within ±5 mm).
-3. Do the same at a second table (kitchen, coffee table). Good: same.
+**2f. A clap.** Good: a clap sound and a flash between your hands.
 
-## 3. The wall (4 min)
+**2g. Change a sound.** Hit the mug, then ▶ on the module a few times. Good: *Bell → Chime → Glock…* and the mug plays each. Pinch and hold the book: it changes too.
 
-Stand or lean to a wall. Ten flat slaps, one per second.
-- Good: the first one draws a ring on the real wall with a tag "Your wall is a gong", a long boom; ≥ 9/10 heard; the ring sits on the wall (not floating or sunk; say how far off).
-- Read: line 3 for one slap (label, `stop`/`cross`, m/s).
+**2h. Ghosts.** Wave your hand around and stop it in the air a few times. Good: at most one sound each, and those rings fade within 20 s.
 
-## 4. The door, the window, the cupboard (6 min)
+## 3. Build a track (10 min)
 
-For each: ten hits (the window: gentle fingertip taps only).
-- Good: the first hit draws its instrument on the real surface (door: marimba bars; window: glockenspiel keys; cupboard: tongue drum), the tag names it, 9/10 heard, bars and keys climb in pitch left to right.
-- Read: line 3 (`hol`, `gl`, `soft`) once per surface. Say anything that should have been an instrument but had no glow.
-- The door is the hero of the video: does it feel like your door became an instrument?
+*Build a track?* ▶. For each part the module says what it wants: hit what should play it (the desk for the kick, the book for the snare, the mug for the hat, something new for the perc, the keyboard or the desk's keys for keys, your knee for the bass), then play two bars along with the lights.
+- Good: each part loops after its two bars and sounds right even when you were sloppy; after six, *Kick Start* runs on its own with rings flashing on your things.
+- Say: was it obvious what to do at each step? How long did it take (target: under 3 minutes)?
 
-## 5. A full song (5 min)
+## 4. Perform (5 min)
 
-Sit back down. With two instruments found, **▶** pulses: tap it. Play *Porch Step* to the end.
-- Read at the end: stars, fps min (line 1), the Timing readout (Settings → Tuning → Timing).
-- Good: the instruments you found but aren't playing join in softly; the last chord crosses the room; then your last four bars play back (the encore). Say if any of it felt like too much.
-- Say: did the light dots tell you what to hit? Did hits feel early, on, or late? If consistently late, set Timing to the learned value + the difference and play again.
-- Good: 2–3 stars on a first play, fps min ≥ 70.
+*Perform?* ▶. Play the lit things. *Fill!* twice: play anything. Then *Hold it*: keep the groove with the lights off.
+- Read: stars, *Tight %*, fps min (line 1).
+- Good: notes arrive on the beat, the fills feel like your moment, *Tight* in the 60s–80s on a first try.
 
-## 6. Headset off and on (2 min)
+## 5. Headset off and on (2 min)
 
-Mid-song, take the headset off for 5 s, then put it back on.
-- Good: the song waited and comes back after two clicks; the kit and instruments are where they were (line 2 `anchor yes`).
-- Then exit XR, re-enter: good: the kit and the instruments you found come back drawn, no slap needed.
+Mid-performance, take it off 5 s and put it back. Good: it waited and comes back with two clicks. Then exit and re-enter: your kept things come back drawn where they were.
 
-## 7. JAM and the phone (6 min)
+## 6. JAM and the phone (5 min)
 
-1. After Porch Step, tap **JAM**. The bandmate plays two bars on one of your instruments, then "Your turn": answer on the lit bars. Two rounds. Good: it gets busier when you answer well.
-   Watch the mallets: do they fly to the right bars and strike on the notes, and rest on the module between phrases?
-2. The module shows a 4-letter code. On your phone open **https://or-6.github.io/thump/**, type the code. Good: the phone shows a bass pad pulsing on the beat; your taps play bass in the headset, in time and in key.
-- Read: how long from a phone tap to the sound (feel: tight / loose / late).
-
-## 7b. The whole room (1 min)
-
-With three or more instruments found, slap the table hard with both hands at the same moment.
-- Good: every instrument you found sounds one chord, each as a ring of light reaches it. Say if it fired when you didn't mean it (a two-hand groove on the kit), or didn't when you did.
-
-## 8. Before you take it off (2 min)
-
-- Swaps: tap ◀ twice on the module, and if it says swaps are new, pinch and hold the door for a second. Good: it changes (marimba → glockenspiel → …) and a second pinch changes it again.
-- Record 10 s with the Quest's own recorder (Meta button → Camera → Record video) while you hit the door, to check the video shows passthrough.
-- Read out the tuning values you ended on (Settings → Tuning, Prev/Next through them).
+After a performance, **JAM**: the two light mallets lift off the module and play on one of your things; answer. Then the 4-letter code on the module: on your phone open **https://or-6.github.io/thump/**, type it; the phone is the bass. Say how tight the phone feels.
 
 ## Write it down
 
 | Step | Result |
 |---|---|
-| 1a planes / meshes / surfaces / table mm / anchor | |
-| 1b medium heard /10 per pad, doubles, soft heard /10, softest m/s | |
-| 1c latency feel; filmed frames; out ms | |
-| 1d left → right → edge | |
-| 1e false hits (rest / lean / reach / pinch) | |
-| 1f hits/s, doubles | |
-| 1g table bars named and climbing? | |
-| 2 placement: time, table mm, second table | |
-| 3 wall: heard /10, ring on the wall?, line 3 | |
-| 4 door / window / cupboard: heard /10, instrument, line 3 | |
-| 5 stars, fps min, timing feel, learned timing | |
-| 6 song waited? kit in place? came back after re-entry? | |
-| 7 jam busier? phone joined? phone latency feel | |
-| 8 swap worked? recording shows passthrough? | |
-| Final tuning: speed / stop / near / latch / re-arm / timing | |
+| 1a planes / meshes / table mm | |
+| 1b heard /10 per pad, doubles, soft /10 | |
+| 1c latency feel, frames, out ms | |
+| 1d false hits, false rings from typing or reaching | |
+| 2a mug: sound, height read, ring position | |
+| 2b–2f book, phone, keyboard → keys?, bottle, lid, knees, chair arms, clap | |
+| 2g change sound worked? | |
+| 2h ghost rings: how many, did they fade? | |
+| 3 build: time, confusions | |
+| 4 stars, Tight %, fps min | |
+| 5 waited? things came back? | |
+| 6 jam, phone | |
+| Final tuning values | |
 
 ## Filming, once the feel is right
 
-The same address without `?debug=1`. Shortcuts:
-- `?unlock=all` opens JAM, the tom, swaps and REC without playing the songs first (for the JAM shot).
-- `?autoplay=1` plays itself (discovers your surfaces and hits every note on time); useful to frame a song shot without hands in view.
-- Settings → *Start over* (2D page) for a clean "Hit anything" opening.
-See `docs/VIDEO.md` for the shot list.
+The same address without `?debug=1`. `?unlock=all` opens JAM, swaps and REC at once. `?autoplay=1` builds and performs by itself (for framing shots). Settings → *Start over* on the 2D page for a clean start. Shot list: `docs/VIDEO.md`.

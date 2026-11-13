@@ -29,17 +29,15 @@ Feature chips (top right): **hand tracking** on shots 1–2, **plane detection**
 
 | # | Time | Shot | How to get it | On-screen text |
 |---|---|---|---|---|
-| 1 | 0:00–0:06 | **Cold open, seated:** a coffee cup on a table. A finger taps it twice; a ring of light, then it rings like a bell | Fresh start; a cup on the table | "Tap your cup twice." |
-| 2 | 0:06–0:14 | Three cups of different heights tapped in turn: three different notes, a little tune | Keep playing | "Taller cups ring lower." |
-| 3 | 0:14–0:22 | A slap on the table: the kit grows out from under the palm, each pad sounding as it appears; then a groove | Same seat | "The table is a drum kit." |
-| 4 | 0:22–0:28 | A book knocks like wood; hands drum on knees under the table: congas | Same seat | "Your knees are congas." |
-| 5 | 0:28–0:34 | **Both hands slam the table:** every instrument found plays one chord, light running across them | Three or more found | (no text) |
-| 6 | 0:34–1:02 | *Porch Step*: notes fly to the cups and the bars a beat early; the other instruments join in quietly; the last chord; then the encore | Tap ▶ on the module | "Songs for whatever's on your table." |
-| 7 | 1:02–1:18 | **JAM:** the bandmate's mallets lift off the module, play on your cups, and you answer | After the first song, tap JAM (or `?unlock=all`) | "Someone to play with." |
-| 8 | 1:18–1:28 | Pinch and hold the bars: balafon becomes a harp | After Porch Step | "Change any sound." |
-| 9 | 1:28–1:44 | Stand up: the wall booms like a gong, the door is a marimba, the window a glockenspiel | Needs the room scan | "Get up and the room joins in." |
-| 10 | 1:44–1:56 | An airplane-style tray: a cup and a phone, played seated in a tight space | Any small table | "Anywhere you can sit." |
-| 11 | 1:56–2:06 | The link | Title card | "or-6.github.io/thump" |
+| 1 | 0:00–0:05 | **A mug gets its ring:** a real desk, a finger taps the mug, a ring of light round it, a bell | Fresh start (Settings → Start over), a mug on the desk | "Hit your mug." |
+| 2 | 0:05–0:12 | **The machine running:** the desk playing a track by itself, rings flashing on the mug, the book, the keyboard | Build Kick Start first, then just watch | "Your desk is a drum machine." |
+| 3 | 0:12–0:24 | Discovery in a few hits: the desk is a kit, the book knocks, the keyboard becomes keys, the knee is a conga | Fresh start | "Everything in reach plays." |
+| 4 | 0:24–0:30 | Change a sound: hit the mug, ▶ ▶ on the module: bell, chime, glock | Any time | "Pick its sound." |
+| 5 | 0:30–1:00 | **Build:** *Hit what plays the kick*; the desk; two bars along with the lights; the snare on the book, the hat on the mug… | ▶ on *Build a track?* | "Build a track out of your stuff." |
+| 6 | 1:00–1:25 | **Perform:** notes fly to the mug and the book; *Fill!*; the lights go off, *Hold it*; *Tight 84%* | ▶ on *Perform?* | "Then play it live." |
+| 7 | 1:25–1:40 | JAM: the bandmate's mallets lift off the module and play on the mug; you answer | After the first performance (or `?unlock=all`) | "Someone to play with." |
+| 8 | 1:40–1:52 | An airplane-style tray: a cup, a phone, knees; the same game in a tight seat | Any small table | "Anywhere you can sit." |
+| 9 | 1:52–2:00 | The link | Title card | "or-6.github.io/thump" |
 
 Record 2–3 takes of each. Keep your head still during the action; move only between shots.
 

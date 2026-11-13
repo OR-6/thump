@@ -19,7 +19,7 @@ writeFileSync('tools/.probe.mjs', `export default async function run({ page, fra
 }); }\n`);
 const r = run('tools/.probe.mjs');
 check('the page is shown outside the headset', r.shown);
-check('the setlist and the pitch: sit at a table, hit it', /PORCH STEP|Porch Step/i.test(r.text) && /Sit at a table/.test(r.text), r.text.slice(0, 160));
+check('one line: your desk is a drum machine; pads to try', /YOUR DESK IS A DRUM MACHINE/i.test(r.text) && /MUG/.test(r.text), r.text.slice(0, 160));
 check('no felt-era copy left', !/felt|crowd|plush|loom/i.test(r.text), r.text.match(/felt|crowd|plush|loom/i)?.[0] ?? '');
 check('Enter mixed reality is there', r.enter);
 check('a setting writes through', r.hc);

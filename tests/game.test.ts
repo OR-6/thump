@@ -46,16 +46,17 @@ function play(g: Game, t0: number, seconds: number, late = 0.01, stopAt?: (g: Ga
 }
 
 describe('the game', () => {
-  it('starts with "Hit anything", and offers a song once two instruments are found', () => {
+  it('starts with "Hit something", and offers to build a track once two things are found', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
-    expect(g.display.line).toBe('Hit anything');
+    expect(g.display.line).toBe('Hit something');
     g.discovered('kit', 'table', 1);
     expect(g.display.sub).toMatch(/drum kit/);
     expect(g.display.pulse).toBeNull();
     g.discovered('marimba', 'door', 2);
     g.tick(2.1);
     expect(g.display.pulse).toBe('play');
+    expect(g.display.line).toBe('Build a track?');
     expect(g.display.found).toEqual(['kit', 'marimba']);
   });
 
@@ -92,7 +93,7 @@ describe('the game', () => {
     // ▶: perform
     g.key('play');
     expect(g.mode).toBe('count');
-    expect(g.display.sub).toBe('Play the lit things');
+    expect(g.display.sub).toBe('Hit what lights up');
     let sawFill = false;
     let sawHold = false;
     const before = voiced.length;
@@ -306,7 +307,7 @@ describe('the game', () => {
     g.start(0);
     g.tick(1);
     g.key('loop');
-    expect(g.display.sub).toMatch(/Kitchen Clock/);
+    expect(g.display.sub).toMatch(/Perform a track first/);
     p.unlocks.push('loops');
     g.tick(5);
     g.key('loop');

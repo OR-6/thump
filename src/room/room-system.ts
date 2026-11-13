@@ -60,7 +60,7 @@ import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './
 import { Overlay, Sheen } from './overlay.js';
 import { asLight } from '../art/light.js';
 import { Motes } from './motes.js';
-import { FAMILIES, NEIGHBOURS, nextSwap, orchestrate, withArticle, type Family } from './classify.js';
+import { FAMILIES, NEIGHBOURS, nextSwap, orchestrate, type Family } from './classify.js';
 import { retune, zoneAt, zoneForDegree, type Zone } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
 import { PhoneLink } from './phone-link.js';
@@ -663,7 +663,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const q = this.kit.keyZones[3];
     this.tmp.set(q ? q.x : 0, 0.07, q ? -q.z : -0.16);
     this.kit.root.localToWorld(this.tmp);
-    this.tag.show(`The bars are ${withArticle(this.deskFamily)}`, FAMILIES[this.deskFamily].color, this.tmp, this.head);
+    this.tag.show(cap(FAMILIES[this.deskFamily].name), FAMILIES[this.deskFamily].color, this.tmp, this.head);
   }
 
   /** The surface plays the next instrument that suits it; the room map and the saved room follow. */
@@ -707,13 +707,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (s) {
       this.tmp.set(s.anchor.x, 0.06, -s.anchor.z).applyMatrix4(s.world);
       this.tmp.y = Math.min(this.tmp.y, this.head.y);
-      this.tag.show('Pinch and hold it for a new sound', FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
+      this.tag.show('Pinch and hold: new sound', FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
       return;
     }
     if (!this.kit.keys.group.visible) return;
     const q = this.kit.keyZones[3];
     this.tmp.set(q ? q.x : 0, 0.07, q ? -q.z : -0.16).applyMatrix4(this.kit.root.matrixWorld);
-    this.tag.show('Pinch and hold these for a new sound', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
+    this.tag.show('Pinch and hold: new sound', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
     this.kit.keys.sweep();
   }
 
@@ -940,10 +940,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.updateFlash(dt);
     this.updateMallets();
     // two found and a quiet spell: if there's a door or a window beyond reach, say so now (not only after a song)
-    if (!this.farTold && this.game.mode === 'discover' && this.game.found.length >= 2 && this.clock.t - this.lastFoundT > 8 && this.clock.t > this.farCheckAt) {
-      this.farCheckAt = this.clock.t + 3;
-      this.afterFirstSong();
-    }
+
     // three found and a quiet spell: the one thing no single hit shows you
     if (!this.tuttiTold && this.game.mode === 'discover' && this.game.found.length >= 2 && this.clock.t - this.lastFoundT > 10 && this.clock.t - this.lastTutti > 12 && !this.tag.shownText) {
       this.tuttiTold = true;
@@ -1773,7 +1770,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.later(this.clock.t + 5, () => {
       if (this.touched.length || this.settings.noWords || this.game.mode !== 'discover' || this.tag.shownText) return;
       this.tmp.set(0.22, 0.09, 0.05).applyMatrix4(this.kit.root.matrixWorld);
-      this.tag.show('Tap something on it. Twice.', 0xfff2dc, this.tmp, this.head, 5);
+      this.tag.show("Now hit what's on it", 0xfff2dc, this.tmp, this.head, 5);
     });
     const fx = this.hitAt.x;
     const fz = this.hitAt.z;
@@ -1797,7 +1794,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** A surface's first hit: its instrument draws itself in, named for two seconds; the room map fills. */
   private lastFoundT = 0;
-  private farCheckAt = 0;
   private discover(s: Surface): void {
     s.discovered = true;
     this.lastFoundT = this.clock.t;
@@ -1837,9 +1833,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (z && FAMILIES[v.family].melodic) audio.modal(v.family, z.midi + 7, 0.4, this.panOf(this.tmp.set(z.x, 0, -z.z).applyMatrix4(s.world)), audio.now() + 0.25, v.size, s.id);
     }
     if (!this.settings.noWords && !this.restoring) {
-      const where = surfaceName(s);
-      const subject = where === 'Floor' ? 'The floor' : where === 'Top' ? 'This' : `Your ${where.toLowerCase()}`;
-      const name = s.source === 'touch' ? (soundById(s.sound)?.name ?? FAMILIES[v.family].name) : `${subject} is ${withArticle(v.family)}${isGlass(s) ? '. Gently.' : ''}`;
+      // one word, the sound's name (a desk is a Kit; glass says to go gently)
+      const name = s.source === 'touch' ? (soundById(s.sound)?.name ?? cap(FAMILIES[v.family].name)) : s === this.kitSurface ? 'Kit' : `${cap(FAMILIES[v.family].name)}${isGlass(s) ? '. Gently' : ''}`;
       // the tag never covers what it names: above an instrument on a wall, over one on a top, facing you
       if (s === this.kitSurface) this.tmp.set(0, 0.1, 0.05).applyMatrix4(s.world);
       else {
@@ -2260,7 +2255,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // the first words, at hand height over the table (the module says it too)
       if (!this.settings.noWords && !this.kitSurface.discovered) {
         this.tmp.set(0, 0.12, 0.02).applyMatrix4(root.matrixWorld);
-        this.tag.show('Hit the table', 0xff5a3c, this.tmp, this.head, 6);
+        this.tag.show('Hit the desk', 0xff5a3c, this.tmp, this.head, 6);
       }
     }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();
@@ -2578,6 +2573,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     out.head = this.head.toArray().map(r4);
     return out;
   }
+}
+
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 const GUARD_NAMES = ['RoomSystem.hands', 'RoomSystem.swaps', 'RoomSystem.game'];

@@ -115,7 +115,7 @@ export class Game {
   readonly graded = { perfect: 0, good: 0, extra: 0 };
   readonly offsets: number[] = [];
   /** What the module shows now. */
-  readonly display: Display = { line: 'Hit anything', sub: 'Start with the table', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
+  readonly display: Display = { line: 'Hit something', sub: 'The desk, a mug, anything', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   /** The settings page is up on the module (tap ◀ twice; ▶ closes it). */
   settingsOpen = false;
   /** A pad was just hit: its sound shows on the module and ◀ ▶ change it, for a few seconds. */
@@ -383,7 +383,7 @@ export class Game {
     d.pulse = null;
     if (b.phase === 'run') {
       d.line = b.track.name;
-      d.sub = 'Your desk is playing it';
+      d.sub = 'Perform? Tap ▶';
       d.pulse = 'play';
       return;
     }
@@ -521,7 +521,7 @@ export class Game {
     if (!pr.days.includes(today)) pr.days.push(today);
     pr.introDone = true;
     this.newUnlocks = [];
-    for (const u of ['tom', 'jam', 'swaps'] as Unlock[]) if (!(pr.unlocks as string[]).includes(u)) {
+    for (const u of ['tom', 'jam', 'swaps', 'loops'] as Unlock[]) if (!(pr.unlocks as string[]).includes(u)) {
       (pr.unlocks as string[]).push(u);
       this.newUnlocks.push(u);
     }
@@ -651,7 +651,7 @@ export class Game {
     if (k === 'loop') {
       if (this.mode === 'play' || this.mode === 'count' || this.mode === 'jam') return;
       if (!(this.progress.unlocks as string[]).includes('loops')) {
-        this.display.sub = 'After Kitchen Clock';
+        this.display.sub = 'Perform a track first';
         return;
       }
       if (twice) {
@@ -668,7 +668,7 @@ export class Game {
     }
     if (k === 'jam') {
       if (this.mode === 'jam') this.endJam();
-      else if (!(this.progress.unlocks as string[]).includes('jam')) this.display.sub = 'After Porch Step';
+      else if (!(this.progress.unlocks as string[]).includes('jam')) this.display.sub = 'Perform a track first';
       else if (this.mode !== 'play' && this.mode !== 'count') this.beginJam();
     }
   }
@@ -1195,8 +1195,8 @@ export class Game {
     switch (this.mode) {
       case 'discover':
         if (!this.offered) {
-          d.line = 'Hit anything';
-          d.sub = this.lastFound ? found(this.lastFound) : 'Start with the table';
+          d.line = 'Hit something';
+          d.sub = this.lastFound ? found(this.lastFound) : 'The desk, a mug, anything';
         } else {
           d.line = sel.name;
           const need = wants(sel.parts);
@@ -1218,7 +1218,7 @@ export class Game {
       case 'count':
         if (this.perf) {
           d.line = this.song!.name;
-          d.sub = 'Play the lit things';
+          d.sub = 'Hit what lights up';
           d.count = Math.max(1, Math.min(4, Math.ceil(-this.clock.beatAt(this.t))));
           break;
         }
@@ -1249,7 +1249,7 @@ export class Game {
         const s = this.last!;
         d.line = this.lastTight >= 0 ? `Tight ${this.lastTight}%` : `${s.perfect + s.good} of ${s.total}`;
         d.stars = s.stars;
-        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: a tom, and JAM' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : s.stars < 3 ? 'Again? Tap ▶' : `${s.perfect + s.good} of ${s.total}`;
+        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: JAM and REC' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : s.stars < 3 ? 'Again? Tap ▶' : `${s.perfect + s.good} of ${s.total}`;
         break;
       }
     }

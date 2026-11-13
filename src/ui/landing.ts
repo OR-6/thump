@@ -3,7 +3,8 @@
  * settings folded away (DESIGN.md §3.15). On a laptop or phone it says how to play on a Quest instead.
  */
 import { VisibilityState, type World } from '@iwsdk/core';
-import { audio } from '../audio/engine.js';
+import { audio, type Voice } from '../audio/engine.js';
+import { soundById } from '../audio/bank.js';
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { loadProgress, saveProgress, freshProgress } from '../persistence/progress.js';
 import { mountPhoneJam } from '../jam/phone.js';
@@ -14,38 +15,40 @@ export function mountLanding(world: World): void {
   const el = document.createElement('div');
   el.id = 'landing';
   el.innerHTML = `
-    <main class="stage">
-      <article class="setlist" aria-label="Thump">
-        <span class="gaffer tl"></span><span class="gaffer tr"></span><span class="gaffer bl"></span>
-        <h1>THUMP</h1>
-        <p class="under">play your room</p>
-        <ol class="songs">
-          <li>Porch Step</li>
-          <li>Kitchen Clock</li>
-          <li>Night Bus</li>
-          <li>Big Room</li>
-          <li>Open House</li>
-        </ol>
-        <p class="encore">encore: whatever you just played</p>
-        <ul class="lineup">
-          <li><b>drums</b> the table</li>
-          <li><b>bells</b> your cups <small>(the tall one's lower)</small></li>
-          <li><b>wood block</b> a book</li>
-          <li><b>congas</b> your knees</li>
-          <li><b>marimba</b> the door, if you stand up</li>
-        </ul>
-      </article>
-      <section class="notes">
-        <p class="what">A music game for Meta Quest 3. Sit at a table and put the headset on. Hit the table and it's a drum kit. Tap your cup twice and it rings. Get up and the walls, the door and the window join in.</p>
+    <main class="rig">
+      <section class="sampler" aria-label="Thump">
+        <header class="top">
+          <span class="brand">THUMP</span>
+          <span class="model">DESK SAMPLER · 29 SOUNDS</span>
+        </header>
+        <div class="lcd" aria-live="polite"><span class="lcd-main">YOUR DESK IS A DRUM MACHINE</span><span class="lcd-sub">tap a pad</span></div>
+        <div class="pads" role="group" aria-label="Try the sounds">
+          <button class="pad" data-s="kick" style="--c:#ff5a3c"><i>DESK</i></button>
+          <button class="pad" data-s="snare" style="--c:#f4f1ea"><i>DESK, MIDDLE</i></button>
+          <button class="pad" data-s="hat" style="--c:#2ad1d1"><i>DESK, RIGHT</i></button>
+          <button class="pad" data-s="bell" style="--c:#9ef0e0"><i>MUG</i></button>
+          <button class="pad" data-s="block" style="--c:#ff8a3c"><i>BOOK</i></button>
+          <button class="pad" data-s="chime" style="--c:#b8c4ff"><i>BOTTLE</i></button>
+          <button class="pad" data-s="keys" style="--c:#ffa630"><i>KEYBOARD</i></button>
+          <button class="pad" data-s="ride" style="--c:#d6e2ea"><i>LAPTOP LID</i></button>
+          <button class="pad" data-s="congas" style="--c:#ff7aa2"><i>KNEE</i></button>
+          <button class="pad" data-s="cowbell" style="--c:#e0b85a"><i>CHAIR ARM</i></button>
+          <button class="pad" data-s="clave" style="--c:#d99a5b"><i>PHONE</i></button>
+          <button class="pad" data-s="clap" style="--c:#ff9e7a"><i>HANDS</i></button>
+        </div>
         <div class="go">
-          <button id="enter-xr" class="tape-btn" type="button">Enter mixed reality</button>
+          <button id="enter-xr" class="power" type="button"><span class="led"></span>Enter mixed reality</button>
           <p class="xr-fail" role="alert" hidden>That didn't start. Allow what Quest asks for, then try again.</p>
-          <p class="note">Hands, not controllers. Quest asks once to use your room.</p>
         </div>
         <div class="nohead" id="xr-unsupported" hidden>
-          <p class="quest">This one needs a Quest. In the headset's browser, go to <span class="url">${LIVE_URL}</span></p>
-          <button type="button" id="copy-link" class="tape-btn small">Copy the link</button>
+          <p class="quest">The real one runs on a Meta Quest 3. In the headset's browser, go to <span class="url">${LIVE_URL}</span></p>
+          <button type="button" id="copy-link" class="power small">Copy the link</button>
         </div>
+      </section>
+      <section class="manual">
+        <p>Sit at your desk with a Quest 3 on. Hit the desk and it's a kit. Hit your mug and it rings. Every thing in reach plays the first time you hit it, and you pick its sound.</p>
+        <p>Then build a track on your stuff, one part at a time, and play it live.</p>
+        <p class="note">Hands only. Quest asks once to use your room.</p>
         <details class="prep">
           <summary>Settings</summary>
           <div class="opts">
@@ -53,16 +56,16 @@ export function mountLanding(world: World): void {
             <label class="row">Lead hand
               <select data-k="hand"><option value="auto">Whichever you rest first</option><option value="right">Right</option><option value="left">Left</option></select>
             </label>
-            <label class="row">Song speed <input type="range" min="0.6" max="1" step="0.1" data-k="tempo" /> <output id="tempo-out"></output></label>
+            <label class="row">Speed <input type="range" min="0.6" max="1" step="0.1" data-k="tempo" /> <output id="tempo-out"></output></label>
             <label><input type="checkbox" data-k="highContrast" /> High contrast</label>
             <label><input type="checkbox" data-k="calmMotion" /> Less movement</label>
             <label><input type="checkbox" data-k="noWords" /> No words in the headset</label>
-            <label><input type="checkbox" data-k="band" /> Piano and bass behind the songs</label>
-            <label><input type="checkbox" data-k="placeFresh" /> Find the table again next time</label>
+            <label><input type="checkbox" data-k="band" /> Piano and bass under tracks</label>
+            <label><input type="checkbox" data-k="placeFresh" /> Find the desk again next time</label>
             <p class="small-print">Timing: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
           </div>
         </details>
-        <footer class="foot">The instruments are real recordings, public domain, from the Versilian Community Sample Library. The code is MIT.</footer>
+        <footer class="foot">Sounds: Versilian Community Sample Library (public domain). Code: MIT.</footer>
       </section>
     </main>`;
   document.body.appendChild(el);
@@ -87,6 +90,24 @@ export function mountLanding(world: World): void {
     el.querySelector<HTMLElement>('.go')!.hidden = true;
     el.querySelector<HTMLElement>('#xr-unsupported')!.hidden = false;
   }
+  // the pads on the page play the real sounds (the same clips the headset uses)
+  const lcdMain = el.querySelector<HTMLElement>('.lcd-main')!;
+  const lcdSub = el.querySelector<HTMLElement>('.lcd-sub')!;
+  for (const pad of el.querySelectorAll<HTMLButtonElement>('.pad')) {
+    pad.addEventListener('pointerdown', () => {
+      audio.resume();
+      const snd = soundById(pad.dataset.s);
+      if (!snd) return;
+      if (snd.drum) audio.drum(snd.drum as Voice, 0.85, 0);
+      else if (snd.family) audio.modal(snd.family, snd.pitched ? 67 : 60, 0.85, 0, 0, 0.5, 'page');
+      pad.classList.remove('hit');
+      void pad.offsetWidth;
+      pad.classList.add('hit');
+      lcdMain.textContent = `${pad.querySelector('i')!.textContent} · ${snd.name.toUpperCase()}`;
+      lcdSub.textContent = 'that, on your real desk';
+    });
+  }
+
   // a friend's phone joins the headset's jam (shown where there's no headset)
   mountPhoneJam(el.querySelector<HTMLElement>('#xr-unsupported')!);
   const copyBtn = el.querySelector<HTMLButtonElement>('#copy-link')!;

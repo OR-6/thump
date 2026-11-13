@@ -1,29 +1,28 @@
-# Thump: play your room
+# Thump: your desk is a drum machine
 
 [![CI](https://github.com/OR-6/thump/actions/workflows/ci.yml/badge.svg)](https://github.com/OR-6/thump/actions/workflows/ci.yml)
 
-A music game for Meta Quest 3 that you play by hitting real things. Sit at a table and put the headset on. The table is a drum kit. Tap your cup twice and it rings like a bell, a taller cup lower. A book is a wood block, your knees are congas. If you stand up, the walls, the door and the window play too. Design notes are in [docs/DESIGN.md](docs/DESIGN.md).
+A music game for Meta Quest 3. You sit at your desk and hit your own stuff. The desk is a kit. Your mug rings, a book knocks, your keyboard is a row of keys, your knees are congas. Every thing in reach plays the first time you hit it, and you choose what it sounds like. Then you build a track out of it and play it live. Design notes: [docs/GAME.md](docs/GAME.md).
 
-**Play:** open **https://or-6.github.io/thump/** in the Quest browser and press *Enter mixed reality*. Hands only, nothing to install.
+**Play:** open **https://or-6.github.io/thump/** in the Quest browser and press *Enter mixed reality*. Hands only.
 
-## Sitting down with it
+## At your desk
 
-1. Rest a palm on the table. A small black drum module turns up at the back of it and says *Hit anything*.
-2. Slap the table. A kit grows out from under your hand: deep on the left, bright on the right, a rim click at the edge, and a row of bars behind the pads.
-3. Tap something on the table twice: a cup, a glass, a book, a phone. The first tap leaves a small ring of light where your hand stopped. The second makes it an instrument. Cups ring as bells and each one is a different note; flat things knock like wood. Drum on your knees under the table and they become congas.
-4. When ▶ on the module pulses, tap it for a song. Notes fly to the pad, bar or cup they belong to and light it a beat early. Everything else you found plays along quietly, and the last chord is the whole lot at once. Then your last four bars play back to you.
-5. After the first song, JAM: two light mallets get up off the module and play a phrase on one of your instruments, and you play it back. A friend can join from their phone as the bass (beta).
-6. Pinch and hold anything you found to change its sound: the bars become a marimba, a xylophone, a harp; a cup becomes chimes. It's remembered.
-7. Slam both hands on the table at once and every instrument answers.
-8. Stand up and hit the wall, the door, the window. They join the rest.
+1. Rest a palm on the desk. A small black module turns up at the back: *Hit something*.
+2. Slap the desk: it's a kit (left kick, middle snare, right hat, the edge a rim), with a row of keys behind.
+3. Hit anything else: the mug, a book, a bottle, the laptop lid, your knee. It plays at once and a ring of light goes round it. Hit it again and it's kept. The module shows its sound; ◀ ▶ change it (29 sounds, any on any thing), or pinch and hold it.
+4. *Build a track?* ▶. The module asks for each part (kick, snare, hat, perc, keys, bass); hit what should play it, then play two bars along with the lights. It snaps to the beat, fills in what you missed, and loops. Six parts later your desk plays the track by itself.
+5. *Perform?* ▶. The machine plays underneath and you play the kit parts on your things. Two fills where anything counts, then four bars with no lights. Stars and *Tight %*. Then your last bars play back.
+6. After that: JAM (a rule-based bandmate with two light mallets trades phrases on your stuff), REC loops, slam both hands down for everything at once, clap.
+7. Stand up and walls, doors and windows play too (with Quest's room scan). Nothing needs them.
 
-Tap ◀ twice on the module for settings (slower songs, one hand, high contrast, no words). Tap ▶ twice to stop a song.
+Tap ◀ twice on the module for settings (slower, one hand, high contrast, no words). Tap ▶ twice to stop.
 
 ## How it works
 
 - **Surfaces** (`src/room/`): detected planes and room-scan volumes become surfaces with their own frame; their measured shape (orientation, size, height, a pane or door set into a wall, softness from how far your hand sinks in) picks an instrument and its register (`classify.ts`, unit-tested). Quest's room-scan labels fill in what geometry can't measure (glass, a hollow door).
 - **Strikes** (`src/kit/strike.ts`, unit-tested on synthetic hand paths): per surface, in that surface's frame, the hand's lowest point crossing it fast, or stopping sharply within 1.8 cm of it (tunable in the headset). Survives tracking dropouts, repeated samples and frame hitches; rebounds, hovering, resting and reaching never play.
-- **An orchestra, not a band** (`src/room/classify.ts`): twenty instruments. Walls are gongs, timpani, frame drums or a bass drum; doors marimbas or xylophones; windows a glockenspiel or a harp; cupboards a kalimba or a slit drum; other tables congas; a sofa a shaker or a tambourine. Screens, pictures and lamps are never instruments. Surfaces of the same kind get different instruments in turn, so a room with four walls has four. Pinch and hold any of them (the desk's bars too) to change what it plays; it's saved with the room.
+- **Things found by touch** (`src/room/touch.ts`): a hand that comes in fast and stops dead where nothing is known has hit something. It plays at once; its height over the desk and the way the hand came in pick the sound (low and flat a block, a mug a bell, a bottle a chime, a lid a ride, under the desk congas); a second hit keeps it, and it grows to the shape you hit. Any sound on any thing (`src/audio/bank.ts`). Walls, doors and windows from Quest's room scan play too, as a bonus.
 - **Sound** (`src/audio/`): recorded instruments and a piano for the band, 186 short clips from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL) (CC0), chosen by how hard you hit (two or three loudness layers), re-pitched to the note, with a little variation per hit so no two sound alike, through a room reverb and a soft limiter. Melodic surfaces play in the song's key; bigger surfaces ring lower. A modal synthesiser (decaying partials struck by a noise burst) stands in while the clips load.
 - **Songs** (`src/songs/`): written in parts (drums, melody, bass, chime, gong), cast onto the instruments your room has, with the table's edge keys as the fallback.
 
