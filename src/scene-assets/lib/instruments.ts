@@ -6,7 +6,7 @@
  * when strummed. A handpan: a nitrided steel shell with its tone fields and raised ding. A marimba: rosewood bars
  * that bounce, on a frame. Deterministic: the same in the app and the editor.
  */
-import { BoxGeometry, CircleGeometry, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
+import { BoxGeometry, CircleGeometry, DoubleSide, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
 import { KEYBOARD, PIANO_CHORD, pianoBlacks } from '../../kit/shelf.js';
 import { fineNormal, woodGrain } from './surfaces.js';
@@ -302,7 +302,8 @@ export class HandpanModel implements DeskModel {
   private fields: Mesh[] = [];
   private spring = new Springs(10);
   private shell: Mesh | null = null;
-  private readonly steel = mat('Steel', 0x4a3a2c, 0.32, 0.85);
+  // (both sides drawn: the lathe's faces turn inward, and from above the shell vanished)
+  private readonly steel = new MeshStandardMaterial({ name: 'Steel', color: 0x4a3a2c, roughness: 0.32, metalness: 0.85, side: DoubleSide });
   private readonly field = mat('Field', 0x5c4a38, 0.22, 0.9);
   private glow: number[] = [];
 
