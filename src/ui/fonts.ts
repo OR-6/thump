@@ -3,7 +3,8 @@
  * that reads like a drum module's legend and stays legible small and far. Canvas text is drawn once the faces
  * have loaded; until then the system face stands in, and anything already drawn is redrawn when they arrive.
  */
-export const FONT = "'Barlow Condensed', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+/** The panel's face: a clean grotesque (the system's: Roboto on Quest), never condensed. */
+export const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 /** Marker on tape: what musicians write on their gear and their setlists (Permanent Marker, Apache 2.0). */
 export const MARKER = "'Permanent Marker', 'Barlow Condensed', system-ui, sans-serif";
 

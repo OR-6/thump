@@ -7,7 +7,8 @@
  */
 import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
-import { FONT, MARKER, whenFonts } from './fonts.js';
+import { contactShadow } from '../art/lighting.js';
+import { FONT, whenFonts } from './fonts.js';
 import { star, type Display } from './module.js';
 import type { Item, Page } from './menu.js';
 import { ICON } from '../stand/stand.js';
@@ -20,7 +21,9 @@ const CH = 800;
 const MAX_ITEMS = 16;
 
 const INK = '#f2efe6';
-const SOFT = '#bdb8ad';
+const SOFT = '#b9b9bd';
+/** The panel's one accent. */
+const ACCENT = '#ff4b33';
 const DIMI = '#6a6862';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
@@ -143,6 +146,7 @@ export class Panel {
     this.root.add(this.bar, this.comboMesh, this.countMesh);
     this.root.position.set(0, PANEL.y, PANEL.z);
     this.root.rotation.x = -PANEL.lean;
+    this.fitStand();
     whenFonts(() => {
       this.sig = '';
       this.page = null;
@@ -158,6 +162,42 @@ export class Panel {
     // (higher rather than nearer: its bottom edge stays clear of hands at the back of the instrument)
     this.root.position.set(0, on ? 0.26 : PANEL.y, on ? -0.18 : PANEL.z);
     this.root.rotation.x = -(on ? 0.3 : PANEL.lean);
+    this.fitStand();
+  }
+
+  /**
+   * The display stands on the desk (it is a thing on the desk, not a slab in the air): a foot, two slim uprights up
+   * to its bottom edge, a kickstand behind. In the panel's parent's frame (kit-local), refitted when the pose changes.
+   */
+  readonly stand = new Group();
+  private standParts: Mesh[] = [];
+  private fitStand(): void {
+    const lean = -this.root.rotation.x;
+    const P = this.root.position;
+    const by = P.y - (PANEL.h / 2) * Math.cos(lean);
+    const bz = P.z + (PANEL.h / 2) * Math.sin(lean);
+    if (!this.standParts.length) {
+      const metal = new MeshStandardMaterial({ name: 'Anodised', color: 0x2a2b30, metalness: 0.85, roughness: 0.32 });
+      const box = new BoxGeometry(1, 1, 1);
+      for (let i = 0; i < 4; i++) this.standParts.push(new Mesh(box, metal));
+      this.stand.name = 'PanelStand';
+      this.stand.add(...this.standParts, contactShadow(PANEL.w * 1.05, 0.09, 0.7));
+    }
+    const [foot, l, r, kick] = this.standParts;
+    foot.scale.set(PANEL.w * 0.86, 0.006, 0.032);
+    foot.position.set(0, 0.003, bz - 0.006);
+    for (const [m, x] of [[l, -PANEL.w / 2 + 0.035], [r, PANEL.w / 2 - 0.035]] as const) {
+      m.scale.set(0.007, by - 0.004, 0.007);
+      m.position.set(x, (by + 0.004) / 2, bz);
+    }
+    // the kickstand: from the middle of the back of the display down to the desk behind it
+    const top = { y: P.y, z: P.z - 0.004 * Math.cos(lean) - 0.003 };
+    const footZ = top.z - top.y * 0.5;
+    const len = Math.hypot(top.y, top.z - footZ);
+    kick.scale.set(PANEL.w * 0.4, 0.005, len);
+    kick.position.set(0, top.y / 2, (top.z + footZ) / 2);
+    kick.rotation.x = Math.atan2(top.y, top.z - footZ);
+    (this.stand.children[4] as Mesh).position.set(0, 0.0006, bz - 0.02);
   }
 
   /** The item a press landed on (by its index in the page). */
@@ -299,7 +339,6 @@ export class Panel {
     const right = p.items.some((i) => i.y < 120 && i.x > CW / 2) ? CW - 280 : CW - 40;
     g.fillStyle = INK;
     fit(g, p.title, '700', p.id === 'main' ? 76 : 66, 36, right - tx);
-    if (p.id === 'main') g.font = `76px ${MARKER}`;
     g.fillText(p.title, tx, 84);
     if (p.line) {
       g.fillStyle = SOFT;
@@ -307,7 +346,7 @@ export class Panel {
       g.fillText(p.line, tx, 128);
     }
     if (d.code && p.id !== 'band') {
-      g.fillStyle = '#7fe39a';
+      g.fillStyle = INK;
       g.font = `600 30px ${FONT}`;
       const t = `BAND ${d.code}`;
       g.fillText(t, CW - 40 - g.measureText(t).width, 128);
@@ -346,7 +385,7 @@ export class Panel {
     if (d.meter >= 0) {
       g.fillStyle = '#2a2927';
       g.fillRect(X, 520, R - X, 10);
-      g.fillStyle = '#7fe39a';
+      g.fillStyle = INK;
       g.fillRect(X, 520, (R - X) * d.meter, 10);
     }
   }
@@ -365,7 +404,7 @@ export class Panel {
   private drawCombo(n: number): void {
     const g = this.comboCanvas.getContext('2d')!;
     g.clearRect(0, 0, 512, 256);
-    g.fillStyle = '#ffd34d';
+    g.fillStyle = ACCENT;
     g.font = `700 150px ${FONT}`;
     g.fillText(String(n), 8, 150);
     g.fillStyle = SOFT;
@@ -390,7 +429,7 @@ export class Panel {
     g.fillText(parts, x, 452);
     if (b.better) {
       rounded(g, x + w + 30, 408, 200, 60, 30);
-      g.fillStyle = '#ffd34d';
+      g.fillStyle = ACCENT;
       g.fill();
       g.fillStyle = '#16140f';
       g.font = `700 32px ${FONT}`;
@@ -399,79 +438,39 @@ export class Panel {
   }
 
   /**
-   * A song on the setlist: a strip of tape, each a hair off level, the name in marker, a pencilled line after it,
-   * stars inked on. The one picked is ringed in red marker; a locked one is a paler strip.
+   * A song on the setlist: its name in the grotesque, white, the line after it in grey, stars; the one picked has the
+   * accent bar down its left and a lighter row; a locked one is dim.
    */
   private drawRow(g: CanvasRenderingContext2D, it: Item): void {
-    const tilt = (((it.y / 110) | 0) % 2 ? 1 : -1) * 0.005;
-    g.save();
-    g.translate(it.x + it.w / 2, it.y + it.h / 2);
-    g.rotate(tilt);
-    const w = it.w;
-    const h = it.h * 0.86;
-    // torn ends
-    g.beginPath();
-    g.moveTo(-w / 2 + 6, -h / 2);
-    g.lineTo(w / 2 - 4, -h / 2 + 3);
-    g.lineTo(w / 2, -h / 6);
-    g.lineTo(w / 2 - 6, h / 5);
-    g.lineTo(w / 2 - 2, h / 2);
-    g.lineTo(-w / 2 + 3, h / 2 - 2);
-    g.lineTo(-w / 2, h / 8);
-    g.lineTo(-w / 2 + 5, -h / 4);
-    g.closePath();
-    g.fillStyle = it.off ? '#7d7665' : '#ece2c6';
+    rounded(g, it.x, it.y, it.w, it.h, 14);
+    g.fillStyle = it.off ? '#111113' : it.on ? '#2a2a2f' : '#18181b';
     g.fill();
-    const ink = it.off ? '#5a5446' : '#1a1712';
-    // the name, in marker (shrunk to fit its column)
-    let px = Math.min(54, h * 0.62);
-    g.font = `${px}px ${MARKER}`;
-    const nw = g.measureText(it.label).width;
-    if (nw > 370) g.font = `${(px = Math.max(30, (px * 370) / nw))}px ${MARKER}`;
+    if (it.on) {
+      g.fillStyle = ACCENT;
+      rounded(g, it.x, it.y + 10, 8, it.h - 20, 4);
+      g.fill();
+    }
+    const ink = it.off ? DIMI : INK;
     g.fillStyle = ink;
     g.textBaseline = 'middle';
-    g.fillText(it.label, -w / 2 + 28, 2);
+    fit(g, it.label, '600', Math.min(42, it.h * 0.46), 24, 370);
+    g.fillText(it.label, it.x + 30, it.y + it.h / 2 + 1);
     if (it.sub) {
-      g.fillStyle = it.off ? '#4a4538' : '#5d564a';
-      fit(g, it.sub, '500', 30, 18, w - 420 - 190);
-      g.fillText(it.sub, -w / 2 + 420, 3);
-    }
-    // stars, inked
-    if (it.stars !== undefined && !it.off)
-      for (let i = 0; i < 3; i++) {
-        const sx = w / 2 - 150 + i * 50;
-        g.beginPath();
-        for (let k = 0; k < 10; k++) {
-          const a = -Math.PI / 2 + (k * Math.PI) / 5;
-          const rr = k % 2 ? 18 * 0.45 : 18;
-          if (k === 0) g.moveTo(sx + Math.cos(a) * rr, Math.sin(a) * rr);
-          else g.lineTo(sx + Math.cos(a) * rr, Math.sin(a) * rr);
-        }
-        g.closePath();
-        g.lineWidth = 3;
-        g.strokeStyle = ink;
-        g.fillStyle = '#d6452e';
-        if (i < it.stars) g.fill();
-        g.stroke();
-      }
-    // the one picked: ringed in red marker, a loose loop
-    if (it.on) {
-      g.strokeStyle = '#ff5a3c';
-      g.lineWidth = 7;
-      g.beginPath();
-      g.ellipse(0, 0, w / 2 + 6, h / 2 + 10, -tilt * 3, 0.15, Math.PI * 2 + 0.05);
-      g.stroke();
+      g.fillStyle = it.off ? DIMI : SOFT;
+      fit(g, it.sub, '400', 28, 18, it.w - 420 - 190);
+      g.fillText(it.sub, it.x + 420, it.y + it.h / 2 + 1);
     }
     g.textBaseline = 'alphabetic';
-    g.restore();
+    if (it.stars !== undefined && !it.off) for (let i = 0; i < 3; i++) star(g, it.x + it.w - 150 + i * 50, it.y + it.h / 2, 17, i < it.stars);
   }
 
   private drawItem(g: CanvasRenderingContext2D, it: Item): void {
     if (it.kind === 'row') return this.drawRow(g, it);
-    const accent = it.color !== undefined ? hex(it.color) : it.kind === 'play' ? '#ff5a3c' : '#ffa630';
+    // (one accent: the picked and the go buttons in it; everything else white on near-black)
+    const accent = ACCENT;
     const r = it.kind === 'chip' || it.kind === 'button' ? 22 : 28;
     rounded(g, it.x, it.y, it.w, it.h, r);
-    g.fillStyle = it.off ? '#121214' : it.on ? '#2a2620' : it.kind === 'play' ? '#2e1d18' : '#1b1b1e';
+    g.fillStyle = it.off ? '#111113' : it.on ? '#26262a' : it.kind === 'play' ? '#3a1712' : '#1a1a1d';
     g.fill();
     g.lineWidth = it.on ? 8 : 3;
     g.strokeStyle = it.off ? '#1e1e20' : it.on || it.kind === 'play' ? accent : '#38372f';

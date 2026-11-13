@@ -89,7 +89,7 @@ export class KitView {
     this.keyZones = zonesFor('keys', { minX: -0.3, maxX: 0.3, minZ: -0.1, maxZ: 0.3 }, { x: KEYS_ROW.x, z: -KEYS_ROW.z }, 0.5);
     this.keys.group.visible = false;
     this.keys.rest = 0.35;
-    this.root.add(this.padRoot, this.keys.group, this.module.root);
+    this.root.add(this.padRoot, this.keys.group, this.module.root, this.module.stand);
     for (const o of this.shelf.values()) {
       o.group.visible = false;
       o.rest = 0.45;
