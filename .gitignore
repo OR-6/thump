@@ -53,3 +53,4 @@ public/site/.pip-*.jpg
 public/site/.raw/
 tools/.goto.mjs
 tools/.url.mjs
+tools/.probe.mjs

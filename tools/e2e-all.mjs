@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Runs every emulator E2E suite in turn (needs `npx @iwsdk/cli dev up --allow-browser-automation`). Retries a failed suite once. */
 import { spawnSync } from 'node:child_process';
-const suites = [['strike'], ['slice', '--full']];
+const suites = [['room', '--song'], ['landing']];
 let failed = 0;
 for (const [s, ...args] of suites) {
   const go = () => spawnSync('node', [`tools/e2e-${s}.mjs`, ...args], { encoding: 'utf8' });

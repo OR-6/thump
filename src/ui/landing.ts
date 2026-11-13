@@ -18,11 +18,12 @@ export function mountLanding(world: World): void {
         <h1>Thump</h1>
         <p class="tag">Play your room.</p>
       </header>
-      <p class="lede">Every surface in your room is a drum. Hit your real table and it plays: copy a groove, play songs with a tiny felt crowd, trade fills with a bandmate. Made for your hands, on Meta Quest.</p>
+      <ul class="kit" aria-hidden="true"><li style="--c:#ff5a3c">Table · drum kit</li><li style="--c:#fff1d0">Wall · gong</li><li style="--c:#ffa630">Door · marimba</li><li style="--c:#8fd8ff">Window · glockenspiel</li></ul>
+      <p class="lede">Every surface in your room is an instrument. Your table is a drum kit, your wall a gong, your door a marimba, your window a glockenspiel. Hit anything to find out what it plays, then play songs across your own room. Made for your hands, on Meta Quest.</p>
       <div class="go">
         <button id="enter-xr" class="patch" type="button">Enter mixed reality</button>
         <p class="xr-fail" role="alert" hidden>Mixed reality didn't start. Allow what Quest asks for, then press Enter again.</p>
-        <p class="note">Sit at a table with hand tracking on. Quest will ask once to use your room.</p>
+        <p class="note">Sit at a table with hand tracking on. Quest will ask once to use your room; a room scan (Space Setup) finds more instruments.</p>
       </div>
       <div class="nohead" id="xr-unsupported" hidden>
         <p class="quest"><b>Play on Meta Quest:</b> open <span class="url">${LIVE_URL}</span> in the headset's browser.</p>
@@ -31,7 +32,7 @@ export function mountLanding(world: World): void {
       <details class="prep">
         <summary>Settings</summary>
         <div class="opts">
-          <label><input type="checkbox" data-k="oneHand" /> One hand: every pad within one hand's reach</label>
+          <label><input type="checkbox" data-k="oneHand" /> One hand: the drum kit within one hand's reach</label>
           <label class="row">Lead hand
             <select data-k="hand"><option value="auto">The hand you rest first</option><option value="right">Right</option><option value="left">Left</option></select>
           </label>
@@ -40,12 +41,11 @@ export function mountLanding(world: World): void {
           <label><input type="checkbox" data-k="calmMotion" /> Calm motion</label>
           <label><input type="checkbox" data-k="noWords" /> No words in the headset</label>
           <label><input type="checkbox" data-k="band" /> Backing band in songs</label>
-          <label><input type="checkbox" data-k="calibrateNext" /> Check my timing next time (tap along to 8 clicks)</label>
           <label><input type="checkbox" data-k="placeFresh" /> Find the table again next time</label>
           <p class="small-print">Timing offset: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
         </div>
       </details>
-      <footer class="foot">Every sound is made live in your browser: no samples, no recordings. Code under the MIT licence.</footer>
+      <footer class="foot">Every sound is made live in your browser from the shape of what you hit: no samples, no recordings. Code under the MIT licence.</footer>
     </main>`;
   document.body.appendChild(el);
 
@@ -110,7 +110,8 @@ export function mountLanding(world: World): void {
     }
     const p = loadProgress();
     saveProgress({ ...freshProgress(), kit: p.kit });
-    b.textContent = 'Done: the first steps come back';
+    window.dispatchEvent(new Event('thump:reset'));
+    b.textContent = 'Done: your room starts fresh';
     b.dataset.sure = '';
   });
 

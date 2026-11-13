@@ -8,11 +8,8 @@ import { HandTrackerSystem } from './input/hands.js';
 import { HandOccluderSystem } from './input/occluders.js';
 import { RoomSystem } from './room/room-system.js';
 import { mountLanding } from './ui/landing.js';
-import { loadFonts } from './ui/fonts.js';
 
 const container = document.getElementById('scene-container') as HTMLDivElement;
-
-await loadFonts();
 
 World.create(container, projectOptions).then((world) => {
   world.registerSystem(HandTrackerSystem, { priority: -5 });

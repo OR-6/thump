@@ -4,63 +4,58 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <meta name="description" content="Thump: a hands-first mixed-reality drum game for Meta Quest. Every surface in your room is a drum: hit your real table and it plays. Copy grooves, play songs, trade fills with a bandmate." />
+    <meta name="description" content="Thump: a hands-first mixed-reality music game for Meta Quest. Every surface in your room is an instrument: your table a drum kit, your door a marimba, your window a glockenspiel." />
     <meta property="og:title" content="Thump: play your room" />
-    <meta property="og:description" content="Every surface in your room is a drum. Hit your real table and it plays." />
+    <meta property="og:description" content="Every surface in your room is an instrument. Hit anything." />
     <meta property="og:url" content="https://or-6.github.io/thump/" />
-    <meta name="theme-color" content="#4a2a18" />
+    <meta name="theme-color" content="#0d0d0f" />
     <title>Thump</title>
     <style>
-      @font-face { font-family: 'Lilita One'; src: url('./fonts/LilitaOne-Regular.ttf') format('truetype'); font-display: swap; }
       :root {
-        --walnut: #5c3520; --walnut-deep: #4a2a18; --paper: #fff6e8; --ink: #2b2118; --ink-soft: #5a4636;
-        --tomato: #c43c28; --tomato-deep: #9a2c1c; --mustard: #f2b632; --teal: #11796d; --navy: #3d5a80;
-        --display: 'Lilita One', system-ui, sans-serif;
+        --bg: #0d0d0f; --panel: #151518; --edge: #26262b; --ink: #f2efe6; --soft: #a8a49b; --dim: #6c6a65;
+        --accent: #ff5a3c; --accent-deep: #c9402a;
+        --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
       }
-      html, body { margin: 0; height: 100%; background: var(--walnut-deep); color: var(--ink);
-        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--sans); }
       #scene-container { position: fixed; inset: 0; }
-      #landing { position: fixed; inset: 0; overflow: auto; padding: 40px 16px; box-sizing: border-box;
-        background:
-          repeating-linear-gradient(178deg, #0000 0 38px, #ffffff08 38px 40px, #0000 40px 95px, #00000014 95px 97px),
-          linear-gradient(180deg, var(--walnut), var(--walnut-deep)); }
+      #landing { position: fixed; inset: 0; overflow: auto; padding: 48px 16px; box-sizing: border-box;
+        background: radial-gradient(1200px 600px at 50% -10%, #1d1d22, var(--bg)); }
       #landing[hidden] { display: none; }
       #landing *, #landing *::before, #landing *::after { box-sizing: border-box; }
-      .sheet { position: relative; max-width: 640px; margin: 0 auto; padding: 40px 44px 30px; border-radius: 18px;
-        background: var(--paper); box-shadow: 0 6px 0 #d8c6a8, 0 20px 44px #0008; }
-      .sheet::before { content: ''; position: absolute; inset: 12px; border: 3px dashed #e3cfae; border-radius: 12px; pointer-events: none; }
-      .mast { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; position: relative; }
-      h1 { font-family: var(--display); font-weight: 400; font-size: 72px; line-height: 1; margin: 0; color: var(--tomato);
-        letter-spacing: 0.5px; text-shadow: 0 3px 0 #f2c9a4; }
-      .tag { font-family: var(--display); font-size: 28px; margin: 0; color: var(--navy); }
-      .lede { font-size: 19px; line-height: 1.5; margin: 22px 0 26px; color: var(--ink); max-width: 34em; position: relative; }
-      .go, .nohead { position: relative; }
-      .patch { font-family: var(--display); font-size: 26px; color: #fff6e8; background: var(--tomato); border: 0; cursor: pointer;
-        padding: 16px 30px 14px; border-radius: 14px; box-shadow: 0 5px 0 var(--tomato-deep); outline: 3px dashed #ffffff55; outline-offset: -9px; }
-      .patch:hover { filter: brightness(1.06); }
-      .patch:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--tomato-deep); }
-      .patch:focus-visible { outline: 3px solid var(--navy); outline-offset: 3px; }
-      .patch.small { font-size: 18px; padding: 10px 18px 9px; }
-      .note { font-size: 15px; color: var(--ink-soft); margin: 14px 0 0; line-height: 1.45; }
-      .xr-fail { color: var(--tomato-deep); font-weight: 600; margin: 12px 0 0; }
-      .quest { font-size: 17px; line-height: 1.5; margin: 0 0 12px; }
-      .url { font-family: ui-monospace, Menlo, monospace; background: #f3e3c6; padding: 1px 6px; border-radius: 5px; }
-      details.prep { margin-top: 30px; position: relative; border-top: 2px solid #ead8b8; padding-top: 14px; }
-      details.prep summary { font-family: var(--display); font-size: 21px; color: var(--navy); cursor: pointer; }
-      .opts { display: grid; gap: 11px; margin-top: 14px; font-size: 16px; }
+      .sheet { max-width: 640px; margin: 0 auto; padding: 36px 40px 28px; border-radius: 14px; background: var(--panel);
+        border: 1px solid var(--edge); box-shadow: 0 30px 60px #0009; }
+      .mast { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+      h1 { font-weight: 700; font-size: 60px; line-height: 1; margin: 0; letter-spacing: -1.5px; }
+      .tag { font-size: 22px; margin: 0; color: var(--soft); font-weight: 500; }
+      .kit { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+      .kit li { font-size: 13px; color: var(--soft); padding: 6px 10px 6px 18px; border-radius: 6px; background: #0e0e10; border: 1px solid var(--edge); position: relative; }
+      .kit li::before { content: ''; position: absolute; left: 8px; top: 50%; width: 4px; height: 12px; margin-top: -6px; border-radius: 2px; background: var(--c); }
+      .lede { font-size: 18px; line-height: 1.55; margin: 20px 0 26px; color: #dcd8cf; max-width: 34em; }
+      .patch { font: 600 19px var(--sans); color: #fff; background: var(--accent); border: 0; cursor: pointer; padding: 15px 26px; border-radius: 10px; }
+      .patch:hover { background: #ff6b50; }
+      .patch:active { transform: translateY(1px); }
+      .patch:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+      .patch.small { font-size: 15px; padding: 10px 16px; }
+      .note { font-size: 14px; color: var(--soft); margin: 14px 0 0; line-height: 1.5; }
+      .xr-fail { color: #ff8f7a; font-weight: 600; margin: 12px 0 0; }
+      .quest { font-size: 16px; line-height: 1.5; margin: 0 0 12px; color: #dcd8cf; }
+      .url { font-family: ui-monospace, Menlo, monospace; background: #0e0e10; border: 1px solid var(--edge); padding: 2px 6px; border-radius: 5px; }
+      details.prep { margin-top: 28px; border-top: 1px solid var(--edge); padding-top: 14px; }
+      details.prep summary { font-size: 16px; font-weight: 600; color: var(--ink); cursor: pointer; }
+      .opts { display: grid; gap: 11px; margin-top: 14px; font-size: 15px; color: #dcd8cf; }
       .opts label { display: flex; gap: 10px; align-items: center; }
-      .opts input[type='checkbox'] { width: 20px; height: 20px; accent-color: var(--teal); }
-      .opts select, .opts input[type='range'] { font: inherit; accent-color: var(--teal); }
-      .opts .row { gap: 12px; }
-      .small-print { font-size: 14px; color: var(--ink-soft); margin: 4px 0 0; }
-      .link { font: inherit; color: var(--tomato-deep); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
-      .foot { margin-top: 26px; font-size: 13px; color: var(--ink-soft); position: relative; }
+      .opts input[type='checkbox'] { width: 18px; height: 18px; accent-color: var(--accent); }
+      .opts select, .opts input[type='range'] { font: inherit; accent-color: var(--accent); }
+      .opts select { background: #0e0e10; color: var(--ink); border: 1px solid var(--edge); border-radius: 6px; padding: 4px 6px; }
+      .small-print { font-size: 13px; color: var(--dim); margin: 4px 0 0; }
+      .link { font: inherit; color: #ff8f7a; background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+      .foot { margin-top: 24px; font-size: 12px; color: var(--dim); }
       @media (max-width: 520px) {
         #landing { padding: 16px; }
-        .sheet { padding: 28px 22px 22px; }
-        h1 { font-size: 56px; }
-        .tag { font-size: 23px; }
-        .lede { font-size: 17px; }
+        .sheet { padding: 26px 20px 20px; }
+        h1 { font-size: 46px; }
+        .tag { font-size: 19px; }
+        .lede { font-size: 16px; }
       }
     </style>
   </head>
