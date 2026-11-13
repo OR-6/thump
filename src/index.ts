@@ -8,6 +8,9 @@ import { HandTrackerSystem } from './input/hands.js';
 import { HandOccluderSystem } from './input/occluders.js';
 import { RoomSystem } from './room/room-system.js';
 import { mountLanding } from './ui/landing.js';
+import { loadFonts } from './ui/fonts.js';
+
+loadFonts();
 
 const container = document.getElementById('scene-container') as HTMLDivElement;
 

@@ -85,6 +85,13 @@ export class KitView {
     this.keys.group.visible = true;
   }
 
+  /** The bars draw in from a point (kit zone coordinates), as part of the kit's first bloom. */
+  revealKeys(fromX: number, fromZ: number): void {
+    this.keys.build(this.keyZones);
+    this.keys.reveal(fromX, fromZ);
+    this.keys.group.visible = true;
+  }
+
   setContrast(hc: boolean): void {
     for (const p of this.pads.values()) p.setContrast(hc);
     if (this.keys.group.visible) this.keys.build(this.keyZones, hc);

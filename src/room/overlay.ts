@@ -7,6 +7,7 @@
  * Two draws per instrument (the shapes, and their additive glow), whatever its zone count.
  */
 import {
+  Path,
   type Material,
   BufferGeometry,
   Color,
@@ -42,6 +43,13 @@ const LIFT = 0.004;
 let boxGeo: PlaneGeometry | null = null;
 let ringGeo: RingGeometry | null = null;
 let discGeo: RingGeometry | null = null;
+let thinGeo: RingGeometry | null = null;
+let frameGeo: ShapeGeometry | null = null;
+/** A bar's outline, as a share of its size on each side. */
+const FRAME_EDGE = 0.13;
+/** Drums ring out: a hit sends rings of light across the surface from where it landed. */
+const RIPPLERS = new Set<Family>(['gong', 'timpani', 'frame', 'congas', 'cajon', 'stomp', 'tongue', 'bowl', 'bell', 'tambourine', 'triangle']);
+const RIPPLES = 6;
 function geos() {
   if (!boxGeo) {
     boxGeo = new PlaneGeometry(1, 1);
@@ -50,8 +58,27 @@ function geos() {
     ringGeo.rotateX(-Math.PI / 2);
     discGeo = new RingGeometry(0, 1, 40);
     discGeo.rotateX(-Math.PI / 2);
+    thinGeo = new RingGeometry(0.965, 1, 64);
+    thinGeo.rotateX(-Math.PI / 2);
+    // a bar drawn as a line of light round its edge (the fill comes up only when it plays)
+    const outer = new Shape();
+    outer.moveTo(-0.5, -0.5);
+    outer.lineTo(0.5, -0.5);
+    outer.lineTo(0.5, 0.5);
+    outer.lineTo(-0.5, 0.5);
+    outer.closePath();
+    const hole = new Path();
+    const t = 0.5 - FRAME_EDGE;
+    hole.moveTo(-t, -t);
+    hole.lineTo(-t, t);
+    hole.lineTo(t, t);
+    hole.lineTo(t, -t);
+    hole.closePath();
+    outer.holes.push(hole);
+    frameGeo = new ShapeGeometry(outer);
+    frameGeo.rotateX(-Math.PI / 2);
   }
-  return { box: boxGeo!, ring: ringGeo!, disc: discGeo! };
+  return { box: boxGeo!, ring: ringGeo!, disc: discGeo!, thin: thinGeo!, frame: frameGeo! };
 }
 
 /** Instruments drawn as bars, keys, strings or tubes (rectangles); the rest are drums and rings (discs). */
@@ -73,7 +100,14 @@ export class Overlay {
   private ask: Float32Array;
   private flash: Float32Array;
   private shown: Float32Array;
-  private revealT = 1;
+  /** Seconds since the reveal began, and each zone's delay (the light spreads out from the hand). */
+  private revealT = 99;
+  private revealEnd = 0;
+  private delay: Float32Array;
+  private snapped: Uint8Array;
+  private ripples: InstancedMesh;
+  private rip = new Float32Array(RIPPLES * 5); // x, z, age, life, reach
+  private ripNext = 0;
   private sweepT = -1;
   private hc = false;
   /** Brightness at rest (the table keys sit quieter than a door's bars). */
@@ -84,7 +118,7 @@ export class Overlay {
     this.group.name = `Overlay-${family}`;
     // drawn in light on the real surface (adds to what you see; the real surface shows through)
     const solid = asLight(new MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false, side: DoubleSide }));
-    this.shapes = new InstancedMesh(BARS.has(family) ? g.box : g.ring, solid, max);
+    this.shapes = new InstancedMesh(BARS.has(family) ? g.frame : g.ring, solid, max);
     this.glow = new InstancedMesh(BARS.has(family) ? g.box : g.disc, asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })), max);
     for (const m of [this.shapes, this.glow]) {
       m.frustumCulled = false;
@@ -99,13 +133,22 @@ export class Overlay {
     const isBar = BARS.has(family);
     this.backing = new InstancedMesh(isBar ? g.box : g.disc, new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false, side: DoubleSide }), max);
     this.backing.renderOrder = 3;
-    this.detail = new InstancedMesh(g.ring, new MeshBasicMaterial({ transparent: true, opacity: family === 'gong' ? 0.32 : 0.85, depthWrite: false, toneMapped: false, side: DoubleSide }), max * 4);
+    this.detail = new InstancedMesh(family === 'gong' ? g.ring : g.disc, new MeshBasicMaterial({ transparent: true, opacity: family === 'gong' ? 0.22 : 0.85, depthWrite: false, toneMapped: false, side: DoubleSide }), max * 12);
     this.detail.renderOrder = 4;
     for (const m of [this.backing, this.detail]) {
       m.frustumCulled = false;
       m.count = 0;
       this.group.add(m);
     }
+    this.ripples = new InstancedMesh(g.thin, asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })), RIPPLES);
+    this.ripples.frustumCulled = false;
+    this.ripples.count = 0;
+    this.ripples.renderOrder = 5;
+    this.ripples.setColorAt(0, this.base);
+    this.group.add(this.ripples);
+    for (let r = 0; r < RIPPLES; r++) this.rip[r * 5 + 2] = 99;
+    this.delay = new Float32Array(max);
+    this.snapped = new Uint8Array(max);
     this.dim = new Float32Array(max);
     this.white = new Float32Array(max);
     this.ask = new Float32Array(max);
@@ -125,14 +168,33 @@ export class Overlay {
     this.hc = hc;
     this.base.setHex(hc ? 0xffffff : FAMILIES[this.family].color);
     this.shapes.count = this.glow.count = Math.min(zones.length, this.ask.length);
-    this.revealT = 0;
-    this.layout(0);
+    this.reveal();
   }
 
-  /** Draw itself in (discovery), zone by zone. */
-  reveal(): void {
+  /**
+   * Draw itself in (a discovery): the light spreads out across the surface from where the hand landed (zone
+   * coordinates), each bar or drum snapping in with a flash as it arrives, and a ring runs out from the hand.
+   */
+  reveal(fromX?: number, fromZ?: number): void {
+    const n = this.shapes.count;
+    const calm = motion.calm;
+    let far = 0;
+    for (let i = 0; i < n; i++) {
+      const z = this.zones[i];
+      const d = fromX === undefined ? i * 0.07 : Math.hypot(z.x - fromX, z.z - (fromZ ?? 0)) / 1.6 + i * 0.015;
+      this.delay[i] = calm ? d * 1.5 : d;
+      this.snapped[i] = 0;
+      far = Math.max(far, this.delay[i]);
+    }
     this.revealT = 0;
-    this.sweepT = 0;
+    this.revealEnd = far + 0.3;
+    this.layout(0);
+    if (fromX !== undefined && !calm) this.ripple(fromX, fromZ ?? 0, 0.02, 0.9, 0.55);
+  }
+
+  /** Every zone flashes white at once (the song's last chord). */
+  flashAll(): void {
+    for (let i = 0; i < this.white.length; i++) this.white[i] = 1;
   }
 
   /** A light sweep across it (a celebration). */
@@ -157,15 +219,46 @@ export class Overlay {
 
   /** Zone `i` was hit with loudness `gain`. */
   hit(i: number, gain: number): void {
-    if (i >= 0 && i < this.flash.length) this.flash[i] = Math.max(this.flash[i], 0.5 + 0.5 * gain);
+    if (i < 0 || i >= this.flash.length) return;
+    this.flash[i] = Math.max(this.flash[i], 0.5 + 0.5 * gain);
+    // a drum rings out across the surface; a gong's rings go further and last
+    const z = this.zones[i];
+    if (z && RIPPLERS.has(this.family) && !motion.calm) {
+      const big = this.family === 'gong' || this.family === 'timpani' || this.family === 'stomp';
+      this.ripple(z.x, z.z, z.w, big ? 1.8 : 0.8, z.w * (big ? 2.4 : 1.8) * (0.6 + 0.4 * gain));
+      if (this.family === 'gong' && gain > 0.6) this.ripple(z.x, z.z, z.w * 0.5, 1.6, z.w * 1.6);
+    }
   }
 
-  private layout(reveal: number): void {
+  /** A ring of light from (x, z), radius r0 growing to r0 + reach over `life` seconds, fading. */
+  private ripple(x: number, z: number, r0: number, life: number, reach: number): void {
+    const k = this.ripNext;
+    this.ripNext = (this.ripNext + 1) % RIPPLES;
+    const o = k * 5;
+    this.rip[o] = x;
+    this.rip[o + 1] = z;
+    this.rip[o + 2] = 0;
+    this.rip[o + 3] = life;
+    this.rip[o + 4] = reach;
+    this.ripR0[k] = r0;
+  }
+  private ripR0 = new Float32Array(RIPPLES);
+
+  /** How far zone i has drawn in (0..1) at `t` seconds into the reveal. */
+  private grown(i: number, t: number): number {
+    return Math.min(1, Math.max(0, (t - this.delay[i]) / 0.16));
+  }
+
+  private layout(t: number): void {
     const n = this.shapes.count;
     for (let i = 0; i < n; i++) {
       const z = this.zones[i];
-      // each zone draws in after the one before
-      const k = Math.min(1, Math.max(0, reveal * (n + 2) - i * 0.9) / 2);
+      // each zone draws in as the light reaches it, with a flash
+      const k = this.grown(i, t);
+      if (k > 0 && !this.snapped[i]) {
+        this.snapped[i] = 1;
+        this.white[i] = Math.max(this.white[i], 0.9);
+      }
       const e = 1 - Math.pow(1 - k, 3);
       _p.set(z.x, LIFT, -z.z);
       if (z.shape === 'rect') {
@@ -183,7 +276,7 @@ export class Overlay {
     // the dark backing, a little larger than each shape
     for (let i = 0; i < n; i++) {
       const z = this.zones[i];
-      const k = Math.min(1, Math.max(0, reveal * (n + 2) - i * 0.9) / 2);
+      const k = this.grown(i, t);
       _p.set(z.x, LIFT * 0.4, -z.z);
       if (z.shape === 'rect') _s.set(z.w * k + 0.008, 1, z.h + 0.008);
       else _s.set(z.w * k * 1.08, 1, z.w * k * 1.08);
@@ -195,7 +288,7 @@ export class Overlay {
     let d = 0;
     for (let i = 0; i < n; i++) {
       const z = this.zones[i];
-      const k = Math.min(1, Math.max(0, reveal * (n + 2) - i * 0.9) / 2);
+      const k = this.grown(i, t);
       if (k <= 0) continue;
       if (z.shape === 'rect') {
         const along = z.w >= z.h;
@@ -203,7 +296,7 @@ export class Overlay {
           const sgn = e ? 1 : -1;
           const off = (along ? z.w : z.h) / 2 - 0.007;
           _p.set(z.x + (along ? sgn * off * k : 0), LIFT * 1.3, -(z.z + (along ? 0 : sgn * off * k)));
-          _m.compose(_p, _q, _s.setScalar(0.0032));
+          _m.compose(_p, _q, _s.setScalar(0.0045));
           this.detail.setMatrixAt(d++, _m);
         }
       } else if (this.family === 'gong') {
@@ -212,9 +305,19 @@ export class Overlay {
           _m.compose(_p, _q, _s.set(z.w * f * k, 1, z.w * f * k));
           this.detail.setMatrixAt(d++, _m);
         }
+        // the boss in the middle: where it sings
         _p.set(z.x, LIFT * 1.3, -z.z);
-        _m.compose(_p, _q, _s.setScalar(z.w * 0.1 * k));
+        _m.compose(_p, _q, _s.setScalar(z.w * 0.16 * k));
         this.detail.setMatrixAt(d++, _m);
+      } else if (LUGS[this.family]) {
+        // a drum: its tension lugs round the rim (a tambourine: its jingles), drawn in as the head grows
+        const [count, at, size] = LUGS[this.family]!;
+        for (let q = 0; q < count; q++) {
+          const a = (q / count) * Math.PI * 2 + Math.PI / count;
+          _p.set(z.x + Math.cos(a) * z.w * at * k, LIFT * 1.3, -(z.z + Math.sin(a) * z.w * at * k));
+          _m.compose(_p, _q, _s.setScalar(Math.max(0.004, z.w * size) * k));
+          this.detail.setMatrixAt(d++, _m);
+        }
       } else {
         _p.set(z.x, LIFT * 1.3, -z.z);
         _m.compose(_p, _q, _s.setScalar(z.w * 0.22 * k));
@@ -232,10 +335,11 @@ export class Overlay {
   update(dt: number): void {
     const n = this.shapes.count;
     if (n === 0) return;
-    if (this.revealT < 1) {
-      this.revealT = Math.min(1, this.revealT + dt / 0.9);
+    if (this.revealT < this.revealEnd) {
+      this.revealT = Math.min(this.revealEnd, this.revealT + dt);
       this.layout(this.revealT);
     }
+    this.updateRipples(dt);
     let sweepAt = -1;
     if (this.sweepT >= 0) {
       this.sweepT += dt / (motion.calm ? 1.6 : 0.8);
@@ -260,9 +364,32 @@ export class Overlay {
     if (this.glow.instanceColor) this.glow.instanceColor.needsUpdate = true;
   }
 
+  private updateRipples(dt: number): void {
+    let live = 0;
+    for (let r = 0; r < RIPPLES; r++) {
+      const o = r * 5;
+      if (this.rip[o + 2] >= this.rip[o + 3]) continue;
+      this.rip[o + 2] += dt;
+      const k = Math.min(1, this.rip[o + 2] / this.rip[o + 3]);
+      // eases out: fast from the hand, slowing as it spreads, fading as it goes
+      const e = 1 - Math.pow(1 - k, 2.2);
+      const rad = this.ripR0[r] + this.rip[o + 4] * e;
+      _p.set(this.rip[o], LIFT * 1.6, -this.rip[o + 1]);
+      _m.compose(_p, _q.identity(), _s.set(rad, 1, rad));
+      this.ripples.setMatrixAt(live, _m);
+      this.ripples.setColorAt(live, _c.copy(this.base).lerp(WHITE, 0.35 * (1 - k)).multiplyScalar(0.9 * (1 - k) * (1 - k)));
+      live++;
+    }
+    this.ripples.count = live;
+    if (live) {
+      this.ripples.instanceMatrix.needsUpdate = true;
+      if (this.ripples.instanceColor) this.ripples.instanceColor.needsUpdate = true;
+    }
+  }
+
   /** Free its GPU buffers and materials (shared geometries stay). */
   dispose(): void {
-    for (const m of [this.shapes, this.glow, this.backing, this.detail]) {
+    for (const m of [this.shapes, this.glow, this.backing, this.detail, this.ripples]) {
       (m.material as MeshBasicMaterial).dispose();
       m.dispose();
     }
@@ -275,7 +402,16 @@ export class Overlay {
   }
 }
 const WHITE = new Color(0xffffff);
-const GONG_RINGS = [0.32, 0.55, 0.75];
+const GONG_RINGS = [0.2, 0.62, 0.66];
+/** Detail round a drum's rim: [how many, at what share of its radius, how big]. */
+const LUGS: Partial<Record<Family, [number, number, number]>> = {
+  timpani: [8, 1.12, 0.085],
+  frame: [10, 1.1, 0.07],
+  congas: [6, 1.14, 0.11],
+  cajon: [4, 1.16, 0.09],
+  stomp: [10, 1.1, 0.065],
+  tambourine: [5, 0.8, 0.17],
+};
 
 /** A faint sheen and outline on an undiscovered surface: "there's something here". */
 export class Sheen {

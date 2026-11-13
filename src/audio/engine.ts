@@ -515,6 +515,79 @@ class Engine {
     if (owner) this.claimVoice(owner, g, t, end, [src]);
   }
 
+  /** The band's piano: chords voiced close and led smoothly from the last one, and the bass with a soft sub under it. */
+  private voicing: number[] = [60, 64, 67];
+  private piano(ctx: AudioContext, e: BedEvent, t0: number, len: number, spb: number): void {
+    const t = t0;
+    const note = (midi: number, vel: number, dur: number, level: number, pan: number, t = t0) => {
+      const c = this.sampler.pick('band:piano', { midi, vel, tone: 0, size: 0.5 });
+      if (!c) return;
+      const src = ctx.createBufferSource();
+      src.buffer = c.buffer;
+      src.playbackRate.value = c.rate;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(level * (0.25 + 0.75 * vel), t);
+      // let go at the end of its length (a held chord rings on a little)
+      const off = t + Math.min(c.buffer.duration / c.rate, Math.max(0.12, dur));
+      g.gain.setTargetAtTime(0, off, 0.08);
+      let node: AudioNode = g;
+      if (pan !== 0 && ctx.createStereoPanner) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = pan;
+        g.connect(p);
+        node = p;
+      }
+      node.connect(this.bedBus);
+      src.connect(g);
+      src.start(t);
+      src.stop(off + 0.5);
+    };
+    if (e.voice === 'bass') {
+      note(e.midi, e.vel, len, 0.55, 0);
+      // a sine an octave under: felt more than heard (phone and Quest speakers lose the piano's lowest partials)
+      const o = ctx.createOscillator();
+      o.frequency.value = midiHz(e.midi - 12);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22 * e.vel, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.18, Math.min(len, spb * 2)));
+      o.connect(g).connect(this.bedBus);
+      o.start(t);
+      o.stop(t + len + 0.2);
+      return;
+    }
+    // the triad's three notes in whichever inversion moves least from the last chord, inside G3..A4
+    const third = e.minor ? 3 : 4;
+    const pcs = [0, third, 7].map((s) => (((e.midi + s) % 12) + 12) % 12);
+    let best: number[] = this.voicing;
+    let bestCost = Infinity;
+    for (let inv = 0; inv < 3; inv++) {
+      for (let base = 52; base <= 64; base++) {
+        if (base % 12 !== pcs[inv]) continue;
+        const v = [base];
+        for (let k = 1; k < 3; k++) {
+          const pc = pcs[(inv + k) % 3];
+          let m = v[k - 1] + 1;
+          while (m % 12 !== pc) m++;
+          v.push(m);
+        }
+        if (v[2] > 70) continue;
+        let cost = 0;
+        for (let k = 0; k < 3; k++) cost += Math.abs(v[k] - this.voicing[k]);
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = v;
+        }
+      }
+    }
+    this.voicing = best;
+    const hold = len > spb * 1.5;
+    // a held chord rolls very slightly, low to high, like a hand on the keys
+    best.forEach((m, k) => {
+      note(m, e.vel * (k === 2 ? 0.9 : 0.8), len, hold ? 0.2 : 0.17, (k - 1) * 0.25, t + (hold ? k * 0.018 : 0));
+    });
+  }
+
   /** Ringing voices (gongs, bowls): at most 3 per surface and 24 in all; the oldest fades out to make room. */
   private voices: { owner: string; g: GainNode; end: number; oscs: AudioScheduledSourceNode[] | null }[] = [];
   private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: AudioScheduledSourceNode[] | null = null): void {
@@ -598,6 +671,7 @@ class Engine {
     if (!ctx || !this.bedOn) return;
     const t = Math.max(ctx.currentTime, when);
     const len = e.len * spb;
+    if ((e.voice === 'bass' || e.voice === 'chord') && this.sampler.has('band:piano')) return this.piano(ctx, e, t, len, spb);
     switch (e.voice) {
       case 'bass': {
         const o = ctx.createOscillator();

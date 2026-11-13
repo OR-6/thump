@@ -4,6 +4,7 @@
  * rubber keys you tap like pads: ◀ PLAY ▶ JAM. Kit-local, facing the player.
  */
 import { BoxGeometry, CanvasTexture, Color, Group, Mesh, MeshStandardMaterial, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace } from '@iwsdk/core';
+import { FONT, whenFonts } from './fonts.js';
 import { FAMILIES, type Family } from '../room/classify.js';
 
 export const MODULE = {
@@ -55,7 +56,6 @@ export interface Display {
 const INK = '#f2efe6';
 const DIM = '#3b3b3e';
 const BG = '#0b0b0c';
-const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 export class Module {
   readonly root = new Group();
@@ -109,6 +109,10 @@ export class Module {
     });
     this.root.position.set(MODULE.x, 0, MODULE.z);
     this.draw(this.shown);
+    whenFonts(() => {
+      this.draw(this.shown);
+      this.drawKeys(this.shown);
+    });
   }
 
   /** Key i's centre in module-local x/z (for the hit surface). */
@@ -181,7 +185,7 @@ export class Module {
       const txt = String(d.count);
       g.fillText(txt, (W - g.measureText(txt).width) / 2, d.sub && /again/.test(d.sub) ? 180 : 210);
       if (d.sub && /again/.test(d.sub)) {
-        g.font = `550 44px ${FONT}`;
+        g.font = `500 44px ${FONT}`;
         g.fillText(d.sub, (W - g.measureText(d.sub).width) / 2, 262);
       }
       this.tex.needsUpdate = true;
@@ -191,12 +195,12 @@ export class Module {
       // the settings and tuning pages: a title and a line; what each key does is printed on it
       g.fillStyle = INK;
       let tp = 84;
-      g.font = `650 ${tp}px ${FONT}`;
-      while (g.measureText(d.line).width > W - 56 && tp > 44) g.font = `650 ${--tp}px ${FONT}`;
+      g.font = `600 ${tp}px ${FONT}`;
+      while (g.measureText(d.line).width > W - 56 && tp > 44) g.font = `600 ${--tp}px ${FONT}`;
       g.fillText(d.line, 28, 100);
       let sp2 = 56;
-      g.font = `550 ${sp2}px ${FONT}`;
-      while (g.measureText(d.sub).width > W - 56 && sp2 > 36) g.font = `550 ${--sp2}px ${FONT}`;
+      g.font = `500 ${sp2}px ${FONT}`;
+      while (g.measureText(d.sub).width > W - 56 && sp2 > 36) g.font = `500 ${--sp2}px ${FONT}`;
       g.fillStyle = '#d6d2c8';
       g.fillText(d.sub, 28, 190);
       g.fillStyle = '#8f8b82';
@@ -207,13 +211,13 @@ export class Module {
     }
     g.fillStyle = INK;
     let px = 84;
-    g.font = `650 ${px}px ${FONT}`;
+    g.font = `600 ${px}px ${FONT}`;
     const room = d.stars >= 0 ? W - 230 : W - 56;
-    while (g.measureText(d.line).width > room && px > 40) g.font = `650 ${--px}px ${FONT}`;
+    while (g.measureText(d.line).width > room && px > 40) g.font = `600 ${--px}px ${FONT}`;
     g.fillText(d.line, 28, 92);
     let sp = 62;
-    g.font = `550 ${sp}px ${FONT}`;
-    while (g.measureText(d.sub).width > W - 56 && sp > 40) g.font = `550 ${--sp}px ${FONT}`;
+    g.font = `500 ${sp}px ${FONT}`;
+    while (g.measureText(d.sub).width > W - 56 && sp > 40) g.font = `500 ${--sp}px ${FONT}`;
     g.fillStyle = '#d6d2c8';
     g.fillText(d.sub, 28, 166);
     if (d.stars >= 0) for (let i = 0; i < 3; i++) star(g, W - 180 + i * 64, 70, 26, i < d.stars, d.gold);
@@ -306,10 +310,10 @@ function drawKey(c: HTMLCanvasElement, k: ModuleKey, label: string | null, locke
     g.arc(36, cy, 17, 0, Math.PI * 2);
     g.fill();
     g.fillStyle = ink;
-    g.font = `800 40px ${FONT}`;
+    g.font = `700 40px ${FONT}`;
     g.fillText('REC', 60, cy + 2);
   } else {
-    g.font = `800 44px ${FONT}`;
+    g.font = `700 44px ${FONT}`;
     g.fillText('JAM', (W - g.measureText('JAM').width) / 2, cy + 2);
   }
 }

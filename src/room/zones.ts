@@ -158,10 +158,11 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
       // 8 keys across the pane, low on the left; higher keys a little shorter
       // keys wider than a fingertip spread (index to ring is ~4 cm)
       const n = 8;
-      const room = Math.max(0.48, Math.min(0.62, b.maxX - b.minX - 0.04));
+      // a window is seen from across the room: on a big pane the keys are big
+      const room = Math.max(0.48, Math.min(0.8, b.maxX - b.minX - 0.04));
       const step = room / n;
-      const keyW = Math.min(0.05, step * 0.68);
-      const maxH = Math.max(0.07, Math.min(0.13, b.maxZ - b.minZ - 0.04));
+      const keyW = Math.min(0.07, step * 0.7);
+      const maxH = Math.max(0.07, Math.min(0.2, b.maxZ - b.minZ - 0.04, room * 0.26));
       const c = fit(anchor.x, anchor.z, room, maxH);
       for (let i = 0; i < n; i++) {
         const h = maxH * (1 - (i / (n - 1)) * 0.32);

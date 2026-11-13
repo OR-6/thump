@@ -527,6 +527,16 @@ export class Game {
       if (shown !== this.display.stars) {
         this.display.stars = shown;
       }
+      // the notes you played count up under it for the first second
+      if (t - this.modeT < 1.3 && this.last) {
+        const k = Math.min(1, (t - this.modeT) / 1.1);
+        const n = Math.round((this.last.perfect + this.last.good) * (1 - Math.pow(1 - k, 3)));
+        this.display.sub = `${n} of ${this.last.total}`;
+      } else if (this.display.sub.endsWith(` of ${this.last?.total ?? -1}`) && t - this.modeT < 1.6) {
+        const st = this.display.stars;
+        this.refreshDisplay();
+        this.display.stars = st;
+      }
       if (t - this.modeT >= 15) this.leaveResults();
       return;
     }
@@ -653,9 +663,9 @@ export class Game {
     if (this.mode === 'discover' && this.looper.state !== 'off') {
       const l = this.looper;
       const b = this.loopClock.beatAt(this.t);
-      d.line = 'Loop';
+      d.line = l.layers.length ? `Loop · ${l.layers.length} layer${l.layers.length === 1 ? '' : 's'}` : 'Loop';
       if (l.state === 'count') d.count = Math.max(1, Math.min(4, Math.ceil(l.recStart - b)));
-      d.sub = l.recording ? `Recording layer ${l.layers.length + 1}` : `${l.layers.length} layer${l.layers.length === 1 ? '' : 's'} · REC adds · twice clears`;
+      d.sub = l.recording ? `Recording layer ${l.layers.length + 1}` : 'REC to add, twice to clear';
       d.pulse = 'loop';
       return;
     }
@@ -672,14 +682,12 @@ export class Game {
           d.sub = this.lastFound && this.found.length < 2
             ? found(this.lastFound)
             : jamNew
-              ? 'New: tap JAM to jam'
+              ? 'Tap JAM: a bandmate joins'
               : this.weakRuns >= 2 && this.opts.tempo > 0.95
-                ? 'Slower? Settings: tap ◀ twice'
-                : !(sel.id in this.progress.stars) && !Object.keys(this.progress.stars).length
-                  ? 'Tap ▶ · ◀ twice: settings'
-                  : have < need
-                    ? 'Tap ▶ · more found, more parts'
-                    : 'Tap ▶ to play';
+                ? 'Slower? Tap ◀ twice'
+                : have < need
+                  ? 'Tap ▶. Find more, hear more'
+                  : 'Tap ▶ to play';
           d.pulse = jamNew ? 'jam' : 'play';
           d.stars = this.progress.stars[sel.id] ?? 0;
         }
@@ -696,13 +704,13 @@ export class Game {
         break;
       case 'jam':
         d.line = 'Jam';
-        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? (this.code ? 'Phone? or-6.github.io/thump' : 'Bandmate · listen') : 'Listen';
+        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? (this.code ? "Friend's phone: or-6.github.io/thump" : 'Listen first') : 'Listen';
         d.pulse = 'jam';
         d.meter = this.jamShares.length ? this.jamShares[this.jamShares.length - 1] : -1;
         break;
       case 'results': {
         const s = this.last!;
-        d.line = s.stars === 3 ? 'Brilliant' : s.stars === 2 ? 'Lovely' : 'One star · again?';
+        d.line = s.stars === 3 ? 'In the pocket' : s.stars === 2 ? 'Nearly there' : 'Once more?';
         d.stars = s.stars;
         const next = this.selected < this.available() ? this.songAt(this.selected) : null;
         d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: a tom, and JAM' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
@@ -747,8 +755,7 @@ export class Game {
 }
 
 function found(f: { family: Family; label: string }): string {
-  const what = f.label ? `${cap(f.label)} · ` : '';
-  return `${what}${FAMILIES[f.family].name}`;
+  return f.label ? `${cap(f.label)}: ${FAMILIES[f.family].name}` : cap(FAMILIES[f.family].name);
 }
 
 function cap(s: string): string {
@@ -761,5 +768,5 @@ const JAM_LOCKED: ModuleKey[] = ['jam'];
 const BOTH_LOCKED: ModuleKey[] = ['jam', 'loop'];
 
 function unlockLine(u: Unlock): string {
-  return u === 'tom' ? 'New: a tom on your table' : u === 'loops' ? 'New: REC loops on the module' : u === 'swaps' ? 'New: pinch and hold a sound to swap it' : 'New: JAM with a bandmate';
+  return u === 'tom' ? 'New: a tom on your table' : u === 'loops' ? 'New: REC loops what you play' : u === 'swaps' ? 'New: pinch and hold to change a sound' : 'New: JAM with a bandmate';
 }

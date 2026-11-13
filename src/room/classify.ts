@@ -64,6 +64,13 @@ export const FAMILIES: Record<Family, FamilyInfo> = {
   keys: { name: 'balafon', color: 0xffa630, melodic: true, order: 20 },
 };
 
+/** "a marimba", "an …", or just "timpani" (said the way a player would). */
+export function withArticle(f: Family): string {
+  const name = FAMILIES[f].name;
+  if (f === 'timpani' || f === 'tubular' || f === 'bell' || f === 'congas') return name;
+  return `${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}`;
+}
+
 /** What a surface's measurements say. Lengths in metres, all features 0..1. */
 export interface Features {
   /** 'up' faces the ceiling (a table top), 'down' faces the floor, 'vertical' is a wall-like face. */

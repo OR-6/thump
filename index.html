@@ -11,6 +11,8 @@
     <meta name="theme-color" content="#0d0d0f" />
     <title>Thump</title>
     <style>
+      @font-face { font-family: 'Barlow Condensed'; font-weight: 600; font-display: swap; src: url(./fonts/BarlowCondensed-SemiBold.ttf) format('truetype'); }
+      @font-face { font-family: 'Barlow Condensed'; font-weight: 700; font-display: swap; src: url(./fonts/BarlowCondensed-Bold.ttf) format('truetype'); }
       :root {
         --bg: #0d0d0f; --panel: #151518; --edge: #26262b; --ink: #f2efe6; --soft: #a8a49b; --dim: #6c6a65;
         --accent: #ff5a3c; --accent-deep: #c9402a;
@@ -25,7 +27,7 @@
       .sheet { max-width: 640px; margin: 0 auto; padding: 36px 40px 28px; border-radius: 14px; background: var(--panel);
         border: 1px solid var(--edge); box-shadow: 0 30px 60px #0009; }
       .mast { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-      h1 { font-weight: 700; font-size: 60px; line-height: 1; margin: 0; letter-spacing: -1.5px; }
+      h1 { font-family: 'Barlow Condensed', var(--sans); font-weight: 700; font-size: 76px; line-height: 0.95; margin: 0; letter-spacing: -0.5px; text-transform: uppercase; }
       .tag { font-size: 22px; margin: 0; color: var(--soft); font-weight: 500; }
       .kit { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
       .kit li { font-size: 13px; color: var(--soft); padding: 6px 10px 6px 18px; border-radius: 6px; background: #0e0e10; border: 1px solid var(--edge); position: relative; }

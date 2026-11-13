@@ -19,6 +19,9 @@ import {
   InstancedMesh,
   Matrix4,
   MeshBasicMaterial,
+  Mesh,
+  RingGeometry,
+  DoubleSide,
   SphereGeometry,
   Vector3,
   VisibilityState,
@@ -52,8 +55,9 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
 import { Overlay, Sheen } from './overlay.js';
+import { asLight } from '../art/light.js';
 import { Motes } from './motes.js';
-import { FAMILIES, NEIGHBOURS, nextSwap, orchestrate, type Family } from './classify.js';
+import { FAMILIES, NEIGHBOURS, nextSwap, orchestrate, withArticle, type Family } from './classify.js';
 import { retune, zoneAt, zoneForDegree, type Zone } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
 import { PhoneLink } from './phone-link.js';
@@ -266,8 +270,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     celebrate: (stars) => {
-      // a light sweep across every instrument, the kit's LEDs in order, and a note for each star as it fills
-      for (const o of this.overlays.values()) o.sweep();
+      // the last chord: every instrument flashes white and a ring of light runs out across the room from the kit;
+      // then a light sweep across every instrument, the kit's LEDs in order, and a note for each star as it fills
+      for (const o of this.overlays.values()) {
+        o.flashAll();
+        o.sweep();
+      }
+      this.kit.keys.flashAll();
+      if (!motion.calm) this.finaleT = 0;
       this.kit.keys.sweep();
       let k = 0;
       for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.08 * k++, () => p.hit(0.7));
@@ -413,6 +423,30 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private orchTaken: Family[] = [];
   private orchFree: { id: string; natural: Family; area: number; s: Surface }[] = [];
 
+  /** The song's end: a ring of light that runs out from the kit across the room. */
+  private finale: Mesh | null = null;
+  private finaleT = -1;
+  private updateFinale(dt: number): void {
+    if (this.finaleT < 0) return;
+    if (!this.finale) {
+      const g = new RingGeometry(0.985, 1, 96);
+      g.rotateX(-Math.PI / 2);
+      this.finale = new Mesh(g, asLight(new MeshBasicMaterial({ color: 0xfff4dc, transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })));
+      this.finale.frustumCulled = false;
+      this.finale.renderOrder = 6;
+      this.worldRoot.add(this.finale);
+    }
+    this.finaleT += dt;
+    const k = Math.min(1, this.finaleT / 2.2);
+    const r = 0.25 + 4.5 * (1 - Math.pow(1 - k, 2));
+    this.kit.root.getWorldPosition(this.finale.position);
+    this.finale.position.y += 0.01;
+    this.finale.scale.setScalar(r);
+    (this.finale.material as MeshBasicMaterial).color.setRGB(1, 0.96, 0.86).multiplyScalar((1 - k) * (1 - k));
+    this.finale.visible = k < 1;
+    if (k >= 1) this.finaleT = -1;
+  }
+
   /** The instrument carrying the melody in the song just played (for its stars), else the table keys. */
   private melodyFamily(): Family {
     const f = this.game.cast?.melody?.family as Family | undefined;
@@ -536,7 +570,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const q = this.kit.keyZones[3];
     this.tmp.set(q ? q.x : 0, 0.07, q ? -q.z : -0.16);
     this.kit.root.localToWorld(this.tmp);
-    this.tag.show(`Table · ${FAMILIES[this.deskFamily].name}`, FAMILIES[this.deskFamily].color, this.tmp, this.head);
+    this.tag.show(`The bars are ${withArticle(this.deskFamily)}`, FAMILIES[this.deskFamily].color, this.tmp, this.head);
   }
 
   /** The surface plays the next instrument that suits it; the room map and the saved room follow. */
@@ -593,7 +627,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.later(this.clock.t + 5, () => {
       this.tmp.set((far.bounds.minX + far.bounds.maxX) / 2, 0.06, -(far.bounds.minZ + far.bounds.maxZ) / 2).applyMatrix4(far.world);
       this.tmp.y = Math.min(this.tmp.y, this.head.y);
-      this.tag.show(`Stand up · try the ${surfaceName(far).toLowerCase()}`, FAMILIES[far.voice!.family].color, this.tmp, this.head, 6);
+      this.tag.show(`Stand up. Try the ${surfaceName(far).toLowerCase()}.`, FAMILIES[far.voice!.family].color, this.tmp, this.head, 6);
     });
   }
 
@@ -797,6 +831,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (this.debug.found.length !== this.game.found.length) this.debug.found = this.game.found.slice();
     this.kit.update(dt);
     for (const o of this.overlays.values()) o.update(dt);
+    this.updateFinale(dt);
+    // two found and a quiet spell: if there's a door or a window beyond reach, say so now (not only after a song)
+    if (!this.farTold && this.game.mode === 'discover' && this.game.found.length >= 2 && this.clock.t - this.lastFoundT > 8 && this.clock.t > this.farCheckAt) {
+      this.farCheckAt = this.clock.t + 3;
+      this.afterFirstSong();
+    }
     for (const sh of this.sheens.values()) sh.update(dt);
     this.kitSheen?.update(dt);
     this.kit.module.root.updateMatrixWorld();
@@ -1265,14 +1305,45 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
   private restoring = false;
 
+  /**
+   * The kit's first hit: it blooms out from your palm. Each pad lights up as the bloom reaches it, sounding itself
+   * softly (a little roll across the table), and the bars light up from the same spot.
+   */
+  private bloom(lanes: readonly Lane[]): void {
+    this.kit.revealKeys(this.hitAt.x, this.hitAt.z);
+    const fx = this.hitAt.x;
+    const fz = this.hitAt.z;
+    const order = lanes
+      .map((l) => {
+        const p = this.kit.pad(l);
+        return { l, d: p ? Math.hypot(p.x - fx, -p.z - fz) : 9 };
+      })
+      .sort((a, b) => a.d - b.d);
+    const t0 = this.clock.t;
+    order.forEach(({ l }, k) =>
+      this.later(t0 + 0.12 + 0.085 * k, () => {
+        const p = this.kit.pad(l);
+        if (!p) return;
+        p.appear('fade');
+        p.hit(0.45);
+        audio.drum(l, 0.22, Math.max(-0.8, Math.min(0.8, p.x / 0.4)));
+      }),
+    );
+  }
+
   /** A surface's first hit: its instrument draws itself in, named for two seconds; the room map fills. */
+  private lastFoundT = 0;
+  private farCheckAt = 0;
   private discover(s: Surface): void {
     s.discovered = true;
+    this.lastFoundT = this.clock.t;
     const v = s.voice;
     if (!v) return;
     if (s === this.kitSurface) {
       this.layout();
-      this.kit.reveal(this.lanes());
+      const lanes = this.lanes();
+      if (this.restoring) this.kit.reveal(lanes);
+      else this.bloom(lanes);
       this.kit.keys.recolor(FAMILIES[this.deskFamily].color);
       this.kitSheen?.group.removeFromParent();
       this.kitSheen = null;
@@ -1283,7 +1354,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       holder.matrix.copy(s.world);
       const o = new Overlay(v.family, Math.max(1, s.zones.length));
       o.build(s.zones, this.settings.highContrast);
-      o.reveal();
+      // the light spreads out from where your hand landed (a room coming back from last time just fades in)
+      if (!this.restoring) o.reveal(this.hitAt.x, this.hitAt.z);
       holder.add(o.group);
       this.worldRoot.add(holder);
       this.overlays.set(s, o);
@@ -1301,7 +1373,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (z && FAMILIES[v.family].melodic) audio.modal(v.family, z.midi + 7, 0.4, this.panOf(this.tmp.set(z.x, 0, -z.z).applyMatrix4(s.world)), audio.now() + 0.25, v.size, s.id);
     }
     if (!this.settings.noWords && !this.restoring) {
-      const name = `${surfaceName(s)} · ${FAMILIES[v.family].name}${isGlass(s) ? ' · tap gently' : ''}`;
+      const where = surfaceName(s);
+      const subject = where === 'Floor' ? 'The floor' : where === 'Top' ? 'This' : `Your ${where.toLowerCase()}`;
+      const name = `${subject} is ${withArticle(v.family)}${isGlass(s) ? '. Gently.' : ''}`;
       // the tag stands just off the surface where it was hit, facing you
       this.tmp.set(this.hitAt.x, 0.05, -this.hitAt.z).applyMatrix4(s.world);
       if (s === this.kitSurface) this.tmp.set(0, 0.1, 0.05).applyMatrix4(s.world);

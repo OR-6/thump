@@ -3,8 +3,8 @@
  * instrument is discovered ("Door · marimba"), facing you. Text ≤ 6 words.
  */
 import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3 } from '@iwsdk/core';
+import { FONT, whenFonts } from './fonts.js';
 
-const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 export class Tag {
   readonly mesh: Mesh;
@@ -26,7 +26,11 @@ export class Tag {
     this.mesh = new Mesh(new PlaneGeometry(widthM, heightM), this.mat);
     this.mesh.renderOrder = 20;
     this.mesh.visible = false;
+    whenFonts(() => {
+      if (this.text) this.draw(this.text, this.accent);
+    });
   }
+  private accent = 0xffffff;
 
   /** Show `text` (with an accent colour) at world `at`, facing `head`. Empty text hides it. */
   show(text: string, accent: number, at: Vector3 | null, head: Vector3 | null, hold = this.hold): void {
@@ -51,12 +55,13 @@ export class Tag {
 
   private draw(text: string, accent: number): void {
     this.text = text;
+    this.accent = accent;
     const c = this.canvas;
     const g = c.getContext('2d')!;
     const W = c.width;
     const H = c.height;
     g.clearRect(0, 0, W, H);
-    let px = Math.round(H * 0.5);
+    let px = Math.round(H * 0.58);
     g.font = `600 ${px}px ${FONT}`;
     while (g.measureText(text).width > W - H * 1.2 && px > 12) g.font = `600 ${--px}px ${FONT}`;
     const tw = g.measureText(text).width;

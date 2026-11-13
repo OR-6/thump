@@ -62,6 +62,92 @@ export const SAMPLES: Record<string, Sample[]> = {
       "tone": 0
     }
   ],
+  "band:piano": [
+    {
+      "file": "band-piano-01.mp3",
+      "midi": 36,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-02.mp3",
+      "midi": 36,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-03.mp3",
+      "midi": 48,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-04.mp3",
+      "midi": 48,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-05.mp3",
+      "midi": 60,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-06.mp3",
+      "midi": 60,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-07.mp3",
+      "midi": 72,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-08.mp3",
+      "midi": 72,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-09.mp3",
+      "midi": 43,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-10.mp3",
+      "midi": 43,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-11.mp3",
+      "midi": 55,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-12.mp3",
+      "midi": 55,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-13.mp3",
+      "midi": 67,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "band-piano-14.mp3",
+      "midi": 67,
+      "layer": 1,
+      "tone": 0
+    }
+  ],
   "tongue": [
     {
       "file": "tongue-01.mp3",

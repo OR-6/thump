@@ -10,7 +10,10 @@ import { TIMING } from '../config.js';
 import type { MoteView } from '../play/game.js';
 
 const MAX = 40;
-const TRAIL = 3;
+/** Beads per note: a bright head and a tapering tail ~15 cm long (and, once it lands, its sparks). */
+const TRAIL = 9;
+const SPARKS = 6;
+const _white = new Color(0xffffff);
 const _m = new Matrix4();
 const _look = new Matrix4();
 const _q = new Quaternion();
@@ -26,7 +29,7 @@ export class Motes {
   readonly rings: InstancedMesh;
 
   constructor() {
-    this.mesh = new InstancedMesh(new SphereGeometry(1, 12, 8), asLight(new MeshBasicMaterial({ toneMapped: false })), MAX * TRAIL);
+    this.mesh = new InstancedMesh(new SphereGeometry(1, 10, 6), asLight(new MeshBasicMaterial({ toneMapped: false })), MAX * TRAIL);
     this.mesh.name = 'Motes';
     this.rings = new InstancedMesh(new RingGeometry(0.82, 1, 40), asLight(new MeshBasicMaterial({ toneMapped: false })), MAX);
     this.rings.name = 'MoteRings';
@@ -51,18 +54,38 @@ export class Motes {
     for (let i = 0; i < count && k < MAX * TRAIL; i++) {
       const m = motes[i];
       const hit = m.grade === 'perfect' || m.grade === 'good';
-      if (m.ahead < 0 && hit) continue;
       if (!resolve(m.key, _to, _base)) continue;
+      if (m.ahead < 0 && hit) {
+        // played: it bursts into sparks on the target, facing you, gone in a moment
+        const age = -m.ahead;
+        if (age > 0.5 || k + SPARKS > MAX * TRAIL) continue;
+        const e = 1 - Math.pow(1 - age / 0.5, 2);
+        _look.lookAt(head, _to, _up);
+        _q.setFromRotationMatrix(_look);
+        for (let q = 0; q < SPARKS; q++) {
+          const a = (q / SPARKS) * Math.PI * 2 + i;
+          _p.set(Math.cos(a) * (0.02 + 0.07 * e), Math.sin(a) * (0.02 + 0.07 * e), 0).applyQuaternion(_q).add(_to);
+          _m.compose(_p, _q.identity(), _s.setScalar(0.006 * (1 - e) + 0.001));
+          this.mesh.setMatrixAt(k, _m);
+          this.mesh.setColorAt(k, _c.copy(_base).lerp(_white, 0.5 * (1 - e)).multiplyScalar(1 - e));
+          k++;
+          _q.setFromRotationMatrix(_look);
+        }
+        continue;
+      }
       const span = from.distanceTo(_to);
       const arc = Math.min(0.25, span * 0.35);
+      // the tail is about 15 cm long whatever the distance
+      const step = Math.min(0.06, 0.15 / Math.max(0.2, span) / (TRAIL - 1));
       for (let t = 0; t < TRAIL; t++) {
-        // the head, then two fading trail points a little behind it
-        const lag = t * 0.045;
+        // the head (white-hot at its core), then a tail that tapers and fades behind it
+        const lag = t * step;
         const s = Math.min(1, Math.max(0, 1 - m.ahead / TIMING.travelBeats - lag));
         _p.lerpVectors(from, _to, s);
         _p.y += Math.sin(s * Math.PI) * arc;
-        let size = (0.009 + 0.004 * s) * (1 - t * 0.3);
-        let bright = (0.55 + 0.45 * s) * (1 - t * 0.35);
+        const taper = 1 - t / TRAIL;
+        let size = (t === 0 ? 0.013 + 0.004 * s : (0.007 + 0.003 * s) * taper);
+        let bright = (0.55 + 0.45 * s) * (t === 0 ? 1 : 0.8 * taper * taper);
         if (m.ahead < 0) {
           const f = Math.max(0, 1 + m.ahead / 0.6);
           size *= f;
@@ -72,7 +95,7 @@ export class Motes {
         if (size <= 0.0005) continue;
         _m.compose(_p, _q.identity(), _s.setScalar(size));
         this.mesh.setMatrixAt(k, _m);
-        this.mesh.setColorAt(k, _c.copy(_base).multiplyScalar(bright));
+        this.mesh.setColorAt(k, (t === 0 ? _c.copy(_base).lerp(_white, 0.45) : _c.copy(_base)).multiplyScalar(bright));
         k++;
       }
       // its last beat: a ring closes onto the target, facing you
