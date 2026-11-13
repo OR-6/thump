@@ -8,6 +8,7 @@
 import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
 import { contactShadow } from '../art/lighting.js';
+import { thumb, whenThumbs } from '../art/thumbs.js';
 import { FONT, whenFonts } from './fonts.js';
 import { star, type Display } from './module.js';
 import type { Item, Page } from './menu.js';
@@ -147,11 +148,13 @@ export class Panel {
     this.root.position.set(0, PANEL.y, PANEL.z);
     this.root.rotation.x = -PANEL.lean;
     this.fitStand();
-    whenFonts(() => {
+    const redraw = () => {
       this.sig = '';
       this.page = null;
       this.set(this.shown);
-    });
+    };
+    whenFonts(redraw);
+    whenThumbs(redraw);
   }
 
   /**
@@ -486,7 +489,10 @@ export class Panel {
       g.fillStyle = it.on ? INK : SOFT;
       g.lineWidth = 5;
       g.lineCap = 'round';
-      if (it.icon) ICON[it.icon]?.(g, S);
+      // the instrument itself, pictured (its line drawing until the pictures are made)
+      const pic = it.icon ? thumb(it.icon) : undefined;
+      if (pic) g.drawImage(pic, -S * 0.08, -S * 0.08, S * 1.16, S * 1.16);
+      else if (it.icon) ICON[it.icon]?.(g, S);
       g.restore();
       g.fillStyle = ink;
       if (it.kind === 'card') {

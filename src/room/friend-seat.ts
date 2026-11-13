@@ -12,7 +12,7 @@ import { congaZones, guitarZones, handpanZones, marimbaZones, pianoZones, scaleB
 
 /** Their instrument, small (a band across the desk, not dots): a desk model at a third of the size. */
 const MINI = 0.3;
-function miniModel(id: string): { root: Group; model: DeskModel | null; n: number } {
+export function miniModel(id: string): { root: Group; model: DeskModel | null; n: number } {
   const happy = scaleById('happy');
   const m: DeskModel | null =
     id === 'piano' ? new PianoModel() : id === 'marimba' ? new MarimbaModel() : id === 'guitar' ? new GuitarModel() : id === 'handpan' ? new HandpanModel() : id === 'congas' ? new CongaModel() : null;

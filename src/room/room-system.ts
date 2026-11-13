@@ -76,6 +76,7 @@ import { Waterfall, type NoteTarget } from './waterfall.js';
 import { Dimmer } from './dimmer.js';
 import { FriendSeat } from './friend-seat.js';
 import { setupLighting } from '../art/lighting.js';
+import { makeThumbs } from '../art/thumbs.js';
 
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
 const RESUME_WINDOW_S = 4;
@@ -210,6 +211,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   init() {
     // the instruments' light: a room to reflect, filmic tone mapping
     setupLighting(this.renderer, this.world.scene);
+    // pictures of the instruments for their cards (made once, before the headset session)
+    makeThumbs(this.renderer, this.world.scene.environment, SHELF.map((d) => d.id));
     this.progress = loadProgress();
     const desk = this.progress.desk as Family | undefined;
     if (desk && (NEIGHBOURS.keys as string[]).includes(desk)) this.deskFamily = desk;
