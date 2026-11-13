@@ -15,6 +15,7 @@ import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/c
 import { bed } from '../songs/chart.js';
 import { Bandmate } from '../bandmate/bandmate.js';
 import { Looper } from './looper.js';
+import { LOOP_BEATS, TRACKS, assign, quantise, steps, type MachineNote, type PartDef, type RawHit, type Step, type TrackDef } from './build.js';
 import { FAMILIES, type Family } from '../room/classify.js';
 import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
@@ -75,7 +76,7 @@ export interface Room {
   chordZone?(surface: string, pcs: readonly number[]): number;
 }
 
-export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam';
+export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam' | 'build';
 
 export interface MoteView {
   key: string;
@@ -183,6 +184,219 @@ export class Game {
     this.refreshDisplay();
   }
 
+  // ---------------------------------------------------------------- build
+
+  /** The track being built (or running: all its parts recorded). */
+  private bld: {
+    track: TrackDef;
+    part: number;
+    phase: 'assign' | 'count' | 'rec' | 'run';
+    target: { surface: string; key: string } | null;
+    moved: boolean;
+    recStart: number;
+    hits: RawHit[];
+    parts: { def: PartDef; surface: string; notes: MachineNote[] }[];
+    /** The machine's notes are scheduled up to this beat. */
+    sched: number;
+    /** The last count-in click scheduled. */
+    clicked: number;
+  } | null = null;
+
+  /** The part the module is asking for a thing for (the autoplayer), or null. */
+  buildAsks(): string | null {
+    return this.bld?.phase === 'assign' ? this.bld.track.parts[this.bld.part].name : null;
+  }
+
+  buildRunning(): boolean {
+    return this.bld?.phase === 'run';
+  }
+
+  /** Has this track been built (its machine kept)? */
+  built(id: string): boolean {
+    return (this.progress.built ?? []).includes(id);
+  }
+
+  beginBuild(i: number): void {
+    const track = TRACKS[i];
+    if (!track) return;
+    this.looper.clear();
+    if (this.mode === 'jam') this.endJam();
+    this.mode = 'build';
+    this.modeT = this.t;
+    this.song = null;
+    const spb = secPerBeat(track.bpm, this.opts.tempo);
+    this.clock.set(this.t + 0.3, spb);
+    this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99 };
+    this.stage.retune(track.key);
+    this.moteCount = 0;
+    this.refreshDisplay();
+  }
+
+  /** Stop building or stop the machine; back to playing freely. */
+  private endBuild(): void {
+    this.bld = null;
+    this.mode = 'discover';
+    this.moteCount = 0;
+    this.stage.retune(0);
+    this.refreshDisplay();
+  }
+
+  private buildKey(k: ModuleKey, twice: boolean): void {
+    const b = this.bld;
+    if (!b) return;
+    if (k === 'play') {
+      // ▶ twice stops; once while the machine runs ends it (Perform comes next)
+      if (twice || b.phase === 'run') this.endBuild();
+      else {
+        this.stopAsked = this.t;
+        this.display.sub = 'Tap ▶ again to stop';
+      }
+      return;
+    }
+    if (k === 'prev' && b.parts.length && (b.phase === 'assign' || b.phase === 'run')) {
+      // back a part: it comes out of the machine and you pick and play it again
+      b.parts.pop();
+      b.part = b.parts.length;
+      b.phase = 'assign';
+      b.target = null;
+      this.refreshDisplay();
+    }
+  }
+
+  /** The key a pattern note plays on for a target (pitched parts: the zone with its degree). */
+  private keyFor(surface: string, key: string, s: Step): string {
+    if (s.degree < 0) return key;
+    const z = this.room.zoneFor(surface, s.degree);
+    return `${surface}:${Math.max(0, z)}`;
+  }
+
+  private hitBuild(key: string, t: number, gain: number): Grade | 'extra' | null {
+    const b = this.bld;
+    if (!b) return null;
+    const beat = this.clock.beatAt(t - this.opts.offset);
+    if (b.phase === 'assign') {
+      const def = b.track.parts[b.part];
+      const a = assign(def, key, (sfc) => this.room.zones(sfc));
+      b.target = { surface: a.surface, key: a.key };
+      b.moved = a.moved;
+      // recording starts on the next loop at least a bar away (the count-in)
+      b.recStart = Math.ceil((beat + 4) / LOOP_BEATS) * LOOP_BEATS;
+      b.hits = [];
+      b.phase = 'count';
+      this.refreshDisplay();
+      return null;
+    }
+    if ((b.phase === 'count' || b.phase === 'rec') && b.target && key.startsWith(b.target.surface + ':')) {
+      const rel = beat - b.recStart;
+      if (rel < -0.4 || rel > LOOP_BEATS) return null;
+      // (unpitched parts: only the thing you chose; pitched: any of its keys)
+      const def = b.track.parts[b.part];
+      if (def.pitched === 'no' && key !== b.target.key && b.target.surface === 'kit') return null;
+      b.hits.push({ beat: (rel + LOOP_BEATS) % LOOP_BEATS, key, vel: gain });
+      // a grade for the light: close to a pattern note is a perfect
+      const st = steps(def.pattern);
+      const d = Math.min(...st.map((s) => Math.abs(s.beat - ((rel + LOOP_BEATS) % LOOP_BEATS))));
+      return d * this.clock.spb < 0.06 ? 'perfect' : d * this.clock.spb < 0.13 ? 'good' : 'extra';
+    }
+    return null;
+  }
+
+  private tickBuild(t: number): void {
+    const b = this.bld;
+    if (!b) return;
+    if (this.stopAsked > 0 && t - this.stopAsked > 1.2) {
+      this.stopAsked = -1;
+      this.refreshDisplay();
+    }
+    const beat = this.clock.beatAt(t);
+    const spb = this.clock.spb;
+    const ahead = beat + TIMING.lookAheadS / spb;
+    // the machine: every recorded part, looping
+    if (ahead > b.sched) {
+      for (let L = Math.floor(b.sched / LOOP_BEATS); L * LOOP_BEATS <= ahead; L++) {
+        for (const p of b.parts)
+          for (const n of p.notes) {
+            const at = L * LOOP_BEATS + n.beat;
+            if (at > b.sched && at <= ahead && at >= 0) this.stage.voice(n.key, this.clock.timeAt(at), n.filled ? n.vel * 0.85 : n.vel);
+          }
+      }
+      b.sched = ahead;
+    }
+    this.moteCount = 0;
+    if (b.phase === 'count' || b.phase === 'rec') {
+      const def = b.track.parts[b.part];
+      const target = b.target!;
+      // the count-in: a soft click on each of the last four beats before recording
+      const nextClick = Math.ceil(beat);
+      if (nextClick >= b.recStart - 4 && nextClick < b.recStart && nextClick > b.clicked && nextClick - beat < TIMING.lookAheadS / spb + 0.05) {
+        b.clicked = nextClick;
+        this.stage.band({ beat: nextClick, voice: 'shaker', midi: 0, len: 0.2, vel: nextClick === b.recStart - 4 ? 0.9 : 0.6 }, this.clock.timeAt(nextClick), spb);
+      }
+      // the part's notes light on your thing a beat ahead and fly to it from the module
+      let k = 0;
+      for (const s of steps(def.pattern)) {
+        const at = b.recStart + s.beat;
+        const d = at - beat;
+        const key = this.keyFor(target.surface, target.key, s);
+        if (d <= TIMING.glowBeats && d > -0.3) this.stage.light(key, 1 - Math.max(0, d) / TIMING.glowBeats);
+        if (d <= TIMING.travelBeats && d > -0.6 && k < this.motes.length) {
+          const m = this.motes[k++];
+          m.key = key;
+          m.ahead = d;
+          m.grade = null;
+        }
+      }
+      this.moteCount = k;
+      if (b.phase === 'count') {
+        const n = Math.max(0, Math.min(4, Math.ceil(b.recStart - beat)));
+        if (beat >= b.recStart) {
+          b.phase = 'rec';
+          this.refreshDisplay();
+        } else if (n !== this.display.count && n <= 4) this.refreshDisplay();
+      } else if (beat >= b.recStart + LOOP_BEATS + 0.35) {
+        // the part is in: snapped, filled, looping from the next loop on
+        const notes = quantise(steps(def.pattern), b.hits, (s) => this.keyFor(target.surface, target.key, s));
+        b.parts.push({ def, surface: target.surface, notes });
+        b.sched = Math.min(b.sched, beat);
+        b.part++;
+        b.target = null;
+        if (b.part >= b.track.parts.length) {
+          b.phase = 'run';
+          const list = this.progress.built ?? (this.progress.built = []);
+          if (!list.includes(b.track.id)) list.push(b.track.id);
+          this.stage.save(this.progress);
+          this.stage.celebrate(3);
+        } else b.phase = 'assign';
+        this.refreshDisplay();
+      }
+    }
+  }
+
+  private buildDisplay(d: Display): void {
+    const b = this.bld!;
+    const n = b.track.parts.length;
+    const def = b.track.parts[b.part];
+    d.pulse = null;
+    if (b.phase === 'run') {
+      d.line = b.track.name;
+      d.sub = 'Your desk is playing it';
+      d.pulse = 'play';
+      return;
+    }
+    d.line = `${b.part + 1}/${n}  ${def.name}`;
+    if (b.phase === 'assign') {
+      d.sub = ASK[def.name];
+      return;
+    }
+    if (b.phase === 'count') {
+      d.count = Math.max(1, Math.min(4, Math.ceil(b.recStart - this.clock.beatAt(this.t))));
+      d.sub = b.moved ? 'Keys go on the bars' : 'Play along';
+      if (d.count > 4) d.count = 0;
+      return;
+    }
+    d.sub = 'Play along';
+  }
+
   /** A pad on a thing was hit: show its sound, with ◀ ▶ to change it. */
   focusPad(name: string, t: number): void {
     if (!name || this.mode !== 'discover') return;
@@ -264,6 +478,14 @@ export class Game {
       const n = this.available();
       this.selected = (this.selected + (k === 'next' ? 1 : n - 1)) % n;
       this.refreshDisplay();
+      return;
+    }
+    if (this.mode === 'build') {
+      this.buildKey(k, twice);
+      return;
+    }
+    if (k === 'play' && this.mode === 'discover' && !this.built(TRACKS[0].id)) {
+      this.beginBuild(0);
       return;
     }
     if (k === 'play') {
@@ -524,6 +746,7 @@ export class Game {
   hit(key: string, t: number, gain: number): Grade | 'extra' | null {
     if (this.mode === 'results' && t - this.modeT > 4) this.leaveResults();
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
+    if (this.mode === 'build') return this.hitBuild(key, t, gain);
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
     const at = t - this.opts.offset - this.clock.start;
@@ -570,6 +793,10 @@ export class Game {
     }
     if (this.mode === 'jam') {
       this.tickJam(t);
+      return;
+    }
+    if (this.mode === 'build') {
+      this.tickBuild(t);
       return;
     }
     if (this.mode === 'results') {
@@ -790,6 +1017,16 @@ export class Game {
       d.keyLabels = null;
       return;
     }
+    if (this.mode === 'build' && this.bld) {
+      this.buildDisplay(d);
+      return;
+    }
+    if (this.mode === 'discover' && this.offered && !this.built(TRACKS[0].id)) {
+      d.line = 'Build a track?';
+      d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : 'Tap ▶';
+      d.pulse = 'play';
+      return;
+    }
     switch (this.mode) {
       case 'discover':
         if (!this.offered) {
@@ -842,6 +1079,15 @@ export class Game {
 
   /** Notes due between game times a and b (the autoplayer, for tests and filming only). */
   dueBetween(a: number, b: number, fn: (key: string) => void): void {
+    if (this.mode === 'build') {
+      const bl = this.bld;
+      if (!bl || (bl.phase !== 'count' && bl.phase !== 'rec') || !bl.target) return;
+      for (const s of steps(bl.track.parts[bl.part].pattern)) {
+        const due = this.clock.timeAt(bl.recStart + s.beat) + this.opts.offset;
+        if (due > a && due <= b) fn(this.keyFor(bl.target.surface, bl.target.key, s));
+      }
+      return;
+    }
     if (this.mode === 'jam') {
       if (this.jamPhase !== 'turn') return;
       for (const n of this.jamAnswer) {
@@ -883,6 +1129,16 @@ function found(f: { family: Family; label: string }): string {
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/** What the module asks for each part. */
+const ASK: Record<string, string> = {
+  KICK: 'Hit what plays the kick',
+  SNARE: 'Hit what plays the snare',
+  HAT: 'Hit what plays the hat',
+  PERC: 'Find something new',
+  KEYS: 'Hit what plays the keys',
+  BASS: 'Hit what plays the bass',
+};
 
 const NO_KEYS: ModuleKey[] = [];
 const LOOP_LOCKED: ModuleKey[] = ['loop'];

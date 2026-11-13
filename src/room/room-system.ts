@@ -379,7 +379,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const z = r.surface.zones[r.zone];
         if (z) {
           this.lastWorld.set(z.x, 0, -z.z).applyMatrix4(r.surface.world);
-          audio.modal(r.surface.voice.family, z.midi, vel, this.panOf(this.lastWorld), when, r.surface.voice.size, r.surface.id, r.zone);
+          if (r.surface.source === 'touch') this.playPad(r.surface, r.zone, vel, this.panOf(this.lastWorld), when);
+          else audio.modal(r.surface.voice.family, z.midi, vel, this.panOf(this.lastWorld), when, r.surface.voice.size, r.surface.id, r.zone);
         }
       }
       // its note lights where it plays, when it plays
@@ -1067,7 +1068,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.cands.length = 0;
       this.candHits.length = 0;
       // nothing known was hit: maybe something unknown was (a cup, a book, your knee)
-      const free = this.game.mode === 'discover' || this.game.mode === 'results';
+      const free = this.game.mode === 'discover' || this.game.mode === 'results' || this.game.mode === 'build';
       const touch = this.touchFinder.update(hand, h.tracked && !this.sample.pinching && !struck ? h.indexTip : null, t);
       if (touch && free) this.onTouch(touch, side);
       this.trackSink(i, h);
@@ -2414,7 +2415,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.game.key('play');
       }
     }
-    if (this.game.mode === 'play' || this.game.mode === 'count' || this.game.mode === 'jam') {
+    if (this.game.mode === 'build' && t >= this.autoNext) {
+      const want = this.game.buildAsks();
+      if (want) {
+        this.autoNext = t + 0.8;
+        // drums on the kit's pads, everything else on the desk's bars
+        const lane = want === 'KICK' ? 'kick' : want === 'SNARE' ? 'snare' : want === 'HAT' ? 'hat' : null;
+        this.autoHit(lane ? `kit:${lane}` : 'keys:2', t);
+      } else if (this.game.buildRunning()) this.autoNext = t + 99;
+    }
+    if (this.game.mode === 'play' || this.game.mode === 'count' || this.game.mode === 'jam' || this.game.mode === 'build') {
       this.game.dueBetween(from, t, (key) => this.autoHit(key, t));
     }
   }

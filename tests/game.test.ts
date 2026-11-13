@@ -72,6 +72,7 @@ describe('the game', () => {
   it('PLAY casts the song onto the room, a good player gets 3 stars and the tom, and the next song unlocks', () => {
     const log: string[] = [];
     const p = freshProgress();
+    p.built = ['kick-start'];
     const g = new Game(stage(log), p, room([{ id: 'p1', family: 'marimba', zones: 8 }]));
     g.start(0);
     g.discovered('kit', 'table', 0);
@@ -192,6 +193,42 @@ describe('the game', () => {
     expect(encore.length).toBeGreaterThan(4);
     expect(encore.every((v) => v.at >= t + 2.3)).toBe(true);
     expect(encore.some((v) => v.key.startsWith('kit:'))).toBe(true);
+  });
+
+  it('build: ▶ asks for a thing per part; hit one, play two bars along, it loops; six parts and the desk plays it', () => {
+    const voiced: string[] = [];
+    const st = { ...stage([]), voice: (key: string) => voiced.push(key) };
+    const p = freshProgress();
+    const g = new Game(st, p, room([{ id: 't1', family: 'bell', zones: 1 }]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(30);
+    expect(g.display.line).toBe('Build a track?');
+    g.key('play');
+    expect(g.mode).toBe('build');
+    expect(g.display.sub).toBe('Hit what plays the kick');
+    let t = 30.1;
+    const parts = ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom'];
+    for (const key of parts) {
+      g.tick(t);
+      expect(g.buildAsks()).not.toBeNull();
+      g.hit(key, t, 0.8);
+      // play every lit note on time, until the module asks for the next part
+      for (let k = 0; k < 600 && g.buildAsks() === null && !g.buildRunning(); k++) {
+        t += 1 / 30;
+        g.tick(t);
+        g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+      }
+    }
+    expect(g.buildRunning()).toBe(true);
+    expect(p.built).toContain('kick-start');
+    // the machine plays every part on its things
+    const before = voiced.length;
+    for (let k = 0; k < 120; k++) g.tick((t += 1 / 30));
+    const played = voiced.slice(before);
+    expect(played.some((k) => k === 'kit:kick')).toBe(true);
+    expect(played.some((k) => k.startsWith('t1:'))).toBe(true);
+    expect(played.some((k) => k.startsWith('keys:'))).toBe(true);
   });
 
   it('learns a steady lateness', () => {

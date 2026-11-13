@@ -71,6 +71,8 @@ export interface Progress {
   desk?: string;
   /** The things on the desk found by touch and kept. */
   pads?: SavedPad[];
+  /** Tracks whose machine you've built. */
+  built?: string[];
 }
 
 const KEY = 'progress.v1';
@@ -99,6 +101,7 @@ export function loadProgress(): Progress {
   const k = r.kit as SavedKit | undefined;
   if (k && typeof k.uuid === 'string' && [k.x, k.y, k.z, k.yaw].every((n) => typeof n === 'number' && Number.isFinite(n))) p.kit = { uuid: k.uuid, x: k.x, y: k.y, z: k.z, yaw: k.yaw };
   if (typeof r.desk === 'string' && r.desk.length < 20) p.desk = r.desk;
+  if (Array.isArray(r.built)) p.built = (r.built as unknown[]).filter((x): x is string => typeof x === 'string' && x.length < 40).slice(0, 20);
   if (Array.isArray(r.pads))
     p.pads = (r.pads as SavedPad[])
       .filter((q) => !!q && [q.x, q.y, q.z, q.nx, q.ny, q.nz, q.w, q.size, q.tone].every((n) => typeof n === 'number' && Number.isFinite(n)) && typeof q.sound === 'string' && typeof q.what === 'string')
