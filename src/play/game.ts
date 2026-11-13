@@ -61,7 +61,7 @@ export interface GameStage {
   /** Playing together: the link's state and how many are in the band. */
   bandState?(): { state: string; players: number; message?: string };
   /** Easy or Normal changed (saved). */
-  saveLevel?(level: 'easy' | 'normal'): void;
+  saveLevel?(level: 'easy' | 'normal' | 'hard'): void;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
   bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave' | 'turn', surface?: string): void;
   /** A good fill: a light sweep over every ring on the desk (no sound: the fill was the sound). */
@@ -324,9 +324,8 @@ export class Game {
       const c = g.chords[GROOVE[Math.max(0, Math.floor(beat / 4)) % 4] % g.chords.length];
       return { minor: false, chord: g.root + c[0], chordMinor: c[1] - c[0] === 3, song: false };
     }
-    const bar = Math.max(0, Math.floor(beat / 4));
-    const i = bar % track.chords.length;
-    return { minor: !!track.minor, chord: track.chords[i], chordMinor: !!track.minorChords?.includes(i), song: true };
+    const c = songChord(track, Math.max(0, Math.floor(beat / 4)), !!this.perf);
+    return { minor: !!track.minor, chord: c.root, chordMinor: c.minor, song: true };
   }
 
   /** Can a hand resting on this thing mute it? Only a part of the machine you're not playing right now. */
@@ -738,7 +737,8 @@ export class Game {
       const EASY_LATER = [0, 2, 2.5, 3];
       const n = m.track.chords.length;
       for (let bar = Math.floor(from / 4); bar * 4 < to; bar++) {
-        const offs = bar < 8 ? [0, 1, 2, 3] : this.level === 'easy' ? EASY_LATER : LATER;
+        // (Hard: the moving rhythm and the chord changes from the start)
+        const offs = bar < (this.level === 'hard' ? 0 : 8) ? [0, 1, 2, 3] : this.level === 'easy' ? EASY_LATER : LATER;
         for (const o of offs) {
           // (the up-strums sit where the song swings them)
           const b = bar * 4 + Math.floor(o) + (o % 1 ? (m.track.swing ?? 0.5) : 0);
@@ -747,7 +747,7 @@ export class Game {
         }
         // the chord change, on the neck (the pads are the song's chords in turn)
         const b = bar * 4;
-        if (this.level === 'normal' && bar >= 8 && n > 1 && b >= from && b < to && !inFill(b)) notes.push({ beat: b, part: `guitar:${(bar % n) % 3}` as never, degree: -1, vel: 0.7 });
+        if (this.level !== 'easy' && bar >= (this.level === 'hard' ? 0 : 8) && n > 1 && b >= from && b < to && !inFill(b)) notes.push({ beat: b, part: `guitar:${(bar % n) % 3}` as never, degree: -1, vel: 0.7 });
       }
       notes.sort((a, b) => a.beat - b.beat);
       return { notes, live, found: '' };
@@ -760,14 +760,17 @@ export class Game {
       // Normal: the hat too (two hands still: the third note at once goes back to the band)
       // (Easy: the hat joins after the first solo; Normal: from the start)
       parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found || p.def.name === 'HAT');
+      // Hard: the extra percussion too, on the tom (once you have it)
+      if (this.level === 'hard' && (this.progress.unlocks as string[]).includes('tom')) parts.push(...m.parts.filter((p) => p.def.name === 'PERC'));
       if (found) foundName = say(found.def.name);
     } else if (inst === 'congas') {
       // the congas: the song's extra percussion (its PERC lines), and on Normal the hat's eighths too, as a tumbao
       // (Easy: a slap with the snare on 2 and 4 too; the band keeps its snare)
-      parts = m.parts.filter((p) => p.def.name.startsWith('PERC') || (this.level === 'normal' ? p.def.name === 'HAT' : p.def.name === 'SNARE'));
-    } else if (inst === 'handpan' && this.level === 'easy') {
+      parts = m.parts.filter((p) => p.def.name.startsWith('PERC') || (this.level !== 'easy' && p.def.name === 'HAT') || (this.level !== 'normal' && p.def.name === 'SNARE'));
+    } else if (inst === 'handpan' && this.level !== 'normal') {
       // Easy handpan: the bass line on its notes (on the beat, the low middle mostly), not the off-beat extras
-      parts = m.parts.filter((p) => p.def.name === 'BASS');
+      // (Hard: the bass and the extra both)
+      parts = m.parts.filter((p) => p.def.name === 'BASS' || (this.level === 'hard' && p.def.name.startsWith('PERC')));
     } else {
       parts = m.parts.filter((p) => PART_INST[p.def.name] === (inst === 'marimba' ? 'piano' : inst) && p.def.name !== 'BASS');
       // Easy: the main line only (the tune)
@@ -797,11 +800,14 @@ export class Game {
           // an arc: kick and snare first; your own thing joins at bar 5
           if (p === found && beat < 16) return;
           if (p.def.name === 'HAT' && this.level === 'easy' && beat < 32) return;
-          let part = inst === 'congas' ? congaAt(n.at ?? n.beat) : this.onInst(inst, n.key, k, p.def.name);
+          let part = inst === 'congas' ? congaAt(n.at ?? n.beat) : inst === 'drums' && p.def.name === 'PERC' ? 'kit:tom' : this.onInst(inst, n.key, k, p.def.name);
           if (up > 0 && beat >= SECOND[0] && beat < SECOND[1]) part = lift(part, up);
           notes.push({ beat, part: part as never, degree: -1, vel: Math.max(0.6, n.vel) });
         });
     }
+    // Hard on the piano: your left hand on the CHORD key as each bar's chord comes in
+    if (inst === 'piano' && this.level === 'hard')
+      for (let bar = Math.ceil(from / 4); bar * 4 < to; bar++) if (!inFill(bar * 4)) notes.push({ beat: bar * 4, part: 'piano:6' as never, degree: -1, vel: 0.7 });
     notes.sort((a, b) => a.beat - b.beat || rank(a.part as string) - rank(b.part as string));
     // two hands: never more than two things at once (the later part's note goes back to the bed)
     for (let i = notes.length - 1; i >= 2; i--) if (Math.abs(notes[i].beat - notes[i - 2].beat) < 0.01) notes.splice(i, 1);
@@ -948,7 +954,7 @@ export class Game {
       [52, 56],
     ];
     // (Easy keeps its lights to the end: the hold-it bars are Normal's)
-    const holdFrom = this.level === 'easy' ? 999 : 72;
+    const holdFrom = this.level === 'easy' ? 999 : this.level === 'hard' ? 64 : 72;
     const listen = this.listening;
     const first = this.chartFor(inst, 0, (listen ? 8 : bars) * 4, listen ? [] : fills);
     const notes = first.notes;
@@ -970,7 +976,9 @@ export class Game {
     this.tempoAtStart = this.opts.tempo;
     this.clock.set(beat0 >= 0 ? beat0 : this.t + 0.4 + 4 * spb, spb);
     // the count-in, then the track's chords under everything (held, one a bar)
-    this.bedCursor = new EventCursor(chordBed({ roots: [...t.chords], minor: t.minorChords ? [...t.minorChords] : [], bass: '........', chord: 'hold', shaker: false }, bars));
+    // (one chord a bar: the song's two, then the second half's change, then home)
+    const prog = Array.from({ length: bars }, (_, b) => songChord(t, b, true));
+    this.bedCursor = new EventCursor(chordBed({ roots: prog.map((c) => c.root), minor: prog.flatMap((c, b) => (c.minor ? [b] : [])), bass: '........', chord: 'hold', shaker: false }, bars));
     this.bedCursor.seek(-4);
     const chart = this.stage.setting('oneHand', false) ? oneHanded(notes) : notes;
     this.judge = new NoteJudge(chart.map((n) => ({ beat: n.beat, lane: n.part as string, vel: n.vel })), spb, windows(this.opts.tempo < 0.95));
@@ -1023,6 +1031,8 @@ export class Game {
           for (const n of part.notes) {
             const at = L * LOOP_BEATS + n.beat;
             if (at <= p.sched || at > ahead || at >= end) continue;
+            // (the second half's chords have their own bass, below)
+            if (part.def.name === 'BASS' && at >= CHANGE[0] && at < CHANGE[1]) continue;
             const inFill = within(p.fills, at, 0);
             // the last bars: the whole machine back at full under you, lights down
             // (in a solo the band steps back; the kit keeps time under you unless you're the drummer)
@@ -1036,6 +1046,13 @@ export class Game {
         this.domSent = true;
         this.stage.band({ beat: end, voice: 'chord', midi: p.track.chords[0] + 7, len: 8, vel: 0.34, minor: false }, this.clock.timeAt(end), this.clock.spb);
       }
+      // the second half's change: the band's bass on its roots, on 1 and 3
+      if (backing)
+        for (let b = Math.floor(p.sched) + 1; b <= ahead; b++)
+          if (b >= CHANGE[0] && b < CHANGE[1] && b % 2 === 0) {
+            const c = songChord(p.track, Math.floor(b / 4), true);
+            this.stage.band({ beat: b, voice: 'bass', midi: c.root - 24, len: 0.9, vel: b % 4 === 0 ? 0.75 : 0.6 }, this.clock.timeAt(b), this.clock.spb);
+          }
       // listening: your part, played for you on the instrument that's out
       if (this.listening)
         for (const n of this.listenNotes) {
@@ -1108,7 +1125,7 @@ export class Game {
     pr.best ??= {};
     const before = pr.best[bk];
     pr.best[bk] = Math.max(before ?? 0, pct);
-    this.lastBest = { run: this.bestRun, better: before !== undefined && pct > before, song: p.track.name, pct, perfect: s.perfect, good: s.good, wasEasy3: this.level === 'easy' && stars === 3 };
+    this.lastBest = { run: this.bestRun, better: before !== undefined && pct > before, song: p.track.name, pct, perfect: s.perfect, good: s.good, wasEasy3: this.level !== 'hard' && stars === 3 };
     this.resultsT0 = this.t;
     pr.stars[p.track.id] = Math.max(pr.stars[p.track.id] ?? 0, stars);
     if (stars === 3 && this.tempoAtStart >= 0.999) pr.gold[p.track.id] = true;
@@ -2061,7 +2078,7 @@ export class Game {
   /** Where Instruments was opened from (picking one goes back there). */
   instFrom: PageId = 'free';
   /** Easy (the beat, the tune) or Normal (more of each part). */
-  level: 'easy' | 'normal' = 'easy';
+  level: 'easy' | 'normal' | 'hard' = 'easy';
 
   /** Something on the panel was pressed (an item's action id). */
   act(id: string): void {
@@ -2112,8 +2129,8 @@ export class Game {
     }
     // (three stars on Easy: again is on Normal)
     if (id === 'again') {
-      if (this.fromPerform && this.lastBest.wasEasy3 && this.level === 'easy') {
-        this.level = 'normal';
+      if (this.fromPerform && this.lastBest.wasEasy3 && this.level !== 'hard') {
+        this.level = this.level === 'easy' ? 'normal' : 'hard';
         this.stage.saveLevel?.(this.level);
       }
       return this.key('play');
@@ -2131,7 +2148,7 @@ export class Game {
       return this.beginBuild(i);
     }
     if (id.startsWith('level:')) {
-      this.level = id === 'level:normal' ? 'normal' : 'easy';
+      this.level = id === 'level:normal' ? 'normal' : id === 'level:hard' ? 'hard' : 'easy';
       this.stage.saveLevel?.(this.level);
       this.refreshDisplay();
       return;
@@ -2189,7 +2206,7 @@ export class Game {
       settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false) },
       next: this.fromPerform ? 'NEXT\nSONG' : '',
       make: this.fromPerform && !!this.machine?.written,
-      harder: this.mode === 'results' && this.fromPerform && this.lastBest.wasEasy3 && this.level === 'easy',
+      harder: this.mode === 'results' && this.fromPerform && this.lastBest.wasEasy3 && this.level !== 'hard' ? (this.level === 'easy' ? 'NORMAL' : 'HARD') : '',
       perform: this.mode === 'build' && !!this.bld && this.bld.phase === 'run' && this.bld.dropAt <= 0,
       sure: this.stopAsked > 0 && this.t - this.stopAsked < 2,
       switchable: sw,
@@ -2472,6 +2489,17 @@ const PART_INST: Record<string, string> = { KICK: 'drums', SNARE: 'drums', HAT: 
 function within(spans: readonly (readonly [number, number])[], b: number, early: number): boolean {
   for (let i = 0; i < spans.length; i++) if (b >= spans[i][0] - early && b < spans[i][1]) return true;
   return false;
+}
+/** Bars 9–12 (beats 32–48): the song's chords change (IV–V in major, VI–VII in minor), then it comes home. */
+const CHANGE = [32, 48] as const;
+/**
+ * A song's chord in bar `bar`: its own two in turn, and in a performance the second half's change, all major (the
+ * pentatonic tune fits over every one), back home on bar 13.
+ */
+function songChord(t: TrackDef, bar: number, perform: boolean): { root: number; minor: boolean } {
+  if (perform && bar * 4 >= CHANGE[0] && bar * 4 < CHANGE[1]) return { root: t.chords[0] + (t.minor ? [8, 10] : [5, 7])[bar % 2], minor: false };
+  const i = bar % t.chords.length;
+  return { root: t.chords[i], minor: !!t.minorChords?.includes(i) };
 }
 /** The song's second half (the tune two notes up, every other time round): bars 9–12, before the second solo. */
 const SECOND = [32, 48] as const;

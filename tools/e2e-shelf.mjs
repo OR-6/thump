@@ -51,6 +51,8 @@ let s = await placeKit();
 await slapAt([s.targets.table[0] + 0.06, DESK_Y, s.targets.table[2]]);
 s = await until((x) => x.game.found.includes('kit'), 3000);
 check('the drums come out on the first slap', s.game.found.includes('kit') && s.targets.inst?.[0] === 0, JSON.stringify(s.targets.inst));
+check("the band's name is on the kick", /^[A-Za-z' ]+$/.test(s.debug.bandName ?? ''), s.debug.bandName);
+shot('shelf-kick-name', [s.debug.kitOrigin[0] - 0.08, DESK_Y, s.debug.kitOrigin[2] + 0.02]);
 check('and the panel shows free play', s.game.display.page?.id === 'free' && s.game.display.page?.title === 'Drums', `${s.game.display.page?.id} ${s.game.display.page?.title}`);
 await wait(5500);
 const look = [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05];

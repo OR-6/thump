@@ -75,6 +75,8 @@ export interface Progress {
   pads?: SavedPad[];
   /** Tracks whose machine you've built. */
   built?: string[];
+  /** Your band's name, painted on the kick (chosen once, from where you first sat). */
+  bandName?: string;
   /** Best score (% of notes) per song and level ('kick-start:easy'). */
   best?: Record<string, number>;
 }
@@ -90,6 +92,7 @@ export function loadProgress(): Progress {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const p = freshProgress();
   p.introDone = r.introDone === true;
+  if (typeof r.bandName === 'string' && /^[A-Za-z' ]{1,24}$/.test(r.bandName)) p.bandName = r.bandName;
   if (Array.isArray(r.unlocks)) p.unlocks = r.unlocks.filter((u): u is Unlock => UNLOCKS.includes(u as Unlock));
   p.stars = numRecord(r.stars, 1, 3);
   p.best = numRecord(r.best, 0, 100);
@@ -151,4 +154,12 @@ function numRecord(v: unknown, lo: number, hi: number): Record<string, number> {
 /** Local calendar day, yyyy-mm-dd. */
 export function dayKey(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Band names, by where you sit: what a band at a tray table or a desk might call itself. */
+const TRAY_NAMES = ['The Tray Tables', 'Window Seat', 'The Overheads', 'Seatbelts Off', 'Row Fourteen', 'Cabin Pressure'];
+const DESK_NAMES = ['The Coffee Rings', 'Second Drawer', 'The Desk Lamps', 'Sticky Notes', 'The Late Shift', 'Paper Clips'];
+export function bandNameFor(tray: boolean, pick = Math.random()): string {
+  const list = tray ? TRAY_NAMES : DESK_NAMES;
+  return list[Math.min(list.length - 1, Math.floor(pick * list.length))];
 }

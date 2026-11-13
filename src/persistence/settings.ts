@@ -3,6 +3,8 @@ import { load, save } from './storage.js';
 import { TUNE_ITEMS, type StrikeTune } from '../room/tuning.js';
 
 export type HandPref = 'auto' | 'left' | 'right';
+/** How much of a song is yours: the main line, more, or all of it. */
+export type Level = 'easy' | 'normal' | 'hard';
 
 export interface Settings {
   highContrast: boolean;
@@ -34,7 +36,7 @@ export interface Settings {
   inst: string;
   shelf: Record<string, { scale: string; sound: string; oct?: number }>;
   /** Songs: Easy or Normal. */
-  level: 'easy' | 'normal';
+  level: Level;
 }
 
 const KEY = 'settings.v1';
@@ -59,7 +61,7 @@ export function loadSettings(): Settings {
     tune: readTune(s.tune),
     inst: typeof s.inst === 'string' && /^[a-z]{1,12}$/.test(s.inst) ? s.inst : 'drums',
     shelf: readShelf(s.shelf),
-    level: s.level === 'normal' ? 'normal' : 'easy',
+    level: s.level === 'normal' || s.level === 'hard' ? s.level : 'easy',
   };
 }
 

@@ -46,7 +46,7 @@ import { KEYS, type ModuleKey } from '../ui/module.js';
 import { PANEL, itemZone } from '../ui/panel.js';
 import { Tag, DebugBoard } from '../ui/tag.js';
 import { audio, type Voice } from '../audio/engine.js';
-import { loadProgress, saveProgress, freshProgress, type Progress, type SavedPad } from '../persistence/progress.js';
+import { bandNameFor, loadProgress, saveProgress, freshProgress, type Progress, type SavedPad } from '../persistence/progress.js';
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { motion, prefersReducedMotion } from '../ui/motion.js';
 import { Game, type GameStage, type Room, type Unlock } from '../play/game.js';
@@ -119,6 +119,8 @@ export interface RoomDebug {
   phoneNotes?: number;
   /** Friends' notes heard (playing together). */
   friendNotes?: number;
+  /** The band's name on the kick. */
+  bandName?: string;
   /** Seats across the desk (friends, or the band's players). */
   seats?: number;
 }
@@ -166,6 +168,23 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private spots: PadSpot[] = [];
   private motes = new Motes();
   private tag = new Tag();
+  /** The run of notes, on tape on the desk behind the instrument (where your eyes are), from eight in a row. */
+  private comboTag = new Tag(0.1, 0.032, true);
+  private comboShown = 0;
+  private showCombo(): void {
+    const c = this.game.mode === 'play' ? (this.game.display.combo ?? 0) : 0;
+    const want = c >= 8 && !this.settings.noWords ? c : 0;
+    if (want === this.comboShown) return;
+    if (!want) {
+      this.comboTag.unpin();
+      this.comboShown = 0;
+      return;
+    }
+    this.comboShown = want;
+    this.tmp.set(0, 0.03, -0.15).applyMatrix4(this.kit.root.matrixWorld);
+    this.comboTag.pin(`${want} IN A ROW`, 0xffd34d, this.tmp, this.head);
+    this.comboTag.bump();
+  }
   private board: DebugBoard | null = null;
   private builder = new SurfaceBuilder({
     head: this.head,
@@ -210,7 +229,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kitHome = this.kit.root.parent;
     this.worldRoot.name = 'RoomOverlays';
     this.world.createTransformEntity(this.worldRoot);
-    this.worldRoot.add(this.motes.mesh, this.tag.mesh);
+    this.worldRoot.add(this.motes.mesh, this.tag.mesh, this.comboTag.mesh);
     this.hint = new Tag(0.36, 0.05);
     this.worldRoot.add(this.hint.mesh);
     const dot = new SphereGeometry(0.0035, 8, 6);
@@ -1246,6 +1265,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.watchClaps(dt);
     this.watchCovers(dt);
     this.showFriends();
+    this.showCombo();
+    this.comboTag.update(dt);
     if (this.seats.size) {
       // the band's players leave when the song's over
       if (this.game.mode === 'discover' || this.game.mode === 'build') this.dropSeats(true);
@@ -3293,6 +3314,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();
     // the things on this desk from last time come back where they were
     this.restorePads();
+    // your band's name on the kick (chosen the first time, from where you sat: a tray or a desk)
+    if (!this.progress.bandName) {
+      this.progress.bandName = bandNameFor(!this.tableOutline);
+      saveProgress(this.progress);
+    }
+    this.kit.pad('kick')?.paint(this.progress.bandName);
+    this.debug.bandName = this.progress.bandName;
   }
 
   /** The real table's outline in kit-local x/z, when Quest found it (the rim is its edge). */

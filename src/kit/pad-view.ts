@@ -23,6 +23,7 @@ import { asLight } from '../art/light.js';
 import { DRUM_H, buildDrum, buildHiHat } from '../scene-assets/lib/drums.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
+import { MARKER, whenFonts } from '../ui/fonts.js';
 
 /** Low on the table: the real wood stops your hand, a centimetre and a half under the head. */
 const HEIGHT = DRUM_H;
@@ -104,6 +105,52 @@ export class PadView {
   x = 0;
   z = 0;
   lift = 0;
+
+  /**
+   * Paint the band's name on this drum's head in marker, the way bands do on a kick's front head (cream on the dark
+   * head, two lines if it's long). Empty: none.
+   */
+  private nameMesh: Mesh | null = null;
+  paint(name: string): void {
+    if (!name) {
+      if (this.nameMesh) this.nameMesh.visible = false;
+      return;
+    }
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const tex = new CanvasTexture(c);
+    tex.colorSpace = SRGBColorSpace;
+    const draw = () => {
+      const g = c.getContext('2d')!;
+      g.clearRect(0, 0, 256, 256);
+      const words = name.split(' ');
+      const lines = name.length > 12 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [name];
+      g.fillStyle = '#efe6cf';
+      g.textBaseline = 'middle';
+      lines.forEach((t, k) => {
+        let px = 54;
+        g.font = `${px}px ${MARKER}`;
+        while (g.measureText(t).width > 190 && px > 22) g.font = `${(px -= 2)}px ${MARKER}`;
+        g.save();
+        g.translate(128, 128 + (k - (lines.length - 1) / 2) * px * 1.05);
+        g.rotate(-0.06);
+        g.fillText(t, -g.measureText(t).width / 2, 0);
+        g.restore();
+      });
+      tex.needsUpdate = true;
+    };
+    draw();
+    whenFonts(draw);
+    if (!this.nameMesh) {
+      this.nameMesh = new Mesh(new PlaneGeometry(this.radius * 1.7, this.radius * 1.7), new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
+      this.nameMesh.name = 'BandName';
+      this.nameMesh.rotation.x = -Math.PI / 2;
+      this.nameMesh.position.y = HEIGHT + 0.0006;
+      this.nameMesh.renderOrder = 3;
+      this.body.add(this.nameMesh);
+    } else (this.nameMesh.material as MeshBasicMaterial).map = tex;
+    this.nameMesh.visible = true;
+  }
 
   constructor(readonly lane: Lane, hc = false) {
     const spec = PADS[lane];

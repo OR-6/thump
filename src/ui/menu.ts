@@ -44,14 +44,14 @@ export interface MenuInput {
   inst: { id: string; name: string; scale: string; sound: string; oct: number };
   songs: { name: string; meta: string; stars: number; locked: boolean }[];
   songSel: number;
-  level: 'easy' | 'normal';
+  level: 'easy' | 'normal' | 'hard';
   band: { state: string; code: string; players: number; message?: string };
   settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean };
   /** Results: the next song's button ('' none), and whether MAKE IT YOURS is offered. */
   next: string;
   make?: boolean;
-  /** Three stars on Easy: AGAIN goes up to Normal. */
-  harder?: boolean;
+  /** Three stars: AGAIN goes up a level ('NORMAL' or 'HARD'; '' not). */
+  harder?: string;
   /** Make a track: the machine is in, PERFORM starts it. */
   perform?: boolean;
   /** STOP was pressed once: it asks. */
@@ -116,8 +116,9 @@ export function buildPage(m: MenuInput): Page {
     case 'songs': {
       const items: Item[] = [back()];
       m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.locked ? 'Play the one before it' : s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24, y: 136 + i * 110, w: 860, h: 92 }));
-      items.push({ id: 'level:easy', label: 'EASY', on: m.level === 'easy', kind: 'chip', x: 910, y: 130, w: 205, h: 110 });
-      items.push({ id: 'level:normal', label: 'NORMAL', on: m.level === 'normal', kind: 'chip', x: 1131, y: 130, w: 205, h: 110 });
+      items.push({ id: 'level:easy', label: 'EASY', on: m.level === 'easy', kind: 'chip', x: 910, y: 130, w: 134, h: 110 });
+      items.push({ id: 'level:normal', label: 'NORMAL', on: m.level === 'normal', kind: 'chip', x: 1056, y: 130, w: 134, h: 110 });
+      items.push({ id: 'level:hard', label: 'HARD', on: m.level === 'hard', kind: 'chip', x: 1202, y: 130, w: 134, h: 110 });
       items.push({ id: 'nav:instruments', label: m.inst.name.toUpperCase(), sub: 'You play this', icon: m.inst.id, kind: 'button', x: 910, y: 262, w: 426, h: 150 });
       items.push({ id: 'listen', label: 'LISTEN FIRST', kind: 'button', x: 910, y: 432, w: 426, h: 110 });
       items.push({ id: 'play', label: 'PLAY', kind: 'play', x: 910, y: 562, w: 426, h: 208 });
@@ -188,7 +189,7 @@ export function buildPage(m: MenuInput): Page {
     case 'results': {
       const c = row(m.make ? 4 : 3, 24, W - 24, 18);
       const items: Item[] = [
-        { id: 'again', label: m.harder ? 'AGAIN ON\nNORMAL' : 'AGAIN', kind: 'play', x: c[0].x, y: 590, w: c[0].w, h: 180 },
+        { id: 'again', label: m.harder ? `AGAIN ON\n${m.harder}` : 'AGAIN', kind: 'play', x: c[0].x, y: 590, w: c[0].w, h: 180 },
         { id: 'next', label: m.next, kind: 'button', off: !m.next, x: c[1].x, y: 590, w: c[1].w, h: 180 },
       ];
       if (m.make) items.push({ id: 'make', label: 'MAKE IT\nYOURS', kind: 'button', x: c[2].x, y: 590, w: c[2].w, h: 180 });

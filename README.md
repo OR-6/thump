@@ -12,7 +12,7 @@ Sit at a desk or a tray table. If nothing shows up, rest a palm flat on it. A pa
 
 To press something on the panel, poke it with a fingertip or pinch it. An item lights up as your finger gets close, and it presses when your fingertip goes through the face. It clicks.
 
-Tap the desk and the drums come out: a kick and a snare under your hands, a hi-hat to the right, a row of light bars behind. A tom joins after your first song. Then your first few notes on anything bring in a soft backing band at your tempo (three steady notes set it; otherwise 90 bpm), and the panel says how fast. Stop for two bars and it drops out.
+Tap the desk and the drums come out, your band's name in marker on the kick (picked from where you sat: a tray band or a desk band): a kick and a snare under your hands, a hi-hat to the right, a row of light bars behind. A tom joins after your first song. Then your first few notes on anything bring in a soft backing band at your tempo (three steady notes set it; otherwise 90 bpm), and the panel says how fast. Stop for two bars and it drops out.
 
 ## The panel
 
@@ -40,7 +40,7 @@ They're models of the real things and they move when you play them. All of it is
 
 ## Songs
 
-Five songs: Kick Start, Two Step, Boom Bap 88, Lowrider, Night Shift, and a sixth that changes every day (named for the day: "Friday's song"). LISTEN FIRST plays a song through once on your own instrument, then counts you straight in. Each row shows its tempo and your stars, and the next one opens once you've played the one before. Pick EASY or NORMAL, check what you'll play (it's whatever is out on the desk; tap it to change), then PLAY.
+Five songs: Kick Start, Two Step, Boom Bap 88, Lowrider, Night Shift, and a sixth that changes every day (named for the day: "Friday's song"). LISTEN FIRST plays a song through once on your own instrument, then counts you straight in. Each row shows its tempo and your stars, and the next one opens once you've played the one before. Pick EASY, NORMAL or HARD, check what you'll play (it's whatever is out on the desk; tap it to change), then PLAY.
 
 The band plays the song as written and you play your part on what's out:
 
@@ -50,11 +50,11 @@ The band plays the song as written and you play your part on what's out:
 - Congas: the extra percussion. Normal adds the hat's eighths as a tumbao.
 - Handpan: the bass line on Easy, the extra percussion on Normal.
 
-From bar 9 the tune goes up two notes every other time round, so the song has a second half.
+In bars 9 to 12 the chords change (to IV and V, or VI and VII in a minor song) and the tune moves up, then the song comes home. HARD gives you more: the extra percussion on the tom, the CHORD key on each new chord on the piano, the guitar's changes from the start, and four bars with no lights at the end.
 
 The notes fall onto the exact key, bar, field or drum that plays them and land on the beat. Hit one and it bursts. A song has two one-bar solos (*Solo!*) where the band drops out and anything you hit counts (the kit keeps time under you unless you're the drummer), and in the last two bars on Normal the notes stop falling (*No lights now*). The band's drummer counts you in on sticks from across the desk. When the song ends the band holds the five chord and waits (*Bring it home*): hit it and they land home with you. The progress bar shows the song's map: the two solos and its second half, where the tune moves up. During a solo the room above eye level goes dim and your hits wash it in their colour, never more than three times a second.
 
-In a song the panel shows its name, a progress bar, how many notes in a row, a card for each instrument you can switch to, and STOP. Tap a card to switch mid-song: it says "Piano next", takes over at the next loop, and gives you a bar to find it ("Find it, then join in").
+In a song the panel shows its name, a progress bar, how many notes in a row (from eight, also on tape on the desk behind the instrument), a card for each instrument you can switch to, and STOP. Tap a card to switch mid-song: it says "Piano next", takes over at the next loop, and gives you a bar to find it ("Find it, then join in").
 
 At the end the band plays your best two bars back with you on them, your notes in gold, and the panel says only *That was you*. Then the results: the song and your score as a percentage, your stars, Perfect and Good, your best run, NEW BEST when you beat your score on that level, and *On time* when you were close (or which side of the beat you were on). AGAIN plays it again; after three stars on Easy it's AGAIN ON NORMAL. After one of the five songs there's MAKE IT YOURS; after your own track, NEXT SONG. MENU goes back.
 

@@ -50,7 +50,7 @@ describe('the panel pages', () => {
     expect(p.body).toBe('song');
   });
   it('results: three stars on Easy and AGAIN goes up to Normal', () => {
-    expect(buildPage({ ...base('results'), harder: true }).items.find((i) => i.id === 'again')?.label).toBe('AGAIN ON\nNORMAL');
+    expect(buildPage({ ...base('results'), harder: 'NORMAL' }).items.find((i) => i.id === 'again')?.label).toBe('AGAIN ON\nNORMAL');
     expect(buildPage(base('results')).items.find((i) => i.id === 'again')?.label).toBe('AGAIN');
   });
   it('nothing on any page overlaps, and everything is on the panel', () => {

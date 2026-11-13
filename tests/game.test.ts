@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TRACKS } from '../src/play/build.js';
 import { Game, type GameStage, type Room } from '../src/play/game.js';
 import { freshProgress } from '../src/persistence/progress.js';
 import type { RoomInstrument } from '../src/songs/cast.js';
@@ -662,6 +663,29 @@ describe('the game', () => {
     // (Kick Start: KEYS is the friend's; the bass, also on the piano, still plays here)
     expect(voiced.some((k) => k.startsWith('piano:') && Number(k.slice(6)) < 10)).toBe(false);
     expect(voiced.some((k) => k.startsWith('piano:') && Number(k.slice(6)) >= 10)).toBe(true);
+  });
+
+  it('the second half changes chords (IV–V in a major song) and comes home; its bass follows', () => {
+    const band: { voice: string; midi: number; beat: number }[] = [];
+    const g = new Game({ ...stage([]), band: (e: { voice: string; midi: number; beat: number }) => band.push(e) }, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.act('nav:songs');
+    g.act('play');
+    const tr = TRACKS[0];
+    let t = 0;
+    const chordAt: number[] = [];
+    for (let k = 0; k < 2400 && g.mode !== 'results'; k++) {
+      g.tick((t += 1 / 30));
+      const b = Math.floor(g.clock.beatAt(t) / 4);
+      if (b >= 0 && chordAt[b] === undefined && g.mode === 'play') chordAt[b] = g.harmony()!.chord;
+    }
+    expect(chordAt[8]).toBe(tr.chords[0] + 5);
+    expect(chordAt[9]).toBe(tr.chords[0] + 7);
+    expect(chordAt[12]).toBe(tr.chords[0]);
+    // the bed's chord and its bass in bar 9 are the four chord
+    expect(band.some((e) => e.voice === 'chord' && e.beat === 32 && e.midi === tr.chords[0] + 5)).toBe(true);
+    expect(band.some((e) => e.voice === 'bass' && e.beat === 32 && e.midi === tr.chords[0] + 5 - 24)).toBe(true);
   });
 
   it('learns a steady lateness', () => {
