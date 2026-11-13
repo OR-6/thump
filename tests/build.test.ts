@@ -135,3 +135,18 @@ describe('build: your own bar', () => {
   });
 });
 
+describe('build: the tracks sound like songs', () => {
+  it('a backbeat: the smack on 2 and 4 in the first track, never on top of the boom', () => {
+    const t = TRACKS[0];
+    const kick = steps(t.parts.find((p) => p.name === 'KICK')!.pattern).map((s) => s.beat);
+    const snare = steps(t.parts.find((p) => p.name === 'SNARE')!.pattern).map((s) => s.beat);
+    expect(snare).toEqual([1, 3, 5, 7]);
+    expect(kick.some((b) => snare.includes(b))).toBe(false);
+  });
+  it('every track has a chord a bar, and swing pushes the off-beats late', () => {
+    for (const t of TRACKS) expect(t.chords.length).toBe(2);
+    expect(steps('xx......|........', 0.58).map((s) => s.beat)).toEqual([0, 0.58]);
+    expect(TRACKS.find((t) => t.id === 'boom-bap-88')!.swing).toBeGreaterThan(0.5);
+  });
+});
+

@@ -434,6 +434,39 @@ describe('the game', () => {
     expect(used).toContain('drums');
   });
 
+  it('chords under the track: in Build from the first part with notes, and all through Perform', () => {
+    const chords: { mode: string; midi: number; minor: boolean }[] = [];
+    let g!: Game;
+    const st = { ...stage([]), band: (e: { voice: string; midi: number; minor?: boolean }) => e.voice === 'chord' && chords.push({ mode: g.mode, midi: e.midi, minor: !!e.minor }) };
+    g = new Game(st, freshProgress(), room([{ id: 't1', family: 'bell', zones: 1 }]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    g.key('play');
+    let t = 45.1;
+    for (const [n, key] of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom'].entries()) {
+      g.tick(t);
+      if (n === 4) expect(chords.filter((c) => c.mode === 'build')).toHaveLength(0);
+      g.hit(key, t, 0.8);
+      for (let k = 0; k < 900 && g.buildAsks() === null && !g.buildRunning(); k++) {
+        t += 1 / 30;
+        g.tick(t);
+        g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+      }
+    }
+    expect(chords.filter((c) => c.mode === 'build').length).toBeGreaterThan(3);
+    // Kick Start: C then A minor, a bar each
+    expect(chords.some((c) => c.midi === 60 && !c.minor)).toBe(true);
+    expect(chords.some((c) => c.midi === 57 && c.minor)).toBe(true);
+    g.key('play');
+    const before = chords.length;
+    for (let k = 0; k < 4000 && g.mode !== 'results'; k++) {
+      t += 1 / 30;
+      g.tick(t);
+    }
+    expect(chords.length - before).toBeGreaterThanOrEqual(20);
+  });
+
   it('learns a steady lateness', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

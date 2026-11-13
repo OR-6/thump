@@ -7,7 +7,7 @@
  * through `GameStage` and `Room`, so unit tests drive it with fakes and a bot.
  */
 import { TIMING } from '../config.js';
-import { oneHanded, secPerBeat, type BedEvent, type Note, type Song } from '../songs/chart.js';
+import { oneHanded, secPerBeat, type BedEvent, type Note, type Song, bed as chordBed } from '../songs/chart.js';
 import { EventCursor, SongClock } from '../songs/sequencer.js';
 import { NoteJudge, windows, type Grade, type JudgeNote, type Summary } from '../songs/judge.js';
 import { SONGS, dailySong } from '../songs/songs.js';
@@ -37,8 +37,8 @@ export interface GameStage {
   light(key: string, k: number): void;
   /** A celebration: a light sweep across every instrument, a note per star. */
   celebrate(stars: number): void;
-  /** Re-pitch the room's melodic instruments into a key (pitch class). */
-  retune(keyPc: number): void;
+  /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
+  retune(keyPc: number, minor?: boolean): void;
   save(p: Progress): void;
   /** Something new: the tom slides onto the table, JAM lights up… */
   unlock(u: Unlock): void;
@@ -238,6 +238,8 @@ export class Game {
     pending: { key: string; t: number } | null;
     /** The finished machine goes quiet for the bar before this beat, then everything drops in. */
     dropAt: number;
+    /** The last bar whose chord is scheduled (the chords come in with the first part that has notes). */
+    chordAt: number;
   } | null = null;
 
   /** The first track not built yet that the things you've found open, or −1. */
@@ -307,8 +309,8 @@ export class Game {
     const spb = secPerBeat(track.bpm, this.opts.tempo);
     this.clock.set(this.t + 0.3, spb);
     this.stage.useInstrument?.('drums');
-    this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99, guard: -99, verdict: null, retried: false, pending: null, dropAt: -99 };
-    this.stage.retune(track.key);
+    this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99, guard: -99, verdict: null, retried: false, pending: null, dropAt: -99, chordAt: -99 };
+    this.stage.retune(track.key, track.minor);
     this.moteCount = 0;
     this.pushLabels();
     this.refreshDisplay();
@@ -428,7 +430,7 @@ export class Game {
       const phase = ((beat % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS;
       b.hits.push({ beat: phase, key, vel: gain });
       // a grade for the light: close to a pattern note is a perfect
-      const st = steps(def.pattern);
+      const st = steps(def.pattern, b.track.swing);
       const d = Math.min(...st.map((s) => Math.min(Math.abs(s.beat - phase), LOOP_BEATS - Math.abs(s.beat - phase))));
       return d * this.clock.spb < 0.06 ? 'perfect' : d * this.clock.spb < 0.13 ? 'good' : 'extra';
     }
@@ -460,6 +462,14 @@ export class Game {
       }
       b.sched = ahead;
     }
+    // the chords under it, from the first part with notes on (a held chord a bar, the way a band's keys would)
+    const tune = b.parts.some((p) => p.def.pitched !== 'no') || (b.phase !== 'assign' && b.track.parts[b.part]?.pitched !== 'no') || b.phase === 'run';
+    const nb = Math.ceil(beat / 4 - 1e-6) * 4;
+    if (tune && nb > b.chordAt && nb - beat < TIMING.lookAheadS / spb + 0.05 && !(nb >= b.dropAt - 4 && nb < b.dropAt)) {
+      b.chordAt = nb;
+      const i = (nb / 4) % b.track.chords.length;
+      this.stage.band({ beat: nb, voice: 'chord', midi: b.track.chords[i], len: 4, vel: 0.32, minor: b.track.minorChords?.includes(i) }, this.clock.timeAt(nb), spb);
+    }
     this.moteCount = 0;
     if (b.phase === 'run' && b.dropAt > 0) {
       const left = Math.ceil(b.dropAt - beat);
@@ -490,7 +500,7 @@ export class Game {
       }
       // the part's notes light on your thing a beat ahead and fly to it from the module
       let k = 0;
-      for (const s of steps(def.pattern)) {
+      for (const s of steps(def.pattern, b.track.swing)) {
         const rel = (s.beat - (b.recStart % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS;
         // the take's second bar is yours: no lights
         if (rel >= 4) continue;
@@ -516,7 +526,7 @@ export class Game {
         this.refreshDisplay();
       } else if (beat >= b.recStart + LOOP_BEATS + 0.35) {
         // the part is in: the lit bar snapped and filled, your own bar as you played it (on the 16ths), looping
-        const pat = steps(def.pattern);
+        const pat = steps(def.pattern, b.track.swing);
         const off = b.recStart % LOOP_BEATS;
         const relOf = (x: number) => (x - off + LOOP_BEATS) % LOOP_BEATS;
         const inOwn = (x: number) => {
@@ -679,11 +689,12 @@ export class Game {
     this.played.length = 0;
     this.encore.length = 0;
     this.encoreAt = -1;
-    this.stage.retune(t.key);
+    this.stage.retune(t.key, t.minor);
     const spb = secPerBeat(t.bpm, this.opts.tempo);
     this.tempoAtStart = this.opts.tempo;
     this.clock.set(this.t + 0.4 + 4 * spb, spb);
-    this.bedCursor = new EventCursor([0, 1, 2, 3].map((k) => ({ beat: k - 4, voice: 'shaker' as const, midi: 0, len: 0.2, vel: k === 0 ? 0.9 : 0.6 })));
+    // the count-in, then the track's chords under everything (held, one a bar)
+    this.bedCursor = new EventCursor(chordBed({ roots: [...t.chords], minor: t.minorChords ? [...t.minorChords] : [], bass: '........', chord: 'hold', shaker: false }, bars));
     this.bedCursor.seek(-4);
     const chart = this.stage.setting('oneHand', false) ? oneHanded(notes) : notes;
     this.judge = new NoteJudge(chart.map((n) => ({ beat: n.beat, lane: n.part as string, vel: n.vel })), spb, windows(this.opts.tempo < 0.95));
@@ -1650,7 +1661,7 @@ export class Game {
     if (this.mode === 'build') {
       const bl = this.bld;
       if (!bl || (bl.phase !== 'count' && bl.phase !== 'rec') || !bl.target) return;
-      for (const s of steps(bl.track.parts[bl.part].pattern)) {
+      for (const s of steps(bl.track.parts[bl.part].pattern, bl.track.swing)) {
         const due = this.clock.timeAt(bl.recStart + ((s.beat - (bl.recStart % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS)) + this.opts.offset;
         if (due > a && due <= b) fn(this.keyFor(bl.target.surface, bl.target.key, s));
       }

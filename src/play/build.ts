@@ -22,28 +22,39 @@ export interface TrackDef {
   /** Pitch class of the key (0 = C). */
   key: number;
   parts: PartDef[];
-  /** Things you must have found on the desk to build it (the only gate in the game). */
+  /** Things you must have found on the desk to build it (no longer a gate: tracks open as you perform them). */
   needs: number;
+  /** The chords under it, one per bar (MIDI roots), looping with the two-bar machine. */
+  chords: readonly number[];
+  /** Which of those chords are minor. */
+  minorChords?: readonly number[];
+  /** Its notes are the minor pentatonic (else the major). */
+  minor?: boolean;
+  /** Swing: where the off-beat eighth falls between two beats (0.5 straight, 0.58 a lazy shuffle). */
+  swing?: number;
 }
 
 /** Beats in the loop: two bars. */
 export const LOOP_BEATS = 8;
 
 export const TRACKS: readonly TrackDef[] = [
+  // boom on 1 and 3, smack on 2 and 4: one hand then the other, so anyone can keep it
   {
     id: 'kick-start',
     name: 'Kick Start',
     bpm: 92,
     key: 0,
     parts: [
-      { name: 'KICK', pattern: 'X.....x.|x...x...', pitched: 'no' },
-      { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
+      { name: 'KICK', pattern: 'X...x...|X...x...', pitched: 'no' },
+      { name: 'SNARE', pattern: '..X...X.|..X...X.', pitched: 'no' },
       { name: 'HAT', pattern: 'x.x.x.x.|x.x.x.x.', pitched: 'no' },
-      { name: 'PERC', pattern: '...x..x.|.x....x.', pitched: 'no' },
-      { name: 'KEYS', pattern: '2.3..4..|3...2...', pitched: 'yes' },
-      { name: 'BASS', pattern: '0.....0.|3.....2.', pitched: 'if-it-can' },
+      { name: 'PERC', pattern: '...x...x|...x...x', pitched: 'no' },
+      { name: 'KEYS', pattern: '2.3.4...|4.3.2...', pitched: 'yes' },
+      { name: 'BASS', pattern: '0...0...|4...4...', pitched: 'if-it-can' },
     ],
     needs: 0,
+    chords: [60, 57],
+    minorChords: [1],
   },
   {
     id: 'two-step',
@@ -51,14 +62,16 @@ export const TRACKS: readonly TrackDef[] = [
     bpm: 100,
     key: 7,
     needs: 1,
+    chords: [67, 64],
+    minorChords: [1],
     parts: [
-      { name: 'KICK', pattern: 'X...x...|X...x...', pitched: 'no' },
-      { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
+      { name: 'KICK', pattern: 'X.x.x.x.|X.x.x.x.', pitched: 'no' },
+      { name: 'SNARE', pattern: '..X...X.|..X...X.', pitched: 'no' },
       { name: 'HAT', pattern: '.x.x.x.x|.x.x.x.x', pitched: 'no' },
       { name: 'PERC', pattern: 'x..x..x.|..x..x..', pitched: 'no' },
       { name: 'PERC 2', pattern: '......x.|...x....', pitched: 'no' },
       { name: 'KEYS', pattern: '0.2.3...|4.3.2.0.', pitched: 'yes' },
-      { name: 'BASS', pattern: '0...0...|3...4...', pitched: 'if-it-can' },
+      { name: 'BASS', pattern: '0...0...|4...3...', pitched: 'if-it-can' },
     ],
   },
   {
@@ -66,12 +79,16 @@ export const TRACKS: readonly TrackDef[] = [
     name: 'Boom Bap 88',
     bpm: 88,
     key: 9,
+    minor: true,
+    swing: 0.58,
     needs: 3,
+    chords: [57, 62],
+    minorChords: [0, 1],
     parts: [
-      { name: 'KICK', pattern: 'X.....x.|..x.x...', pitched: 'no' },
-      { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
+      { name: 'KICK', pattern: 'X..x....|X..x.x..', pitched: 'no' },
+      { name: 'SNARE', pattern: '..X...X.|..X...X.', pitched: 'no' },
       { name: 'HAT', pattern: 'x.x.x.x.|x.x.x.xx', pitched: 'no' },
-      { name: 'CLAP', pattern: '....x...|....x...', pitched: 'no' },
+      { name: 'CLAP', pattern: '......x.|......x.', pitched: 'no' },
       { name: 'PERC', pattern: '.x......|.x....x.', pitched: 'no' },
       { name: 'PERC 2', pattern: '...x....|.......x', pitched: 'no' },
       { name: 'KEYS', pattern: '0..2..4.|3.......', pitched: 'yes' },
@@ -83,23 +100,31 @@ export const TRACKS: readonly TrackDef[] = [
     name: 'Lowrider',
     bpm: 80,
     key: 2,
+    minor: true,
+    swing: 0.58,
     needs: 4,
+    chords: [62, 67],
+    minorChords: [0],
     parts: [
-      { name: 'KICK', pattern: 'X..x....|X..x..x.', pitched: 'no' },
-      { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
+      { name: 'KICK', pattern: 'X..x....|X..x...x', pitched: 'no' },
+      { name: 'SNARE', pattern: '..X...X.|..X...X.', pitched: 'no' },
       { name: 'HAT', pattern: 'x.x.x.x.|x.x.x.x.', pitched: 'no' },
       { name: 'PERC', pattern: '..x...x.|..x.....', pitched: 'no' },
       { name: 'KEYS', pattern: '0.2.4...|5.4.2...', pitched: 'yes' },
-      { name: 'KEYS 2', pattern: '....7...|....5...', pitched: 'yes' },
+      { name: 'KEYS 2', pattern: '....6...|....7...', pitched: 'yes' },
       { name: 'BASS', pattern: '0..0..3.|2..2..0.', pitched: 'if-it-can' },
     ],
   },
+  // the one half-time track: the smack on 3
   {
     id: 'night-shift',
     name: 'Night Shift',
     bpm: 110,
     key: 5,
+    minor: true,
     needs: 5,
+    chords: [65, 70],
+    minorChords: [0, 1],
     parts: [
       { name: 'KICK', pattern: 'X..x..x.|X..x....', pitched: 'no' },
       { name: 'SNARE', pattern: '....X...|....X...', pitched: 'no' },
@@ -119,15 +144,15 @@ export interface Step {
   vel: number;
 }
 
-/** A part's pattern as steps (beat within the loop, degree or −1, velocity). */
-export function steps(pattern: string): Step[] {
+/** A part's pattern as steps (beat within the loop, degree or −1, velocity); `swing` pushes the off-beat eighths late. */
+export function steps(pattern: string, swing = 0.5): Step[] {
   const out: Step[] = [];
   const bars = pattern.split('|');
   bars.forEach((bar, b) => {
     for (let k = 0; k < bar.length; k++) {
       const c = bar[k];
       if (c === '.') continue;
-      const beat = b * 4 + k / 2;
+      const beat = b * 4 + k / 2 + (k % 2 ? swing - 0.5 : 0);
       if (c === 'x' || c === 'X') out.push({ beat, degree: -1, vel: c === 'X' ? 1 : 0.8 });
       else if (/[0-9]/.test(c)) out.push({ beat, degree: Number(c), vel: 0.8 });
     }

@@ -63,7 +63,7 @@ import { Overlay, Sheen } from './overlay.js';
 import { asLight } from '../art/light.js';
 import { Motes } from './motes.js';
 import { FAMILIES, NEIGHBOURS, nextSwap, orchestrate, type Family } from './classify.js';
-import { retune, zoneAt, zoneForDegree, type Zone } from './zones.js';
+import { retune, zoneAt, zoneForDegree, type Zone, setMinor } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
 import { PhoneLink } from './phone-link.js';
 import { coop } from '../net/coop.js';
@@ -386,7 +386,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       audio.tick();
       return !cur;
     },
-    retune: (pc) => {
+    retune: (pc, minor) => {
+      setMinor(!!minor);
       for (const s of this.surfaces) if (s.discovered && s.voice && FAMILIES[s.voice.family].melodic) retune(s.zones, s.voice.family, s.voice.size, pc);
       retune(this.kit.keyZones, 'keys', 0.5, pc);
     },

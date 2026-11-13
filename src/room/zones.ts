@@ -30,12 +30,18 @@ export interface Bounds {
 }
 
 export const PENTA = [0, 2, 4, 7, 9];
+export const PENTA_MIN = [0, 3, 5, 7, 10];
+/** The scale the room is in right now (a minor track switches it; free play is the major). */
+let scale: readonly number[] = PENTA;
+export function setMinor(minor: boolean): void {
+  scale = minor ? PENTA_MIN : PENTA;
+}
 
 /** MIDI for a scale degree above a root (degrees go on into the next octaves). */
 export function degreeMidi(root: number, degree: number): number {
   const oct = Math.floor(degree / 5);
   const d = ((degree % 5) + 5) % 5;
-  return root + oct * 12 + PENTA[d];
+  return root + oct * 12 + scale[d];
 }
 
 /** Each family's register: the MIDI note near which its degree 0 sits (bigger surface: lower). */
