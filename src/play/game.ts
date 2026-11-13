@@ -15,7 +15,7 @@ import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/c
 import { bed } from '../songs/chart.js';
 import { Bandmate } from '../bandmate/bandmate.js';
 import { Looper } from './looper.js';
-import { LOOP_BEATS, TRACKS, assign, played, quantise, steps, type MachineNote, type PartDef, type RawHit, type Step, type TrackDef } from './build.js';
+import { LOOP_BEATS, TRACKS, assign, ownBar, played, quantise, steps, type MachineNote, type PartDef, type RawHit, type Step, type TrackDef } from './build.js';
 import { FAMILIES, type Family } from '../room/classify.js';
 import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
@@ -84,6 +84,8 @@ export interface Room {
   things?(): number;
   /** A hand is resting over this thing: its part in the machine is silent. */
   muted?(surface: string): boolean;
+  /** What a thing is, in a word a person would use ('cup', 'knee'), when that's known; else null. */
+  wordFor?(surface: string): string | null;
 }
 
 export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam' | 'build';
@@ -465,14 +467,18 @@ export class Game {
       const target = b.target!;
       // the count-in: a soft click on every beat until recording, the downbeat of the take's bar louder
       const nextClick = Math.ceil(beat);
-      if (nextClick < b.recStart && nextClick > b.clicked && nextClick - beat < TIMING.lookAheadS / spb + 0.05) {
+      const ownClick = !b.parts.length && nextClick >= b.recStart + 4 && nextClick < b.recStart + LOOP_BEATS;
+      if ((nextClick < b.recStart || ownClick) && nextClick > b.clicked && nextClick - beat < TIMING.lookAheadS / spb + 0.05) {
         b.clicked = nextClick;
         this.stage.band({ beat: nextClick, voice: 'shaker', midi: 0, len: 0.2, vel: nextClick === b.recStart - 4 ? 0.9 : 0.6 }, this.clock.timeAt(nextClick), spb);
       }
       // the part's notes light on your thing a beat ahead and fly to it from the module
       let k = 0;
       for (const s of steps(def.pattern)) {
-        const at = b.recStart + ((s.beat - (b.recStart % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS);
+        const rel = (s.beat - (b.recStart % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS;
+        // the take's second bar is yours: no lights
+        if (rel >= 4) continue;
+        const at = b.recStart + rel;
         const d = at - beat;
         const key = this.keyFor(target.surface, target.key, s);
         if (d <= TIMING.glowBeats && d > -0.3) this.stage.light(key, 1 - Math.max(0, d) / TIMING.glowBeats);
@@ -490,11 +496,28 @@ export class Game {
           b.phase = 'rec';
           this.refreshDisplay();
         } else if (n !== this.display.count) this.refreshDisplay();
+      } else if (beat >= b.recStart + 4 && beat < b.recStart + 4.2 && this.display.sub !== 'Your bar') {
+        this.refreshDisplay();
       } else if (beat >= b.recStart + LOOP_BEATS + 0.35) {
-        // the part is in: snapped, filled, looping from the next loop on
+        // the part is in: the lit bar snapped and filled, your own bar as you played it (on the 16ths), looping
         const pat = steps(def.pattern);
-        const notes = quantise(pat, b.hits, (s) => this.keyFor(target.surface, target.key, s));
-        const share = played(notes, pat);
+        const off = b.recStart % LOOP_BEATS;
+        const relOf = (x: number) => (x - off + LOOP_BEATS) % LOOP_BEATS;
+        const inOwn = (x: number) => {
+          const r = relOf(x);
+          return r >= 3.66 && r < LOOP_BEATS - 0.4;
+        };
+        const mine = b.hits.filter((h) => inOwn(h.beat));
+        let notes: MachineNote[];
+        let own = false;
+        if (mine.length >= 2) {
+          own = true;
+          const loud = Math.max(...b.hits.map((h) => h.vel));
+          const lit = pat.filter((s) => relOf(s.beat) < 4);
+          notes = [...quantise(lit, b.hits.filter((h) => !inOwn(h.beat)), (s) => this.keyFor(target.surface, target.key, s)), ...ownBar(mine, loud)];
+          notes.sort((x, y) => (x.at ?? x.beat) - (y.at ?? y.beat));
+        } else notes = quantise(pat, b.hits, (s) => this.keyFor(target.surface, target.key, s));
+        const share = own ? Math.max(0.5, played(notes, pat.filter((s) => relOf(s.beat) < 4)) ) : played(notes, pat);
         // almost nothing played: once more, straight away (only once; then it goes in filled)
         if (share < 0.34 && !b.retried) {
           b.retried = true;
@@ -507,7 +530,7 @@ export class Game {
         }
         b.retried = false;
         b.parts.push({ def, surface: target.surface, key: target.key, notes });
-        b.verdict = { name: def.name, hit: Math.round(share * pat.length), of: pat.length };
+        b.verdict = { name: def.name, hit: own ? -1 : Math.round(share * pat.length), of: pat.length };
         b.guard = Math.ceil(beat) + 4;
         // the new part's notes already inside the scheduled window go out now, once
         const base = Math.floor(beat / LOOP_BEATS) * LOOP_BEATS;
@@ -558,7 +581,7 @@ export class Game {
       if (b.verdict) {
         // what just went in, and what's next (hits pick nothing for this bar)
         const v = b.verdict;
-        d.line = v.hit >= v.of ? `${v.name}: every note` : `${v.name}: ${v.hit} of ${v.of}`;
+        d.line = v.hit < 0 ? `${v.name}: yours` : v.hit >= v.of ? `${v.name}: every note` : `${v.name}: ${v.hit} of ${v.of}`;
         d.sub = `Next: ${def.name}`;
         return;
       }
@@ -571,7 +594,8 @@ export class Game {
       d.line = def.name;
       return;
     }
-    d.sub = 'Play along';
+    // the take's second bar: no lights, play what you like
+    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Your bar' : 'Play along';
   }
 
   // ---------------------------------------------------------------- perform
@@ -603,7 +627,10 @@ export class Game {
     // you play the kick, the snare and the part on a thing you found (your cup, your book); the rest is the bed
     const found = m.parts.find((p) => p.surface !== 'kit' && p.surface !== 'keys' && p.def.name !== 'KICK' && p.def.name !== 'SNARE' && !p.def.name.startsWith('KEYS') && p.def.name !== 'BASS');
     const live = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found);
-    const rank = (key: string) => live.findIndex((p) => p.key === key);
+    const rank = (key: string) => {
+      const i = live.findIndex((p) => p.key === key);
+      return i >= 0 ? i : live.findIndex((p) => p.surface !== 'kit' && key.startsWith(p.surface + ':'));
+    };
     // 16 bars with a fill in bars 7–8 and 15–16, then 4 bars of hold it (scored, never shown)
     const bars = 20;
     const fills: [number, number][] = [
@@ -614,14 +641,13 @@ export class Game {
     const notes: Note[] = [];
     for (const p of live)
       for (let L = 0; L < bars / 2; L++)
-        for (const s of steps(p.def.pattern)) {
-          const beat = L * LOOP_BEATS + s.beat;
+        for (const n of p.notes) {
+          // what you made (your own bar included), on the grid, on the bar or pad you played it on
+          const beat = L * LOOP_BEATS + (n.at ?? n.beat);
           if (fills.some(([a, z]) => beat >= a && beat < z)) continue;
           // an arc: kick and snare first; your own thing joins at bar 5
           if (p === found && beat < 16) continue;
-          // the bar or pad you played this step on when you recorded it
-          const rec = p.notes.find((n) => Math.abs((n.at ?? n.beat) - s.beat) < 0.01);
-          notes.push({ beat, part: (rec?.key ?? p.key) as never, degree: -1, vel: s.vel });
+          notes.push({ beat, part: n.key as never, degree: -1, vel: Math.max(0.6, n.vel) });
         }
     notes.sort((a, b) => a.beat - b.beat || rank(a.part as string) - rank(b.part as string));
     // two hands: never more than two things at once (the later part's note goes back to the bed)
@@ -714,6 +740,7 @@ export class Game {
     this.lastLean = lean(j.notes.filter((n) => n.grade === 'perfect' || n.grade === 'good').map((n) => n.offset));
     this.fromPerform = true;
     this.resultsStage = -1;
+    this.carried = this.whoCarried(j.notes, p.live);
     this.learnOffset();
     const pr = this.progress;
     pr.stars[p.track.id] = Math.max(pr.stars[p.track.id] ?? 0, stars);
@@ -772,8 +799,32 @@ export class Game {
   private lastLean = 0;
   /** The results on screen came from performing your machine (▶ again plays it again). */
   private fromPerform = false;
-  /** 0 counting up, 1 the score, 2 what's new, 3 again / next. */
+  /** 0 counting up, 1 the score, 2 the thing that carried it, 3 what's new, 4 again / next. */
   private resultsStage = -1;
+  /** A line about your own thing in the performance ("Your cup never missed"), or ''. */
+  private carried = '';
+  private whoCarried(notes: readonly { lane: string; grade: Grade | null }[], live: ReadonlySet<string>): string {
+    let best = '';
+    for (const key of live) {
+      const surface = key.slice(0, key.indexOf(':'));
+      if (surface === 'kit' || surface === 'keys') continue;
+      let n = 0;
+      let got = 0;
+      for (const x of notes)
+        if (x.lane.startsWith(surface + ':')) {
+          n++;
+          if (x.grade === 'perfect' || x.grade === 'good') got++;
+        }
+      if (n < 4) continue;
+      const part = this.machine?.parts.find((p) => p.surface === surface)?.def.name.toLowerCase() ?? 'part';
+      const word = this.room.wordFor?.(surface);
+      const who = word ? `Your ${word}` : `The ${part}`;
+      const share = got / n;
+      best = share >= 1 ? `${who} never missed` : share >= 0.75 ? `${who} carried it` : share < 0.5 ? `${who} wants another go` : '';
+      if (best) break;
+    }
+    return best;
+  }
 
   /** A pad on a thing was hit: show its sound, with ◀ ▶ to change it. */
   focusPad(name: string, t: number): void {
@@ -1139,7 +1190,7 @@ export class Game {
 
   hit(key: string, t: number, gain: number): Grade | 'extra' | null {
     // (playing along with the machine's replay just plays; once it's done and the choice is up, a hit moves on)
-    if (this.mode === 'results' && t - this.modeT > 4 && !this.lap && this.resultsStage >= 3) this.leaveResults();
+    if (this.mode === 'results' && t - this.modeT > 4 && !this.lap && this.resultsStage >= 4) this.leaveResults();
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
     if (this.mode === 'build') return this.hitBuild(key, t, gain);
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
@@ -1206,7 +1257,8 @@ export class Game {
       // the notes you played count up, the stars fill one at a time, and the score stays; then what's new, then
       // again / next. The results stay until you play on (or a while passes)
       const el = t - this.modeT;
-      const stage = el < 1.3 ? 0 : el < 4 ? 1 : el < 7 && this.newUnlocks.length ? 2 : 3;
+      const c = this.fromPerform && this.carried ? 2.5 : 0;
+      const stage = el < 1.3 ? 0 : el < 4 ? 1 : el < 4 + c ? 2 : el < 7 + c && this.newUnlocks.length ? 3 : 4;
       if (stage !== this.resultsStage) {
         this.resultsStage = stage;
         this.refreshDisplay();
@@ -1519,10 +1571,11 @@ export class Game {
         const fresh = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: JAM and REC' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : '';
         const next = this.fromPerform && this.nextTrack() >= 0 && !this.built(TRACKS[this.nextTrack()].id);
         if (st <= 1) d.sub = this.fromPerform && this.lastTight >= 0 ? feel : s.stars < 3 ? 'Again? Tap ▶' : `${s.perfect + s.good} of ${s.total}`;
-        else if (st === 2 && fresh) d.sub = fresh;
+        else if (st === 2 && this.fromPerform && this.carried) d.sub = this.carried;
+        else if (st <= 3 && fresh) d.sub = fresh;
         else d.sub = this.fromPerform ? (next ? 'Again ▶   Next track >' : 'Again? Tap ▶') : 'Again? Tap ▶';
-        if (st <= 1 && this.fromPerform) d.pulse = null;
-        else d.pulse = next && st >= 3 ? 'next' : 'play';
+        if (st <= 2 && this.fromPerform) d.pulse = null;
+        else d.pulse = next && st >= 4 ? 'next' : 'play';
         break;
       }
     }

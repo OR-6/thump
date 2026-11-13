@@ -205,6 +205,22 @@ export function quantise(pattern: readonly Step[], hits: readonly RawHit[], keyF
   return out.sort((a, b) => (a.at ?? a.beat) - (b.at ?? b.beat));
 }
 
+/**
+ * Your own bar: what you played with the lights off, on the 16th grid, loudness against your loudest hit (`loud`), one
+ * note per 16th (the loudest). Beats are loop phase (0..8).
+ */
+export function ownBar(hits: readonly RawHit[], loud: number): MachineNote[] {
+  const top = Math.max(0.05, loud);
+  const by = new Map<number, RawHit>();
+  for (const h of hits) {
+    if (h.vel < 0.15) continue;
+    const g = (Math.round(h.beat * 4) / 4) % LOOP_BEATS;
+    const was = by.get(g);
+    if (!was || h.vel > was.vel) by.set(g, h);
+  }
+  return [...by.entries()].map(([beat, h]) => ({ key: h.key, beat, vel: Math.min(1, 0.55 + 0.45 * h.vel / top), filled: false })).sort((a, b) => a.beat - b.beat);
+}
+
 /** How much of a part you actually played (0..1): the share of pattern notes that weren't filled in. */
 export function played(notes: readonly MachineNote[], pattern: readonly Step[]): number {
   if (!pattern.length) return 1;

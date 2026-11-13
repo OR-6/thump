@@ -71,6 +71,8 @@ const RESUME_WINDOW_S = 4;
 const FOVEATION = [0.5, 0.75, 1];
 const SIDES = ['left', 'right'] as const;
 const HOLD_DOTS = 20;
+/** What a thing found by touch is, in a word a person would use (only where its position says it plainly). */
+const THING_WORD: Record<string, string> = { cup: 'cup', tall: 'bottle', knee: 'knee', lid: 'laptop', arm: 'armrest' };
 
 /** Where a song's target key points: a pad, an edge key, or a zone on a room surface. */
 interface KeyRef {
@@ -262,6 +264,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return out;
     },
     muted: (surface) => this.covered[0] === surface || this.covered[1] === surface,
+    wordFor: (surface) => {
+      const s = this.touched.find((x) => x.id === surface);
+      if (!s) return null;
+      if (s.sound === 'keys' && s.label === 'flat') return 'keyboard';
+      return THING_WORD[s.label] ?? null;
+    },
     things: () => {
       // things kept by touch, and anything else in the room you've played (a window, a door)
       // (every thing you've touched counts while it's there; one that's used is kept for good)

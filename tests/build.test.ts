@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TRACKS, assign, played, quantise, steps, LOOP_BEATS } from '../src/play/build.js';
+import { TRACKS, assign, ownBar, played, quantise, steps, LOOP_BEATS } from '../src/play/build.js';
 
 const kick = steps('X.....x.|x...x...');
 
@@ -117,3 +117,21 @@ describe('build: gentle hands', () => {
     expect(Math.min(...n.map((x) => x.vel))).toBeGreaterThan(0.75);
   });
 });
+
+describe('build: your own bar', () => {
+  it('what you play with the lights off is kept on the 16ths, one note each, your accents kept', () => {
+    const n = ownBar(
+      [
+        { beat: 4.02, key: 'k', vel: 0.9 },
+        { beat: 4.74, key: 'k', vel: 0.4 },
+        { beat: 4.77, key: 'k', vel: 0.6 },
+        { beat: 6.49, key: 'k', vel: 0.1 },
+      ],
+      0.9,
+    );
+    expect(n.map((x) => x.beat)).toEqual([4, 4.75]);
+    expect(n[0].vel).toBeCloseTo(1);
+    expect(n[1].vel).toBeCloseTo(0.55 + 0.45 * (0.6 / 0.9));
+  });
+});
+

@@ -270,7 +270,7 @@ describe('the game', () => {
       g.tick(t);
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
     }
-    expect(g.display.line).toMatch(/^KICK: (every note|\d+ of \d+)$/);
+    expect(g.display.line).toMatch(/^KICK: (yours|every note|\d+ of \d+)$/);
     // still tapping along on the kick: nothing is picked
     g.hit('kit:kick', t, 0.8);
     expect(g.buildAsks()).toBeNull();
@@ -312,7 +312,9 @@ describe('the game', () => {
     }
     expect(g.mode).toBe('results');
     expect(Math.max(...at.values())).toBeLessThanOrEqual(2);
-    g.tick((t += 2));
+    // a few seconds in, the results name the thing of yours that carried it
+    g.tick((t += 4.5));
+    expect(g.display.sub).toBe('The hat never missed');
     g.key('play');
     expect(g.mode).toBe('count');
   });
