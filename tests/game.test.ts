@@ -178,6 +178,22 @@ describe('the game', () => {
     expect(p.unlocks).toContain('swaps');
   });
 
+  it('the encore: after a good song your last four bars play back on what you hit; a hit stops it', () => {
+    const voiced: { key: string; at: number }[] = [];
+    const st = { ...stage([]), voice: (key: string, at: number) => voiced.push({ key, at }) };
+    const g = new Game(st, freshProgress(), room([]));
+    g.start(0);
+    g.begin(0);
+    const t = play(g, 0, 120, 0.01, (x) => x.mode === 'results');
+    expect(g.last?.stars).toBe(3);
+    const before = voiced.length;
+    for (let k = 1; k <= 60; k++) g.tick(t + k * 0.1);
+    const encore = voiced.slice(before);
+    expect(encore.length).toBeGreaterThan(4);
+    expect(encore.every((v) => v.at >= t + 2.3)).toBe(true);
+    expect(encore.some((v) => v.key.startsWith('kit:'))).toBe(true);
+  });
+
   it('learns a steady lateness', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

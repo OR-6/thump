@@ -460,6 +460,9 @@ export class Game {
     const casted = new Set(Object.values(this.cast).map((c) => c?.surface));
     this.accompanists = (this.room.everything?.() ?? []).filter((r) => !casted.has(r.id));
     this.accompBar = -1;
+    this.played.length = 0;
+    this.encore.length = 0;
+    this.encoreAt = -1;
     this.stage.casting(this.cast);
     this.stage.retune(song.key);
     const chart = this.stage.setting('oneHand', false) ? oneHanded(song.notes) : song.notes;
@@ -490,6 +493,12 @@ export class Game {
   }
 
   /** The player hit target `key` at game time `t`. */
+  /** Your hits in this song (for the encore). */
+  private played: { key: string; beat: number; gain: number }[] = [];
+  private encore: { key: string; beat: number; gain: number }[] = [];
+  private encoreAt = -1;
+  private encoreNext = 0;
+
   hit(key: string, t: number, gain: number): Grade | 'extra' | null {
     if (this.mode === 'results' && t - this.modeT > 4) this.leaveResults();
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
@@ -503,6 +512,8 @@ export class Game {
     }
     this.graded[r.grade === 'perfect' ? 'perfect' : 'good']++;
     this.offsets.push(r.offset);
+    // what you played, kept for the encore (the beat as you played it, a little loose like a person)
+    if (this.played.length < 400) this.played.push({ key, beat: this.clock.beatAt(t - this.opts.offset), gain });
     this.energy = Math.min(1, this.energy + (r.grade === 'perfect' ? 0.05 : 0.03));
     return r.grade;
   }
@@ -551,6 +562,7 @@ export class Game {
         this.refreshDisplay();
         this.display.stars = st;
       }
+      this.tickEncore(t);
       if (t - this.modeT >= 15) this.leaveResults();
       return;
     }
@@ -588,6 +600,7 @@ export class Game {
   }
 
   private leaveResults(): void {
+    this.encoreAt = -1;
     this.mode = 'discover';
     this.song = null;
     this.stage.retune(0);
@@ -648,6 +661,7 @@ export class Game {
     this.learnOffset();
     this.stage.save(p);
     this.stage.celebrate(s.stars);
+    this.startEncore(s.stars, song);
     for (const u of this.newUnlocks) this.stage.unlock(u);
     this.mode = 'results';
     this.modeT = this.t;
@@ -657,6 +671,38 @@ export class Game {
     this.selected = i >= 0 ? Math.min(this.available() - 1, i + 1) : this.selected;
     this.refreshDisplay();
     this.display.stars = 0;
+  }
+
+  /**
+   * The encore: after a song with two stars or more, your room plays your last four bars back to you, the way you
+   * played them, on the instruments you hit, lit as they sound. Stops the moment you do anything.
+   */
+  private startEncore(stars: number, song: Song): void {
+    this.encore.length = 0;
+    this.encoreAt = -1;
+    if (stars < 2 || !this.played.length) return;
+    const from = (song.bars - 4) * 4;
+    for (const p of this.played) if (p.beat >= from - 0.25) this.encore.push({ key: p.key, beat: p.beat - from, gain: p.gain });
+    if (this.encore.length < 4) {
+      this.encore.length = 0;
+      return;
+    }
+    // it starts after the stars have landed, at the song's tempo
+    this.encoreAt = this.t + 2.4;
+    this.encoreNext = 0;
+  }
+  private tickEncore(t: number): void {
+    if (this.encoreAt < 0) return;
+    const spb = this.clock.spb;
+    // schedule a little ahead, like the band
+    while (this.encoreNext < this.encore.length) {
+      const n = this.encore[this.encoreNext];
+      const when = this.encoreAt + n.beat * spb;
+      if (when > t + TIMING.lookAheadS) break;
+      if (when >= t - 0.05) this.stage.voice(n.key, when, Math.max(0.25, n.gain * 0.85));
+      this.encoreNext++;
+    }
+    if (this.encoreNext >= this.encore.length) this.encoreAt = -1;
   }
 
   private learnOffset(): void {
