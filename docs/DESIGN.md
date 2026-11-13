@@ -8,13 +8,13 @@ The design the code is built from. Section numbers match the references in the s
 
 ## 0. The game in one sentence
 
-**The headset turns your room into an orchestra: every surface you can reach becomes an instrument chosen by its physics (the table a drum kit, the wall a gong, the door a marimba, the window a glockenspiel); you discover them by hitting them, then play songs cast across your own room.**
+**Sit at a table, put the headset on, and everything within reach is an instrument: the table a drum kit, your cup a bell, a book a wood block, your knees congas. Stand up and the walls, the door and the window join in.**
 
-- **Only possible in mixed reality.** A desk already knocks without a headset. With one, your door is a marimba with pitched light bars drawn across it. Turn passthrough off and there is nothing to play.
-- **Every room is a different instrument set.** Size, orientation, hollowness, glass and softness decide each instrument and its voice; a big door's marimba is deeper than a small one's. "Holding up in rooms the developer never tested" is the concept itself.
-- **Explains itself in two words:** "Hit anything." Each first hit reveals an instrument drawn onto the real surface.
-- **The real surface is the haptics:** your palm stops on real wood, glass, fabric.
-- **A complete arc in ten minutes:** discover the kit and a few instruments, play a song cast onto them, earn stars, unlock the next, jam with a bandmate who claims an instrument.
+- **Playable in an airplane seat.** A tray table, a cup, a phone and your knees are a full instrument. No room scan needed: your hand finds things (§3.3b).
+- **Only works in mixed reality.** You need to see the light drawn on your own cup and table, and your hand needs the real thing to stop it.
+- **Explains itself in two words:** "Hit anything." Each first hit shows what it plays.
+- **The real thing is the haptics:** your hand stops on wood, ceramic, your own leg.
+- **A complete arc in ten minutes:** the kit, a few cups, a song, stars, the bandmate.
 
 ## 2. The first ten minutes (P0, sacred)
 
@@ -22,8 +22,9 @@ The design the code is built from. Section numbers match the references in the s
 |---|---|---|
 | 0:00 | 2D page: **Enter mixed reality**. "Quest will ask once to use your room." | nothing to read |
 | 0:10 | Passthrough. The table is found (plane, or a resting palm). A small matte-black **module** settles at the back of the table; its display says **Hit anything.** Every reachable surface carries a faint sheen. | look around |
-| 0:15 | You hit the table: the **kit** draws itself (black mesh heads, chrome hoops); the hit plays a drum by position (left kick, centre snare, right hat, edge rim). "Table · drum kit", room map 1 of N. | a hit reveals |
-| 0:30–2:00 | The wall: a gong ring draws itself, a long boom. The door: light bars climb across it, a marimba. The window: glockenspiel keys. Each first hit draws its overlay and names it for two seconds; the module's room map fills. | the room is an orchestra |
+| 0:15 | You slap the table: the **kit** grows out from under your palm, each pad sounding as it appears, a row of bars behind. "Your table is a drum kit." | a hit reveals |
+| 0:25 | A tape label on the table: "Tap something on it. Twice." You tap your cup: a small ring of light. Again: it rings, a bell. A second cup, a different note. A book, a wood block. Your knees, congas. | what's on the table plays |
+| 1:00–2:00 | (If you stand up and the room was scanned:) the wall a gong, the door a marimba, the window a glockenspiel. | the room joins in |
 | 2:00 | With two instruments found the module's **PLAY** key pulses. Tap it: *Porch Step*, cast onto the kit and one melodic surface. Notes travel to the exact pad, bar or key and light it a beat ahead. | songs |
 | 4:00 | Stars on the display, a light sweep across every instrument. The next song asks for one more instrument. | growth |
 | 5:00–8:00 | Song 2 on three surfaces. Free play between songs: everything you hit plays, melodic surfaces in key. | your room, your band |
@@ -60,6 +61,10 @@ The v1 detector, generalised to any surface frame and hardened by the feel revie
 Swaps reach the rest: **vibraphone**, **chimes**, **triangle**, **cajón**. Small objects on the table (a mug as a bell) need the room mesh: not built.
 
 Melodic zones sit around the spot of the first hit (it was in reach), clamped into the surface, in the current key (C major pentatonic, or the song's key while it plays).
+
+### 3.3b Things found by touch (P0: the seated game)
+
+Quest's scan sees walls and furniture, not the cup on your table. The hand finds those: a fast approach (≥ 0.45 m/s, steady over the last frames, never a tracking jump) that stops dead (≤ 0.12 m/s within two frames) somewhere no known surface is leaves a small ring of light; a second stop within 3.5 cm, coming the same way, within 20 s, makes it an instrument right there. Sideways knocks (a seat back) need ≥ 0.8 m/s. What it plays comes from where it is: up to 5.5 cm above the table a wood block (a book, a phone); higher a bell, lower the taller it is, so a row of cups is a scale; above 26 cm tubular bells (a bottle); below the table congas (your knees); facing you a frame drum (a seat back). A second wood block is a slit drum. Only a hand that stops on the thing plays it. Pinch and hold to change it. `src/room/touch.ts`, unit-tested.
 
 ### 3.4 Sounds (P0)
 
