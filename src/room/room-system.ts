@@ -31,6 +31,7 @@ import {
   SceneUnderstandingSystem,
   type Entity,
   type Object3D,
+  Quaternion,
 } from '@iwsdk/core';
 import { PADS, PLACE, STRIKE, type Lane } from '../config.js';
 import { hands, type Side } from '../input/hands.js';
@@ -71,6 +72,7 @@ import { coop, type CoopStatus } from '../net/coop.js';
 import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R } from './hand-mallet.js';
+import { Waterfall, type NoteTarget } from './waterfall.js';
 
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
 const RESUME_WINDOW_S = 4;
@@ -198,6 +200,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kitEntity = this.world.createTransformEntity(this.kit.root);
     this.kit.root.add(this.stand.root);
     for (const m of this.handMallets) this.worldRoot.add(m.group);
+    this.worldRoot.add(this.waterfall.slabs, this.waterfall.discs, this.waterfall.beams);
     this.kitHome = this.kit.root.parent;
     this.worldRoot.name = 'RoomOverlays';
     this.world.createTransformEntity(this.worldRoot);
@@ -1157,7 +1160,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.module.root.updateMatrixWorld();
     this.tmp2.set(0, 0.13, -0.05);
     this.kit.module.root.localToWorld(this.tmp2);
-    this.motes.update(this.game.motes, this.game.moteCount, this.tmp2, this.head, this.resolveMote);
+    // the song's notes fall onto what plays them
+    this.kit.root.getWorldQuaternion(this.kitQ);
+    this.waterfall.update(this.game.motes, this.game.moteCount, this.kitQ, this.resolveNote);
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
     if (this.debug.anchored) this.saveKitPose();
     if (this.unsaved.length && this.roomAnchor()) {
@@ -1165,6 +1170,66 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (const u of list) if (u.discovered) this.remember(u);
     }
   }
+
+  private waterfall = new Waterfall();
+  private kitQ = new Quaternion();
+  /** Where a note lands (world), its colour, and its target's size and shape. */
+  private resolveNote = (key: string, out: Vector3, col: Color, t: NoteTarget): boolean => {
+    const r = this.ref(key);
+    if (!r || r.kind === 'clap') return false;
+    const root = this.kit.root;
+    if (r.kind === 'pad') {
+      const p = this.kit.pad(r.lane);
+      if (!p || !p.visible || this.kit.inst !== 'drums') return false;
+      out.set(p.x, 0.02, p.z);
+      root.localToWorld(out);
+      col.setHex(LED[r.lane]);
+      t.w = p.radius * 2;
+      t.d = t.w;
+      t.round = true;
+      return true;
+    }
+    if (r.kind === 'keys') {
+      const z = this.kit.keyZones[r.zone];
+      if (!z || this.kit.inst !== 'drums') return false;
+      out.set(z.x, 0.006, -z.z);
+      root.localToWorld(out);
+      col.setHex(FAMILIES.keys.color);
+      t.w = z.w;
+      t.d = z.h;
+      t.round = false;
+      return true;
+    }
+    if (r.kind === 'inst') {
+      if (!key.startsWith(this.kit.inst + ':')) return false;
+      const z = this.kit.instZones[r.zone % 10];
+      if (!z) return false;
+      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : 0.008, -z.z);
+      root.localToWorld(out);
+      col.setHex(instDef(this.kit.inst).color);
+      t.round = z.shape === 'disc';
+      t.w = t.round ? z.w * 2 : z.w;
+      t.d = t.round ? t.w : z.h;
+      // the guitar's strum: a bar across the strings
+      if (this.kit.inst === 'guitar' && r.zone >= 9) {
+        out.set((STRUM.x0 + STRUM.x1) / 2, 0.008, -(STRUM.z0 + STRUM.z1) / 2);
+        root.localToWorld(out);
+        t.w = STRUM.x1 - STRUM.x0;
+        t.d = 0.04;
+        t.round = false;
+      }
+      return true;
+    }
+    const s = r.surface!;
+    const z = s.zones[r.zone];
+    if (!z || !s.voice) return false;
+    out.set(z.x, 0.012, -z.z).applyMatrix4(s.world);
+    col.setHex(FAMILIES[s.voice.family].color);
+    t.round = z.shape === 'disc';
+    t.w = t.round ? z.w * 2 : z.w;
+    t.d = t.round ? t.w : z.h;
+    return true;
+  };
 
   private resolveMote = (key: string, out: Vector3, col: Color): boolean => {
     const r = this.ref(key);
