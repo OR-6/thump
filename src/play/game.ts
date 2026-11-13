@@ -12,6 +12,8 @@ import { EventCursor, SongClock } from '../songs/sequencer.js';
 import { NoteJudge, windows, type Grade, type JudgeNote, type Summary } from '../songs/judge.js';
 import { SONGS } from '../songs/songs.js';
 import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/cast.js';
+import { bed } from '../songs/chart.js';
+import { Bandmate } from '../bandmate/bandmate.js';
 import { FAMILIES, type Family } from '../room/classify.js';
 import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
@@ -37,6 +39,10 @@ export interface GameStage {
   save(p: Progress): void;
   /** Something new: the tom slides onto the table, JAM lights up… */
   unlock(u: Unlock): void;
+  /** The bandmate plays target `key` at game time `at` (sound and light on its instrument). */
+  voice(key: string, at: number, vel: number): void;
+  /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
+  bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave', surface?: string): void;
 }
 
 /** The room as the game sees it. */
@@ -47,7 +53,7 @@ export interface Room {
   zones(surface: string): number;
 }
 
-export type Mode = 'discover' | 'count' | 'play' | 'results';
+export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam';
 
 export interface MoteView {
   key: string;
@@ -91,6 +97,10 @@ export class Game {
   private offered = false;
   private newUnlocks: Unlock[] = [];
   private kitAt = -1;
+  /** Has a jam been played (the JAM key stops pulsing). */
+  get jammed(): boolean {
+    return (this.progress.bandLevel ?? -1) >= 0;
+  }
 
   constructor(
     private stage: GameStage,
@@ -134,8 +144,149 @@ export class Game {
     }
     if (k === 'play') {
       if (this.mode === 'play' || this.mode === 'count') this.stop();
-      else this.begin(this.selected);
+      else {
+        if (this.mode === 'jam') this.endJam();
+        this.begin(this.selected);
+      }
+      return;
     }
+    if (k === 'jam') {
+      if (this.mode === 'jam') this.endJam();
+      else if ((this.progress.unlocks as string[]).includes('jam') && this.mode !== 'play' && this.mode !== 'count') this.beginJam();
+    }
+  }
+
+  // ---------------------------------------------------------------- jam
+
+  /** The bandmate in a jam (null outside one), the surface it claimed, and the jam's cycle. */
+  mate: Bandmate | null = null;
+  jamSurface = '';
+  private jamZones = 0;
+  private jamCycle = 0;
+  private jamCalls: { beat: number; degree: number; vel: number }[] = [];
+  private jamAnswer: { beat: number; degree: number; hit: boolean }[] = [];
+  private jamPhase: 'listen' | 'turn' = 'listen';
+  /** Answers scored (debug/E2E): the share of each. */
+  readonly jamShares: number[] = [];
+
+  /** JAM: the bandmate claims your most melodic instrument and trades two-bar phrases with you. */
+  beginJam(): void {
+    const order: Family[] = ['marimba', 'glock', 'tongue', 'bowl', 'bell'];
+    const inst = this.room.instruments();
+    const pick = order.map((f) => inst.find((i) => i.family === f)).find(Boolean);
+    this.jamSurface = pick ? pick.id : 'keys';
+    this.jamZones = pick ? pick.zones : this.room.zones('keys');
+    this.mate = new Bandmate();
+    this.mate.level = Math.min(3, this.progress.bandLevel ?? 0);
+    this.jamCycle = 0;
+    this.jamCalls = [];
+    this.jamAnswer = [];
+    this.jamShares.length = 0;
+    const spb = secPerBeat(96, this.opts.tempo);
+    this.clock.set(this.t + 0.4 + 4 * spb, spb);
+    this.stage.retune(9);
+    this.bedCursor = new EventCursor(bed({ roots: [57, 53, 60, 55], minor: [0], bass: 'x..x5...', chord: 'hold', shaker: true }, 4 * 8));
+    this.bedCursor.seek(-4);
+    this.mode = 'jam';
+    this.modeT = this.t;
+    this.stage.bandmate('claim', this.jamSurface);
+    this.refreshDisplay();
+  }
+
+  endJam(): void {
+    if (this.mode !== 'jam') return;
+    this.progress.bandLevel = this.mate?.level ?? 0;
+    this.stage.save(this.progress);
+    this.stage.bandmate('leave', this.jamSurface);
+    this.mate = null;
+    this.bedCursor = null;
+    this.moteCount = 0;
+    this.mode = 'discover';
+    this.stage.retune(0);
+    this.refreshDisplay();
+  }
+
+  private jamKey(degree: number): string {
+    return `${this.jamSurface}:${this.jamZones > 1 ? Math.max(0, degree) % this.jamZones : 0}`;
+  }
+
+  private tickJam(t: number): void {
+    const beat = this.clock.beatAt(t);
+    const spb = this.clock.spb;
+    this.bedCursor?.pull(beat + TIMING.lookAheadS / spb, this.onBed);
+    const cycleStart = this.jamCycle * 16;
+    // a little before each call: decide it (an echo of your last answer once, else a call by level)
+    if (beat >= cycleStart - 1 && this.jamCalls.length === 0 && this.jamCycle < 8) {
+      const mate = this.mate!;
+      const bar = this.jamCycle * 4;
+      const echo = this.jamCycle >= 2 ? mate.echo(cycleStart - 8, cycleStart, bar) : null;
+      const call = echo ?? mate.call(bar);
+      this.jamCalls = call.map((n) => ({ beat: n.beat, degree: n.degree, vel: n.vel }));
+      for (const n of this.jamCalls) this.stage.voice(this.jamKey(n.degree), this.clock.timeAt(n.beat), n.vel * 0.85);
+      this.jamAnswer = this.jamCalls.map((n) => ({ beat: n.beat + 8, degree: n.degree, hit: false }));
+      this.jamPhase = 'listen';
+      this.refreshDisplay();
+    }
+    if (this.jamPhase === 'listen' && beat >= cycleStart + 8 - 0.5 && this.jamCalls.length) {
+      this.jamPhase = 'turn';
+      this.refreshDisplay();
+    }
+    // your turn: the notes to answer light a beat ahead and fly from the module
+    let k = 0;
+    if (this.jamPhase === 'turn') {
+      for (const n of this.jamAnswer) {
+        const d = n.beat - beat;
+        if (d > TIMING.travelBeats || d < -0.6 || k >= MAX_MOTES) continue;
+        const key = this.jamKey(n.degree);
+        if (!n.hit && d <= TIMING.glowBeats && d > -0.3) this.stage.light(key, 1 - Math.max(0, d) / TIMING.glowBeats);
+        const m = this.motes[k++];
+        m.key = key;
+        m.ahead = d;
+        m.grade = n.hit ? 'perfect' : null;
+      }
+    }
+    this.moteCount = k;
+    // the answer is over: how did it go?
+    if (this.jamCalls.length && beat >= cycleStart + 16 + 0.3) {
+      const share = this.jamAnswer.length ? this.jamAnswer.filter((n) => n.hit).length / this.jamAnswer.length : 0;
+      const mate = this.mate!;
+      const quiet = mate.idle(beat);
+      mate.report(share);
+      this.jamShares.push(share);
+      this.stage.bandmate(share >= 0.7 ? 'happy' : 'simpler', this.jamSurface);
+      if (share >= 0.7) this.stage.celebrate(share >= 0.95 ? 3 : 2);
+      this.jamCalls = [];
+      this.jamCycle++;
+      // you've gone quiet: a soft count-in brings you back
+      if (quiet) for (let i = 0; i < 4; i++) this.stage.band({ beat: 0, voice: 'shaker', midi: 0, len: 0.2, vel: 0.9 }, this.clock.timeAt(this.jamCycle * 16 - 4 + i), spb);
+      if (this.jamCycle >= 8) this.endJam();
+      else this.refreshDisplay();
+    }
+  }
+
+  /** A hit during a jam: any note on its instrument close to an answer note counts (the rhythm is the answer). */
+  private hitJam(key: string, t: number, gain: number): Grade | 'extra' | null {
+    const mate = this.mate!;
+    const beat = this.clock.beatAt(t - this.opts.offset);
+    const onIt = key.startsWith(this.jamSurface + ':');
+    const zone = onIt ? Number(key.slice(this.jamSurface.length + 1)) : -1;
+    mate.hear({ beat, degree: zone, vel: gain });
+    if (this.jamPhase !== 'turn' || !onIt) return 'extra';
+    const win = windows(this.opts.tempo < 0.95).good * 1.4;
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < this.jamAnswer.length; i++) {
+      const n = this.jamAnswer[i];
+      if (n.hit) continue;
+      const d = Math.abs(beat - n.beat) * this.clock.spb;
+      if (d <= win && d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best < 0) return 'extra';
+    this.jamAnswer[best].hit = true;
+    return bestD <= windows(false).perfect ? 'perfect' : 'good';
   }
 
   /** Start song `i`, cast onto the room as it is now. */
@@ -174,7 +325,7 @@ export class Game {
 
   /** The player hit target `key` at game time `t`. */
   hit(key: string, t: number, gain: number): Grade | 'extra' | null {
-    void gain;
+    if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
     const at = t - this.opts.offset - this.clock.start;
     const r = this.judge.hit(key, at);
@@ -196,6 +347,10 @@ export class Game {
         this.offered = true;
         this.refreshDisplay();
       }
+      return;
+    }
+    if (this.mode === 'jam') {
+      this.tickJam(t);
       return;
     }
     if (this.mode === 'results') {
@@ -298,7 +453,7 @@ export class Game {
           const need = wants(sel.parts);
           const have = this.found.filter((f) => f !== 'kit').length;
           d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : have < need ? `Tap play · find ${need - have} more` : 'Tap play';
-          d.pulse = 'play';
+          d.pulse = (this.progress.unlocks as string[]).includes('jam') && !this.jammed ? 'jam' : 'play';
           d.stars = this.progress.stars[sel.id] ?? 0;
         }
         break;
@@ -310,6 +465,12 @@ export class Game {
         d.line = this.song!.name;
         d.sub = `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
         d.meter = this.energy;
+        break;
+      case 'jam':
+        d.line = 'Jam';
+        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? 'Bandmate · listen' : 'Listen';
+        d.pulse = 'jam';
+        d.meter = this.jamShares.length ? this.jamShares[this.jamShares.length - 1] : -1;
         break;
       case 'results': {
         const s = this.last!;
@@ -323,6 +484,14 @@ export class Game {
 
   /** Notes due between game times a and b (the autoplayer, for tests and filming only). */
   dueBetween(a: number, b: number, fn: (key: string) => void): void {
+    if (this.mode === 'jam') {
+      if (this.jamPhase !== 'turn') return;
+      for (const n of this.jamAnswer) {
+        const due = this.clock.timeAt(n.beat) + this.opts.offset;
+        if (!n.hit && due > a && due <= b) fn(this.jamKey(n.degree));
+      }
+      return;
+    }
     if (!this.judge) return;
     for (const n of this.judge.notes) {
       if (n.grade !== null) continue;

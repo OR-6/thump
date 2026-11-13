@@ -181,34 +181,41 @@ describe('sequencer', () => {
 });
 
 describe('bandmate', () => {
-  it('never plays a pad you have not unlocked', () => {
-    const b = new Bandmate(['kick', 'snare']);
-    for (let i = 0; i < 12; i++) {
-      for (const n of b.call(0)) expect(["kick", "snare"]).toContain(n.part);
-      b.report({ share: 1 });
+  it('calls are two bars of degrees on its instrument', () => {
+    const c = new Bandmate().call(4);
+    expect(c.length).toBeGreaterThanOrEqual(3);
+    for (const n of c) {
+      expect(n.beat).toBeGreaterThanOrEqual(16);
+      expect(n.beat).toBeLessThan(24);
+      expect(n.degree).toBeGreaterThanOrEqual(0);
     }
   });
   it('gets busier when you answer well, simpler when you struggle', () => {
-    const b = new Bandmate(['kick', 'snare', 'hat', 'tom']);
+    const b = new Bandmate();
     const n0 = b.call(0).length;
-    b.report({ share: 1 });
-    b.report({ share: 1 });
+    b.report(1);
+    b.report(1);
     expect(b.level).toBe(2);
     expect(b.call(0).length).toBeGreaterThanOrEqual(n0);
-    b.report({ share: 0.2 });
+    b.report(0.2);
     expect(b.level).toBe(1);
   });
   it('your answer is its call, two bars later', () => {
-    const call = new Bandmate(['kick', 'snare']).call(4);
-    const ans = Bandmate.answer(call);
-    expect(ans.map((n) => n.beat - 8)).toEqual(call.map((n) => n.beat));
+    const call = new Bandmate().call(4);
+    expect(Bandmate.answer(call).map((n) => n.beat - 8)).toEqual(call.map((n) => n.beat));
   });
-  it('listens: density, late nudges, and waiting', () => {
-    const b = new Bandmate(['kick', 'snare']);
-    for (let i = 0; i < 8; i++) b.hear({ lane: 'snare', beat: i, vel: 0.8, offset: 0.06 });
-    expect(b.density(8)).toBe(4);
-    expect(b.nudge()).toBe('snare');
-    expect(b.nudge()).toBeNull();
+  it('echoes your own phrase back once, quantised, when you played enough', () => {
+    const b = new Bandmate();
+    for (const [beat, d] of [[8.04, 0], [9.0, 2], [10.52, 4], [11.0, 2]]) b.hear({ beat, degree: d, vel: 0.8 });
+    const e = b.echo(8, 16, 4)!;
+    expect(e.map((n) => n.beat)).toEqual([16, 17, 18.5, 19]);
+    expect(e.map((n) => n.degree)).toEqual([0, 2, 4, 2]);
+    expect(b.echo(8, 16, 8)).toBeNull();
+    expect(new Bandmate().echo(0, 8, 0)).toBeNull();
+  });
+  it('notices when you have gone quiet', () => {
+    const b = new Bandmate();
+    b.hear({ beat: 8, degree: 0, vel: 0.8 });
     expect(b.idle(8 + 16)).toBe(true);
     expect(b.idle(8 + 4)).toBe(false);
   });

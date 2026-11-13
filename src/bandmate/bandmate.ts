@@ -1,97 +1,80 @@
 /**
- * The bandmate (pure): a rule-based musical agent, a felt bird with a tiny drum. It is not "AI";
- * it listens and answers by rules (PLAN §3.9):
+ * The bandmate (pure): a rule-based musical agent. It is not an AI model; it listens and answers by
+ * rules (PLAN §3.8):
  *
- * - **Listens:** keeps your hits (pad, beat, how hard) from the last two bars and how your last
- *   answer went.
- * - **Answers:** in a call-and-response song it plays a two-bar call you then echo. Answer well
- *   and its next call is a step busier (it adds a hat, moves the kick); struggle and it plays a
- *   simpler one. It never plays a pad you haven't unlocked.
- * - **Nudges:** keep hitting a pad late and it plays that pad a beat early, twice, as a hint.
- * - **Waits:** stop for four bars and it plays a soft count-in to bring you back.
+ * - **Claims** one of your room's instruments (the most melodic one you've found) and plays it.
+ * - **Calls:** a two-bar phrase on its instrument; you answer it in the next two bars.
+ * - **Listens:** keeps your hits (when, which note, how hard). Answer well and its next call is a step
+ *   busier; struggle and it plays a simpler one.
+ * - **Echoes:** once you've answered with enough notes, it plays your own phrase back to you as its call.
+ * - **Waits:** stop for a whole call and answer and it plays a soft count-in to bring you back.
  */
-import type { Lane } from '../config.js';
 import { grid, type Note } from '../songs/chart.js';
 
-/** Calls by level, two bars each (eighths). Lanes a player hasn't unlocked are dropped. */
-const CALLS: readonly Partial<Record<Lane, string>>[][] = [
-  // 0: quarter-note talk
-  [
-    { kick: 'x...x...|x...x...', snare: '..x...x.|..x...x.' },
-    { kick: 'x.......|x...x...', snare: '..x.x...|..x...x.' },
-  ],
-  // 1: a hat joins
-  [
-    { kick: 'x...x...|x...x...', snare: '..x...x.|..x.....', hat: '........|......x.' },
-    { kick: 'x...x...|x.......', snare: '..x...x.|....x...', hat: '.x...x..|..x...x.' },
-  ],
-  // 2: the kick moves, a tom answers
-  [
-    { kick: 'x..x....|x..x....', snare: '..x...x.|..x.....', tom: '........|....x.x.' },
-    { kick: 'x...x.x.|x.......', snare: '..x.....|..x.x...', hat: '.x.x.x.x|........', tom: '........|......xx' },
-  ],
-  // 3: busy
-  [
-    { kick: 'x..x.x..|x..x....', snare: '..x...x.|..x...x.', hat: '.x...x.x|.x...x..', tom: '........|.......x' },
-    { kick: 'x.x...x.|x..x....', snare: '....x...|..x.x.x.', hat: 'x.x.x.x.|x.x.....' },
-  ],
+/** Calls by level: two bars of scale degrees on its instrument (eighths). */
+const CALLS: readonly string[][] = [
+  ['0...2...|4.......', '4...2...|0.......', '0...4...|2.......'],
+  ['0.2.4...|2...0...', '4.2.0...|2.4.....', '2.4.5...|4.......'],
+  ['0.2.4.5.|4.2.....', '5.4.2...|0.2.4...', '0.4.2.5.|4...2...'],
+  ['0.24.5..|7.5.4.2.', '7.5.42..|0.2.4...', '2.45.4.2|0...4.5.'],
 ];
 
-export interface AnswerReport {
-  /** Share of the answer's notes you got good or better. */
-  share: number;
-}
-
 export interface Heard {
-  lane: Lane;
+  /** Beat (song clock) of the hit. */
   beat: number;
+  /** The scale degree it played (−1 when not on a pitched instrument). */
+  degree: number;
   vel: number;
-  /** Seconds late (+) or early (−) against the note it matched, if any. */
-  offset: number | null;
 }
 
 export class Bandmate {
   /** How busy its calls are (0–3). */
   level = 0;
   private variant = 0;
-  /** Your hits from the last two bars. */
+  /** Your hits, newest last (the last four bars). */
   readonly heard: Heard[] = [];
-  /** Late streak per pad: consecutive late hits (> 40 ms). */
-  private late = new Map<Lane, number>();
+  private echoed = false;
   /** Beat of your last hit. */
   lastHitBeat = -Infinity;
 
-  constructor(public unlocked: readonly Lane[]) {}
-
-  /** You hit a pad. */
+  /** You played. */
   hear(h: Heard): void {
     this.heard.push(h);
-    while (this.heard.length && this.heard[0].beat < h.beat - 8) this.heard.shift();
+    while (this.heard.length && this.heard[0].beat < h.beat - 16) this.heard.shift();
     this.lastHitBeat = h.beat;
-    if (h.offset !== null) this.late.set(h.lane, h.offset > 0.04 ? (this.late.get(h.lane) ?? 0) + 1 : 0);
   }
 
-  /** Your tempo feel: hits per bar over the last two bars. */
-  density(nowBeat: number): number {
-    let n = 0;
-    for (const h of this.heard) if (h.beat >= nowBeat - 8) n++;
-    return n / 2;
-  }
-
-  /** How your last answer went: busier calls after a good one, simpler after a hard one. */
-  report(r: AnswerReport): void {
-    if (r.share >= 0.85) this.level = Math.min(CALLS.length - 1, this.level + 1);
-    else if (r.share < 0.5) this.level = Math.max(0, this.level - 1);
+  /** How your answer went (share of its notes you matched in time): busier after a good one, simpler after a hard one. */
+  report(share: number): void {
+    if (share >= 0.8) this.level = Math.min(CALLS.length - 1, this.level + 1);
+    else if (share < 0.45) this.level = Math.max(0, this.level - 1);
     this.variant++;
   }
 
-  /** The two-bar call starting at `bar` (its notes, absolute beats), using only unlocked pads. */
+  /** The two-bar call starting at `bar` (absolute beats), as degrees on its instrument. */
   call(bar: number): Note[] {
     const pool = CALLS[this.level];
-    const pick = pool[this.variant % pool.length];
-    const lanes: Partial<Record<Lane, string>> = {};
-    for (const [lane, text] of Object.entries(pick) as [Lane, string][]) if (this.unlocked.includes(lane)) lanes[lane] = text;
-    return grid(lanes, bar);
+    return grid({ melody: pool[this.variant % pool.length] }, bar);
+  }
+
+  /**
+   * Your own phrase from beats [from, to), quantised to eighths and moved to start at `bar`, once a jam,
+   * when you played at least three notes: it plays your groove back to you.
+   */
+  echo(from: number, to: number, bar: number): Note[] | null {
+    if (this.echoed) return null;
+    const seen = new Set<number>();
+    const out: Note[] = [];
+    for (const h of this.heard) {
+      if (h.beat < from - 0.1 || h.beat >= to) continue;
+      const q = Math.round((h.beat - from) * 2) / 2;
+      if (q < 0 || q >= to - from || seen.has(q)) continue;
+      seen.add(q);
+      out.push({ beat: bar * 4 + q, part: 'melody', degree: Math.max(0, h.degree), vel: Math.min(1, Math.max(0.5, h.vel)) });
+    }
+    if (out.length < 3) return null;
+    this.echoed = true;
+    return out.sort((a, b) => a.beat - b.beat);
   }
 
   /** Your answer to a call: the same notes, two bars later. */
@@ -99,16 +82,7 @@ export class Bandmate {
     return call.map((n) => ({ ...n, beat: n.beat + 8 }));
   }
 
-  /** A pad you keep hitting late (3 in a row), or null: it plays that pad a beat early, twice. */
-  nudge(): Lane | null {
-    for (const [lane, n] of this.late) if (n >= 3) {
-      this.late.set(lane, 0);
-      return lane;
-    }
-    return null;
-  }
-
-  /** You've stopped for four bars: time for a soft count-in. */
+  /** You've played nothing for a whole call and answer (16 beats). */
   idle(nowBeat: number): boolean {
     return nowBeat - this.lastHitBeat >= 16;
   }

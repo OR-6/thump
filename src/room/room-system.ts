@@ -317,7 +317,43 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         audio.whoosh(-0.4);
       }
     },
+    voice: (key, at, vel) => {
+      const r = this.ref(key);
+      if (!r) return;
+      const when = this.clock.toAudio(at);
+      if (r.kind === 'keys') {
+        const q = this.kit.keyZones[r.zone];
+        if (q) audio.modal('keys', q.midi, vel, 0, when);
+      } else if (r.kind === 'zone' && r.surface?.voice) {
+        const z = r.surface.zones[r.zone];
+        if (z) {
+          this.lastWorld.set(z.x, 0, -z.z).applyMatrix4(r.surface.world);
+          audio.modal(r.surface.voice.family, z.midi, vel, this.panOf(this.lastWorld), when, r.surface.voice.size);
+        }
+      }
+      // its note lights where it plays, when it plays
+      this.pendingLights.push({ at, key, vel });
+    },
+    bandmate: (event, surface) => {
+      const s = surface === 'keys' ? null : this.surfaces.find((x) => x.id === surface);
+      const o = s ? this.overlays.get(s) : this.kit.keys;
+      if (event === 'claim') {
+        o?.sweep();
+        audio.chirp('hello');
+        if (!this.settings.noWords) {
+          if (s) this.tmp.set(s.anchor.x, 0.05, -s.anchor.z - 0.12).applyMatrix4(s.world);
+          else this.tmp.set(0, 0.06, -0.12).applyMatrix4(this.kit.root.matrixWorld);
+          this.tag.show('Your bandmate plays this', 0xf2efe6, this.tmp, this.head, 3);
+        }
+      } else if (event === 'happy') {
+        audio.chirp('happy');
+      } else if (event === 'simpler') {
+        audio.chirp('turn');
+      }
+    },
   };
+  /** The bandmate's notes, lit when they play. */
+  private pendingLights: { at: number; key: string; vel: number }[] = [];
 
   /** Resolve a target key ("surface:zone"), cached. */
   private ref(key: string): KeyRef | null {
@@ -448,6 +484,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.readHands(delta);
     if (AUTOPLAY) this.autoplay();
     this.game.tick(this.clock.t);
+    for (let i = this.pendingLights.length - 1; i >= 0; i--) {
+      const p = this.pendingLights[i];
+      const d = this.clock.t - p.at;
+      if (d >= 0) {
+        const r = this.ref(p.key);
+        if (r?.kind === 'keys') this.kit.keys.hit(r.zone, p.vel);
+        else if (r?.surface) this.overlays.get(r.surface)?.hit(r.zone, p.vel);
+        this.pendingLights.splice(i, 1);
+      }
+    }
     this.kit.module.set(this.game.display);
     this.debug.mode = this.game.mode;
     this.debug.found = this.game.found.slice();
@@ -1270,7 +1316,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.game.key('play');
       }
     }
-    if (this.game.mode === 'play' || this.game.mode === 'count') {
+    if (this.game.mode === 'play' || this.game.mode === 'count' || this.game.mode === 'jam') {
       this.game.dueBetween(from, t, (key) => this.autoHit(key, t));
     }
   }

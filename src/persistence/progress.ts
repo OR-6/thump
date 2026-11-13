@@ -45,6 +45,8 @@ export interface Progress {
   kit?: SavedKit;
   /** Instruments found per room (keyed by the room anchor's handle); the kit counts as 'kit'. */
   rooms: Record<string, SavedInstrument[]>;
+  /** The bandmate's level (how busy its calls get), kept between jams; unset until the first jam. */
+  bandLevel?: number;
 }
 
 const KEY = 'progress.v1';
@@ -72,6 +74,7 @@ export function loadProgress(): Progress {
   if (Array.isArray(r.days)) p.days = r.days.filter((d): d is string => typeof d === 'string' && /^\d{4}-\d\d-\d\d$/.test(d)).slice(-400);
   const k = r.kit as SavedKit | undefined;
   if (k && typeof k.uuid === 'string' && [k.x, k.y, k.z, k.yaw].every((n) => typeof n === 'number' && Number.isFinite(n))) p.kit = { uuid: k.uuid, x: k.x, y: k.y, z: k.z, yaw: k.yaw };
+  if (typeof r.bandLevel === 'number' && r.bandLevel >= 0 && r.bandLevel <= 3) p.bandLevel = Math.round(r.bandLevel);
   if (r.rooms && typeof r.rooms === 'object') {
     for (const [uuid, list] of Object.entries(r.rooms as Record<string, unknown>)) {
       if (!Array.isArray(list)) continue;

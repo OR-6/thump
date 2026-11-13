@@ -11,6 +11,8 @@ function stage(log: string[]): GameStage {
     retune: (pc) => log.push(`retune ${pc}`),
     save: () => log.push('save'),
     unlock: (u) => log.push(`unlock ${u}`),
+    voice: () => {},
+    bandmate: (e, s) => log.push(`bandmate ${e} ${s}`),
   };
 }
 
@@ -117,5 +119,34 @@ describe('the game', () => {
     const before = g.clock.start;
     g.resumed(5);
     expect(g.clock.start - before).toBeCloseTo(2 * g.clock.spb);
+  });
+
+  it('JAM: the bandmate claims your most melodic instrument, calls, you answer, it adapts and remembers', () => {
+    const log: string[] = [];
+    const p = freshProgress();
+    p.unlocks.push('jam');
+    const g = new Game(stage(log), p, room([{ id: 'p2', family: 'gong', zones: 1 }, { id: 'p1', family: 'marimba', zones: 8 }]));
+    g.start(0);
+    g.key('jam');
+    expect(g.mode).toBe('jam');
+    expect(g.jamSurface).toBe('p1');
+    expect(log).toContain('bandmate claim p1');
+    play(g, 0, 200, 0.01, (x) => x.mode !== 'jam');
+    expect(g.jamShares.length).toBe(8);
+    expect(g.jamShares.every((x) => x === 1)).toBe(true);
+    expect(g.mode).toBe('discover');
+    expect(p.bandLevel).toBe(3);
+  });
+
+  it('JAM with nobody answering: it goes simpler, and never errors', () => {
+    const p = freshProgress();
+    p.unlocks.push('jam');
+    p.bandLevel = 2;
+    const g = new Game(stage([]), p, room([]));
+    g.start(0);
+    g.key('jam');
+    expect(g.jamSurface).toBe('keys');
+    for (let t = 0; t < 40; t += 1 / 72) g.tick(t);
+    expect(g.mate!.level).toBeLessThan(2);
   });
 });
