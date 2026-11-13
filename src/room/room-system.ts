@@ -53,6 +53,7 @@ import { SurfaceBuilder, insidePolygon, tuneStrike } from './surface-builder.js'
 import { GameClock } from './game-clock.js';
 import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M, URL_STRIKE } from './params.js';
 import { SwapGesture } from './swaps.js';
+import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
 import { Overlay, Sheen } from './overlay.js';
 import { asLight } from '../art/light.js';
@@ -357,10 +358,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         audio.whoosh(-0.4);
       }
     },
-    voice: (key, at, vel) => {
+    voice: (key, at, vel, mate) => {
       const r = this.ref(key);
       if (!r) return;
       const when = this.clock.toAudio(at);
+      // the bandmate's own notes: its mallets fly there and strike on the note
+      if (mate && !motion.calm) this.malletTo(r, at);
       if (r.kind === 'pad') {
         const p = this.kit.pad(r.lane);
         audio.drum(r.lane, vel, p ? Math.max(-0.8, Math.min(0.8, p.x / 0.4)) : 0, when);
@@ -483,6 +486,39 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     (this.finale.material as MeshBasicMaterial).color.setRGB(1, 0.96, 0.86).multiplyScalar((1 - k) * (1 - k));
     this.finale.visible = k < 1;
     if (k >= 1) this.finaleT = -1;
+  }
+
+  /** The bandmate's mallets (they rest crossed on the module between phrases). */
+  private mallets = new Mallets();
+  private malletN = new Vector3();
+  private malletL = new Vector3();
+  private malletR = new Vector3();
+  private malletDir = new Vector3();
+  private malletTo(r: KeyRef, at: number): void {
+    if (r.kind === 'keys') {
+      const q = this.kit.keyZones[r.zone];
+      if (!q) return;
+      this.tmp2.set(q.x, 0.004, -q.z);
+      this.kit.root.localToWorld(this.tmp2);
+      this.malletN.set(0, 1, 0).transformDirection(this.kit.root.matrixWorld);
+    } else if (r.kind === 'zone' && r.surface) {
+      const z = r.surface.zones[r.zone];
+      if (!z) return;
+      this.tmp2.set(z.x, 0.004, -z.z).applyMatrix4(r.surface.world);
+      this.malletN.copy(r.surface.normal);
+    } else return;
+    if (!this.mallets.group.parent) this.worldRoot.add(this.mallets.group);
+    this.mallets.strike(at, this.tmp2, this.malletN);
+  }
+  private updateMallets(): void {
+    const m = this.kit.module.root;
+    m.updateMatrixWorld();
+    this.malletL.set(-0.035, MODULE.h + 0.008, 0.045);
+    this.malletR.set(0.035, MODULE.h + 0.008, 0.052);
+    m.localToWorld(this.malletL);
+    m.localToWorld(this.malletR);
+    this.malletDir.set(1, 0, 0).transformDirection(m.matrixWorld);
+    this.mallets.update(this.clock.t, this.malletL, this.malletR, this.malletDir, this.head);
   }
 
   /** The instrument carrying the melody in the song just played (for its stars), else the table keys. */
@@ -870,6 +906,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.update(dt);
     for (const o of this.overlays.values()) o.update(dt);
     this.updateFinale(dt);
+    this.updateMallets();
     // two found and a quiet spell: if there's a door or a window beyond reach, say so now (not only after a song)
     if (!this.farTold && this.game.mode === 'discover' && this.game.found.length >= 2 && this.clock.t - this.lastFoundT > 8 && this.clock.t > this.farCheckAt) {
       this.farCheckAt = this.clock.t + 3;
@@ -2127,6 +2164,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.pendingLights.length = 0;
     this.timed.length = 0;
     this.sinkWatch[0] = this.sinkWatch[1] = null;
+    this.mallets.hide();
     this.handLatch[0] = this.handLatch[1] = -Infinity;
     for (const s of this.surfaces) {
       s.detector.forget(0);

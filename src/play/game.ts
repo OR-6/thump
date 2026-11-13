@@ -41,7 +41,7 @@ export interface GameStage {
   /** Something new: the tom slides onto the table, JAM lights up… */
   unlock(u: Unlock): void;
   /** The bandmate plays target `key` at game time `at` (sound and light on its instrument). */
-  voice(key: string, at: number, vel: number): void;
+  voice(key: string, at: number, vel: number, mate?: boolean): void;
   /** A song was cast (which instruments it uses: the table keys brighten when they're in it). */
   casting(c: Cast): void;
   /** A note went by unplayed: its target dims for a moment. */
@@ -375,7 +375,7 @@ export class Game {
       const echo = this.jamCycle >= 2 ? mate.echo(cycleStart - 8, cycleStart, bar) : null;
       const call = echo ?? mate.call(bar);
       this.jamCalls = call.map((n) => ({ beat: n.beat, degree: n.degree, vel: n.vel }));
-      for (const n of this.jamCalls) this.stage.voice(this.jamKey(n.degree), this.clock.timeAt(n.beat), n.vel * 0.85);
+      for (const n of this.jamCalls) this.stage.voice(this.jamKey(n.degree), this.clock.timeAt(n.beat), n.vel * 0.85, true);
       this.jamAnswer = this.jamCalls.map((n) => ({ beat: n.beat + 8, degree: n.degree, hit: false, key: this.jamKey(n.degree) }));
       // you'd gone quiet: a soft count-in under the call brings you back
       if (this.jamCountIn) for (let i = 0; i < 4; i++) this.stage.band({ beat: cycleStart + i, voice: 'shaker', midi: 0, len: 0.2, vel: 0.9 }, this.clock.timeAt(cycleStart + i), spb);
