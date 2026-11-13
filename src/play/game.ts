@@ -1,5 +1,5 @@
 /**
- * The game (PLAN §2, §3.5–3.7): Discover is where you start and free play is always on (anything you
+ * The game (DESIGN.md §2, §3.5–3.7): Discover is where you start and free play is always on (anything you
  * hit plays its instrument); songs are chosen on the module and cast onto your room's instruments;
  * results give stars and unlocks, then it's back to playing your room.
  *
@@ -22,8 +22,8 @@ import type { Display, ModuleKey } from '../ui/module.js';
 export type Unlock = 'tom' | 'jam' | 'loops' | 'swaps';
 /** Unlocked by finishing each song the first time. */
 export const UNLOCK_AFTER: Record<string, Unlock[]> = {
-  'porch-step': ['tom'],
-  'kitchen-clock': ['jam'],
+  'porch-step': ['tom', 'jam'],
+  'kitchen-clock': [],
   'night-bus': ['loops'],
   'big-room': [],
 };
@@ -48,6 +48,8 @@ export interface GameStage {
   missed(key: string): void;
   /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
   tempo(t: number): void;
+  /** In-headset settings: read and switch (saved by the stage). */
+  setting(name: 'oneHand' | 'contrast' | 'words', flip: boolean): boolean;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
   bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave', surface?: string): void;
 }
@@ -97,7 +99,9 @@ export class Game {
   readonly graded = { perfect: 0, good: 0, extra: 0 };
   readonly offsets: number[] = [];
   /** What the module shows now. */
-  readonly display: Display = { line: 'Hit anything', sub: 'Your room is an orchestra', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '' };
+  readonly display: Display = { line: 'Hit anything', sub: 'Your room is an orchestra', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null };
+  /** The settings page is up on the module (tap ◀ twice; ▶ closes it). */
+  settingsOpen = false;
   /** The songs to choose from: the four, and today's. */
   readonly list: Song[] = [...SONGS, dailySong(dayKey())];
   /** A phone-jam code to show on the display ('' for none). */
@@ -173,13 +177,24 @@ export class Game {
     const twice = this.t - (this.lastTap[k] ?? -9) < 0.9;
     this.lastTap[k] = this.t;
     if (this.mode === 'results') this.leaveResults();
-    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count') {
-      // tap ◀ twice: slow mode on or off
-      this.opts.tempo = this.opts.tempo < 0.95 ? 1 : 0.75;
-      this.stage.tempo(this.opts.tempo);
+    if (this.settingsOpen) {
+      // each key switches the setting written over it; ▶ closes the page
+      if (k === 'play') this.settingsOpen = false;
+      else if (k === 'prev') {
+        this.opts.tempo = this.opts.tempo < 0.95 ? 1 : 0.75;
+        this.stage.tempo(this.opts.tempo);
+      } else if (k === 'next') this.stage.setting('oneHand', true);
+      else if (k === 'jam') this.stage.setting('contrast', true);
+      else this.stage.setting('words', true);
       this.lastTap[k] = -9;
       this.refreshDisplay();
-      this.display.sub = this.opts.tempo < 0.95 ? 'Slow mode · same stars' : 'Full speed';
+      return;
+    }
+    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam') {
+      // tap ◀ twice: the settings page
+      this.settingsOpen = true;
+      this.lastTap[k] = -9;
+      this.refreshDisplay();
       return;
     }
     if (k === 'prev' || k === 'next') {
@@ -557,6 +572,15 @@ export class Game {
     d.day = this.progress.days.length;
     d.gold = !!this.progress.gold[sel.id];
     d.code = this.code;
+    d.keyLabels = null;
+    if (this.settingsOpen) {
+      const on = (b: boolean) => (b ? 'on' : 'off');
+      d.line = 'Settings';
+      d.sub = '';
+      d.keyLabels = [`Slow\n${on(this.opts.tempo < 0.95)}`, 'Done', `One hand\n${on(this.stage.setting('oneHand', false))}`, `Contrast\n${on(this.stage.setting('contrast', false))}`, `Words\n${on(this.stage.setting('words', false))}`];
+      d.pulse = 'play';
+      return;
+    }
     if (this.mode === 'discover' && this.looper.state !== 'off') {
       const l = this.looper;
       const b = this.loopClock.beatAt(this.t);
@@ -575,7 +599,7 @@ export class Game {
           d.line = sel.name;
           const need = wants(sel.parts);
           const have = this.found.filter((f) => f !== 'kit').length;
-          d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : this.weakRuns >= 2 && this.opts.tempo > 0.95 ? 'Slower? Tap ◀ twice' : have < need ? 'Tap play · more found, more parts' : 'Tap play';
+          d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : this.weakRuns >= 2 && this.opts.tempo > 0.95 ? 'Slower? Settings: tap ◀ twice' : have < need ? 'Tap play · more found, more parts' : 'Tap play';
           d.pulse = (this.progress.unlocks as string[]).includes('jam') && !this.jammed ? 'jam' : 'play';
           d.stars = this.progress.stars[sel.id] ?? 0;
         }
@@ -601,7 +625,7 @@ export class Game {
         d.line = s.stars === 3 ? 'Brilliant' : s.stars === 2 ? 'Lovely' : 'One star · again?';
         d.stars = s.stars;
         const next = this.selected < this.available() ? this.songAt(this.selected) : null;
-        d.sub = this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
+        d.sub = this.newUnlocks.length > 1 ? 'New: a tom, and JAM' : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
         break;
       }
     }

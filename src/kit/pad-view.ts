@@ -1,5 +1,5 @@
 /**
- * One drum of the table kit, as an electronic kit's pad (PLAN §3.13): a matte black mesh head on a
+ * One drum of the table kit, as an electronic kit's pad (DESIGN.md §3.13): a matte black mesh head on a
  * rubber rim, a thin chrome hoop, and an LED ring that flashes by hit strength and glows a beat before
  * its note. A hit dents the head and sends a ripple across it.
  *
@@ -22,7 +22,8 @@ import { asLight } from '../art/light.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
 
-const HEIGHT = 0.018;
+/** Flush with the table: the real wood stops your hand, not a virtual puck. */
+const HEIGHT = 0.006;
 const SQUASH_S = 0.1;
 
 /** Each drum's LED colour. */
@@ -110,12 +111,12 @@ export class PadView {
     const body = new Mesh(new CylinderGeometry(R, R * 1.02, HEIGHT, 48), [rubber, this.head, rubber]);
     body.position.y = HEIGHT / 2;
     // the rubber rim and a thin chrome hoop just inside it
-    const rim = new Mesh(new TorusGeometry(R * 0.985, 0.0045, 10, 56), rubber);
+    const rim = new Mesh(new TorusGeometry(R * 0.985, 0.0026, 8, 56), rubber);
     rim.rotation.x = -Math.PI / 2;
     rim.position.y = HEIGHT;
     const hoop = new Mesh(new TorusGeometry(R * 1.005, 0.0016, 8, 64), new MeshStandardMaterial({ color: 0xd8dade, metalness: 1, roughness: 0.22 }));
     hoop.rotation.x = -Math.PI / 2;
-    hoop.position.y = HEIGHT + 0.0035;
+    hoop.position.y = HEIGHT + 0.002;
     this.body.add(body, rim, hoop);
     this.group.add(this.body);
     // the LED ring round the base, and its glow on the table

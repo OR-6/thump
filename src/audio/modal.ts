@@ -1,6 +1,6 @@
 /**
  * Modal voices (data): every melodic or tuned instrument is a handful of decaying partials (a ratio to
- * the fundamental, a level, a decay time) struck by a short filtered noise burst (PLAN §3.4). A harder
+ * the fundamental, a level, a decay time) struck by a short filtered noise burst (DESIGN.md §3.4). A harder
  * hit brings up the upper partials and the strike noise; a bigger surface rings lower and longer.
  */
 import type { Family } from '../room/classify.js';

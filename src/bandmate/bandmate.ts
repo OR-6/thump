@@ -1,6 +1,6 @@
 /**
  * The bandmate (pure): a rule-based musical agent. It is not an AI model; it listens and answers by
- * rules (PLAN §3.8):
+ * rules (DESIGN.md §3.8):
  *
  * - **Claims** one of your room's instruments (the most melodic one you've found) and plays it.
  * - **Calls:** a two-bar phrase on its instrument; you answer it in the next two bars.

@@ -1,6 +1,6 @@
 /**
  * The module: a small matte-black drum-module panel at the back of the table, the game's only UI
- * (PLAN §3.13). A monochrome display (one big line, a room map of instrument icons, a meter) and four
+ * (DESIGN.md §3.13). A monochrome display (one big line, a room map of instrument icons, a meter) and four
  * rubber keys you tap like pads: ◀ PLAY ▶ JAM. Kit-local, facing the player.
  */
 import { BoxGeometry, CanvasTexture, Color, Group, Mesh, MeshStandardMaterial, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace } from '@iwsdk/core';
@@ -9,7 +9,7 @@ import { FAMILIES, type Family } from '../room/classify.js';
 export const MODULE = {
   /** Kit-local centre of its base. */
   x: 0,
-  z: -0.25,
+  z: -0.3,
   w: 0.3,
   d: 0.13,
   h: 0.034,
@@ -46,6 +46,8 @@ export interface Display {
   gold: boolean;
   /** A phone-jam code to show, or ''. */
   code: string;
+  /** Labels over each key (the settings page), or null. */
+  keyLabels: string[] | null;
 }
 
 const INK = '#f2efe6';
@@ -62,7 +64,7 @@ export class Module {
   private press = new Float32Array(5);
   private pulseT = 0;
   private last = '';
-  shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '' };
+  shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null };
 
   constructor() {
     this.root.name = 'Module';
@@ -85,7 +87,7 @@ export class Module {
     this.root.add(bezel, face);
     // four rubber keys along the front, each with a printed glyph
     KEYS.forEach((k, i) => {
-      const mat = new MeshStandardMaterial({ color: 0x2a2a2d, roughness: 0.85, emissive: new Color(0), map: keyTexture(k) });
+      const mat = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, emissive: new Color(0), map: keyTexture(k) });
       const key = new Mesh(new BoxGeometry(MODULE.keyW, 0.008, MODULE.keyD), [mat, mat, mat, mat, mat, mat]);
       key.position.set(KEY_X[i], MODULE.h + 0.004, MODULE.keyZ);
       this.keyMeshes.push(key);
@@ -107,7 +109,7 @@ export class Module {
   }
 
   set(d: Display): void {
-    const key = `${d.line}|${d.sub}|${d.found.join(',')}|${d.total}|${Math.round(d.meter * 24)}|${d.stars}|${d.count}|${d.day}|${d.gold}|${d.code}`;
+    const key = `${d.line}|${d.sub}|${d.found.join(',')}|${d.total}|${Math.round(d.meter * 24)}|${d.stars}|${d.count}|${d.day}|${d.gold}|${d.code}|${d.keyLabels?.join(',') ?? ''}`;
     this.shown = d;
     if (key === this.last) return;
     this.last = key;
@@ -134,27 +136,42 @@ export class Module {
       this.tex.needsUpdate = true;
       return;
     }
+    if (d.keyLabels) {
+      // the settings page: a title, and each key's setting written over it
+      g.fillStyle = INK;
+      g.font = `650 64px ${FONT}`;
+      g.fillText(d.line, 28, 80);
+      g.font = `600 34px ${FONT}`;
+      d.keyLabels.forEach((l, i) => {
+        const x = W / 2 + (KEY_X[i] / 0.28) * W;
+        const lines = l.split('\n');
+        lines.forEach((t, k) => g.fillText(t, x - g.measureText(t).width / 2, 170 + k * 42));
+      });
+      this.tex.needsUpdate = true;
+      return;
+    }
     g.fillStyle = INK;
     let px = 84;
     g.font = `650 ${px}px ${FONT}`;
     const room = d.stars >= 0 ? W - 230 : W - 56;
     while (g.measureText(d.line).width > room && px > 40) g.font = `650 ${--px}px ${FONT}`;
-    g.fillText(d.line, 28, 98);
-    g.font = `500 46px ${FONT}`;
-    g.fillStyle = '#c9c5bb';
-    g.fillText(d.sub, 28, 162, W - 56);
+    g.fillText(d.line, 28, 92);
+    let sp = 62;
+    g.font = `550 ${sp}px ${FONT}`;
+    while (g.measureText(d.sub).width > W - 56 && sp > 40) g.font = `550 ${--sp}px ${FONT}`;
+    g.fillStyle = '#d6d2c8';
+    g.fillText(d.sub, 28, 166);
     if (d.stars >= 0) for (let i = 0; i < 3; i++) star(g, W - 180 + i * 64, 70, 26, i < d.stars, d.gold);
     // the room map: one LED per instrument the room has, lit in its colour once found
     const slots = Math.min(9, Math.max(d.total, d.found.length));
     for (let i = 0; i < slots; i++) {
       const f = d.found[i];
-      const x = 44 + i * 52;
-      g.beginPath();
-      g.arc(x, 222, 15, 0, Math.PI * 2);
-      if (f) {
-        g.fillStyle = `#${FAMILIES[f].color.toString(16).padStart(6, '0')}`;
-        g.fill();
-      } else {
+      const x = 48 + i * 60;
+      // each instrument found, as its icon in its colour; a dim ring for the ones still to find
+      if (f) icon(g, f, x, 226, 20, `#${FAMILIES[f].color.toString(16).padStart(6, '0')}`);
+      else {
+        g.beginPath();
+        g.arc(x, 226, 16, 0, Math.PI * 2);
         g.strokeStyle = DIM;
         g.lineWidth = 4;
         g.stroke();
@@ -193,9 +210,9 @@ function keyTexture(k: ModuleKey): CanvasTexture {
   const g = c.getContext('2d')!;
   g.fillStyle = '#2a2a2d';
   g.fillRect(0, 0, 128, 128);
-  g.fillStyle = '#e8e4da';
-  g.strokeStyle = '#e8e4da';
-  g.lineWidth = 9;
+  g.fillStyle = '#ffffff';
+  g.strokeStyle = '#ffffff';
+  g.lineWidth = 11;
   g.lineJoin = 'round';
   g.beginPath();
   if (k === 'prev') {

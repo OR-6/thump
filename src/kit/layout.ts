@@ -91,7 +91,7 @@ export function pickPad(points: readonly Point[], surfaceY: number, lowH: number
   return best;
 }
 
-/** Two pads overlap if their felts come closer than this (PLAN §3.2: at least 4 cm apart). */
+/** Two pads overlap if their felts come closer than this (DESIGN.md §3.2: at least 4 cm apart). */
 export const MIN_GAP = 0.04;
 
 /** Nudge a dragged pad's spot so its felt keeps MIN_GAP from every other pad and stays within reach of the kit centre. */

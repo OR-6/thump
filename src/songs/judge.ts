@@ -2,7 +2,7 @@
  * Timing judge (pure). Notes are timed in song seconds; a hit on a lane takes the nearest unjudged
  * note of that lane inside the good window. No miss penalty beyond the crowd going quieter: a
  * note never hit is simply 'miss' once its window has passed. Stars from the share of perfect and
- * good notes (PLAN §3.5).
+ * good notes (DESIGN.md §3.5).
  */
 import { TIMING } from '../config.js';
 
@@ -143,7 +143,7 @@ export class NoteJudge {
   }
 }
 
-/** Copy mode passes when this many of the pattern's notes landed (3 of 4, PLAN §3.5). */
+/** Copy mode passes when this many of the pattern's notes landed (3 of 4, DESIGN.md §3.5). */
 export function copyNeeds(n: number): number {
   return Math.max(1, Math.ceil(n * 0.75));
 }

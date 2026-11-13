@@ -2,7 +2,7 @@
  * Pitch zones (pure): where each note of an instrument lies on its surface, in the surface's own 2D
  * frame (x across, to the right as you face it; z up the surface for walls, doors and windows; on a
  * horizontal top, z points away from you). Zones sit around the spot of the first hit (it was in
- * reach), clamped into the surface (PLAN §3.3). Pitches are in the current key, major pentatonic,
+ * reach), clamped into the surface (DESIGN.md §3.3). Pitches are in the current key, major pentatonic,
  * so anything you play sounds good.
  */
 import type { Family } from './classify.js';
@@ -124,8 +124,12 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
       break;
     }
     case 'keys': {
-      // the table keys: five slim bars in a row
-      for (let i = 0; i < 5; i++) out.push({ i, shape: 'rect', x: anchor.x + (i - 2) * 0.085, z: anchor.z, w: 0.07, h: 0.012, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
+      // the table marimba (see below)
+      // the table marimba: eight bars drawn on the wood, running toward you, low on the left, a hand wide
+      for (let i = 0; i < 8; i++) {
+        const len = 0.1 - i * 0.005;
+        out.push({ i, shape: 'rect', x: anchor.x + (i - 3.5) * 0.066, z: anchor.z, w: 0.05, h: len, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
+      }
       break;
     }
     case 'gong': {

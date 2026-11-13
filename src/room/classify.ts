@@ -1,6 +1,6 @@
 /**
  * Physics → instrument (pure). A surface's measured shape decides its instrument family, and its size
- * decides the voice within it (PLAN §3.3). No object recognition: the inputs are geometry (orientation,
+ * decides the voice within it (DESIGN.md §3.3). No object recognition: the inputs are geometry (orientation,
  * size, height, a volume behind it, curvature, how a hand sinks into it). Quest's room-scan labels
  * (wall, door frame, window frame, storage, couch…) are scene-understanding hints that fill in what
  * geometry alone can't see (glass, a hollow door), and are always overruled by a measurement.
@@ -30,7 +30,7 @@ export const FAMILIES: Record<Family, FamilyInfo> = {
   shaker: { name: 'shaker', color: 0x7ee07a, melodic: false, order: 7 },
   block: { name: 'wood block', color: 0xff8a3c, melodic: false, order: 8 },
   stomp: { name: 'stomp', color: 0xff4d6a, melodic: false, order: 9 },
-  keys: { name: 'table keys', color: 0xffa630, melodic: true, order: 10 },
+  keys: { name: 'table marimba', color: 0xffa630, melodic: true, order: 10 },
 };
 
 /** What a surface's measurements say. Lengths in metres, all features 0..1. */

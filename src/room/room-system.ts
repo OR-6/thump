@@ -308,9 +308,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.afterFirstSong();
     },
     casting: (c) => {
-      // the table keys sit quiet until a song uses them
+      // the table marimba glows brighter when a song uses it
       const used = Object.values(c).some((t) => t?.surface === 'keys');
-      this.kit.keys.rest = used ? 0.45 : 0.12;
+      this.kit.keys.rest = used ? 0.55 : 0.35;
     },
     missed: (key) => {
       const r = this.ref(key);
@@ -322,6 +322,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     tempo: (t) => {
       this.settings = { ...this.settings, tempo: t };
       saveSettings(this.settings);
+    },
+    setting: (name, flip) => {
+      const s = this.settings;
+      const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : !s.noWords;
+      if (!flip) return cur;
+      const next = { ...s };
+      if (name === 'oneHand') next.oneHand = !cur;
+      else if (name === 'contrast') next.highContrast = !cur;
+      else next.noWords = cur;
+      saveSettings(next);
+      this.applySettings(next);
+      audio.tick();
+      return !cur;
     },
     retune: (pc) => {
       for (const s of this.surfaces) if (s.discovered && s.voice && FAMILIES[s.voice.family].melodic) retune(s.zones, s.voice.family, s.voice.size, pc);
@@ -878,7 +891,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const zone = s.zones[z];
     if (!zone || !s.voice) return;
     this.lastWorld.set(zone.x, 0, -zone.z).applyMatrix4(s.world);
-    audio.modal(s.voice.family, zone.midi, gain, this.panOf(this.lastWorld), 0, s.voice.size, s.id);
+    // glass is for taps: a hard hit plays no louder than a gentle one
+    const g0 = s.voice.family === 'glock' ? Math.min(gain, 0.55) : gain;
+    audio.modal(s.voice.family, zone.midi, g0, this.panOf(this.lastWorld), 0, s.voice.size, s.id);
     this.overlays.get(s)?.hit(z, gain);
     const grade = this.game.hit(`${s.id}:${z}`, t, gain);
     if (grade === 'perfect') {
@@ -1035,7 +1050,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (!this.restoring) audio.chime([84, 91], 0.07, 0.4);
     if (!this.settings.noWords && !this.restoring) {
-      const name = `${surfaceName(s)} · ${FAMILIES[v.family].name}`;
+      const name = `${surfaceName(s)} · ${FAMILIES[v.family].name}${v.family === 'glock' ? ' · tap gently' : ''}`;
       // the tag stands just off the surface where it was hit, facing you
       this.tmp.set(this.hitAt.x, 0.05, -this.hitAt.z).applyMatrix4(s.world);
       if (s === this.kitSurface) this.tmp.set(0, 0.1, 0.05).applyMatrix4(s.world);
@@ -1566,7 +1581,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // the first words, at hand height over the table (the module says it too)
       if (!this.settings.noWords && !this.kitSurface.discovered) {
         this.tmp.set(0, 0.12, 0.02).applyMatrix4(root.matrixWorld);
-        this.tag.show('Hit anything', 0xff5a3c, this.tmp, this.head, 6);
+        this.tag.show('Hit the table, the wall…', 0xff5a3c, this.tmp, this.head, 6);
       }
     }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();

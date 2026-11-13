@@ -15,6 +15,7 @@ function stage(log: string[]): GameStage {
     casting: () => {},
     tempo: () => {},
     missed: () => {},
+    setting: () => false,
     bandmate: (e, s) => log.push(`bandmate ${e} ${s}`),
   };
 }
@@ -113,17 +114,25 @@ describe('the game', () => {
     expect(g.mode).toBe('discover');
   });
 
-  it('tap ◀ twice: slow mode, saved', () => {
+  it('tap ◀ twice: the settings page; ◀ there switches slow mode (saved); ▶ closes it', () => {
     let saved = 0;
-    const st = { ...stage([]), tempo: (t: number) => (saved = t) };
+    const flips: string[] = [];
+    const st = { ...stage([]), tempo: (t: number) => (saved = t), setting: (n: 'oneHand' | 'contrast' | 'words', f: boolean) => (f && flips.push(n), false) };
     const g = new Game(st, freshProgress(), room([]));
     g.start(0);
     g.tick(1);
     g.key('prev');
     g.tick(1.3);
     g.key('prev');
+    expect(g.settingsOpen).toBe(true);
+    expect(g.display.keyLabels?.length).toBe(5);
+    g.key('prev');
     expect(g.opts.tempo).toBe(0.75);
     expect(saved).toBe(0.75);
+    g.key('jam');
+    expect(flips).toEqual(['contrast']);
+    g.key('play');
+    expect(g.settingsOpen).toBe(false);
   });
 
   it('learns a steady lateness', () => {

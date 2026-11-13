@@ -1,7 +1,7 @@
 /**
  * The songs, in the order they unlock. All original, composed for these instruments (no licences).
  * Written in parts, cast onto your room when they start: early songs use two instruments, later ones
- * more (PLAN §3.6).
+ * more (DESIGN.md §3.6).
  */
 import { bed, grid, repeat, type Note, type Song } from './chart.js';
 
@@ -20,10 +20,10 @@ export const PORCH_STEP: Song = {
   key: 0,
   parts: ['kick', 'snare', 'melody'],
   notes: cat(
-    // the kit alone: boom on one, tak on three
-    repeat({ kick: 'x.......', snare: '....x...' }, 0, 4),
-    // the melody alone, walking up and back
-    grid({ melody: '0.2.4.2.|3.2.1.0.|0.2.4.5.|4.2.0...' }, 4),
+    // the melody alone first, walking up and back (on your room's most melodic instrument)
+    grid({ melody: '0.2.4.2.|3.2.1.0.|0.2.4.5.|4.2.0...' }, 0),
+    // then the kit: boom on one, tak on three
+    repeat({ kick: 'x.......', snare: '....x...' }, 4, 4),
     // together: a drum and a note on the same beats, one hand each
     grid({ kick: 'x.......|x.......|x.......|x.......', snare: '....x...|....x...|....x...|....x...', melody: '0...4...|2...0...|0...4...|5...4...' }, 8),
     grid({ kick: 'x...x...|x...x...|x...x...|X.......', snare: '..x...x.|..x...x.|..x...x.|........', melody: '4...2...|0...2...|4...5...|0.......' }, 12),

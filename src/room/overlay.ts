@@ -1,5 +1,5 @@
 /**
- * Light overlays on real surfaces (PLAN §3.13): slim, precise bars and keys, rings for drums and
+ * Light overlays on real surfaces (DESIGN.md §3.13): slim, precise bars and keys, rings for drums and
  * bowls, a big ring for a gong, each in its instrument's accent colour, drawn just off the surface.
  * A zone lights a beat before its note and flashes when hit (brighter for a harder hit). On discovery
  * the overlay draws itself in, zone by zone. Undiscovered surfaces in reach carry a faint sheen.
@@ -79,7 +79,8 @@ export class Overlay {
   constructor(readonly family: Family, max = 12) {
     const g = geos();
     this.group.name = `Overlay-${family}`;
-    const solid = new MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false, side: DoubleSide });
+    // drawn in light on the real surface (adds to what you see; the real surface shows through)
+    const solid = asLight(new MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false, side: DoubleSide }));
     this.shapes = new InstancedMesh(family === 'marimba' || family === 'glock' || family === 'keys' ? g.box : g.ring, solid, max);
     this.glow = new InstancedMesh(family === 'marimba' || family === 'glock' || family === 'keys' ? g.box : g.disc, asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })), max);
     for (const m of [this.shapes, this.glow]) {
@@ -90,7 +91,7 @@ export class Overlay {
     }
     this.glow.renderOrder = 5;
     const isBar = family === 'marimba' || family === 'glock' || family === 'keys';
-    this.backing = new InstancedMesh(isBar ? g.box : g.disc, new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false, side: DoubleSide }), max);
+    this.backing = new InstancedMesh(isBar ? g.box : g.disc, new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false, side: DoubleSide }), max);
     this.backing.renderOrder = 3;
     this.detail = new InstancedMesh(g.ring, new MeshBasicMaterial({ transparent: true, opacity: family === 'gong' ? 0.32 : 0.85, depthWrite: false, toneMapped: false, side: DoubleSide }), max * 4);
     this.detail.renderOrder = 4;

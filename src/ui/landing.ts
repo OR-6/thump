@@ -1,6 +1,6 @@
 /**
  * The 2D page shown outside the headset: the hook, one button to enter mixed reality, and the
- * settings folded away (PLAN §3.15). On a laptop or phone it says how to play on a Quest instead.
+ * settings folded away (DESIGN.md §3.15). On a laptop or phone it says how to play on a Quest instead.
  */
 import { VisibilityState, type World } from '@iwsdk/core';
 import { audio } from '../audio/engine.js';

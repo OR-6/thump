@@ -1,7 +1,7 @@
 /**
  * Audio: one AudioContext (latency hint 'interactive'), created on the first gesture.
  *
- * Every drum is synthesised (PLAN §3.3): no samples, no licences, instant. Each voice takes a
+ * Every drum is synthesised (DESIGN.md §3.3): no samples, no licences, instant. Each voice takes a
  * velocity (louder and brighter when harder) and a pan (from where its pad lies). Hits play at
  * once (scheduled for the current audio time on the frame they're seen); the backing band and the
  * beat light are scheduled ahead on the same clock.
@@ -268,7 +268,7 @@ class Engine {
         break;
       }
       case 'gong': {
-        // inharmonic partials with a slow bloom and a long tail (PLAN §3.3)
+        // inharmonic partials with a slow bloom and a long tail (DESIGN.md §3.3)
         const base = 98 / Math.sqrt(big);
         const parts = [1, 2.4, 3.9, 5.1];
         const amps = [0.5, 0.32, 0.2, 0.12];
@@ -385,7 +385,7 @@ class Engine {
   }
 
   /**
-   * A tuned instrument from the room (PLAN §3.4): `midi` its note, `vel` 0..1, `size` 0..1 the surface's
+   * A tuned instrument from the room (DESIGN.md §3.4): `midi` its note, `vel` 0..1, `size` 0..1 the surface's
    * size within its family (bigger: lower partial decay, longer ring).
    */
   modal(family: Family, midi: number, vel: number, pan = 0, when = 0, size = 0.5, owner = ''): void {

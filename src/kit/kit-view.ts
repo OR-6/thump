@@ -11,9 +11,9 @@ import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
-export const KEYS_ROW = { x: 0, z: -0.15 } as const;
+export const KEYS_ROW = { x: 0, z: -0.16 } as const;
 /** The kit's playing area (kit-local): the whole table here is the kit. */
-export const KIT_ZONE = { halfX: 0.38, back: -0.21, front: 0.14 } as const;
+export const KIT_ZONE = { halfX: 0.38, back: -0.24, front: 0.14 } as const;
 
 let shadowTex: CanvasTexture | null = null;
 function handShadowTexture(): CanvasTexture {
@@ -35,7 +35,7 @@ export class KitView {
   readonly root = new Group();
   readonly pads = new Map<Lane, PadView>();
   readonly module = new Module();
-  readonly keys = new Overlay('keys', 5);
+  readonly keys = new Overlay('keys', 8);
   keyZones: Zone[] = [];
   private handShadow: Mesh[] = [];
 
@@ -59,7 +59,7 @@ export class KitView {
     // the table keys lie on the table (an overlay on the kit's own surface: zone z is away from you)
     this.keyZones = zonesFor('keys', { minX: -0.3, maxX: 0.3, minZ: -0.1, maxZ: 0.3 }, { x: KEYS_ROW.x, z: -KEYS_ROW.z }, 0.5);
     this.keys.group.visible = false;
-    this.keys.rest = 0.12;
+    this.keys.rest = 0.35;
     this.root.add(this.keys.group, this.module.root);
     const g = new PlaneGeometry(1, 1);
     g.rotateX(-Math.PI / 2);

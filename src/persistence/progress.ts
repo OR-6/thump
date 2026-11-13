@@ -1,5 +1,5 @@
 /**
- * What the player has earned and where their kit is, saved locally (PLAN §3.6, §3.12).
+ * What the player has earned and where their kit is, saved locally (DESIGN.md §3.6, §3.12).
  * Every field is validated on load: a corrupt or old save falls back field by field, never whole.
  */
 import { LANES, type Lane } from '../config.js';

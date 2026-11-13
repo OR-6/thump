@@ -34,7 +34,7 @@ export const PALETTE = {
 } as const;
 
 /**
- * The kit as it lies on the table (PLAN §4: kick and snare side by side nearest the hands' natural
+ * The kit as it lies on the table (DESIGN.md §4: kick and snare side by side nearest the hands' natural
  * landing, hat out right and a little nearer, tom out left). z = 0 is where the palm rested.
  */
 export const PADS: Record<Lane, PadSpec> = {
@@ -48,10 +48,10 @@ export const PADS: Record<Lane, PadSpec> = {
 
 /** Hit zones are this much larger than the felt (fingertips land wide at speed). */
 export const ZONE_SCALE = 1.2;
-/** Zones never shrink below this diameter (PLAN §3.2). */
+/** Zones never shrink below this diameter (DESIGN.md §3.2). */
 export const MIN_ZONE = 0.09;
 
-/** Strike detection (PLAN §3.2). Tuned on the device: see docs/DEVICE-SESSION.md. */
+/** Strike detection (DESIGN.md §3.2). Tuned on the device: see docs/DEVICE-SESSION.md. */
 export const STRIKE = {
   /** A strike at this approach speed or more (m/s). */
   minSpeed: 0.35,
@@ -81,7 +81,7 @@ export const STRIKE = {
   flamS: 0.025,
 } as const;
 
-/** Song timing (PLAN §3.2, §4). */
+/** Song timing (DESIGN.md §3.2, §4). */
 export const TIMING = {
   perfectS: 0.06,
   goodS: 0.12,
@@ -98,7 +98,7 @@ export const TIMING = {
   glowBeats: 1,
 } as const;
 
-/** Placement (PLAN §3.1). */
+/** Placement (DESIGN.md §3.1). */
 export const PLACE = {
   /** Kit centre this far ahead of the head (horizontal) when nothing better is known. */
   forward: 0.34,
@@ -143,7 +143,7 @@ export const POKE = {
   rearmM: 0.03,
 } as const;
 
-/** The crowd at the back of the table (PLAN §3.4). */
+/** The crowd at the back of the table (DESIGN.md §3.4). */
 export const CROWD = {
   z: -0.25,
   start: 3,

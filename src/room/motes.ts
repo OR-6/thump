@@ -1,5 +1,5 @@
 /**
- * Travelling notes as light (PLAN §3.6): each note is a mote with a short trail that leaves the module
+ * Travelling notes as light (DESIGN.md §3.6): each note is a mote with a short trail that leaves the module
  * and flies in a low arc across your real room to the exact pad, bar or key that will play it, arriving
  * on the beat; in its last beat a ring closes onto the target. Hit on time, it vanishes into the target;
  * missed, it fades where it landed. Two draws for all of them.
