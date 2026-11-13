@@ -359,6 +359,40 @@ describe('the game', () => {
     expect(voiced.filter((x) => x > end).length).toBeGreaterThan(20);
   });
 
+  it('a hand resting on a thing silences its part in the machine; lifting it brings it back', () => {
+    const voiced: string[] = [];
+    const labels: string[][] = [];
+    let cover = false;
+    const st = { ...stage([]), voice: (k: string) => voiced.push(k), labels: (l: readonly { key: string; name: string }[]) => labels.push(l.map((x) => `${x.name}@${x.key}`)) };
+    const rm = { ...room([{ id: 't1', family: 'bell', zones: 1 }]), muted: (s: string) => cover && s === 't1' };
+    const g = new Game(st, freshProgress(), rm);
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    g.key('play');
+    let t = 45.1;
+    for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
+      g.tick(t);
+      g.hit(key, t, 0.8);
+      for (let k = 0; k < 900 && g.buildAsks() === null && !g.buildRunning(); k++) {
+        t += 1 / 30;
+        g.tick(t);
+        g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+      }
+    }
+    // the tape says what each thing plays
+    expect(labels[labels.length - 1]).toContain('HAT@t1:0');
+    cover = true;
+    let from = voiced.length;
+    for (let k = 0; k < 180; k++) g.tick((t += 1 / 30));
+    expect(voiced.slice(from).some((k) => k.startsWith('t1:'))).toBe(false);
+    expect(voiced.slice(from).some((k) => k === 'kit:kick')).toBe(true);
+    cover = false;
+    from = voiced.length;
+    for (let k = 0; k < 180; k++) g.tick((t += 1 / 30));
+    expect(voiced.slice(from).some((k) => k.startsWith('t1:'))).toBe(true);
+  });
+
   it('learns a steady lateness', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

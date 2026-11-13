@@ -58,6 +58,8 @@ export interface GameStage {
   flourish?(): void;
   /** Everything comes in at once (the machine dropping back in, a big fill landing): every thing rings and lights. */
   drop?(): void;
+  /** Tape on each thing in the machine saying which part it plays (keys of the parts, and their names). */
+  labels?(parts: readonly { key: string; name: string }[]): void;
   /** ◀ ▶ on the pad last hit: the next sound in the bank on it; its name, or null when there's no pad. */
   changeSound?(dir: 1 | -1): string | null;
   /** The tuning page: act on a key (null: just read), and what the page shows. */
@@ -80,6 +82,8 @@ export interface Room {
   chordZone?(surface: string, pcs: readonly number[]): number;
   /** How many things on the desk you've found and kept (the gate for the next track). */
   things?(): number;
+  /** A hand is resting over this thing: its part in the machine is silent. */
+  muted?(surface: string): boolean;
 }
 
 export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam' | 'build';
@@ -248,6 +252,16 @@ export class Game {
     return b?.phase === 'run' && this.clock.beatAt(this.t) >= b.dropAt;
   }
 
+  /** The tape on your things: which part each one plays (the machine's parts, and the one being picked). */
+  private pushLabels(): void {
+    if (!this.stage.labels) return;
+    const b = this.bld;
+    const parts = b ? b.parts : this.machine?.parts ?? [];
+    const out = parts.map((p) => ({ key: p.key, name: p.def.name }));
+    if (b?.target && (b.phase === 'count' || b.phase === 'rec')) out.push({ key: b.target.key, name: b.track.parts[b.part].name });
+    this.stage.labels(out);
+  }
+
   /** Does the machine (or the track being built) use this thing? (Such a thing is kept, never faded.) */
   uses(surface: string): boolean {
     if (this.bld?.target?.surface === surface || this.bld?.parts.some((p) => p.surface === surface)) return true;
@@ -272,12 +286,14 @@ export class Game {
     this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99, guard: -99, verdict: null, retried: false, pending: null, dropAt: -99 };
     this.stage.retune(track.key);
     this.moteCount = 0;
+    this.pushLabels();
     this.refreshDisplay();
   }
 
   /** Stop building or stop the machine; back to playing freely. */
   private endBuild(): void {
     this.bld = null;
+    this.pushLabels();
     this.mode = 'discover';
     this.moteCount = 0;
     this.stage.retune(0);
@@ -306,6 +322,7 @@ export class Game {
       b.verdict = null;
       b.guard = -99;
       b.retried = false;
+      this.pushLabels();
       this.refreshDisplay();
     }
   }
@@ -363,6 +380,7 @@ export class Game {
       b.hits = [];
       b.clicked = Math.floor(beat);
       b.phase = 'count';
+      this.pushLabels();
       this.refreshDisplay();
       return null;
     }
@@ -396,13 +414,15 @@ export class Game {
     // the machine: every recorded part, looping
     if (ahead > b.sched) {
       for (let L = Math.floor(b.sched / LOOP_BEATS); L * LOOP_BEATS <= ahead; L++) {
-        for (const p of b.parts)
+        for (const p of b.parts) {
+          if (this.room.muted?.(p.surface)) continue;
           for (const n of p.notes) {
             const at = L * LOOP_BEATS + n.beat;
             // (the bar before the drop is silent)
             if (at >= b.dropAt - 4 && at < b.dropAt) continue;
             if (at > b.sched && at <= ahead && at >= 0) this.stage.voice(n.key, this.clock.timeAt(at), n.filled ? n.vel * 0.85 : n.vel);
           }
+        }
       }
       b.sched = ahead;
     }
@@ -482,6 +502,7 @@ export class Game {
         }
         b.part++;
         b.target = null;
+        this.pushLabels();
         if (b.part >= b.track.parts.length) {
           b.phase = 'run';
           this.machine = { track: b.track, parts: b.parts.slice() };
@@ -622,7 +643,7 @@ export class Game {
       const thin = this.energy < 0.35;
       for (let L = Math.max(0, Math.floor(p.sched / LOOP_BEATS)); L * LOOP_BEATS <= Math.min(ahead, end); L++)
         for (const part of m.parts) {
-          if (p.live.has(part.key)) continue;
+          if (p.live.has(part.key) || this.room.muted?.(part.surface)) continue;
           if (thin && (part.def.name.startsWith('PERC') || part.def.name.startsWith('KEYS'))) continue;
           for (const n of part.notes) {
             const at = L * LOOP_BEATS + n.beat;
@@ -718,6 +739,7 @@ export class Game {
       for (let L = Math.floor(Math.max(l.from, l.sched) / LOOP_BEATS); L * LOOP_BEATS <= ahead; L++)
         for (const part of m.parts)
           for (const n of part.notes) {
+            if (this.room.muted?.(part.surface)) break;
             const at = L * LOOP_BEATS + n.beat;
             if (at > l.sched && at <= ahead && at >= l.from && at < end) this.stage.voice(n.key, this.clock.timeAt(at), n.filled ? n.vel * 0.85 : n.vel);
           }

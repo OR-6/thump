@@ -52,6 +52,35 @@ export class Tag {
     this.mesh.visible = true;
   }
 
+  /** Stuck on for good (a part's label on the thing that plays it): no fade, a bump when it plays. */
+  private pinned = false;
+  private base = 1;
+  private kick = 0;
+  pin(text: string, accent: number, at: Vector3, head: Vector3): void {
+    this.show(text, accent, at, head, 1);
+    this.pinned = true;
+    this.mesh.scale.setScalar(1);
+    this.base = 1;
+    this.mat.opacity = 0.95;
+  }
+  unpin(): void {
+    this.pinned = false;
+    this.mesh.visible = false;
+  }
+  /** Its part just played. */
+  bump(): void {
+    this.kick = 1;
+  }
+  /** Muted (a hand over its thing): the tape goes pale. */
+  dim(on: boolean): void {
+    if (this.pinned) this.mat.opacity = on ? 0.35 : 0.95;
+  }
+  /** Turn to face you again (you moved), keeping its lean. */
+  face(head: Vector3): void {
+    this.mesh.lookAt(head);
+    this.mesh.rotateZ(this.tilt);
+  }
+
   get shownText(): string {
     return this.mesh.visible ? this.text : '';
   }
@@ -121,6 +150,13 @@ export class Tag {
 
   update(dt: number): void {
     if (!this.mesh.visible) return;
+    if (this.pinned) {
+      if (this.kick > 0) {
+        this.kick = Math.max(0, this.kick - dt * 7);
+        this.mesh.scale.setScalar(this.base * (1 + 0.16 * this.kick));
+      }
+      return;
+    }
     this.life -= dt;
     const k = Math.min(1, Math.min(this.life / 0.3, (this.hold - this.life) / 0.15 + 0.2));
     this.mat.opacity = Math.max(0, k);

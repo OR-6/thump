@@ -39,7 +39,7 @@ import { FrameGuard } from '../app/frame-guard.js';
 import { occluderState } from '../input/occluders.js';
 import { speedToGain, type HandSample, type Point, type Strike } from '../kit/strike.js';
 import { kitLayout, pickPad, type PadSpot } from '../kit/layout.js';
-import { KitView, KIT_ZONE } from '../kit/kit-view.js';
+import { KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
 import { LED } from '../kit/pad-view.js';
 import { MODULE, Module, KEYS, type ModuleKey } from '../ui/module.js';
 import { Tag, DebugBoard } from '../ui/tag.js';
@@ -261,6 +261,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (const s of this.surfaces) if (s.discovered && s.voice && s.source !== 'kit' && s.source !== 'module' && s.reach <= PLAY_REACH_M) out.push({ id: s.id, family: s.voice.family, zones: s.zones.length });
       return out;
     },
+    muted: (surface) => this.covered[0] === surface || this.covered[1] === surface,
     things: () => {
       // things kept by touch, and anything else in the room you've played (a window, a door)
       let n = 0;
@@ -341,6 +342,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.05 * k++, () => p.hit(0.6));
     },
     changeSound: (dir) => this.changeSound(dir),
+    labels: (parts) => this.setLabels(parts),
     drop: () => {
       // everything at once: every ring flashes and sweeps, every pad on the desk thumps, the room answers
       for (const o of this.overlays.values()) {
@@ -399,7 +401,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (r.kind === 'pad') {
         const p = this.kit.pad(r.lane);
         audio.drum(r.lane, vel, p ? Math.max(-0.8, Math.min(0.8, p.x / 0.4)) : 0, when);
-        this.later(at, () => p?.hit(vel * 0.8));
+        this.later(at, () => {
+          p?.hit(vel * 0.8);
+          if (this.labelTags.size) this.labelTags.get(key)?.bump();
+        });
         return;
       } else if (r.kind === 'keys') {
         const q = this.kit.keyZones[r.zone];
@@ -412,7 +417,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           else audio.modal(r.surface.voice.family, z.midi, vel, this.panOf(this.lastWorld), when, r.surface.voice.size, r.surface.id, r.zone);
         }
       }
-      // its note lights where it plays, when it plays
+      // its note lights where it plays, when it plays (and its tape bumps)
       this.pendingLights.push({ at, key, vel });
     },
     bandmate: (event, surface) => {
@@ -819,6 +824,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.touchFinder.clear();
     this.clapFound = false;
     this.focused = null;
+    this.setLabels([]);
     for (const o of this.overlays.values()) o.dispose();
     for (const s of this.surfaces) {
       s.discovered = false;
@@ -951,6 +957,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const r = this.ref(p.key);
         if (r?.kind === 'keys') this.kit.keys.hit(r.zone, p.vel);
         else if (r?.surface) this.overlays.get(r.surface)?.hit(r.zone, p.vel);
+        if (this.labelTags.size && r) this.labelTags.get(r.kind === 'keys' ? 'keys' : (r.surface?.id ?? ''))?.bump();
         this.pendingLights.splice(i, 1);
       }
     }
@@ -963,6 +970,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.updateFinale(dt);
     this.fadePads();
     this.watchClaps(dt);
+    this.watchCovers(dt);
+    if (this.labelTags.size) {
+      this.labelFaceT -= dt;
+      for (const t of this.labelTags.values()) {
+        t.update(dt);
+        if (this.labelFaceT <= 0) t.face(this.head);
+      }
+      if (this.labelFaceT <= 0) this.labelFaceT = 0.25;
+    }
     this.updateFlash(dt);
     this.updateMallets();
     // two found and a quiet spell: if there's a door or a window beyond reach, say so now (not only after a song)
@@ -1622,6 +1638,108 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.restoring = true;
       this.discover(s);
       this.restoring = false;
+    }
+  }
+
+  // ------------------------------------------------------------------ the machine's tape, and covering a thing
+
+  /** Tape on each thing in the machine (by group: a kit pad, the desk's bars, a thing). */
+  private labelTags = new Map<string, Tag>();
+  private labelPool: Tag[] = [];
+  private labelFaceT = 0;
+  private labelGroup(key: string): string {
+    const i = key.indexOf(':');
+    const sid = key.slice(0, i);
+    return sid === 'kit' ? key : sid;
+  }
+  private setLabels(parts: readonly { key: string; name: string }[]): void {
+    const want = new Map<string, string[]>();
+    for (const p of parts) {
+      const g = this.labelGroup(p.key);
+      if (g === 'clap') continue;
+      const l = want.get(g) ?? [];
+      if (!l.includes(p.name)) l.push(p.name);
+      want.set(g, l);
+    }
+    for (const [g, t] of this.labelTags)
+      if (!want.has(g)) {
+        t.unpin();
+        this.labelTags.delete(g);
+        this.labelPool.push(t);
+      }
+    for (const [g, names] of want) {
+      const at = this.labelAt(g);
+      if (!at) continue;
+      let t = this.labelTags.get(g);
+      if (!t) {
+        t = this.labelPool.pop() ?? new Tag(0.15, 0.032);
+        if (!t.mesh.parent) this.worldRoot.add(t.mesh);
+        this.labelTags.set(g, t);
+      }
+      const r = this.ref(g.includes(':') ? g : `${g}:0`);
+      const color = r?.kind === 'pad' ? (PADS[r.lane]?.color ?? 0xffffff) : r?.surface?.sound ? (soundById(r.surface.sound)?.color ?? 0xffffff) : 0xffa630;
+      t.pin(names.join(' + '), color, at, this.head);
+    }
+  }
+  /** Where a group's tape goes: just in front of a pad, at the left end of the bars, on top of a thing. */
+  private labelAt(g: string): Vector3 | null {
+    const root = this.kit.root;
+    root.updateMatrixWorld(true);
+    if (g.startsWith('kit:')) {
+      const p = this.kit.pad(g.slice(4) as Lane);
+      if (!p) return null;
+      return root.localToWorld(this.tmp.set(p.x, 0.012, p.z + 0.075));
+    }
+    if (g === 'keys') return root.localToWorld(this.tmp.set(-0.255, 0.02, KEYS_ROW.z));
+    const s = this.surfaces.find((x) => x.id === g);
+    if (!s) return null;
+    return this.tmp.set((s.bounds.minX + s.bounds.maxX) / 2, 0.065, -(s.bounds.minZ + s.bounds.maxZ) / 2).applyMatrix4(s.world);
+  }
+
+  /** A palm resting over a thing in the machine: its part goes silent until you lift it (the tape goes pale). */
+  private covered: (string | null)[] = [null, null];
+  private coverFor = [0, 0];
+  private coverCand: (string | null)[] = [null, null];
+  private prevPalm = [new Vector3(), new Vector3()];
+  private coverTold = false;
+  private watchCovers(dt: number): void {
+    const on = this.game.mode === 'build' || this.game.mode === 'play' || this.game.mode === 'count' || this.game.mode === 'results';
+    for (let i = 0; i < 2; i++) {
+      const h = i === 0 ? hands.left : hands.right;
+      let hit: string | null = null;
+      if (on && h.tracked && !h.controller && dt > 0) {
+        const speed = h.palm.distanceTo(this.prevPalm[i]) / dt;
+        if (speed < 0.12)
+          for (const s of this.touched) {
+            if (!this.game.uses(s.id)) continue;
+            s.toZone(h.palm, this.o);
+            const b = s.bounds;
+            if (this.o.y > -0.01 && this.o.y < 0.08 && this.o.x > b.minX - 0.02 && this.o.x < b.maxX + 0.02 && this.o.z > b.minZ - 0.02 && this.o.z < b.maxZ + 0.02) {
+              hit = s.id;
+              break;
+            }
+          }
+      }
+      if (h.tracked) this.prevPalm[i].copy(h.palm);
+      if (hit && hit === this.coverCand[i]) this.coverFor[i] += dt;
+      else {
+        this.coverCand[i] = hit;
+        this.coverFor[i] = 0;
+      }
+      const now = hit && this.coverFor[i] >= 0.25 ? hit : null;
+      if (now !== this.covered[i]) {
+        const was = this.covered[i];
+        this.covered[i] = now;
+        if (was && was !== this.covered[1 - i]) this.labelTags.get(was)?.dim(false);
+        if (now) {
+          this.labelTags.get(now)?.dim(true);
+          if (!this.coverTold && !this.settings.noWords) {
+            this.coverTold = true;
+            const at = this.labelAt(now);
+            if (at) this.hint.show('Lift your hand: it comes back', 0xfff2dc, at.addScaledVector(this.tmp2.set(0, 1, 0), 0.05), this.head, 2.5);
+          }
+        }
+      }
     }
   }
 
