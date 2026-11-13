@@ -1255,6 +1255,11 @@ export class Game {
     if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('handpan:') || key.startsWith('congas:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
     if (this.groove) {
       this.groove.last = t;
+      // and keeps following you: a note a little off the band's eighths nudges the band a little toward it
+      const spb = this.clock.spb;
+      const beat = this.clock.beatAt(t);
+      const off = beat - Math.round(beat * 2) / 2;
+      if (Math.abs(off) < 0.2) this.clock.set(this.clock.start + off * spb * 0.15, spb);
       return;
     }
     // the band takes your tempo from your first three notes (steady ones: two gaps within a quarter of each other;

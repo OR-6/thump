@@ -534,6 +534,14 @@ describe('the game', () => {
     }
     expect(60 / g.clock.spb).toBeCloseTo(120, 0);
     expect(g.display.page?.line).toBe("The band's with you, 120 bpm");
+    // then you drag a little behind: the band leans back with you
+    const start = g.clock.start;
+    for (let k = 0; k < 6; k++) {
+      const t = g.clock.timeAt(4 + k) + 0.05;
+      g.tick(t);
+      g.hit('piano:2', t, 0.7);
+    }
+    expect(g.clock.start).toBeGreaterThan(start + 0.02);
     // a wandering three: the steady default
     const h = new Game(st, freshProgress(), room([]));
     h.start(0);

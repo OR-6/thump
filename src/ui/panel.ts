@@ -398,7 +398,76 @@ export class Panel {
     }
   }
 
+  /**
+   * A song on the setlist: a strip of tape, each a hair off level, the name in marker, a pencilled line after it,
+   * stars inked on. The one picked is ringed in red marker; a locked one is a paler strip.
+   */
+  private drawRow(g: CanvasRenderingContext2D, it: Item): void {
+    const tilt = (((it.y / 110) | 0) % 2 ? 1 : -1) * 0.005;
+    g.save();
+    g.translate(it.x + it.w / 2, it.y + it.h / 2);
+    g.rotate(tilt);
+    const w = it.w;
+    const h = it.h * 0.86;
+    // torn ends
+    g.beginPath();
+    g.moveTo(-w / 2 + 6, -h / 2);
+    g.lineTo(w / 2 - 4, -h / 2 + 3);
+    g.lineTo(w / 2, -h / 6);
+    g.lineTo(w / 2 - 6, h / 5);
+    g.lineTo(w / 2 - 2, h / 2);
+    g.lineTo(-w / 2 + 3, h / 2 - 2);
+    g.lineTo(-w / 2, h / 8);
+    g.lineTo(-w / 2 + 5, -h / 4);
+    g.closePath();
+    g.fillStyle = it.off ? '#7d7665' : '#ece2c6';
+    g.fill();
+    const ink = it.off ? '#5a5446' : '#1a1712';
+    // the name, in marker (shrunk to fit its column)
+    let px = Math.min(54, h * 0.62);
+    g.font = `${px}px ${MARKER}`;
+    const nw = g.measureText(it.label).width;
+    if (nw > 370) g.font = `${(px = Math.max(30, (px * 370) / nw))}px ${MARKER}`;
+    g.fillStyle = ink;
+    g.textBaseline = 'middle';
+    g.fillText(it.label, -w / 2 + 28, 2);
+    if (it.sub) {
+      g.fillStyle = it.off ? '#4a4538' : '#5d564a';
+      fit(g, it.sub, '500', 30, 18, w - 420 - 190);
+      g.fillText(it.sub, -w / 2 + 420, 3);
+    }
+    // stars, inked
+    if (it.stars !== undefined && !it.off)
+      for (let i = 0; i < 3; i++) {
+        const sx = w / 2 - 150 + i * 50;
+        g.beginPath();
+        for (let k = 0; k < 10; k++) {
+          const a = -Math.PI / 2 + (k * Math.PI) / 5;
+          const rr = k % 2 ? 18 * 0.45 : 18;
+          if (k === 0) g.moveTo(sx + Math.cos(a) * rr, Math.sin(a) * rr);
+          else g.lineTo(sx + Math.cos(a) * rr, Math.sin(a) * rr);
+        }
+        g.closePath();
+        g.lineWidth = 3;
+        g.strokeStyle = ink;
+        g.fillStyle = '#d6452e';
+        if (i < it.stars) g.fill();
+        g.stroke();
+      }
+    // the one picked: ringed in red marker, a loose loop
+    if (it.on) {
+      g.strokeStyle = '#ff5a3c';
+      g.lineWidth = 7;
+      g.beginPath();
+      g.ellipse(0, 0, w / 2 + 6, h / 2 + 10, -tilt * 3, 0.15, Math.PI * 2 + 0.05);
+      g.stroke();
+    }
+    g.textBaseline = 'alphabetic';
+    g.restore();
+  }
+
   private drawItem(g: CanvasRenderingContext2D, it: Item): void {
+    if (it.kind === 'row') return this.drawRow(g, it);
     const accent = it.color !== undefined ? hex(it.color) : it.kind === 'play' ? '#ff5a3c' : '#ffa630';
     const r = it.kind === 'chip' || it.kind === 'button' ? 22 : 28;
     rounded(g, it.x, it.y, it.w, it.h, r);
@@ -409,7 +478,7 @@ export class Panel {
     g.stroke();
     const ink = it.off ? DIMI : INK;
     g.fillStyle = ink;
-    if (it.kind === 'card' || (it.icon && it.kind !== 'row')) {
+    if (it.kind === 'card' || it.icon) {
       // an instrument, drawn, with its name under it
       const S = Math.min(it.h * (it.kind === 'card' ? 0.62 : 0.55), it.w * 0.7);
       g.save();
@@ -435,24 +504,6 @@ export class Panel {
         fit(g, it.sub, '500', 36, 22, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
         g.fillText(it.sub, it.x + 34, it.y + it.h / 2 + 62);
       }
-      return;
-    }
-    if (it.kind === 'row') {
-      // the name in its column (shrunk to fit), the line after it, both clear of the stars
-      let px = Math.min(56, it.h * 0.55);
-      g.font = `${px}px ${MARKER}`;
-      const nw = g.measureText(it.label).width;
-      if (nw > 370) {
-        px = Math.max(30, (px * 370) / nw);
-        g.font = `${px}px ${MARKER}`;
-      }
-      g.fillText(it.label, it.x + 28, it.y + it.h * 0.62);
-      if (it.sub) {
-        g.fillStyle = it.off ? DIMI : SOFT;
-        fit(g, it.sub, '500', 30, 18, it.w - 420 - 190);
-        g.fillText(it.sub, it.x + 420, it.y + it.h * 0.6);
-      }
-      if (it.stars !== undefined && !it.off) for (let i = 0; i < 3; i++) star(g, it.x + it.w - 150 + i * 50, it.y + it.h / 2, 18, i < it.stars);
       return;
     }
     // chip, button, play: the label in the middle (a second line under it)
