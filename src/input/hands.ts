@@ -202,7 +202,11 @@ export class HandTrackerSystem extends createSystem({}) {
       const h = hands[side];
       if (!this.seen[side]) h.controller = false;
       h.pinch.scale = calibration.scale;
-      if (this.seen[side]) {
+      // a hand put down for a controller (or picked up again): its points jump, so it starts afresh, untracked
+      // for a frame, rather than reading the jump as a slap
+      const switched = this.seen[side] && h.controller !== this.wasController[side];
+      this.wasController[side] = h.controller;
+      if (this.seen[side] && !switched) {
         const wasTracked = h.tracked;
         h.trackedFor = h.tracked ? h.trackedFor + delta : 0;
         h.tracked = true;
@@ -227,6 +231,8 @@ export class HandTrackerSystem extends createSystem({}) {
    * the pinch point, the trigger closes the "pinch" (through the same hysteresis), and holding the
    * trigger with it resting on the desk counts as a flat palm (to set the kit down).
    */
+  private wasController = { left: false, right: false };
+
   private readController(src: XRInputSource, frame: XRFrame, ref: XRReferenceSpace, delta: number) {
     const side = src.handedness as Side;
     if (this.seen[side]) return; // a tracked hand on that side wins

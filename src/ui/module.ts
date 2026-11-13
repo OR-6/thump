@@ -124,21 +124,28 @@ export class Module {
   private lastMeter = -9;
   private lastFound = -1;
   private lastStr = ['', '', '', '', ''];
+  private lastLabels: string[] | null = null;
+  private lastLocked: readonly string[] | null = null;
+  private lastKeys = '#';
   private lastNum = [NaN, NaN, NaN, NaN, NaN];
   set(d: Display): void {
     this.shown = d;
     const meter = Math.round(d.meter * 24);
-    const labels = (d.keyLabels ? d.keyLabels.join('|') : '') + '#' + d.locked.join(',');
+    const keysSame = d.keyLabels === this.lastLabels && d.locked === this.lastLocked;
     const same =
-      d.line === this.lastStr[0] && d.sub === this.lastStr[1] && d.code === this.lastStr[2] && labels === this.lastStr[3] &&
+      d.line === this.lastStr[0] && d.sub === this.lastStr[1] && d.code === this.lastStr[2] && keysSame &&
       d.total === this.lastNum[0] && d.stars === this.lastNum[1] && d.count === this.lastNum[2] && d.day === this.lastNum[3] && (d.gold ? 1 : 0) === this.lastNum[4] &&
       meter === this.lastMeter && d.found.length === this.lastFound;
     if (same) return;
     this.lastStr[0] = d.line;
     this.lastStr[1] = d.sub;
     this.lastStr[2] = d.code;
-    if (labels !== this.lastStr[3]) this.drawKeys(d);
-    this.lastStr[3] = labels;
+    if (!keysSame && (d.keyLabels?.join('|') ?? '') + d.locked.join(',') !== this.lastKeys) {
+      this.lastKeys = (d.keyLabels?.join('|') ?? '') + d.locked.join(',');
+      this.drawKeys(d);
+    }
+    this.lastLabels = d.keyLabels;
+    this.lastLocked = d.locked;
     this.lastNum[0] = d.total;
     this.lastNum[1] = d.stars;
     this.lastNum[2] = d.count;

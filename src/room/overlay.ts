@@ -7,6 +7,7 @@
  * Two draws per instrument (the shapes, and their additive glow), whatever its zone count.
  */
 import {
+  type Material,
   BufferGeometry,
   Color,
   DoubleSide,
@@ -92,6 +93,9 @@ export class Overlay {
       this.group.add(m);
     }
     this.glow.renderOrder = 5;
+    // give both an instance colour now, so the shader they'll use is the one compiled up front (no hitch on a discovery)
+    this.shapes.setColorAt(0, this.base);
+    this.glow.setColorAt(0, this.base);
     const isBar = BARS.has(family);
     this.backing = new InstancedMesh(isBar ? g.box : g.disc, new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false, side: DoubleSide }), max);
     this.backing.renderOrder = 3;
@@ -310,6 +314,8 @@ export class Sheen {
   dispose(): void {
     this.fill.geometry.dispose();
     this.line.geometry.dispose();
+    (this.fill.material as Material).dispose();
+    (this.line.material as Material).dispose();
   }
 }
 

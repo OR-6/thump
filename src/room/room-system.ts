@@ -136,6 +136,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private sheens = new Map<Surface, Sheen>();
   private kitSheen: Sheen | null = null;
   private keyRefs = new Map<string, KeyRef>();
+  /** Keys whose surface has gone (until the surfaces change). */
+  private refMiss = new Set<string>();
   private spots: PadSpot[] = [];
   private motes = new Motes();
   private tag = new Tag();
@@ -605,8 +607,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (sid === 'kit') r = { surface: this.kitSurface, kind: 'pad', lane: rest as Lane, zone: 0 };
     else if (sid === 'keys') r = { surface: this.kitSurface, kind: 'keys', lane: 'kick', zone: Number(rest) };
     else {
+      if (this.refMiss.has(key)) return null;
       const s = this.surfaces.find((x) => x.id === sid);
-      if (!s) return null;
+      if (!s) {
+        this.refMiss.add(key);
+        return null;
+      }
       r = { surface: s, kind: 'zone', lane: 'kick', zone: Number(rest) };
     }
     this.keyRefs.set(key, r);
@@ -707,6 +713,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
   }
 
+  private partFailed(part: number, e: unknown): void {
+    this.debug.errors++;
+    reportFrameError(GUARD_NAMES[part], e);
+  }
+
   private step(delta: number) {
     if (this.paused) return;
     const dt = Math.min(delta, 0.1);
@@ -745,11 +756,24 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.reachT = 0.5;
       this.updateReach();
     }
-    this.readHands(delta);
-    this.watchSwaps();
-    this.brushShakers(delta);
-    if (AUTOPLAY) this.autoplay();
-    this.game.tick(this.clock.t);
+    // each part on its own: a throw in one never stops the others (hits keep playing whatever else fails)
+    try {
+      this.readHands(delta);
+    } catch (e) {
+      this.partFailed(0, e);
+    }
+    try {
+      this.watchSwaps();
+      this.brushShakers(delta);
+      if (AUTOPLAY) this.autoplay();
+    } catch (e) {
+      this.partFailed(1, e);
+    }
+    try {
+      this.game.tick(this.clock.t);
+    } catch (e) {
+      this.partFailed(2, e);
+    }
     for (let i = this.timed.length - 1; i >= 0; i--) {
       if (this.timed[i].at <= this.clock.t) {
         const f = this.timed[i].fn;
@@ -1375,6 +1399,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.surfaces.push(this.kitSurface, this.moduleSurface);
     for (const list of this.bySource.values()) for (const s of list) this.surfaces.push(s);
     for (const s of this.surfaces) if (!s.discovered && s.source !== 'module') this.restore(s);
+    if (changed) this.refMiss.clear();
     this.orchestrate();
     this.updateReach();
     if (changed) this.rebuildSheens();
@@ -1766,17 +1791,22 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
   }
 
+  private anchorUuid: string | null = null;
+  private anchorReadAt = -Infinity;
   private roomAnchor(): { group: Object3D; uuid: string } | null {
     if (!this.world.session?.enabledFeatures?.includes('anchors')) return null;
     const su = this.world.getSystem(SceneUnderstandingSystem) as unknown as { xrAnchor?: unknown; anchoredGroup?: Object3D } | undefined;
     if (!su?.xrAnchor || !su.anchoredGroup) return null;
-    let uuid: string | null = null;
-    try {
-      uuid = localStorage.getItem(ANCHOR_KEY);
-    } catch {
-      return null;
+    const now = performance.now();
+    if (now - this.anchorReadAt > 2000) {
+      this.anchorReadAt = now;
+      try {
+        this.anchorUuid = localStorage.getItem(ANCHOR_KEY);
+      } catch {
+        this.anchorUuid = null;
+      }
     }
-    return uuid ? { group: su.anchoredGroup, uuid } : null;
+    return this.anchorUuid ? { group: su.anchoredGroup, uuid: this.anchorUuid } : null;
   }
 
   private tryResume(): boolean {
@@ -1889,6 +1919,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.brushPrev.clear();
     this.pendingLights.length = 0;
     this.timed.length = 0;
+    this.sinkWatch[0] = this.sinkWatch[1] = null;
+    this.handLatch[0] = this.handLatch[1] = -Infinity;
+    for (const s of this.surfaces) {
+      s.detector.forget(0);
+      s.detector.forget(1);
+      s.near[0] = s.near[1] = false;
+    }
     if (this.kitEntity.hasComponent(XRAnchor)) this.kitEntity.removeComponent(XRAnchor);
     this.placement = new Placement();
     this.kit.root.visible = false;
@@ -1938,6 +1975,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.debug.degrade = lvl;
     audio.setReverb(lvl < 1);
     occluderState.enabled = lvl < 2;
+    for (const sh of this.sheens.values()) sh.group.visible = lvl < 1;
     try {
       this.renderer.xr.setFoveation(FOVEATION[Math.min(2, lvl)]);
     } catch {
@@ -1969,6 +2007,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     return out;
   }
 }
+
+const GUARD_NAMES = ['RoomSystem.hands', 'RoomSystem.swaps', 'RoomSystem.game'];
 
 const NOT_TRACKED: HandSample = { tracked: false, pinching: false, points: [] };
 

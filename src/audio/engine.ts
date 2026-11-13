@@ -44,7 +44,7 @@ class Engine {
   resume(): void {
     try {
       if (!this.ctx) this.build();
-      if (this.ctx && this.ctx.state === 'suspended' && !this.paused) void this.ctx.resume();
+      if (this.ctx && this.ctx.state === 'suspended' && !this.paused) void this.ctx.resume().catch(() => {});
     } catch {
       /* no audio: every hit still has its visual twin */
     }
@@ -53,8 +53,8 @@ class Engine {
   setPaused(p: boolean): void {
     this.paused = p;
     if (!this.ctx) return;
-    if (p) void this.ctx.suspend();
-    else void this.ctx.resume();
+    if (p) void this.ctx.suspend().catch(() => {});
+    else void this.ctx.resume().catch(() => {});
   }
 
   get running(): boolean {
