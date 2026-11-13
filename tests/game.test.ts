@@ -317,6 +317,48 @@ describe('the game', () => {
     expect(g.mode).toBe('count');
   });
 
+  it('the finished machine goes quiet for a bar, then drops in; after a performance it plays twice through', () => {
+    const log: string[] = [];
+    const voiced: number[] = [];
+    let now = 0;
+    const st = { ...stage(log), drop: () => log.push('drop'), voice: () => voiced.push(now) };
+    const g = new Game(st, freshProgress(), room([{ id: 't1', family: 'bell', zones: 1 }]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    g.key('play');
+    let t = 45.1;
+    for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
+      g.tick(t);
+      g.hit(key, t, 0.8);
+      for (let k = 0; k < 900 && g.buildAsks() === null && !g.buildRunning(); k++) {
+        t += 1 / 30;
+        now = t;
+        g.tick(t);
+        if (g.display.sub === 'All of it, on the one') log.push('silent');
+        g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+      }
+    }
+    expect(log).toContain('silent');
+    expect(log.filter((x) => x === 'drop')).toHaveLength(1);
+    expect(log).not.toContain('celebrate 3');
+    g.key('play');
+    for (let k = 0; k < 4000 && g.mode !== 'results'; k++) {
+      t += 1 / 30;
+      now = t;
+      g.tick(t);
+      g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+    }
+    const end = t;
+    for (let k = 0; k < 600 && g.mode === 'results'; k++) {
+      t += 1 / 30;
+      now = t;
+      g.tick(t);
+    }
+    expect(log.filter((x) => x === 'drop').length).toBeGreaterThanOrEqual(2);
+    expect(voiced.filter((x) => x > end).length).toBeGreaterThan(20);
+  });
+
   it('learns a steady lateness', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

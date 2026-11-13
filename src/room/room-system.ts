@@ -341,6 +341,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.05 * k++, () => p.hit(0.6));
     },
     changeSound: (dir) => this.changeSound(dir),
+    drop: () => {
+      // everything at once: every ring flashes and sweeps, every pad on the desk thumps, the room answers
+      for (const o of this.overlays.values()) {
+        o.flashAll();
+        o.sweep();
+      }
+      this.kit.keys.flashAll();
+      this.kit.keys.sweep();
+      let k = 0;
+      for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.04 * k++, () => p.hit(0.8));
+      this.tutti(0.6);
+    },
     setting: (name, flip) => {
       const s = this.settings;
       const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : !s.noWords;
