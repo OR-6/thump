@@ -34,10 +34,10 @@ Feature chips (top right): **hand tracking** on shots 1–2, **plane detection**
 | 3 | 0:14–0:22 | Left, middle, right across the table: kick, snare, hat; the edge a rim | Keep playing | "Your table is a drum kit." |
 | 4 | 0:22–0:36 | The wall: a gong ring draws itself, a long boom. The window: keys appear, soft taps climb up a scale | Lean or stand | "Your wall, a gong. Your window, keys." |
 | 5 | 0:36–1:05 | *Porch Step*: the count-in on the module, light motes flying from the module to the pads and the door's bars; both hands playing | Tap ▶ on the module | "Songs cast onto your room." |
-| 6 | 1:05–1:25 | **JAM:** the bandmate's bars light on the door as it plays; "Your turn"; you answer; the next call gets busier | After Kitchen Clock, tap JAM | "A bandmate that listens." |
+| 6 | 1:05–1:25 | **JAM:** the bandmate's bars light on the door as it plays; "Your turn"; you answer; the next call gets busier | After the first song, tap JAM | "A bandmate that listens." |
 | 7 | 1:25–1:40 | A friend's phone in frame, tapping the bass pad in time with the light | Tap JAM; the code on the module; join from the phone | "A friend's phone is the bass." |
 | 8 | 1:40–1:55 | Headset off and on: the kit and the door's bars are still drawn | Real re-entry | "Your room remembers." |
-| 9 | 1:55–2:10 | One-handed kit, ◀◀ slow mode, high contrast (quick cuts) | Settings on the 2D page; tap ◀ twice in the headset | "Made for every pair of hands." |
+| 9 | 1:55–2:10 | The settings page on the module: one hand, slow, contrast (quick cuts) | Tap ◀ twice on the module | "Made for every pair of hands." |
 | 10 | 2:10–2:20 | The link, big | Title card | "or-6.github.io/thump" |
 
 Record 2–3 takes of each. Keep your head still during the action; move only between shots.
