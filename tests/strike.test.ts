@@ -165,6 +165,91 @@ describe('strike detection', () => {
     expect(hits).toHaveLength(1);
   });
 
+  it('a 200 ms dropout at contact, the hand already bounced 3 cm up when it comes back: still the hit (late)', () => {
+    const det = new StrikeDetector();
+    const hits: string[] = [];
+    const contact = 0.3 + 0.1 / 1.2;
+    for (let t = 0; t <= 1; t += DT) {
+      // down at 1.2 m/s, then back up at 0.3 m/s after contact
+      const bottom = t < 0.3 ? 0.1 : t < contact ? 0.1 - (t - 0.3) * 1.2 : Math.min(0.03, (t - contact) * 0.3);
+      const lost = t > contact - 0.05 && t < contact + 0.15;
+      const s = det.update(1, hand(0, bottom + 0.02, 0, !lost), t, DT);
+      if (s) hits.push(s.kind);
+    }
+    expect(hits).toEqual(['late']);
+  });
+
+  it('a hand back from a short loss plays at once (no settling wait)', () => {
+    const det = new StrikeDetector();
+    let t = 0;
+    for (; t < 0.5; t += DT) det.update(1, hand(0, 0.12, 0), t, DT);
+    for (; t < 0.8; t += DT) det.update(1, hand(0, 0.12, 0, false), t, DT);
+    const hits: number[] = [];
+    // back, and slapping straight away
+    for (let k = 0; k < 40; k++, t += DT) {
+      const s = det.update(1, hand(0, Math.max(0, 0.1 - k * DT * 1.2) + 0.02, 0), t, DT);
+      if (s) hits.push(t);
+    }
+    expect(hits).toHaveLength(1);
+  });
+
+  it('a frame hitch at the moment of contact still plays the hit', () => {
+    const det = new StrikeDetector();
+    const hits: string[] = [];
+    let t = 0;
+    for (; t < 0.4; t += DT) det.update(1, hand(0, 0.1, 0), t, DT);
+    let y = 0.1;
+    for (let k = 0; k < 5; k++) {
+      t += DT;
+      y -= 1.2 * DT;
+      const s = det.update(1, hand(0, y + 0.02, 0), t, DT);
+      if (s) hits.push(s.kind);
+    }
+    // 80 ms without frames: it reached the table
+    t += 0.08;
+    const s = det.update(1, hand(0, 0.02, 0), t, 0.08);
+    if (s) hits.push(s.kind);
+    for (let k = 0; k < 20; k++) {
+      t += DT;
+      const q = det.update(1, hand(0, 0.02, 0), t, DT);
+      if (q) hits.push(q.kind);
+    }
+    expect(hits).toEqual(['late']);
+  });
+
+  it('an accent then a soft note 10 cm away 150 ms later: both play (only a rebound in place is ignored)', () => {
+    const det = new StrikeDetector();
+    const hits: number[] = [];
+    let t = 0;
+    for (; t < 0.3; t += DT) det.update(1, hand(0, 0.12, 0), t, DT);
+    let y = 0.1;
+    while (y > 0) {
+      t += DT;
+      y = Math.max(0, y - 1.5 * DT);
+      const s = det.update(1, hand(0, y + 0.02, 0), t, DT);
+      if (s) hits.push(s.speed);
+    }
+    // lift 4 cm while moving 10 cm across, then a soft tap
+    for (let k = 0; k < 6; k++) {
+      t += DT;
+      det.update(1, hand(0.1 * ((k + 1) / 6), 0.04 * ((k + 1) / 6) + 0.02, 0), t, DT);
+    }
+    y = 0.04;
+    while (y > 0) {
+      t += DT;
+      y = Math.max(0, y - 0.6 * DT);
+      const s = det.update(1, hand(0.1, y + 0.02, 0), t, DT);
+      if (s) hits.push(s.speed);
+    }
+    expect(hits).toHaveLength(2);
+  });
+
+  it('a plane estimated 3 cm above the real table: a slap through it teaches the surface where the table is', () => {
+    const det = new StrikeDetector({ surfaceDriftM: 0.05 });
+    for (let n = 0; n < 4; n++) play(det, slap(0.1, 1.2, -0.03), 0.9, 1, n);
+    expect(det.surfaceY).toBeLessThan(-0.01);
+  });
+
   it('samples repeated at 30 Hz under a 72 Hz frame: one hit, speed not inflated', () => {
     const det = new StrikeDetector();
     let held = 0.12;

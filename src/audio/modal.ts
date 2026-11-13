@@ -24,6 +24,10 @@ export interface ModalPreset {
   lowpass: number;
   /** Send to the room reverb. */
   wet: number;
+  /** Seconds between one mode's onset and the next (a gong's shimmer swells in); 0 for all at once. */
+  stagger?: number;
+  /** Cents the fundamental sags over its ring (a gong). */
+  sag?: number;
   level: number;
 }
 
@@ -77,6 +81,8 @@ export const MODAL: Partial<Record<Family, ModalPreset>> = {
     ],
     noise: { type: 'bandpass', freq: 1400, q: 0.8, dur: 0.05, amp: 0.2 },
     attack: 0.025,
+    stagger: 0.11,
+    sag: -20,
     lowpass: 0,
     wet: 3,
     level: 0.5,

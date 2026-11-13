@@ -95,8 +95,16 @@ class HandTrack {
   resting = false;
   lastHitT = -Infinity;
   lastHitSpeed = 0;
-  /** Approach speed just before tracking was lost. */
+  /** Approach speed and height just before tracking was lost, and when (the caller's clock). */
   fallingWhenLost = 0;
+  hAtLoss = 0;
+  lostAt = -Infinity;
+  /** Where the last hit landed (surface x/z). */
+  lastHitX = 0;
+  lastHitZ = 0;
+  /** After a pass-through hit: the lowest the hand went in the next 100 ms (where the real surface is). */
+  watchLowUntil = -Infinity;
+  watchLow = 0;
   readonly out: Strike = { kind: 'stop', speed: 0, gain: 0, point: 0, height: 0, t: 0 };
 
   reset(): void {
@@ -107,10 +115,13 @@ class HandTrack {
     this.down0 = this.down1 = this.down2 = 0;
     this.side1 = 0;
     this.prevH = Infinity;
+    // (the ring is read from slot 0: start writing there again, or the new samples are never seen)
     this.hn = 0;
+    this.hi = 0;
     this.armed = false;
     this.resting = false;
     this.fallingWhenLost = 0;
+    this.watchLowUntil = -Infinity;
   }
 
   push(t: number, h: number, x: number, z: number): void {
@@ -177,7 +188,11 @@ export class StrikeDetector {
     const n = Math.min(s.points.length, MAX_POINTS);
     if (!s.tracked || n === 0) {
       if (tr.have) {
-        if (tr.lostFor === 0) tr.fallingWhenLost = Math.max(tr.down0, tr.down1);
+        if (tr.lostFor === 0) {
+          tr.fallingWhenLost = Math.max(tr.down0, tr.down1);
+          tr.hAtLoss = tr.prevH;
+          tr.lostAt = t;
+        }
         tr.lostFor += dt;
         if (tr.lostFor > cfg.dropoutS) tr.reset();
       }
@@ -198,7 +213,8 @@ export class StrikeDetector {
     if (!tr.have) {
       this.store(tr, s, n);
       tr.have = true;
-      tr.trackedFor = 0;
+      // back after a brief loss: play at once (the settling wait is for a hand that's new to this surface)
+      tr.trackedFor = t - tr.lostAt < 0.5 ? cfg.freshS : 0;
       tr.sinceSample = 0;
       tr.prevH = lowH;
       tr.push(t, lowH, p.x, p.z);
@@ -215,18 +231,24 @@ export class StrikeDetector {
       tr.sinceSample = 0;
       tr.down0 = tr.down1 = tr.down2 = 0;
       tr.push(t, lowH, p.x, p.z);
-      if (tr.armed && !s.pinching && falling >= cfg.minSpeed && lowH <= cfg.nearM && t - tr.lastHitT >= cfg.latchS) return this.fire(tr, 'late', falling, low, lowH, t - gap * 0.5);
+      // it may already have bounced back up a little: it counts if, coming down that fast, it would have reached the surface
+      const reached = lowH <= cfg.nearM || (lowH < 0.06 && tr.hAtLoss - falling * gap <= 0);
+      if (tr.armed && !s.pinching && falling >= cfg.minSpeed && reached && t - tr.lastHitT >= cfg.latchS) return this.fire(tr, 'late', falling, low, lowH, t - gap * 0.5);
       return null;
     }
     tr.trackedFor += dt;
     if (dt > 0.05) {
-      // a hitch: speeds over this gap mean nothing; start measuring afresh
+      // a hitch: speeds over this gap mean nothing; start measuring afresh. But if the hand was coming down
+      // and is now at (or, for a hit-through surface, through) the surface, the hit happened during the hitch.
+      const falling = Math.max(tr.down0, tr.down1);
+      const at = lowH <= cfg.nearM && (!this.stopOnly || lowH > -0.03) && tr.prevH > lowH + 0.005;
+      const hit = tr.armed && !s.pinching && falling >= cfg.minSpeed && at && t - tr.lastHitT >= cfg.latchS;
       this.store(tr, s, n);
       tr.prevH = lowH;
       tr.sinceSample = 0;
       tr.down0 = tr.down1 = tr.down2 = 0;
       tr.push(t, lowH, p.x, p.z);
-      return null;
+      return hit ? this.fire(tr, 'late', falling, low, lowH, t - dt * 0.5) : null;
     }
     tr.sinceSample += dt;
     // a repeated sample (the tracker runs slower than the frame): nothing new to measure
@@ -272,6 +294,12 @@ export class StrikeDetector {
       if (tr.hz[k] > zMax) zMax = tr.hz[k];
     }
     tr.push(t, lowH, p.x, p.z);
+    // after a pass-through hit, the hand stops on the real surface: learn where that is (a plane estimated too high)
+    if (t < tr.watchLowUntil) tr.watchLow = Math.min(tr.watchLow, lowH);
+    else if (tr.watchLowUntil > 0) {
+      if (tr.watchLow > -0.06 && tr.watchLow < 0) this.learn(tr.watchLow, cfg.surfaceLearn * 0.5);
+      tr.watchLowUntil = -Infinity;
+    }
 
     if (tr.trackedFor < cfg.freshS) {
       tr.armed = tr.armed || lowH > cfg.rearmM;
@@ -286,6 +314,8 @@ export class StrikeDetector {
     if (Math.abs(lowH) < 0.02 && still) {
       tr.resting = true;
       tr.armed = false;
+      // a resting hand is on the surface: settle the estimate toward it, slowly
+      this.learn(lowH, Math.min(1, 0.1 * dt));
     }
     const lift = tr.resting ? cfg.restLiftM : cfg.rearmM;
     if (lowH > lift) {
@@ -297,11 +327,14 @@ export class StrikeDetector {
     const peak = Math.max(tr.down1, tr.down2, down);
     // soon after a hit only a genuinely new strike counts (a rebound falls back slower)
     // (`span` back-dates a stop seen only after the samples stopped changing)
-    if (t - span - tr.lastHitT < 0.2 && peak < tr.lastHitSpeed * 0.7) return null;
+    // (only near the last hit: a soft note somewhere else on the kit right after an accent is a real note)
+    if (t - span - tr.lastHitT < 0.2 && peak < tr.lastHitSpeed * 0.7 && Math.hypot(p.x - tr.lastHitX, p.z - tr.lastHitZ) < 0.05) return null;
     if (peak < cfg.minSpeed || peak < cfg.downShare * side1) return null;
     if (!this.stopOnly && wasH > 0 && lowH <= 0) {
       // back-date to where it passed through the surface
       const k = wasH / Math.max(1e-6, wasH - lowH);
+      tr.watchLowUntil = t + 0.1;
+      tr.watchLow = lowH;
       return this.fire(tr, 'cross', peak, low, lowH, t - dt * (1 - k));
     }
     const prior = Math.max(tr.down1, tr.down2);
@@ -323,6 +356,8 @@ export class StrikeDetector {
   private fire(tr: HandTrack, kind: StrikeKind, speed: number, point: number, height: number, t: number): Strike {
     tr.lastHitT = t;
     tr.lastHitSpeed = speed;
+    tr.lastHitX = tr.prevX[point];
+    tr.lastHitZ = tr.prevZ[point];
     tr.armed = false;
     tr.resting = false;
     this.counts[kind]++;

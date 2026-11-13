@@ -6,7 +6,7 @@ import { Matrix4, Quaternion, Vector3, type Object3D } from '@iwsdk/core';
 import { STRIKE } from '../config.js';
 import type { Features } from './classify.js';
 import { STRIKE_CFG } from './params.js';
-import { Surface, outlineOf } from './surface.js';
+import { Surface, isGlass, outlineOf } from './surface.js';
 
 export interface BuilderContext {
   /** The head, world space (kept current by the caller). */
@@ -165,12 +165,12 @@ export function tuneStrike(s: Surface): void {
   Object.assign(c, STRIKE, STRIKE_CFG);
   c.nearM = Math.max(STRIKE_CFG.nearM ?? 0, 0.03);
   c.surfaceDriftM = 0.05;
-  if (s.voice?.family === 'glock') {
+  if (isGlass(s)) {
     c.minSpeed = Math.min(STRIKE_CFG.minSpeed ?? 1, 0.18);
     c.hardSpeed = 0.7;
   }
-  // a door frame may be an open doorway, a box's face a soft cover: only a stop is a hit
-  s.detector.stopOnly = s.source === 'volume' || /door/.test(s.label);
+  // a door frame may be an open doorway, a box's face a soft cover, glass sits behind its frame: only a stop is a hit
+  s.detector.stopOnly = s.source === 'volume' || /door/.test(s.label) || isGlass(s);
 }
 
 export function shoelace(p: { x: number; z: number }[]): number {

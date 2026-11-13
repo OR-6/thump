@@ -68,7 +68,7 @@ export const STRIKE = {
   /** A hand just found by tracking does nothing for this long (its first frames jump). */
   freshS: 0.15,
   /** Tracking lost for up to this long keeps the hand's state (fast slaps blur the cameras). */
-  dropoutS: 0.12,
+  dropoutS: 0.25,
   /** The motion must be mostly toward the surface: approach speed at least this share of the sideways speed. */
   downShare: 0.6,
   /** The learned surface may drift this far from its estimate (m). */

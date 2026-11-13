@@ -45,7 +45,7 @@ import { loadProgress, saveProgress, freshProgress, type Progress } from '../per
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { motion, prefersReducedMotion } from '../ui/motion.js';
 import { Game, type GameStage, type Room, type Unlock } from '../play/game.js';
-import { Surface, surfaceName, swappable } from './surface.js';
+import { Surface, isGlass, surfaceName, swappable } from './surface.js';
 import { SurfaceBuilder, insidePolygon, tuneStrike } from './surface-builder.js';
 import { GameClock } from './game-clock.js';
 import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M, URL_STRIKE } from './params.js';
@@ -267,7 +267,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.kit.keys.sweep();
       let k = 0;
       for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.08 * k++, () => p.hit(0.7));
-      for (let i = 0; i < stars; i++) this.later(this.clock.t + 0.45 * (i + 1), () => audio.chime([76 + i * 4], 0.1, 0.9));
+      // each star lands as a note of the song's own chord, on its melody instrument (the tonic, the third, the fifth, then the ninth)
+      const fam = this.melodyFamily();
+      const root = 72 + this.game.keyPc;
+      const notes = [0, 4, 7, 14];
+      for (let i = 0; i < stars; i++) this.later(this.clock.t + 0.45 * (i + 1), () => audio.modal(fam, root + notes[i], 0.75, (i - 1) * 0.3, 0, 0.4, 'stars'));
+      if (stars === 3) this.later(this.clock.t + 1.8, () => audio.modal(fam, root + notes[3], 0.6, 0, 0, 0.4, 'stars'));
       this.afterFirstSong();
     },
     casting: (c) => {
@@ -381,11 +386,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
   private farTold = false;
 
+  /** The instrument carrying the melody in the song just played (for its stars), else the table keys. */
+  private melodyFamily(): Family {
+    const f = this.game.cast?.melody?.family as Family | undefined;
+    return f && f !== 'kit' && f !== 'shaker' && f !== 'stomp' && FAMILIES[f]?.melodic ? f : 'keys';
+  }
+
   // ------------------------------------------------------------------ tuning (device sessions)
 
   private tuneAt = 0;
   readonly hitLog = new HitLog();
   private lastSide: Side = 'right';
+  private pinchHeld = [0, 0];
 
   /** The tuning page: ◀ ▶▶ choose a threshold, − + change it (applied at once, saved), with readouts from the last hits. */
   private tunePage(k: ModuleKey | null): { line: string; sub: string; labels: string[] } {
@@ -747,7 +759,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       let best: Surface | null = null;
       let bestStrike: Strike | null = null;
       this.sample.tracked = h.tracked;
-      this.sample.pinching = false;
+      // a hand holding a pinch (to swap an instrument) is reaching, not hitting
+      this.pinchHeld[i] = h.tracked && h.pinch.pinching ? this.pinchHeld[i] + delta : 0;
+      this.sample.pinching = this.swaps.holding(i) || (this.pinchHeld[i] > 0.15 && (this.progress.unlocks as string[]).includes('swaps'));
       for (let k = 0; k < this.surfaces.length; k++) {
         const s = this.surfaces[k];
         if (!s.voice && s.source !== 'module') continue;
@@ -816,9 +830,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       // one slap is one hit, whichever surfaces it crossed: the same hand can't strike again for a latch
       if (best && bestStrike && t - this.handLatch[i] >= (STRIKE_CFG.latchS ?? STRIKE.latchS)) {
-        this.handLatch[i] = t;
-        this.onHit(this.preferInset(best), side, bestStrike);
-        this.watchSink(i, best);
+        const target = this.preferInset(best);
+        // a hand passing through the wall's plane where a door or a window is set in (walking through a doorway,
+        // reaching for a handle) is not a hit on it: those only take a hand that stops
+        if (!(bestStrike.kind === 'cross' && target !== best && target.detector.stopOnly)) {
+          this.handLatch[i] = t;
+          this.onHit(target, side, bestStrike);
+          this.watchSink(i, target);
+        }
       }
       this.trackSink(i, h);
     }
@@ -900,14 +919,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const w = this.sinkWatch[i];
     if (!w || !h.tracked) return;
     w.s.toZone(h.palm, this.o);
-    const depth = -(this.o.y - h.palmRadius - w.s.detector.surfaceY);
-    if (depth > w.deepest) w.deepest = depth;
+    // only while the palm is over it (following through past an edge is not sinking in), at most 4 cm a hit
+    const depth = Math.min(0.04, -(this.o.y - h.palmRadius - w.s.detector.surfaceY));
+    if (depth > w.deepest && w.s.over(this.o.x, this.o.z, 0)) w.deepest = depth;
     if (this.clock.t < w.until) return;
     this.sinkWatch[i] = null;
     const s = w.s;
     s.sink = s.sink * 0.6 + w.deepest * 0.4;
     s.hits++;
-    if (s.hits >= 3 && s.sink > 0.025 && s.voice && s.voice.family !== 'shaker' && s.features.soft < 0.5) {
+    if (s.hits >= 3 && s.sink > 0.035 && s.voice && s.voice.family !== 'shaker' && s.features.soft < 0.5) {
       this.prevFamily = s.voice.family;
       const f = { ...s.features, soft: Math.min(1, s.sink / 0.04) };
       s.setFeatures(f);
@@ -981,13 +1001,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (!zone || !s.voice) return;
     this.lastWorld.set(zone.x, 0, -zone.z).applyMatrix4(s.world);
     // glass is for taps: a hard hit plays no louder than a gentle one
-    const g0 = s.voice.family === 'glock' ? Math.min(gain, 0.55) : gain;
+    const g0 = isGlass(s) ? Math.min(gain, 0.55) : gain;
     audio.modal(s.voice.family, zone.midi, g0, this.panOf(this.lastWorld), 0, s.voice.size, s.id);
     this.overlays.get(s)?.hit(z, gain);
     const grade = this.game.hit(`${s.id}:${z}`, t, gain);
     if (grade === 'perfect') {
       this.overlays.get(s)?.perfect(z);
-      audio.chime([96], 0, 0.25);
     }
     this.record(s, z, gain, st, grade);
   }
@@ -1008,7 +1027,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           const g = this.game.hit(`keys:${i}`, t, gain);
           if (g === 'perfect') {
             this.kit.keys.perfect(i);
-            audio.chime([96], 0, 0.25);
           }
           this.record(this.kitSurface, i, gain, st, g, 'keys');
           return;
@@ -1024,7 +1042,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const g = this.game.hit(`kit:${lane === 'rim' ? 'snare' : lane}`, t, gain);
     if (g === 'perfect' && lane !== 'rim') {
       this.kit.pad(lane)?.perfect();
-      audio.chime([96], 0, 0.25);
     }
     this.record(this.kitSurface, 0, gain, st, g, lane);
   }
@@ -1151,9 +1168,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.sheens.delete(s);
       }
     }
-    if (!this.restoring) audio.chime([84, 91], 0.07, 0.4);
+    if (!this.restoring && s !== this.kitSurface) {
+      // the instrument answers itself, a fifth up, softly: no generic ding over its first note
+      const z = s.zones[zoneAt(s.zones, this.hitAt.x, this.hitAt.z)] ?? s.zones[0];
+      if (z && FAMILIES[v.family].melodic) audio.modal(v.family, z.midi + 7, 0.4, this.panOf(this.tmp.set(z.x, 0, -z.z).applyMatrix4(s.world)), audio.now() + 0.25, v.size, s.id);
+    }
     if (!this.settings.noWords && !this.restoring) {
-      const name = `${surfaceName(s)} · ${FAMILIES[v.family].name}${v.family === 'glock' ? ' · tap gently' : ''}`;
+      const name = `${surfaceName(s)} · ${FAMILIES[v.family].name}${isGlass(s) ? ' · tap gently' : ''}`;
       // the tag stands just off the surface where it was hit, facing you
       this.tmp.set(this.hitAt.x, 0.05, -this.hitAt.z).applyMatrix4(s.world);
       if (s === this.kitSurface) this.tmp.set(0, 0.1, 0.05).applyMatrix4(s.world);

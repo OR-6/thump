@@ -70,7 +70,7 @@ class Engine {
   }
 
   setReverb(on: boolean): void {
-    if (this.send) this.send.gain.value = on ? 0.126 : 0; // −18 dB
+    if (this.send) this.send.gain.value = on ? 0.16 : 0;
   }
 
   private build(): void {
@@ -80,9 +80,14 @@ class Engine {
     this.ctx = ctx;
     const clip = ctx.createWaveShaper();
     clip.curve = softClip();
+    clip.oversample = '2x';
     this.master = ctx.createGain();
     this.master.gain.value = 0.55;
-    this.master.connect(clip).connect(ctx.destination);
+    // the shaper only sees −1..1: feed it a quarter, and its curve reads that as −4..4 (two hard hands and the
+    // band together round off smoothly instead of hitting a wall)
+    const pad = ctx.createGain();
+    pad.gain.value = 1 / CLIP_RANGE;
+    this.master.connect(pad).connect(clip).connect(ctx.destination);
     this.drums = ctx.createGain();
     this.drums.connect(this.master);
     this.bedBus = ctx.createGain();
@@ -92,9 +97,9 @@ class Engine {
     this.clickBus.gain.value = 0.25;
     this.clickBus.connect(this.master);
     const conv = ctx.createConvolver();
-    conv.buffer = impulse(ctx, 0.4, 3);
+    conv.buffer = room(ctx, 1.9);
     this.send = ctx.createGain();
-    this.send.gain.value = 0.126;
+    this.send.gain.value = 0.16;
     this.send.connect(conv).connect(this.master);
     this.bedBus.connect(this.send);
     const len = ctx.sampleRate;
@@ -406,7 +411,11 @@ class Engine {
     let sum = 0;
     for (const m of pre.modes) sum += m.amp * 0.5 * (m.beat ? 1 : 1);
     const norm = 0.6 / Math.max(0.6, sum);
-    const g = this.out(ctx, this.drums, pan, pre.wet, t, pre.level * norm * (0.35 + 0.65 * v));
+    // no two hits quite alike: ±1 dB, ±6 cents, ±8% ring
+    const life = 1 + (Math.random() - 0.5) * 0.16;
+    const lvl = Math.pow(10, ((Math.random() - 0.5) * 2) / 20);
+    const cents = (Math.random() - 0.5) * 12;
+    const g = this.out(ctx, this.drums, pan, pre.wet, t, pre.level * norm * (0.1 + 0.9 * v) * lvl);
     let into: AudioNode = g;
     if (pre.lowpass > 0) {
       const lp = ctx.createBiquadFilter();
@@ -416,24 +425,32 @@ class Engine {
       into = lp;
     }
     let end = t;
+    const oscs: OscillatorNode[] = [];
     for (let k = 0; k < pre.modes.length; k++) {
       const m = pre.modes[k];
       const f = f0 * m.ratio;
       if (f > 16000) continue;
       // a harder hit brings up the upper partials
       const amp = m.amp * (k === 0 ? 1 : 0.35 + 0.65 * v);
-      const dec = m.decay * long;
+      const dec = m.decay * long * life;
+      // a gong blooms: its upper modes come in one after another
+      const at = t + (pre.stagger ?? 0) * k;
       const twins = m.beat ? 2 : 1;
       for (let w = 0; w < twins; w++) {
         const o = ctx.createOscillator();
         o.frequency.value = w === 0 ? f : f + m.beat!;
+        o.detune.value = cents;
+        // and its fundamental sags a little as it rings
+        if (k === 0 && pre.sag) o.detune.linearRampToValueAtTime(cents + pre.sag, at + dec);
         const pg = ctx.createGain();
-        this.env(pg.gain, t, (amp * 0.5) / twins, pre.attack, dec);
+        pg.gain.value = 0;
+        this.env(pg.gain, at, (amp * 0.5) / twins, pre.attack, dec);
         o.connect(pg).connect(into);
         o.start(t);
-        o.stop(t + pre.attack + dec + 0.05);
+        o.stop(at + pre.attack + dec + 0.05);
+        oscs.push(o);
       }
-      end = Math.max(end, t + dec);
+      end = Math.max(end, at + dec);
     }
     const n = this.noiseSrc(ctx, t, pre.noise.dur);
     const nf = ctx.createBiquadFilter();
@@ -443,12 +460,12 @@ class Engine {
     const ng = ctx.createGain();
     this.env(ng.gain, t, pre.noise.amp * v * 1.6, 0.001, pre.noise.dur);
     n.connect(nf).connect(ng).connect(g);
-    this.claimVoice(owner || family, g, t, end);
+    this.claimVoice(owner || family, g, t, end, oscs);
   }
 
   /** Ringing voices (gongs, bowls): at most 3 per surface and 24 in all; the oldest fades out to make room. */
-  private voices: { owner: string; g: GainNode; end: number }[] = [];
-  private claimVoice(owner: string, g: GainNode, t: number, end: number): void {
+  private voices: { owner: string; g: GainNode; end: number; oscs: OscillatorNode[] | null }[] = [];
+  private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: OscillatorNode[] | null = null): void {
     const ctx = this.ctx!;
     const now = ctx.currentTime;
     for (let i = this.voices.length - 1; i >= 0; i--) if (this.voices[i].end < now) this.voices.splice(i, 1);
@@ -465,10 +482,12 @@ class Engine {
         gp.setValueAtTime(gp.value, now);
       }
       gp.setTargetAtTime(0, now, 0.006);
+      // and its partials stop once faded (a gong has a dozen; left running they'd load the audio thread)
+      if (old.oscs) for (const o of old.oscs) try { o.stop(now + 0.05); } catch { /* already stopped */ }
       this.voices.splice(i, 1);
       if (old.owner === owner) mine--;
     }
-    this.voices.push({ owner, g, end: Math.max(end, t) });
+    this.voices.push({ owner, g, end: Math.max(end, t), oscs });
   }
 
   /** The floor: a low thump you feel. */
@@ -776,12 +795,15 @@ class Engine {
   }
 }
 
-/** A soft knee: unity below 0.6, rounding peaks off toward 0.9 above it (no look-ahead, no low-level boost). */
+/** The shaper's input −1..1 stands for −CLIP_RANGE..CLIP_RANGE. */
+const CLIP_RANGE = 4;
+
+/** A soft knee: unity below 0.6, rounding peaks off toward 1 above it (no look-ahead, no low-level boost). */
 function softClip(): Float32Array<ArrayBuffer> {
-  const n = 2048;
+  const n = 4096;
   const c = new Float32Array(new ArrayBuffer(n * 4));
   for (let i = 0; i < n; i++) {
-    const x = (i / (n - 1)) * 2 - 1;
+    const x = ((i / (n - 1)) * 2 - 1) * CLIP_RANGE;
     const a = Math.abs(x);
     const y = a < 0.6 ? a : 0.6 + 0.4 * Math.tanh((a - 0.6) / 0.4);
     c[i] = Math.sign(x) * y;
@@ -789,7 +811,32 @@ function softClip(): Float32Array<ArrayBuffer> {
   return c;
 }
 
-function impulse(ctx: BaseAudioContext, seconds: number, decay: number): AudioBuffer {
+/**
+ * A room's tail: 20 ms of pre-delay, two early reflections, then decorrelated noise in each ear that decays and
+ * darkens as it goes (9 kHz at the start to about 1.2 kHz at the end), like sound soaking into a furnished room.
+ */
+function room(ctx: BaseAudioContext, seconds: number): AudioBuffer {
+  const sr = ctx.sampleRate;
+  const len = Math.floor(sr * seconds);
+  const buf = ctx.createBuffer(2, len, sr);
+  const pre = Math.floor(sr * 0.02);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    d[Math.floor(sr * (ch ? 0.013 : 0.011))] = 0.5;
+    d[Math.floor(sr * (ch ? 0.017 : 0.019))] = 0.35;
+    let lp = 0;
+    for (let i = pre; i < len; i++) {
+      const k = (i - pre) / (len - pre);
+      const cut = 9000 * Math.pow(1200 / 9000, k);
+      const a = 1 - Math.exp((-2 * Math.PI * cut) / sr);
+      lp += a * (Math.random() * 2 - 1 - lp);
+      d[i] += lp * Math.pow(1 - k, 2.2) * 0.9;
+    }
+  }
+  return buf;
+}
+
+export function impulse(ctx: BaseAudioContext, seconds: number, decay: number): AudioBuffer {
   const len = Math.floor(ctx.sampleRate * seconds);
   const buf = ctx.createBuffer(2, len, ctx.sampleRate);
   for (let ch = 0; ch < 2; ch++) {

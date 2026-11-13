@@ -168,3 +168,8 @@ export function surfaceName(s: Surface): string {
   if (s.source === 'kit') return 'Table';
   return s.features?.facing === 'vertical' ? 'Wall' : 'Top';
 }
+
+/** Glass (a window, a screen): soft taps only, whatever instrument it plays. */
+export function isGlass(s: Surface): boolean {
+  return (s.features?.glass ?? 0) >= 0.5 || /window|screen/.test(s.label);
+}

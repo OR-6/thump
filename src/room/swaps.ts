@@ -19,6 +19,11 @@ export const SWAP_DRIFT_M = 0.05;
 export class SwapGesture<T> {
   private holds = [0, 1].map(() => ({ target: null as T | null, t0: 0, at: new Vector3() }));
 
+  /** Is hand i holding a pinch on an instrument (so it isn't hitting)? */
+  holding(i: number): boolean {
+    return this.holds[i]?.target != null;
+  }
+
   /**
    * One frame. `nearest` finds what a pinch starting at a point would change (null: nothing in reach); `started`
    * is told when a hold begins (to show it). Returns what to change this frame, if a hold just completed.
