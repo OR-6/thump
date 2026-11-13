@@ -64,10 +64,11 @@ check('the pads are drawn', !!s.targets.snare && !!s.targets.kick, Object.keys(s
 await wait(600);
 shot('room-02-kit', look);
 
-// a cup on the table (12 cm tall) that the room scan never saw: tap it once (a light), twice (it's an instrument)
+// a mug on the table (9 cm tall) that the room scan never saw: the first tap plays it and draws its ring; a second
+// keeps it; ◀ ▶ on the module change its sound
 {
   const k0 = s.debug.kitOrigin;
-  const cup = [k0[0] + 0.28, DESK_Y + 0.12, k0[2] + 0.02];
+  const cup = [k0[0] + 0.28, DESK_Y + 0.09, k0[2] + 0.02];
   const tapCup = async () => {
     xr('set-transform', { device: HAND, position: { x: cup[0], y: cup[1] + 0.12, z: cup[2] }, orientation: FLAT });
     await wait(350);
@@ -76,13 +77,26 @@ shot('room-02-kit', look);
     xr('set-transform', { device: HAND, position: { x: cup[0], y: cup[1] + 0.15, z: cup[2] }, orientation: FLAT });
     await wait(300);
   };
-  const n0 = state().debug.surfaces.filter((x) => x.id.startsWith('t')).length;
-  await tapCup();
+  const before = state().played;
   await tapCup();
   s = state();
-  const found = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
-  check('seated: a cup tapped twice becomes an instrument (no room scan needed)', found.length > n0 && found.some((x) => x.discovered), JSON.stringify(found.map((x) => `${x.id}:${x.family}`)) + ' tag=' + s.debug.tag);
-  check('and it plays', (s.played.bell ?? 0) + (s.played.tubular ?? 0) + (s.played.block ?? 0) > 0, JSON.stringify(s.played));
+  let pads = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
+  const rang = (x) => (x.bell ?? 0) + (x.tubular ?? 0);
+  check('seated: one tap on a mug plays it and draws its ring', pads.length === 1 && pads[0].discovered && /bell|chime/.test(pads[0].sound) && rang(s.played) > rang(before), JSON.stringify(pads) + ' tag=' + s.debug.tag);
+  check('the module shows its sound with ◀ ▶', /Bell|Chime/.test(s.game.display.line) && /◀ ▶/.test(s.game.display.sub), `${s.game.display.line} / ${s.game.display.sub}`);
+  await tapCup();
+  s = state();
+  pads = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
+  check('a second tap keeps it (saved with the desk)', pads.length === 1 && pads[0].kept === true && (s.progress.pads?.length ?? 0) === 1, JSON.stringify(pads) + ' saved=' + JSON.stringify(s.progress.pads));
+  // ▶ on the module: the mug's next sound
+  const next = s.targets['key-next'];
+  const nx = [next[0], next[1], next[2]];
+  xr('set-transform', { device: HAND, position: { x: nx[0], y: nx[1] + 0.06, z: nx[2] }, orientation: FLAT });
+  await wait(300);
+  await slapAt(nx, [0, 1, 0], { speed: 0.6, from: 0.05 });
+  s = state();
+  pads = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
+  check('▶ changes the mug to the next sound in the bank', pads.length === 1 && pads[0]?.sound && !/^(bell|chime)$/.test(pads[0].sound), `${pads.map((p) => p.sound)} display=${s.game.display.line}`);
   shot('room-02b-cup', [cup[0], DESK_Y, cup[2]]);
   xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
   await wait(300);

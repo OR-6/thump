@@ -27,7 +27,11 @@ export type Family =
   | 'shaker'
   | 'tambourine'
   | 'stomp'
-  | 'keys';
+  | 'keys'
+  | 'ride'
+  | 'cowbell'
+  | 'clap'
+  | 'clave';
 
 export interface FamilyInfo {
   /** Instrument name as shown (one word). */
@@ -62,6 +66,10 @@ export const FAMILIES: Record<Family, FamilyInfo> = {
   tambourine: { name: 'tambourine', color: 0xc2f06a, melodic: false, order: 18 },
   stomp: { name: 'bass drum', color: 0xff4d6a, melodic: false, order: 19 },
   keys: { name: 'balafon', color: 0xffa630, melodic: true, order: 20 },
+  ride: { name: 'ride', color: 0xd6e2ea, melodic: false, order: 21 },
+  cowbell: { name: 'cowbell', color: 0xe0b85a, melodic: false, order: 22 },
+  clap: { name: 'clap', color: 0xff9e7a, melodic: false, order: 23 },
+  clave: { name: 'clave', color: 0xd99a5b, melodic: false, order: 24 },
 };
 
 /** "a marimba", "an …", or just "timpani" (said the way a player would). */
@@ -187,6 +195,10 @@ export const NEIGHBOURS: Record<Family, Family[]> = {
   block: ['slit', 'congas', 'cajon', 'triangle', 'tambourine', 'shaker'],
   kit: [],
   keys: ['marimba', 'xylophone', 'bowl', 'tongue', 'harp', 'glock'],
+  ride: ['triangle', 'bell', 'tubular'],
+  cowbell: ['clave', 'block', 'triangle'],
+  clap: ['tambourine', 'shaker'],
+  clave: ['block', 'cowbell', 'slit'],
 };
 
 /** What a surface can be swapped to: what its physics says first, then the neighbours that suit it (never the kit or the desk keys). */

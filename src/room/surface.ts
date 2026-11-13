@@ -120,6 +120,13 @@ export class Surface {
   /** Found by touch: one zone of this radius. */
   single = false;
   singleR = 0.035;
+  /** Found by touch: what it plays (a bank id: any sound on any thing), which drum of a set, kept or still on trial. */
+  sound: string | null = null;
+  tone = 0;
+  confirmed = false;
+  bornT = 0;
+  /** Where it's been hit (zone x, z pairs): its shape grows from these. */
+  points: number[] = [];
 
   /** Closest distance from a world point to the surface's rectangle. */
   distanceTo(p: Vector3): number {

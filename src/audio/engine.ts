@@ -930,13 +930,14 @@ class Engine {
 }
 
 /** Families whose clips aren't on a note (they shift with the surface's size instead). */
-const UNPITCHED = new Set<string>(['gong', 'shaker', 'stomp', 'block', 'congas', 'cajon', 'frame', 'slit', 'triangle', 'tambourine']);
+const UNPITCHED = new Set<string>(['gong', 'shaker', 'stomp', 'block', 'congas', 'cajon', 'frame', 'slit', 'triangle', 'tambourine', 'ride', 'cowbell', 'clap', 'clave']);
 /** A synthesised stand-in for families without their own preset. */
-const ALIAS: Partial<Record<string, Family>> = { xylophone: 'marimba', harp: 'keys', tubular: 'bell', timpani: 'gong', frame: 'gong', congas: 'tongue', cajon: 'tongue', slit: 'tongue', triangle: 'glock', tambourine: 'shaker' };
+const ALIAS: Partial<Record<string, Family>> = { ride: 'glock', cowbell: 'bell', clap: 'shaker', clave: 'block', xylophone: 'marimba', harp: 'keys', tubular: 'bell', timpani: 'gong', frame: 'gong', congas: 'tongue', cajon: 'tongue', slit: 'tongue', triangle: 'glock', tambourine: 'shaker' };
 /** Recorded clips are peak-normalised: these set each family's place in the mix. */
 const FAMILY_LEVEL: Partial<Record<string, number>> = {
   marimba: 0.75, keys: 0.7, xylophone: 0.6, glock: 0.42, harp: 0.7, tongue: 0.7, bowl: 0.55, bell: 0.5, tubular: 0.5,
   gong: 0.8, timpani: 0.85, frame: 0.8, congas: 0.75, cajon: 0.8, slit: 0.75, block: 0.6, triangle: 0.4, tambourine: 0.55, shaker: 0.5, stomp: 0.9,
+  ride: 0.45, cowbell: 0.55, clap: 0.7, clave: 0.6,
 };
 const DRUM_LEVEL: Partial<Record<string, number>> = { kick: 0.95, snare: 0.75, hat: 0.45, tom: 0.75, rim: 0.6 };
 

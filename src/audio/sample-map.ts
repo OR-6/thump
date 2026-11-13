@@ -254,6 +254,96 @@ export const SAMPLES: Record<string, Sample[]> = {
       "tone": 0
     }
   ],
+  "clap": [
+    {
+      "file": "clap-01.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "clap-02.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "clap-03.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "clap-04.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "clap-05.mp3",
+      "midi": null,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "clap-06.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    }
+  ],
+  "clave": [
+    {
+      "file": "clave-01.mp3",
+      "midi": null,
+      "layer": 0,
+      "tone": 1
+    },
+    {
+      "file": "clave-02.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 1
+    },
+    {
+      "file": "clave-03.mp3",
+      "midi": null,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "clave-04.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    }
+  ],
+  "cowbell": [
+    {
+      "file": "cowbell-01.mp3",
+      "midi": null,
+      "layer": 0,
+      "tone": 1
+    },
+    {
+      "file": "cowbell-02.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 1
+    },
+    {
+      "file": "cowbell-03.mp3",
+      "midi": null,
+      "layer": 0,
+      "tone": 0
+    },
+    {
+      "file": "cowbell-04.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    }
+  ],
   "glock": [
     {
       "file": "glock-01.mp3",
@@ -645,6 +735,32 @@ export const SAMPLES: Record<string, Sample[]> = {
       "file": "slit-04.mp3",
       "midi": null,
       "layer": 1,
+      "tone": 0
+    }
+  ],
+  "ride": [
+    {
+      "file": "ride-01.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 1
+    },
+    {
+      "file": "ride-02.mp3",
+      "midi": null,
+      "layer": 0,
+      "tone": 1
+    },
+    {
+      "file": "ride-03.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    },
+    {
+      "file": "ride-04.mp3",
+      "midi": null,
+      "layer": 0,
       "tone": 0
     }
   ],

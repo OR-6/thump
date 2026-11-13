@@ -43,8 +43,8 @@ import { KitView, KIT_ZONE } from '../kit/kit-view.js';
 import { LED } from '../kit/pad-view.js';
 import { MODULE, Module, KEYS, type ModuleKey } from '../ui/module.js';
 import { Tag, DebugBoard } from '../ui/tag.js';
-import { audio } from '../audio/engine.js';
-import { loadProgress, saveProgress, freshProgress, type Progress } from '../persistence/progress.js';
+import { audio, type Voice } from '../audio/engine.js';
+import { loadProgress, saveProgress, freshProgress, type Progress, type SavedPad } from '../persistence/progress.js';
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { motion, prefersReducedMotion } from '../ui/motion.js';
 import { Game, type GameStage, type Room, type Unlock } from '../play/game.js';
@@ -53,7 +53,8 @@ import { SurfaceBuilder, insidePolygon, tuneStrike } from './surface-builder.js'
 import { GameClock } from './game-clock.js';
 import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M, URL_STRIKE } from './params.js';
 import { SwapGesture } from './swaps.js';
-import { TouchFinder, touchVoice, type Touch } from './touch.js';
+import { TouchFinder, becomesKeys, grow, isClap, touchVoice, type Touch } from './touch.js';
+import { soundById, stepSound } from '../audio/bank.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
 import { Overlay, Sheen } from './overlay.js';
@@ -88,7 +89,7 @@ export interface RoomDebug {
   resumed: boolean;
   hits: number;
   lastHit: { surface: string; family: string; zone: number; gain: number; speed: number; kind: string; grade: string | null } | null;
-  surfaces: { id: string; label: string; family: string | null; discovered: boolean; reach: number; area: number; hollow: number; glass: number; soft: number; why: string }[];
+  surfaces: { id: string; label: string; family: string | null; discovered: boolean; reach: number; area: number; hollow: number; glass: number; soft: number; why: string; sound?: string; kept?: boolean }[];
   planes: number;
   meshes: number;
   mode: string;
@@ -326,6 +327,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       saveSettings(this.settings);
     },
     tune: (k) => this.tunePage(k),
+    changeSound: (dir) => this.changeSound(dir),
     setting: (name, flip) => {
       const s = this.settings;
       const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : !s.noWords;
@@ -659,6 +661,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** The surface plays the next instrument that suits it; the room map and the saved room follow. */
   private swap(s: Surface): void {
+    if (s.source === 'touch') {
+      this.setPadSound(s, stepSound(s.sound ?? 'block', 1));
+      this.focused = s;
+      this.game.focusPad(soundById(s.sound)?.name ?? '', this.clock.t);
+      return;
+    }
     const from = s.voice?.family;
     // the surface may have been replaced while the pinch was held (Quest re-reported its plane)
     if (!from || !s.natural || !this.surfaces.includes(s)) return;
@@ -920,7 +928,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.update(dt);
     for (const o of this.overlays.values()) o.update(dt);
     this.updateFinale(dt);
-    this.updatePing(dt);
+    this.fadePads();
+    this.watchClaps(dt);
+    this.updateFlash(dt);
     this.updateMallets();
     // two found and a quiet spell: if there's a door or a window beyond reach, say so now (not only after a song)
     if (!this.farTold && this.game.mode === 'discover' && this.game.found.length >= 2 && this.clock.t - this.lastFoundT > 8 && this.clock.t > this.farCheckAt) {
@@ -1270,7 +1280,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.lastWorld.set(zone.x, 0, -zone.z).applyMatrix4(s.world);
     // glass is for taps: a hard hit plays no louder than a gentle one
     const g0 = isGlass(s) ? Math.min(gain, 0.55) : gain;
-    audio.modal(s.voice.family, zone.midi, g0, this.panOf(this.lastWorld), 0, s.voice.size, s.id, z);
+    if (s.source === 'touch') {
+      this.playPad(s, z, g0, this.panOf(this.lastWorld), 0);
+      this.touchedAgain(s);
+      this.game.focusPad(soundById(s.sound)?.name ?? '', this.clock.t);
+      this.focused = s;
+    } else audio.modal(s.voice.family, zone.midi, g0, this.panOf(this.lastWorld), 0, s.voice.size, s.id, z);
     this.overlays.get(s)?.hit(z, gain);
     const grade = this.game.hit(`${s.id}:${z}`, t, gain);
     if (grade === 'perfect') {
@@ -1335,35 +1350,47 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private touched: Surface[] = [];
   private touchId = 1;
 
-  /** A hand stopped dead somewhere: the first time, a little light where it stopped; the second, an instrument. */
+  /**
+   * A hand stopped dead somewhere unknown: something is there. It plays at once (the sound physics picks from where it
+   * is) and a ring draws round it at that height with its name. Hit it again within 20 s and it's kept (saved with the
+   * desk); never again and it fades (a hand stopping in the air: one sound, no harm).
+   */
   private onTouch(touch: Touch, side: Side): void {
     this.tmp.set(touch.at.x, touch.at.y, touch.at.z);
     // the table, the module and every surface already known have their own hits
     this.kitSurface.toZone(this.tmp, this.o);
     const above = this.o.y - this.kitSurface.detector.surfaceY;
-    if (this.kitSurface.over(this.o.x, this.o.z, 0.03) && Math.abs(above) < 0.03) return;
+    if (this.kitSurface.over(this.o.x, this.o.z, 0.03) && Math.abs(above) < 0.025) return;
     this.moduleSurface.toZone(this.tmp, this.o);
     if (this.moduleSurface.over(this.o.x, this.o.z, 0.04) && Math.abs(this.o.y) < 0.08) return;
-    if (above > 0.55) return;
     for (const s of this.surfaces) if (s !== this.kitSurface && s !== this.moduleSurface && s.voice && s.distanceTo(this.tmp) < 0.04) return;
-    if (!touch.found) {
-      this.ping(this.tmp, touch.dir);
-      return;
-    }
-    // something is there: it faces the way the hand came from
     const n = this.tmp2.set(-touch.dir.x, -touch.dir.y, -touch.dir.z);
+    // to your side or in front (for the knees and the chair's arms)
+    this.forwardFlat(this.fwd);
+    const lateral = (this.tmp.x - this.head.x) * -this.fwd.z + (this.tmp.z - this.head.z) * this.fwd.x;
+    const v = touchVoice(above, n.y, lateral);
+    if (!v) return;
+    this.makePad(this.tmp, n, v.sound, v.size, v.tone, v.what, false);
+    const s = this.touched[this.touched.length - 1];
+    this.hitAt.x = 0;
+    this.hitAt.z = 0;
+    this.onHit(s, side, { kind: 'stop', speed: touch.speed, gain: speedToGain(touch.speed, s.detector.cfg), point: 0, height: 0, t: touch.t });
+  }
+
+  /** A pad on a thing: a small surface at the point, facing `n`, playing `sound` (a bank id). */
+  private makePad(at: Vector3, n: Vector3, sound: string, size0: number, tone: number, what: string, confirmed: boolean, extent = 0): Surface {
+    // no two the same: a second cup rings a different note, a second block is a clave
+    let id = sound;
+    let size = size0;
+    const same = this.touched.filter((x) => x.sound === id).length;
+    if (soundById(id)?.pitched) size = (size + same * 0.27) % 1.0001;
+    else if (same && id === 'block') id = 'clave';
+    else if (same && id === 'cowbell') id = 'clave';
+    const snd = soundById(id) ?? soundById('block')!;
     const up = n.y;
-    const v = touchVoice(above, up);
-    // no two the same: a second cup rings a different note, a second book is a slit drum
-    let size = v.size;
-    let family: Family = v.family;
-    const same = this.touched.filter((x) => x.voice?.family === family).length;
-    if (family === 'bell' || family === 'tubular') size = (size + same * 0.27) % 1.0001;
-    else if (same && family === 'block') family = 'slit';
-    else if (same && family === 'frame') family = 'cajon';
-    const s = new Surface(`t${this.touchId++}`, 'touch', v.what, STRIKE_CFG);
-    s.setFrame(this.tmp, n, this.forwardFlat(this.fwd));
-    const r = up > 0.6 ? (family === 'congas' ? 0.09 : 0.04) : 0.09;
+    const s = new Surface(`t${this.touchId++}`, 'touch', what, STRIKE_CFG);
+    s.setFrame(at, n, this.forwardFlat(this.fwd));
+    const r = Math.max(up > 0.6 ? (what === 'knee' ? 0.08 : 0.04) : 0.08, extent / 2);
     s.bounds = { minX: -r, maxX: r, minZ: -r, maxZ: r };
     s.outline = [
       { x: -r, z: -r },
@@ -1371,46 +1398,206 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       { x: r, z: r },
       { x: -r, z: r },
     ];
-    s.features = { facing: up > 0.6 ? 'up' : 'vertical', width: r * 2, length: r * 2, area: r * r * 4, elevation: this.tmp.y, hollow: 0, glass: 0, soft: 0, curved: 0, bump: true, label: v.what };
-    s.voice = { family, size, why: `found by touch, ${Math.round(above * 100)} cm over the table` };
-    s.natural = family;
+    s.features = { facing: up > 0.6 ? 'up' : 'vertical', width: r * 2, length: r * 2, area: r * r * 4, elevation: at.y, hollow: 0, glass: what === 'lid' ? 1 : 0, soft: 0, curved: 0, bump: true, label: what };
+    s.voice = { family: snd.family ?? 'block', size, why: `${what}, ${Math.round(this.heightOver(at) * 100)} cm over the desk` };
+    s.natural = s.voice.family;
+    s.sound = snd.id;
+    s.tone = tone;
     s.single = true;
     s.singleR = Math.min(r, 0.05);
+    s.confirmed = confirmed;
+    s.bornT = this.clock.t;
     tuneStrike(s);
-    // the thing is solid and small: only a hand that stops on it plays it
+    // a thing is solid and small: only a hand that stops on it plays it
     s.detector.stopOnly = true;
     s.reach = s.distanceTo(this.head);
     this.touched.push(s);
     this.surfaces.push(s);
-    this.hitAt.x = 0;
-    this.hitAt.z = 0;
-    this.onHit(s, side, { kind: 'stop', speed: touch.speed, gain: speedToGain(touch.speed, s.detector.cfg), point: 0, height: 0, t: touch.t });
+    return s;
   }
 
-  /** A first tap on something unknown: a small ring of light where the hand stopped, and a soft knock. */
-  private pingMesh: Mesh | null = null;
-  private pingT = -1;
-  private ping(at: Vector3, dir: { x: number; y: number; z: number }): void {
-    if (!this.pingMesh) {
-      const g = new RingGeometry(0.8, 1, 40);
-      this.pingMesh = new Mesh(g, asLight(new MeshBasicMaterial({ color: 0xfff2dc, transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })));
-      this.pingMesh.renderOrder = 6;
-      this.worldRoot.add(this.pingMesh);
+  /** A pad's sound: a kit piece or an instrument (pitched ones on their zone's note). */
+  private playPad(s: Surface, zone: number, gain: number, pan: number, when: number): void {
+    const snd = soundById(s.sound);
+    if (snd?.drum) {
+      audio.drum(snd.drum as Voice, gain, pan, when, 1);
+      return;
     }
-    this.pingMesh.position.copy(at);
-    this.tmp2.set(at.x - dir.x, at.y - dir.y, at.z - dir.z);
-    this.pingMesh.lookAt(this.tmp2);
-    this.pingT = 0;
-    audio.tick();
+    const fam = snd?.family ?? s.voice?.family ?? 'block';
+    const z = s.zones[zone] ?? s.zones[0];
+    audio.modal(fam, z?.midi ?? 72, gain, pan, when, s.voice?.size ?? 0.5, s.id, s.single ? s.tone : zone);
   }
-  private updatePing(dt: number): void {
-    if (!this.pingMesh || this.pingT < 0) return;
-    this.pingT += dt;
-    const k = Math.min(1, this.pingT / 0.6);
-    this.pingMesh.scale.setScalar(0.012 + 0.03 * k);
-    (this.pingMesh.material as MeshBasicMaterial).color.setRGB(1, 0.95, 0.86).multiplyScalar((1 - k) * 0.9);
-    this.pingMesh.visible = k < 1;
-    if (k >= 1) this.pingT = -1;
+
+  /** The pad last hit (◀ ▶ on the module change its sound). */
+  private focused: Surface | null = null;
+
+  /** ◀ ▶ while a pad is in focus: the next sound in the bank on it, played once so you hear it. */
+  private changeSound(dir: 1 | -1): string | null {
+    const s = this.focused;
+    if (!s || !this.touched.includes(s)) return null;
+    this.setPadSound(s, stepSound(s.sound ?? 'block', dir));
+    return soundById(s.sound)?.name ?? null;
+  }
+
+  private setPadSound(s: Surface, id: string): void {
+    const snd = soundById(id);
+    if (!snd) return;
+    const from = s.voice?.family;
+    s.sound = id;
+    s.voice = { ...s.voice!, family: snd.family ?? 'block', why: `changed to ${snd.name}` };
+    // keys keep their eight; anything else is one pad the size of the thing
+    s.single = id !== 'keys';
+    this.dropOverlay(s);
+    s.discovered = false;
+    this.restoring = true;
+    this.hitAt.x = s.anchor.x;
+    this.hitAt.z = s.anchor.z;
+    this.discover(s);
+    this.restoring = false;
+    this.overlays.get(s)?.recolor(snd.color);
+    this.overlays.get(s)?.flashAll();
+    if (from) this.game.rediscovered(from, this.surfaces.some((x) => x !== s && x.discovered && x.voice?.family === from));
+    this.playPad(s, 0, 0.7, 0, 0);
+    s.confirmed = true;
+    this.savePads();
+    this.refreshDebugSurfaces();
+  }
+
+  private heightOver(p: Vector3): number {
+    this.kitSurface.toZone(p, this.o);
+    return this.o.y - this.kitSurface.detector.surfaceY;
+  }
+
+  /** A hit on a pad: it's kept now, its shape grows to where you hit, a wide flat thing becomes keys. */
+  private touchedAgain(s: Surface): void {
+    if (!s.confirmed && this.clock.t - s.bornT > 0.15) {
+      s.confirmed = true;
+      this.savePads();
+      this.refreshDebugSurfaces();
+    }
+    const g = grow(s.bounds, this.hitAt.x, this.hitAt.z);
+    if (!g) return;
+    s.bounds = g;
+    // low and wider than 25 cm (a keyboard, a tray): it's keys, eight across it
+    const wide = s.bounds.maxX - s.bounds.minX;
+    if (becomesKeys(s.bounds, s.features.facing === 'up', s.sound, s.label)) {
+      s.sound = 'keys';
+      s.single = false;
+      s.voice = { ...s.voice!, family: 'keys', why: `flat and ${Math.round(wide * 100)} cm wide: keys` };
+      s.natural = 'keys';
+      s.discovered = false;
+      this.dropOverlay(s);
+      this.hitAt.x = (s.bounds.minX + s.bounds.maxX) / 2;
+      this.hitAt.z = (s.bounds.minZ + s.bounds.maxZ) / 2;
+      this.discover(s);
+      this.savePads();
+    }
+  }
+
+  /** Pads never hit a second time fade after 20 s. */
+  private fadePads(): void {
+    for (let k = this.touched.length - 1; k >= 0; k--) {
+      const s = this.touched[k];
+      if (s.confirmed || this.clock.t - s.bornT < 20) continue;
+      this.forgetPad(s);
+    }
+  }
+
+  private forgetPad(s: Surface): void {
+    const fam = s.voice?.family;
+    this.dropSurface(s);
+    this.touched.splice(this.touched.indexOf(s), 1);
+    const i = this.surfaces.indexOf(s);
+    if (i >= 0) this.surfaces.splice(i, 1);
+    if (fam) this.game.rediscovered(fam, this.surfaces.some((x) => x.discovered && x.voice?.family === fam));
+  }
+
+  /** Kept pads, saved with the desk (in the kit's frame, so they come back where the kit is). */
+  private savePads(): void {
+    const inv = this.tmpM.copy(this.kit.root.matrixWorld).invert();
+    const out: SavedPad[] = [];
+    for (const s of this.touched) {
+      if (!s.confirmed) continue;
+      const c = this.tmp.set(0, 0, 0).applyMatrix4(s.world).applyMatrix4(inv);
+      const nn = this.tmp2.copy(s.normal).transformDirection(inv);
+      out.push({ x: r4(c.x), y: r4(c.y), z: r4(c.z), nx: r4(nn.x), ny: r4(nn.y), nz: r4(nn.z), w: r4(Math.max(s.bounds.maxX - s.bounds.minX, s.bounds.maxZ - s.bounds.minZ)), sound: s.sound ?? 'block', size: r4(s.voice?.size ?? 0.5), tone: s.tone, what: s.label });
+    }
+    this.progress.pads = out.slice(-24);
+    saveProgress(this.progress);
+  }
+
+  /** The desk's pads from last time, drawn again where they were. */
+  private restorePads(): void {
+    if (!this.progress.pads?.length || this.touched.length) return;
+    this.kit.root.updateMatrixWorld(true);
+    for (const p of this.progress.pads) {
+      const at = new Vector3(p.x, p.y, p.z).applyMatrix4(this.kit.root.matrixWorld);
+      const n = new Vector3(p.nx, p.ny, p.nz).transformDirection(this.kit.root.matrixWorld);
+      const s = this.makePad(at, n, p.sound, p.size, p.tone, p.what, true, p.w > 0.12 ? p.w : 0);
+      if (p.sound === 'keys') {
+        s.single = false;
+        s.voice = { ...s.voice!, family: 'keys' };
+      }
+      this.hitAt.x = 0;
+      this.hitAt.z = 0;
+      this.restoring = true;
+      this.discover(s);
+      this.restoring = false;
+    }
+  }
+
+  /** Two palms meeting: a hand clap, and a flash of light between them. */
+  private clapPrev = Infinity;
+  private clapT = -9;
+  private clapFound = false;
+  private watchClaps(dt: number): void {
+    const l = hands.left;
+    const r = hands.right;
+    if (!l.tracked || !r.tracked || l.controller || r.controller) {
+      this.clapPrev = Infinity;
+      return;
+    }
+    const d = l.palm.distanceTo(r.palm);
+    const clap = isClap(d, this.clapPrev, dt) && this.clock.t - this.clapT > 0.2;
+    const speed = (this.clapPrev - d) / Math.max(dt, 1e-3);
+    this.clapPrev = d;
+    if (!clap) return;
+    this.clapT = this.clock.t;
+    this.tmp.addVectors(l.palm, r.palm).multiplyScalar(0.5);
+    audio.modal('clap', 60, Math.min(1, 0.35 + speed * 0.35), this.panOf(this.tmp), 0, 0.5, 'clap');
+    this.flash(this.tmp, 0xff9e7a);
+    this.game.hit('clap:0', this.clock.t, 0.8);
+    if (!this.clapFound) {
+      this.clapFound = true;
+      this.game.discovered('clap', 'hands', this.clock.t);
+    }
+  }
+
+  /** A quick ring of light at a point, facing you (a clap). */
+  private flashMesh: Mesh | null = null;
+  private flashT = -1;
+  private flash(at: Vector3, color: number): void {
+    if (!this.flashMesh) {
+      const g = new RingGeometry(0.7, 1, 40);
+      this.flashMesh = new Mesh(g, asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })));
+      this.flashMesh.renderOrder = 6;
+      this.worldRoot.add(this.flashMesh);
+    }
+    this.flashMesh.position.copy(at);
+    this.flashMesh.lookAt(this.head);
+    (this.flashMesh.material as MeshBasicMaterial).color.setHex(color);
+    this.flashColor = color;
+    this.flashT = 0;
+  }
+  private flashColor = 0xffffff;
+  private updateFlash(dt: number): void {
+    if (!this.flashMesh || this.flashT < 0) return;
+    this.flashT += dt;
+    const k = Math.min(1, this.flashT / 0.35);
+    this.flashMesh.scale.setScalar(0.03 + 0.09 * k);
+    (this.flashMesh.material as MeshBasicMaterial).color.setHex(this.flashColor).multiplyScalar((1 - k) * (1 - k));
+    this.flashMesh.visible = k < 1;
+    if (k >= 1) this.flashT = -1;
   }
 
   /** Both hands on the same pad or bar within 25 ms is one note (a flam reads as a double otherwise). */
@@ -1645,7 +1832,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (!this.settings.noWords && !this.restoring) {
       const where = surfaceName(s);
       const subject = where === 'Floor' ? 'The floor' : where === 'Top' ? 'This' : `Your ${where.toLowerCase()}`;
-      const name = s.source === 'touch' ? touchName(s) : `${subject} is ${withArticle(v.family)}${isGlass(s) ? '. Gently.' : ''}`;
+      const name = s.source === 'touch' ? (soundById(s.sound)?.name ?? FAMILIES[v.family].name) : `${subject} is ${withArticle(v.family)}${isGlass(s) ? '. Gently.' : ''}`;
       // the tag never covers what it names: above an instrument on a wall, over one on a top, facing you
       if (s === this.kitSurface) this.tmp.set(0, 0.1, 0.05).applyMatrix4(s.world);
       else {
@@ -1881,7 +2068,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private refreshDebugSurfaces(): void {
     this.debug.surfaces = this.surfaces
       .filter((s) => s.source !== 'module')
-      .map((s) => ({ id: s.id, label: s.label, family: s.voice?.family ?? null, discovered: s.discovered, reach: r3(s.reach), area: r3(s.features?.area ?? 0), hollow: s.features?.hollow ?? 0, glass: s.features?.glass ?? 0, soft: s.features?.soft ?? 0, why: s.voice?.why ?? '' }));
+      .map((s) => ({ id: s.id, label: s.label, family: s.voice?.family ?? null, discovered: s.discovered, reach: r3(s.reach), area: r3(s.features?.area ?? 0), hollow: s.features?.hollow ?? 0, glass: s.features?.glass ?? 0, soft: s.features?.soft ?? 0, why: s.voice?.why ?? '', ...(s.sound ? { sound: s.sound, kept: s.confirmed } : {}) }));
   }
 
   // ------------------------------------------------------------------ placement
@@ -2070,6 +2257,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();
+    // the things on this desk from last time come back where they were
+    this.restorePads();
   }
 
   /** The real table's outline in kit-local x/z, when Quest found it (the rim is its edge). */
@@ -2365,15 +2554,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     out.head = this.head.toArray().map(r4);
     return out;
   }
-}
-
-/** What to call a thing found by touch (we know its height and which way it faces, not what it is). */
-function touchName(s: Surface): string {
-  const f = s.voice!.family;
-  if (s.label === 'your lap') return 'Your knees are congas';
-  if (f === 'bell' || f === 'tubular') return `That's ${withArticle(f)}. Gently`;
-  if (f === 'frame' || f === 'cajon') return `That's ${withArticle(f)} now`;
-  return `That's ${withArticle(f)}`;
 }
 
 const GUARD_NAMES = ['RoomSystem.hands', 'RoomSystem.swaps', 'RoomSystem.game'];

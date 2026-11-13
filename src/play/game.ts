@@ -53,6 +53,8 @@ export interface GameStage {
   setting(name: 'oneHand' | 'contrast' | 'words', flip: boolean): boolean;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
   bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave' | 'turn', surface?: string): void;
+  /** ◀ ▶ on the pad last hit: the next sound in the bank on it; its name, or null when there's no pad. */
+  changeSound?(dir: 1 | -1): string | null;
   /** The tuning page: act on a key (null: just read), and what the page shows. */
   tune(k: ModuleKey | null): { line: string; sub: string; labels: string[] };
 }
@@ -113,6 +115,8 @@ export class Game {
   readonly display: Display = { line: 'Hit anything', sub: 'Start with the table', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   /** The settings page is up on the module (tap ◀ twice; ▶ closes it). */
   settingsOpen = false;
+  /** A pad was just hit: its sound shows on the module and ◀ ▶ change it, for a few seconds. */
+  private pad = { name: '', until: -1 };
   /** The tuning page is up (in Settings, tap ◀ twice; ▶ closes it). */
   tuneOpen = false;
   private tuneShownAt = 0;
@@ -179,6 +183,13 @@ export class Game {
     this.refreshDisplay();
   }
 
+  /** A pad on a thing was hit: show its sound, with ◀ ▶ to change it. */
+  focusPad(name: string, t: number): void {
+    if (!name || this.mode !== 'discover') return;
+    this.pad = { name, until: t + 6 };
+    this.refreshDisplay();
+  }
+
   /** A surface's instrument was found (its first hit). */
   discovered(family: Family, label: string, t: number): void {
     if (family === 'keys') return;
@@ -231,13 +242,22 @@ export class Game {
       this.refreshDisplay();
       return;
     }
-    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam') {
+    // (not while a pad's sound is up: then ◀ ◀ is stepping through sounds)
+    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam' && this.t >= this.pad.until) {
       // tap ◀ twice: the settings page (and the first tap's step back is undone)
       if (this.mode === 'discover') this.selected = (this.selected + 1) % this.available();
       this.settingsOpen = true;
       this.lastTap[k] = -9;
       this.refreshDisplay();
       return;
+    }
+    // a pad was just hit: ◀ ▶ step its sound through the bank
+    if ((k === 'prev' || k === 'next') && this.mode === 'discover' && this.t < this.pad.until) {
+      const name = this.stage.changeSound?.(k === 'next' ? 1 : -1);
+      if (name) {
+        this.focusPad(name, this.t);
+        return;
+      }
     }
     if (k === 'prev' || k === 'next') {
       if (this.mode === 'play' || this.mode === 'count') return;
@@ -522,6 +542,10 @@ export class Game {
 
   tick(t: number): void {
     this.t = t;
+    if (this.pad.until > 0 && t >= this.pad.until) {
+      this.pad.until = -1;
+      this.refreshDisplay();
+    }
     // the tuning page's readouts follow the hits
     if (this.tuneOpen && t - this.tuneShownAt > 0.25) this.refreshDisplay();
     if (this.recPending > 0 && t - this.recPending > 0.9) {
@@ -758,6 +782,12 @@ export class Game {
       if (l.state === 'count') d.count = Math.max(1, Math.min(4, Math.ceil(l.recStart - b)));
       d.sub = l.recording ? `Recording layer ${l.layers.length + 1}` : 'REC to add, twice to clear';
       d.pulse = 'loop';
+      return;
+    }
+    if (this.mode === 'discover' && this.t < this.pad.until) {
+      d.line = this.pad.name;
+      d.sub = '◀ ▶ to change it';
+      d.keyLabels = null;
       return;
     }
     switch (this.mode) {

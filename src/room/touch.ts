@@ -91,7 +91,7 @@ export class TouchFinder {
     const s2 = sp(b, c);
     const before = Math.max(s1, s2);
     // a real approach is a steady motion over the frames before, at a human speed (a tracking jump is one huge step)
-    const steady = s2 >= MIN_IN * 0.5 && before <= 4;
+    const steady = Math.min(s1, s2) >= MIN_IN * 0.5 && before <= 4;
     // re-armed once it has moved 4 cm from where it last stopped
     if (!tr.armed && Math.hypot(p.x - tr.lastStop.x, p.y - tr.lastStop.y, p.z - tr.lastStop.z) > 0.04) tr.armed = true;
     if (!tr.armed || !steady || before < MIN_IN || now > MAX_OUT) return null;
@@ -100,7 +100,9 @@ export class TouchFinder {
     const dy = tr.y[b] - tr.y[d];
     const dz = tr.z[b] - tr.z[d];
     const len = Math.hypot(dx, dy, dz) || 1;
-    // from the side (a seat back, a wall the scan missed) it takes a firmer knock: hands stop in the air sideways a lot
+    // a hand lifting and pausing is not hitting anything above it: things are found coming down or from the front
+    if (dy / len > 0.3) return null;
+    // from the side (a seat back, a laptop lid) it takes a firmer knock: hands stop in the air sideways a lot
     if (dy / len > -0.6 && before < SIDE_IN) return null;
     tr.armed = false;
     tr.lastStop = { x: p.x, y: p.y, z: p.z };
@@ -146,14 +148,47 @@ export class TouchFinder {
 }
 
 /**
- * What a found thing plays. `above` is its height over the table it's on (m, negative below it), `facing` which way
- * its face points. A low flat thing (a book, a phone) is a wood block; a cup or a bottle a bell, deeper the taller;
- * something below the table (your knees) congas; a face in front of you (a seat back) a frame drum.
+ * What a thing plays, from where it is (no object recognition). `above` is its height over the desk (m, negative
+ * below it), `up` how much its face points up (1 a top, 0 a face toward you), `lateral` how far it is to your side
+ * (m, + right). The table in DIRECTION-13NOV-B.md: low things knock (a book, a phone), cups ring (lower the taller),
+ * bottles chime, a laptop lid is a ride (soft taps only), your knees are congas (left low, right high), the chair's
+ * arms a cowbell. Returns null for somewhere nothing should be (high in the air).
  */
-export function touchVoice(above: number, up: number): { family: 'block' | 'bell' | 'congas' | 'frame' | 'tubular' | 'slit'; size: number; what: string } {
-  if (up < 0.6) return { family: 'frame', size: 0.4, what: 'that' };
-  if (above < -0.08) return { family: 'congas', size: 0.5, what: 'your lap' };
-  if (above < 0.055) return { family: 'block', size: Math.min(1, Math.max(0, above / 0.055)), what: 'that' };
-  if (above < 0.26) return { family: 'bell', size: Math.min(1, Math.max(0, (above - 0.055) / 0.2)), what: 'that' };
-  return { family: 'tubular', size: Math.min(1, (above - 0.26) / 0.2), what: 'that' };
+export function touchVoice(above: number, up: number, lateral = 0): { sound: string; size: number; tone: number; what: string } | null {
+  if (up < 0.6) {
+    // a face toward you: above the desk a lid or a screen (a ride, soft), below it the desk's front or a drawer
+    return above > 0.04 ? { sound: 'ride', size: 0.5, tone: 0, what: 'lid' } : { sound: 'cowbell', size: 0.5, tone: 0, what: 'edge' };
+  }
+  if (above < -0.08) {
+    // under the desk: in front of you your knees, out to the side the chair's arms
+    if (Math.abs(lateral) < 0.25) return { sound: 'congas', size: 0.5, tone: lateral < 0 ? 0 : 2, what: 'knee' };
+    return { sound: 'cowbell', size: 0.5, tone: lateral < 0 ? 0 : 1, what: 'arm' };
+  }
+  if (above < 0.04) return { sound: 'block', size: Math.min(1, Math.max(0, above / 0.04)), tone: 0, what: 'flat' };
+  if (above < 0.12) return { sound: 'bell', size: Math.min(1, (above - 0.04) / 0.08), tone: 0, what: 'cup' };
+  if (above < 0.36) return { sound: 'chime', size: Math.min(1, (above - 0.12) / 0.24), tone: 0, what: 'tall' };
+  return null;
+}
+
+export interface Box {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+/** A pad's footprint after a hit at (x, z) on it (its frame): it grows to cover where you hit, plus `r`. Null if it didn't grow. */
+export function grow(b: Box, x: number, z: number, r = 0.04): Box | null {
+  if (x - r >= b.minX && x + r <= b.maxX && z - r >= b.minZ && z + r <= b.maxZ) return null;
+  return { minX: Math.min(b.minX, x - r), maxX: Math.max(b.maxX, x + r), minZ: Math.min(b.minZ, z - r), maxZ: Math.max(b.maxZ, z + r) };
+}
+
+/** A low flat thing that turns out wider than 25 cm (a keyboard, a tray) is keys. */
+export function becomesKeys(b: Box, top: boolean, sound: string | null, what: string): boolean {
+  return top && sound === 'block' && what === 'flat' && b.maxX - b.minX > 0.25;
+}
+
+/** Two palms meeting fast: a clap (distance now and a frame ago, m; dt, s). */
+export function isClap(d: number, dPrev: number, dt: number): boolean {
+  return d < 0.07 && dt > 0 && (dPrev - d) / dt > 0.7;
 }

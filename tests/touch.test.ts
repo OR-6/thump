@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TouchFinder, touchVoice, type P3 } from '../src/room/touch.js';
+import { TouchFinder, becomesKeys, grow, isClap, touchVoice, type P3 } from '../src/room/touch.js';
 
 const DT = 1 / 72;
 
@@ -71,11 +71,30 @@ describe('finding things by touch', () => {
     }
     expect(hits).toBe(0);
   });
-  it('what a found thing plays, by how high it is and which way it faces', () => {
-    expect(touchVoice(0.03, 1).family).toBe('block');
-    expect(touchVoice(0.1, 1).family).toBe('bell');
-    expect(touchVoice(0.22, 1).size).toBeGreaterThan(touchVoice(0.1, 1).size);
-    expect(touchVoice(-0.2, 1).family).toBe('congas');
-    expect(touchVoice(0.1, 0).family).toBe('frame');
+  it('what a thing plays, from where it is: book, mug, bottle, laptop lid, knees, chair arm, mid-air', () => {
+    expect(touchVoice(0.02, 1)?.sound).toBe('block');
+    expect(touchVoice(0.09, 1)?.sound).toBe('bell');
+    expect(touchVoice(0.11, 1)!.size).toBeGreaterThan(touchVoice(0.06, 1)!.size);
+    expect(touchVoice(0.25, 1)?.sound).toBe('chime');
+    expect(touchVoice(0.15, 0.1)?.sound).toBe('ride');
+    expect(touchVoice(-0.2, 1, -0.1)?.sound).toBe('congas');
+    expect(touchVoice(-0.2, 1, -0.1)!.tone).toBeLessThan(touchVoice(-0.2, 1, 0.1)!.tone);
+    expect(touchVoice(-0.15, 1, 0.35)?.sound).toBe('cowbell');
+    expect(touchVoice(0.5, 1)).toBeNull();
+  });
+  it('a keyboard: taps swept across a low flat thing grow it, and past 25 cm wide it becomes keys', () => {
+    let b = { minX: -0.04, maxX: 0.04, minZ: -0.04, maxZ: 0.04 };
+    for (const x of [0.05, 0.1, 0.15, -0.06, -0.1]) b = grow(b, x, 0) ?? b;
+    expect(b.maxX - b.minX).toBeGreaterThan(0.25);
+    expect(becomesKeys(b, true, 'block', 'flat')).toBe(true);
+    // a mug never does, however you hit it
+    expect(becomesKeys(b, true, 'bell', 'cup')).toBe(false);
+    // a hit inside it changes nothing
+    expect(grow(b, 0, 0)).toBeNull();
+  });
+  it('a clap is two palms meeting fast; hands drifting together are not', () => {
+    expect(isClap(0.05, 0.08, 1 / 72)).toBe(true);
+    expect(isClap(0.05, 0.052, 1 / 72)).toBe(false);
+    expect(isClap(0.12, 0.2, 1 / 72)).toBe(false);
   });
 });

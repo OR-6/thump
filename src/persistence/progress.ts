@@ -18,6 +18,24 @@ export interface SavedKit {
 }
 
 /** An instrument found in a room, saved relative to that room's persistent anchor. */
+/** A thing on the desk found by touch, in the kit's frame. */
+export interface SavedPad {
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  /** Its extent (m). */
+  w: number;
+  /** What it plays (a bank id). */
+  sound: string;
+  size: number;
+  tone: number;
+  /** What its position said it was ('cup', 'flat', 'knee'…). */
+  what: string;
+}
+
 export interface SavedInstrument {
   family: string;
   /** The player swapped it to this instrument. */
@@ -51,6 +69,8 @@ export interface Progress {
   bandLevel?: number;
   /** What the desk's row of bars plays (unset: the balafon). */
   desk?: string;
+  /** The things on the desk found by touch and kept. */
+  pads?: SavedPad[];
 }
 
 const KEY = 'progress.v1';
@@ -79,6 +99,11 @@ export function loadProgress(): Progress {
   const k = r.kit as SavedKit | undefined;
   if (k && typeof k.uuid === 'string' && [k.x, k.y, k.z, k.yaw].every((n) => typeof n === 'number' && Number.isFinite(n))) p.kit = { uuid: k.uuid, x: k.x, y: k.y, z: k.z, yaw: k.yaw };
   if (typeof r.desk === 'string' && r.desk.length < 20) p.desk = r.desk;
+  if (Array.isArray(r.pads))
+    p.pads = (r.pads as SavedPad[])
+      .filter((q) => !!q && [q.x, q.y, q.z, q.nx, q.ny, q.nz, q.w, q.size, q.tone].every((n) => typeof n === 'number' && Number.isFinite(n)) && typeof q.sound === 'string' && typeof q.what === 'string')
+      .slice(-24)
+      .map((q) => ({ x: q.x, y: q.y, z: q.z, nx: q.nx, ny: q.ny, nz: q.nz, w: q.w, sound: q.sound.slice(0, 16), size: q.size, tone: q.tone, what: q.what.slice(0, 12) }));
   if (typeof r.bandLevel === 'number' && r.bandLevel >= 0 && r.bandLevel <= 3) p.bandLevel = Math.round(r.bandLevel);
   if (r.rooms && typeof r.rooms === 'object') {
     for (const [uuid, list] of Object.entries(r.rooms as Record<string, unknown>)) {
