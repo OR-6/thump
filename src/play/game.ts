@@ -26,6 +26,7 @@ export const UNLOCK_AFTER: Record<string, Unlock[]> = {
   'kitchen-clock': ['loops'],
   'night-bus': [],
   'big-room': [],
+  'open-house': [],
 };
 
 export interface GameStage {

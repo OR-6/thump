@@ -105,6 +105,33 @@ export const BIG_ROOM: Song = {
   bed: bed({ roots: [55, 55, 48, 50, 55, 55, 48, 50, 55, 55, 48, 50, 55, 55, 48, 55], bass: 'x.......', chord: 'hold', shaker: false }, 16),
 };
 
+/**
+ * The whole orchestra: a gong to open, the hook on your melody instrument, a chime answering, a bass walking under
+ * it, the kit driving the last eight bars. Over D, F♯ minor, G and A, home to D.
+ */
+export const OPEN_HOUSE: Song = {
+  id: 'open-house',
+  name: 'Open House',
+  mood: 'everyone plays',
+  bpm: 96,
+  bars: 16,
+  beatsPerBar: 4,
+  key: 2,
+  parts: ['kick', 'snare', 'melody', 'chime', 'gong', 'bass'],
+  notes: cat(
+    // the hook, the gong under its first note
+    grid({ gong: 'X.......', melody: '3.4.5...|4.3.2...|3.4.5.7.|5.......' }, 0),
+    // the kit comes in; a chime answers at the end of each bar
+    grid({ kick: 'x...x...|x...x...|x...x...|x...x...', snare: '..x...x.|..x...x.|..x...x.|..x...x.', melody: '3.4.5...|4.3.2...|0.2.3...|2.......', chime: '.......7|.......5|.......7|.......9' }, 4),
+    // the bass walks underneath; the tune moves to the off-beats
+    grid({ kick: 'x...x...|x...x...|x...x...|x...x...', bass: '0...3...|2...0...|0...3...|4...3...', melody: '.3.4...5|.4.3...2|.3.4...5|.7...5..' }, 8),
+    // everyone: the gong again, and home
+    // (no kick under the gong: a room without one plays it on the kick)
+    grid({ gong: 'X.......', kick: '....x...|x...x...|x...x...|X.......', snare: '..x...x.|..x...x.|..x...x.|........', melody: '.3.4.5..|4.3.2...|3.4.5.7.|5.......' }, 12),
+  ),
+  bed: bed({ roots: [62, 66, 67, 69, 62, 66, 67, 69, 62, 66, 67, 69, 62, 66, 67, 62], minor: [1, 5, 9, 13], bass: 'x...5...', chord: 'hold', shaker: true }, 16),
+};
+
 /** Titles for the song of the day (written, not generated). */
 const DAILY_TITLES = [
   'Kettle On', 'Second Post', 'Tuesday Rain', 'Spare Key', 'Low Tide', 'Upstairs', 'Lamplight', 'Back Door',
@@ -162,7 +189,7 @@ export function dailySong(day: string): Song {
 }
 
 /** In order of unlocking. */
-export const SONGS: readonly Song[] = [PORCH_STEP, KITCHEN_CLOCK, NIGHT_BUS, BIG_ROOM];
+export const SONGS: readonly Song[] = [PORCH_STEP, KITCHEN_CLOCK, NIGHT_BUS, BIG_ROOM, OPEN_HOUSE];
 
 export function songById(id: string): Song | undefined {
   return SONGS.find((s) => s.id === id);

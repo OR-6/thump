@@ -63,6 +63,17 @@ describe('charts', () => {
       expect(sec).toBeLessThan(100);
     });
   });
+  it('cast onto a bare table, no two notes land on the same pad or bar at once', () => {
+    for (const s of SONGS) {
+      const c = cast(s.parts, []);
+      const seen = new Set<string>();
+      for (const n of s.notes) {
+        const k = `${noteKey(n, c, (_id, d) => d % 8)}@${n.beat}`;
+        expect(seen.has(k), `${s.name}: ${k}`).toBe(false);
+        seen.add(k);
+      }
+    }
+  });
   it('early songs ask for fewer instruments', () => {
     expect(wants(SONGS[0].parts)).toBe(1);
     expect(wants(SONGS[SONGS.length - 1].parts)).toBeGreaterThanOrEqual(2);
