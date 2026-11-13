@@ -1123,6 +1123,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.watchClaps(dt);
     this.watchCovers(dt);
     this.showFriends();
+    this.panelHover();
     this.tickBand(dt);
     if (this.bandOn && this.kit.inst !== this.lastSentInst) {
       this.lastSentInst = this.kit.inst;
@@ -1489,7 +1490,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.hitTimes.push(performance.now());
     if (this.hitTimes.length > 64) this.hitTimes.splice(0, 32);
     if (s === this.moduleSurface) {
-      const k = zoneAt(s.zones, this.hitAt.x, this.hitAt.z);
+      const k = this.panelItemAt(this.hitAt.x, this.hitAt.z);
       if (k >= 0) this.pressPanel(k);
       if (k >= 0) this.record(s, k, gain, st, null);
       return;
@@ -2129,11 +2130,52 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.standShown = this.placement.phase === 'placed';
   }
   private standShown = false;
+  /** A fingertip near the panel lights the item it's over (before you touch it: you see what you'll press). */
+  private panelHover(): void {
+    let best = -1;
+    let bk = 0;
+    if (this.placement.phase === 'placed') {
+      for (let i = 0; i < 2; i++) {
+        const h = i === 0 ? hands.left : hands.right;
+        if (!h.tracked || h.controller) {
+          this.tipOff[i] = 1;
+          continue;
+        }
+        this.moduleSurface.toZone(h.indexTip, this.o);
+        const off = this.o.y - h.tipRadius;
+        const was = this.tipOff[i];
+        this.tipOff[i] = off;
+        if (off < -0.02 || off > 0.05) continue;
+        const k = this.panelItemAt(this.o.x, this.o.z);
+        if (k < 0) continue;
+        // the fingertip went through the face: that's a press, however gently (like a touch screen)
+        if (was > 0.002 && off <= 0) this.pressPanel(k);
+        const near = 1 - Math.max(0, off) / 0.05;
+        if (near > bk) {
+          bk = near;
+          best = k;
+        }
+      }
+    }
+    this.kit.module.hover(best, bk);
+  }
+
   /** The panel's press zones: one per item on the page showing. */
   private zonesFor = -1;
+  /** The item whose rectangle holds this panel point (strictly: off the panel is nothing), or −1. */
+  private panelItemAt(x: number, z: number): number {
+    const zs = this.moduleSurface.zones;
+    for (let i = 0; i < zs.length; i++) {
+      const q = zs[i];
+      if (Math.abs(x - q.x) <= q.w / 2 && Math.abs(z - q.z) <= q.h / 2) return i;
+    }
+    return -1;
+  }
+  private pageT = -9;
   private panelZones(): void {
     const p = this.kit.module;
     this.zonesFor = p.version;
+    this.pageT = this.clock.t;
     this.moduleSurface.zones = (p.page?.items ?? []).map((it, i) => {
       const k = itemZone(it);
       return { i, shape: 'rect' as const, x: k.x, z: k.z, w: k.w, h: k.h, degree: -1, midi: 0 } satisfies Zone;
@@ -2145,14 +2187,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (this.placement.phase !== 'placed') return;
     this.moduleSurface.toZone(at, this.o);
     if (Math.abs(this.o.y) > 0.035) return;
-    const k = zoneAt(this.moduleSurface.zones, this.o.x, this.o.z);
+    const k = this.panelItemAt(this.o.x, this.o.z);
     if (k >= 0) this.pressPanel(k);
   }
 
+  private tipOff = [1, 1];
+  private panelPressT = -9;
   /** An item on the panel was pressed. */
   private pressPanel(k: number): void {
     const it = this.kit.module.itemAt(k);
     if (!it || it.off) return;
+    // one press per poke (the touch and the strike can both see it), and none just after the page changed (the
+    // finger that pressed is still there, over something new)
+    if (this.clock.t - this.panelPressT < 0.45 || this.clock.t - this.pageT < 0.4) return;
+    this.panelPressT = this.clock.t;
     this.kit.module.pressKey(k);
     audio.tick();
     this.panelAction(it.id);

@@ -37,7 +37,7 @@ async function slapAt(at, n = [0, 1, 0], { speed = 1.0, from = 0.08 } = {}) {
 const poke = async (name) => {
   const st = state();
   await slapAt(st.targets[name], st.targets.panelNormal, { speed: 0.5, from: 0.05 });
-  await wait(250);
+  await wait(500);
 };
 // the menu: from free play, Instruments, then the instrument's card
 const ui = (id) => poke(`ui:${id}`);

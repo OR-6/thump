@@ -59,6 +59,15 @@ export class Panel {
   shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   private sig = '';
   private itemsSig = '';
+  private faceMat: MeshBasicMaterial;
+  private face: Mesh;
+  /** A new page slides in (0 → 1), the panel grows in when it first shows (0 → 1). */
+  private turn = 1;
+  private grow = 0;
+  private pageId = '';
+  /** The item a fingertip is close to, and how close (0 far … 1 touching). */
+  private hoverI = -1;
+  private hoverK = 0;
 
   constructor() {
     this.root.name = 'Panel';
@@ -70,8 +79,10 @@ export class Panel {
     const slab = new Mesh(new BoxGeometry(PANEL.w + 0.008, PANEL.h + 0.008, 0.006), new MeshStandardMaterial({ name: 'Slab', color: 0x111113, roughness: 0.5, metalness: 0.2 }));
     slab.name = 'Slab';
     slab.position.z = -0.0035;
-    const face = new Mesh(new PlaneGeometry(PANEL.w, PANEL.h), new MeshBasicMaterial({ map: this.tex, toneMapped: false }));
+    this.faceMat = new MeshBasicMaterial({ map: this.tex, toneMapped: false, transparent: true });
+    const face = new Mesh(new PlaneGeometry(PANEL.w, PANEL.h), this.faceMat);
     face.name = 'Face';
+    this.face = face;
     this.root.add(slab, face);
     const quad = new PlaneGeometry(1, 1);
     for (let i = 0; i < MAX_ITEMS; i++) {
@@ -100,6 +111,12 @@ export class Panel {
     if (i >= 0 && i < MAX_ITEMS) this.press[i] = 1;
   }
 
+  /** A fingertip near item `i` (−1: none), `k` 0 (5 cm off) … 1 (touching). */
+  hover(i: number, k: number): void {
+    this.hoverI = i;
+    this.hoverK = k;
+  }
+
   set(d: Display): void {
     this.shown = d;
     const p = d.page;
@@ -107,6 +124,10 @@ export class Panel {
     const sig = [p.id, p.title, p.line, d.count, d.stars, d.gold, d.code, Math.round((d.progress ?? 0) * 40), d.combo, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
+    if (p.id !== this.pageId) {
+      this.pageId = p.id;
+      this.turn = 0;
+    }
     this.page = p;
     const isig = p.items.map((i) => `${i.id}@${i.x},${i.y},${i.w},${i.h}`).join(';');
     if (isig !== this.itemsSig) {
@@ -126,12 +147,26 @@ export class Panel {
 
   update(dt: number): void {
     this.pulseT += dt;
+    // the panel grows in when it first shows; a new page slides up into place and fades in
+    if (this.root.visible && this.grow < 1) this.grow = Math.min(1, this.grow + dt / 0.35);
+    const e = 1 - Math.pow(1 - this.grow, 3);
+    this.root.scale.setScalar(0.85 + 0.15 * e);
+    if (this.turn < 1) this.turn = Math.min(1, this.turn + dt / 0.18);
+    const te = 1 - Math.pow(1 - this.turn, 3);
+    this.faceMat.opacity = (0.25 + 0.75 * te) * e;
+    this.face.position.y = -0.008 * (1 - te);
     const items = this.page?.items ?? [];
     for (let i = 0; i < MAX_ITEMS; i++) {
-      this.press[i] = Math.max(0, this.press[i] - dt * 5);
+      // a press flashes and the light pops out a little, then settles
+      this.press[i] = Math.max(0, this.press[i] - dt * 4);
       const want = items[i] && items[i].id === this.shown.focus;
       const p = want ? 0.5 + 0.5 * Math.sin(this.pulseT * 5) : 0;
-      (this.glows[i].material as MeshBasicMaterial).opacity = Math.max(this.press[i] * 0.5, p * 0.18);
+      const h = i === this.hoverI ? this.hoverK : 0;
+      const m = this.glows[i];
+      (m.material as MeshBasicMaterial).opacity = Math.max(this.press[i] * 0.55, p * 0.18, h * 0.2) * te;
+      const pop = 1 + 0.04 * this.press[i];
+      const z = items[i] ? itemZone(items[i]) : null;
+      if (z) m.scale.set(z.w * 0.97 * pop, z.h * 0.94 * pop, 1);
     }
   }
 
