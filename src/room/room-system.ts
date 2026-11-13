@@ -71,7 +71,7 @@ import { PhoneLink } from './phone-link.js';
 import { coop, type CoopStatus } from '../net/coop.js';
 import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
-import { HandMallet, MALLET_HEAD_R } from './hand-mallet.js';
+import { HandMallet, MALLET_HEAD_R, MALLET_LEN, STICK_LEN } from './hand-mallet.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { Dimmer } from './dimmer.js';
 import { FriendSeat } from './friend-seat.js';
@@ -1446,10 +1446,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.pinchHeld[i] = h.tracked && h.pinch.pinching ? this.pinchHeld[i] + delta : 0;
       // a pinch on the stand picks an instrument
       const pinched = h.tracked && !h.controller && h.pinch.pinching;
-      // with the marimba out, a pinch holds a mallet: its head is what strikes (and it's not a swap-pinch)
-      this.malletOn[i] = pinched && this.kit.inst === 'marimba';
+      // with the marimba out a pinch holds a mallet, with the drums a stick: its head is what strikes (and it's not a
+      // swap-pinch)
+      const stick = this.kit.inst === 'drums';
+      this.malletOn[i] = pinched && (this.kit.inst === 'marimba' || stick);
       if (this.malletOn[i]) {
-        HandMallet.tip(h.pinchPoint, h.knuckleIndex, h.palm, this.malletTip[i]);
+        this.handMallets[i].setKind(stick);
+        HandMallet.tip(h.pinchPoint, h.knuckleIndex, h.palm, this.malletTip[i], stick ? STICK_LEN : MALLET_LEN);
         this.sample.pinching = false;
       }
       this.handMallets[i].set(this.malletOn[i], h.pinchPoint, this.malletTip[i], delta);

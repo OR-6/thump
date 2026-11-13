@@ -1,6 +1,7 @@
 /**
- * A marimba mallet in your hand: it appears when you pinch with the marimba out (a birch shaft from between your
- * thumb and finger, a dark yarn head ten centimetres on), and its head is what strikes the bars.
+ * A marimba mallet or a drumstick in your hand: it appears when you pinch with the marimba or the drums out (a birch
+ * shaft and a dark yarn head ten centimetres on; or a hickory stick tapering to a small wooden tip fourteen on), and
+ * its head is what strikes.
  */
 import { CylinderGeometry, Group, Mesh, MeshStandardMaterial, Quaternion, SphereGeometry, Vector3 } from '@iwsdk/core';
 
@@ -8,8 +9,9 @@ const _up = new Vector3(0, 1, 0);
 const _d = new Vector3();
 const _q = new Quaternion();
 
-/** How far the head is from the pinch (m), and its radius. */
+/** How far the head is from the pinch (m), and its radius (a mallet's; a stick reaches further, its tip is small). */
 export const MALLET_LEN = 0.1;
+export const STICK_LEN = 0.14;
 export const MALLET_HEAD_R = 0.012;
 
 export class HandMallet {
@@ -17,6 +19,18 @@ export class HandMallet {
   private shaft: Mesh;
   private head: Mesh;
   private show = 0;
+  private stick = false;
+  private readonly yarn = new MeshStandardMaterial({ name: 'Yarn', color: 0x2b2a30, roughness: 0.95 });
+  private readonly birch = new MeshStandardMaterial({ name: 'Birch', color: 0xd8c39a, roughness: 0.6 });
+  private readonly hickory = new MeshStandardMaterial({ name: 'Hickory', color: 0xe3c896, roughness: 0.45 });
+
+  /** A drumstick (true) or a mallet. */
+  setKind(stick: boolean): void {
+    if (stick === this.stick) return;
+    this.stick = stick;
+    this.shaft.material = stick ? this.hickory : this.birch;
+    this.head.material = stick ? this.hickory : this.yarn;
+  }
 
   constructor() {
     this.group.name = 'HandMallet';
@@ -29,14 +43,14 @@ export class HandMallet {
   }
 
   /** Where the head is for a hand pinching at `pinch` with its knuckles at `knuckle` and palm at `palm` (world). */
-  static tip(pinch: Vector3, knuckle: Vector3, palm: Vector3, out: Vector3): Vector3 {
+  static tip(pinch: Vector3, knuckle: Vector3, palm: Vector3, out: Vector3, len = MALLET_LEN): Vector3 {
     _d.subVectors(knuckle, palm);
     if (_d.lengthSq() < 1e-8) _d.set(0, 0, -1);
     _d.normalize();
     // forward from the hand and a little down, the way you'd hold one
     _d.y -= 0.35;
     _d.normalize();
-    return out.copy(pinch).addScaledVector(_d, MALLET_LEN);
+    return out.copy(pinch).addScaledVector(_d, len);
   }
 
   /** Draw it from the pinch to the head (or let it go). */
@@ -49,8 +63,10 @@ export class HandMallet {
     this.shaft.position.copy(pinch).addScaledVector(_d, 0.5);
     _q.setFromUnitVectors(_up, _d.normalize());
     this.shaft.quaternion.copy(_q);
-    this.shaft.scale.set(1, len * this.show, 1);
+    // (a stick is thinner and ends in a small tip)
+    const t = this.stick ? 0.8 : 1;
+    this.shaft.scale.set(t, len * this.show, t);
     this.head.position.copy(tip);
-    this.head.scale.setScalar(this.show);
+    this.head.scale.setScalar(this.show * (this.stick ? 0.42 : 1));
   }
 }
