@@ -64,6 +64,9 @@ export interface Display {
   /** How far through the song (0..1), and the run of notes hit in a row. */
   progress?: number;
   combo?: number;
+  /** The panel's page (src/ui/menu.ts), and the item that pulses for attention. */
+  page?: import('./menu.js').Page;
+  focus?: string;
 }
 
 const INK = '#f2efe6';

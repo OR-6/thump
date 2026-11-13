@@ -19,7 +19,7 @@ s = await until((x) => x.debug.surfaces.length > 0, 5000);
 const fams = s.debug.surfaces.map((x) => `${x.id}:${x.label || '-'}→${x.family}@${x.reach}`);
 console.log(`surfaces: ${fams.join('  ')}`);
 check('the room has surfaces (planes found)', s.debug.planes > 0 && s.debug.surfaces.length > 1, `planes=${s.debug.planes} meshes=${s.debug.meshes}`);
-check('the module says pick one', s.game.display.line === 'Pick one', s.game.display.line);
+check('the panel shows the main menu', s.game.display.page?.id === 'main' && s.game.display.page?.title === 'THUMP', `${s.game.display.page?.id} ${s.game.display.page?.title}`);
 const look = [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05];
 shot('room-01-placed', look);
 
@@ -88,13 +88,6 @@ shot('room-02-kit', look);
   s = state();
   pads = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
   check('a second tap keeps it (saved with the desk)', pads.length === 1 && pads[0].kept === true && (s.progress.pads?.length ?? 0) === 1, JSON.stringify(pads) + ' saved=' + JSON.stringify(s.progress.pads));
-  // ▶ on the module: the mug's next sound
-  const next = s.targets['key-next'];
-  const nx = [next[0], next[1], next[2]];
-  await slapAt(nx, s.targets.panelNormal, { speed: 0.5, from: 0.05 });
-  s = state();
-  pads = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
-  check('▶ changes the mug to the next sound in the bank', pads.length === 1 && pads[0]?.sound && !/^(bell|chime)$/.test(pads[0].sound), `${pads.map((p) => p.sound)} display=${s.game.display.line}`);
   shot('room-02b-cup', [cup[0], DESK_Y, cup[2]]);
   xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
   await wait(300);
@@ -199,10 +192,16 @@ shot('room-04-module', look);
 }
 
 // tap PLAY on the module: a song starts (Kick Start, as written), the band in, your part on the drums
-const play = s.targets['key-play'];
-await slapAt(play, s.targets.panelNormal, { speed: 0.5, from: 0.05 });
+// SONGS on the panel, then PLAY
+if (!s.targets['ui:nav:songs']) {
+  await slapAt(s.targets['ui:nav:main'], s.targets.panelNormal, { speed: 0.5, from: 0.05 });
+  s = state();
+}
+await slapAt(s.targets['ui:nav:songs'], s.targets.panelNormal, { speed: 0.5, from: 0.05 });
+s = state();
+await slapAt(s.targets['ui:play'], s.targets.panelNormal, { speed: 0.5, from: 0.05 });
 s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 3000);
-check('PLAY on the module plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && /Kick Start/.test(s.game.display.line), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
+check('SONGS, then PLAY, plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && /Kick Start/.test(s.game.display.line), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
 s = await until((x) => x.game.motes > 0, 8000);
 check("the song's notes fly to the drums", s.game.motes > 0, `motes=${s.game.motes} ${s.game.display.line} / ${s.game.display.sub}`);
 shot('room-05-song', look);

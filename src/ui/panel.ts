@@ -1,13 +1,14 @@
 /**
  * The panel: the game's screen, floating just above the back of the desk and leaning back toward you, the way a VR
- * game's menu does and laid out like a music game's: instrument tabs along the top, a screen in the middle (choosing
- * a song, the song you're playing, your results), and five big buttons along the bottom. You poke a button with a
- * fingertip (or pinch it): it lights and clicks. Drawn on one canvas; presses and pulses are light quads on top,
- * so nothing redraws every frame. Kit-local: centred over the desk behind the instrument.
+ * game's menu does, laid out like a music game's. It draws whatever page it's given (src/ui/menu.ts): a title, a
+ * line, and things to press (menu tiles, instrument cards, song rows, choices, buttons), plus a song's progress and
+ * count or the results' stars. You poke an item with a fingertip, or pinch it: it lights and clicks. One canvas;
+ * presses and pulses are light quads on top, so nothing redraws every frame. Kit-local, centred behind the instrument.
  */
 import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, SRGBColorSpace } from '@iwsdk/core';
 import { FONT, MARKER, whenFonts } from './fonts.js';
-import { KEYS, star, type Display, type ModuleKey } from './module.js';
+import { star, type Display } from './module.js';
+import type { Item, Page } from './menu.js';
 import { ICON } from '../stand/stand.js';
 
 /** The panel in kit-local space: centre, size (m), and how far it leans back (radians). */
@@ -15,38 +16,16 @@ export const PANEL = { y: 0.19, z: -0.2, w: 0.34, h: 0.2, lean: 0.47 } as const;
 /** Canvas pixels (4 per millimetre). */
 const CW = 1360;
 const CH = 800;
-
-/** A spot you can press, in canvas pixels. */
-interface Spot {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-/** 0–4 the buttons (◀ PLAY ▶ and two more), 5–9 the instrument tabs, 10 the gear. */
-export const SPOTS: readonly Spot[] = [
-  ...[0, 1, 2, 3, 4].map((i) => ({ x: 24 + i * 266, y: 590, w: 248, h: 190 })),
-  ...[0, 1, 2, 3, 4].map((i) => ({ x: 24 + i * 266, y: 18, w: 248, h: 150 })),
-  { x: 1248, y: 196, w: 88, h: 88 },
-];
-export const TAB0 = 5;
-export const GEAR = 10;
-
-export interface Tab {
-  id: string;
-  name: string;
-  color: number;
-}
+const MAX_ITEMS = 16;
 
 const INK = '#f2efe6';
 const SOFT = '#bdb8ad';
-const DIM = '#55534f';
+const DIMI = '#6a6862';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
-/** A spot's centre and size in the panel's zone frame (x right, z up the panel, metres). */
-export function spotZone(i: number): { x: number; z: number; w: number; h: number } {
-  const s = SPOTS[i];
-  return { x: ((s.x + s.w / 2) / CW - 0.5) * PANEL.w, z: (0.5 - (s.y + s.h / 2) / CH) * PANEL.h, w: (s.w / CW) * PANEL.w, h: (s.h / CH) * PANEL.h };
+/** An item's centre and size in the panel's zone frame (x right, z up the panel, metres). */
+export function itemZone(it: { x: number; y: number; w: number; h: number }): { x: number; z: number; w: number; h: number } {
+  return { x: ((it.x + it.w / 2) / CW - 0.5) * PANEL.w, z: (0.5 - (it.y + it.h / 2) / CH) * PANEL.h, w: (it.w / CW) * PANEL.w, h: (it.h / CH) * PANEL.h };
 }
 
 function rounded(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -59,9 +38,10 @@ function rounded(g: CanvasRenderingContext2D, x: number, y: number, w: number, h
   g.closePath();
 }
 
-function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: number, min: number, room: number): void {
+function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: number, min: number, room: number): number {
   g.font = `${weight} ${px}px ${FONT}`;
   while (g.measureText(text).width > room && px > min) g.font = `${weight} ${--px}px ${FONT}`;
+  return px;
 }
 
 export class Panel {
@@ -71,12 +51,14 @@ export class Panel {
   private canvas = document.createElement('canvas');
   private tex: CanvasTexture;
   private glows: Mesh[] = [];
-  private press = new Float32Array(SPOTS.length);
+  private press = new Float32Array(MAX_ITEMS);
   private pulseT = 0;
-  private tabs: Tab[] = [];
-  private current = '';
+  /** What's on it now, and a number that changes whenever its items do (the hit zones follow). */
+  page: Page | null = null;
+  version = 0;
   shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   private sig = '';
+  private itemsSig = '';
 
   constructor() {
     this.root.name = 'Panel';
@@ -85,71 +67,77 @@ export class Panel {
     this.tex = new CanvasTexture(this.canvas);
     this.tex.colorSpace = SRGBColorSpace;
     this.tex.anisotropy = 4;
-    // a thin dark slab with the screen on its face
     const slab = new Mesh(new BoxGeometry(PANEL.w + 0.008, PANEL.h + 0.008, 0.006), new MeshStandardMaterial({ name: 'Slab', color: 0x111113, roughness: 0.5, metalness: 0.2 }));
     slab.name = 'Slab';
     slab.position.z = -0.0035;
     const face = new Mesh(new PlaneGeometry(PANEL.w, PANEL.h), new MeshBasicMaterial({ map: this.tex, toneMapped: false }));
     face.name = 'Face';
     this.root.add(slab, face);
-    // a light quad over each spot: a press flashes it, the button the game wants pulses
-    SPOTS.forEach((_, i) => {
-      const z = spotZone(i);
-      const m = new Mesh(new PlaneGeometry(z.w * 0.96, z.h * 0.92), new MeshBasicMaterial({ color: 0xfff2dc, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
-      m.position.set(z.x, z.z, 0.0012);
+    const quad = new PlaneGeometry(1, 1);
+    for (let i = 0; i < MAX_ITEMS; i++) {
+      const m = new Mesh(quad, new MeshBasicMaterial({ color: 0xfff2dc, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
       m.renderOrder = 8;
+      m.visible = false;
       this.glows.push(m);
       this.root.add(m);
-    });
+    }
     this.frame.rotation.x = Math.PI / 2;
     this.root.add(this.frame);
     this.root.position.set(0, PANEL.y, PANEL.z);
     this.root.rotation.x = -PANEL.lean;
-    this.draw(this.shown);
-    whenFonts(() => this.draw(this.shown));
+    whenFonts(() => {
+      this.sig = '';
+      this.set(this.shown);
+    });
   }
 
-  /** The instruments for the tabs, and which is out. */
-  setTabs(tabs: readonly Tab[], current: string): void {
-    if (tabs.length === this.tabs.length && current === this.current && tabs.every((t, i) => t.id === this.tabs[i].id)) return;
-    this.tabs = tabs.slice();
-    this.current = current;
-    this.sig = '';
-    this.draw(this.shown);
+  /** The item a press landed on (by its index in the page). */
+  itemAt(i: number): Item | null {
+    return this.page?.items[i] ?? null;
   }
 
-  /** Which tab's instrument a spot is (or null). */
-  tabAt(spot: number): string | null {
-    return spot >= TAB0 && spot < TAB0 + 5 ? (this.tabs[spot - TAB0]?.id ?? null) : null;
-  }
-
-  /** Spot `i` was pressed. */
   pressKey(i: number): void {
-    if (i >= 0 && i < this.press.length) this.press[i] = 1;
+    if (i >= 0 && i < MAX_ITEMS) this.press[i] = 1;
   }
 
   set(d: Display): void {
     this.shown = d;
-    const sig = [d.screen, d.line, d.sub, d.count, d.stars, d.gold, d.code, d.keys?.join('|'), d.keyLabels?.join('|'), d.songCard?.name, d.songCard?.stars, d.songCard?.pos, d.inst?.name, d.inst?.detail, Math.round((d.progress ?? 0) * 40), d.combo, Math.round(d.meter * 12)].join('~');
+    const p = d.page;
+    if (!p) return;
+    const sig = [p.id, p.title, p.line, d.count, d.stars, d.gold, d.code, Math.round((d.progress ?? 0) * 40), d.combo, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
-    this.draw(d);
+    this.page = p;
+    const isig = p.items.map((i) => `${i.id}@${i.x},${i.y},${i.w},${i.h}`).join(';');
+    if (isig !== this.itemsSig) {
+      this.itemsSig = isig;
+      this.version++;
+      this.glows.forEach((m, i) => {
+        const it = p.items[i];
+        m.visible = !!it;
+        if (!it) return;
+        const z = itemZone(it);
+        m.position.set(z.x, z.z, 0.0012);
+        m.scale.set(z.w * 0.97, z.h * 0.94, 1);
+      });
+    }
+    this.draw(d, p);
   }
 
   update(dt: number): void {
     this.pulseT += dt;
-    const want = this.shown.pulse ? KEYS.indexOf(this.shown.pulse) : -1;
-    for (let i = 0; i < this.glows.length; i++) {
+    const items = this.page?.items ?? [];
+    for (let i = 0; i < MAX_ITEMS; i++) {
       this.press[i] = Math.max(0, this.press[i] - dt * 5);
-      const p = i === want ? 0.5 + 0.5 * Math.sin(this.pulseT * 5) : 0;
-      (this.glows[i].material as MeshBasicMaterial).opacity = Math.max(this.press[i] * 0.55, p * 0.22);
+      const want = items[i] && items[i].id === this.shown.focus;
+      const p = want ? 0.5 + 0.5 * Math.sin(this.pulseT * 5) : 0;
+      (this.glows[i].material as MeshBasicMaterial).opacity = Math.max(this.press[i] * 0.5, p * 0.18);
     }
   }
 
-  private draw(d: Display): void {
+  private draw(d: Display, p: Page): void {
     const g = this.canvas.getContext('2d')!;
     g.clearRect(0, 0, CW, CH);
-    // the screen: near-black glass with a faint warm edge
     rounded(g, 0, 0, CW, CH, 36);
     g.fillStyle = '#0d0d0f';
     g.fill();
@@ -157,177 +145,131 @@ export class Panel {
     g.strokeStyle = '#2b2a28';
     g.stroke();
     g.textBaseline = 'alphabetic';
-    this.drawTabs(g);
-    this.drawScreen(g, d);
-    this.drawButtons(g, d);
-    // the gear: settings
-    const s = SPOTS[GEAR];
-    g.save();
-    g.translate(s.x + s.w / 2, s.y + s.h / 2);
-    g.strokeStyle = SOFT;
-    g.lineWidth = 7;
-    g.beginPath();
-    g.arc(0, 0, 18, 0, Math.PI * 2);
-    g.stroke();
-    for (let k = 0; k < 8; k++) {
-      g.rotate(Math.PI / 4);
+    // the header: the title, and the line under it
+    const hasBack = p.items.some((i) => i.id === 'back' && i.y < 120);
+    const tx = hasBack ? 220 : 40;
+    const right = p.items.some((i) => i.y < 120 && i.x > CW / 2) ? CW - 280 : CW - 40;
+    g.fillStyle = INK;
+    fit(g, p.title, '700', p.id === 'main' ? 76 : 66, 36, right - tx);
+    if (p.id === 'main') g.font = `76px ${MARKER}`;
+    g.fillText(p.title, tx, 84);
+    if (p.line) {
       g.fillStyle = SOFT;
-      g.fillRect(-6, -34, 12, 12);
+      fit(g, p.line, '500', 34, 22, right - tx);
+      g.fillText(p.line, tx, 128);
     }
-    g.restore();
+    if (d.code && p.id !== 'band') {
+      g.fillStyle = '#7fe39a';
+      g.font = `600 30px ${FONT}`;
+      const t = `BAND ${d.code}`;
+      g.fillText(t, CW - 40 - g.measureText(t).width, 128);
+    }
+    if (p.body === 'song') this.drawSong(g, d);
+    if (p.body === 'results') this.drawResults(g, d);
+    p.items.forEach((it) => this.drawItem(g, it));
     this.tex.needsUpdate = true;
   }
 
-  private drawTabs(g: CanvasRenderingContext2D): void {
-    this.tabs.forEach((t, i) => {
-      const s = SPOTS[TAB0 + i];
-      const on = t.id === this.current;
-      rounded(g, s.x, s.y, s.w, s.h, 22);
-      g.fillStyle = on ? '#24221f' : '#161618';
+  private drawSong(g: CanvasRenderingContext2D, d: Display): void {
+    const X = 40;
+    const R = CW - 40;
+    if (d.count > 0) {
+      g.fillStyle = INK;
+      g.font = `700 300px ${FONT}`;
+      const t = String(d.count);
+      g.fillText(t, (CW - g.measureText(t).width) / 2, 470);
+      return;
+    }
+    if (d.stars >= 0) for (let i = 0; i < 3; i++) star(g, R - 210 + i * 76, 230, 30, i < d.stars, d.gold);
+    if (d.combo && d.combo >= 4) {
+      g.fillStyle = '#ffd34d';
+      g.font = `700 120px ${FONT}`;
+      const t = `${d.combo}`;
+      g.fillText(t, X, 340);
+      g.fillStyle = SOFT;
+      g.font = `500 36px ${FONT}`;
+      g.fillText('in a row', X + 8, 390);
+    }
+    if (d.progress !== undefined && d.progress >= 0) {
+      g.fillStyle = '#2a2927';
+      rounded(g, X, 470, R - X, 22, 11);
       g.fill();
-      g.lineWidth = on ? 7 : 3;
-      g.strokeStyle = on ? hex(t.color) : '#2f2e2c';
-      g.stroke();
-      // the instrument, drawn
+      g.fillStyle = INK;
+      rounded(g, X, 470, Math.max(22, (R - X) * Math.min(1, d.progress)), 22, 11);
+      g.fill();
+    }
+    if (d.meter >= 0) {
+      g.fillStyle = '#2a2927';
+      g.fillRect(X, 520, R - X, 10);
+      g.fillStyle = '#7fe39a';
+      g.fillRect(X, 520, (R - X) * d.meter, 10);
+    }
+  }
+
+  private drawResults(g: CanvasRenderingContext2D, d: Display): void {
+    for (let i = 0; i < 3; i++) star(g, CW / 2 - 170 + i * 170, 330, 70, i < Math.max(0, d.stars), d.gold);
+  }
+
+  private drawItem(g: CanvasRenderingContext2D, it: Item): void {
+    const accent = it.color !== undefined ? hex(it.color) : it.kind === 'play' ? '#ff5a3c' : '#ffa630';
+    const r = it.kind === 'chip' || it.kind === 'button' ? 22 : 28;
+    rounded(g, it.x, it.y, it.w, it.h, r);
+    g.fillStyle = it.off ? '#121214' : it.on ? '#2a2620' : it.kind === 'play' ? '#2e1d18' : '#1b1b1e';
+    g.fill();
+    g.lineWidth = it.on ? 8 : 3;
+    g.strokeStyle = it.off ? '#1e1e20' : it.on || it.kind === 'play' ? accent : '#38372f';
+    g.stroke();
+    const ink = it.off ? DIMI : INK;
+    g.fillStyle = ink;
+    if (it.kind === 'card' || (it.icon && it.kind !== 'row')) {
+      // an instrument, drawn, with its name under it
+      const S = Math.min(it.h * (it.kind === 'card' ? 0.62 : 0.55), it.w * 0.7);
       g.save();
-      g.translate(s.x + s.w / 2 - 50, s.y + 8);
-      g.strokeStyle = on ? INK : SOFT;
-      g.fillStyle = on ? INK : SOFT;
+      g.translate(it.x + (it.kind === 'card' ? (it.w - S) / 2 : it.w - S - 24), it.y + (it.kind === 'card' ? 10 : (it.h - S) / 2));
+      g.strokeStyle = it.on ? INK : SOFT;
+      g.fillStyle = it.on ? INK : SOFT;
       g.lineWidth = 5;
       g.lineCap = 'round';
-      ICON[t.id]?.(g, 100);
+      if (it.icon) ICON[it.icon]?.(g, S);
       g.restore();
-      g.fillStyle = on ? INK : SOFT;
-      g.font = `600 34px ${FONT}`;
-      const n = t.name.toUpperCase();
-      g.fillText(n, s.x + (s.w - g.measureText(n).width) / 2, s.y + s.h - 16);
-    });
-  }
-
-  /** The middle: what you're choosing, the song you're in, or how it went. */
-  private drawScreen(g: CanvasRenderingContext2D, d: Display): void {
-    const X = 40;
-    const Y0 = 196;
-    const R = CW - 140;
-    if (d.screen === 'home' && d.songCard) {
-      // left: the instrument that's out; right: the song card
-      const inst = d.inst;
-      g.fillStyle = SOFT;
-      g.font = `600 30px ${FONT}`;
-      g.fillText('ON THE DESK', X, Y0 + 40);
-      g.fillStyle = INK;
-      fit(g, inst?.name ?? d.line, '700', 84, 44, 520);
-      g.fillText(inst?.name ?? d.line, X, Y0 + 124);
-      g.fillStyle = SOFT;
-      fit(g, inst?.detail ?? d.sub, '500', 40, 26, 540);
-      g.fillText(inst?.detail ?? d.sub, X, Y0 + 180);
-      if (d.code) {
-        g.fillStyle = '#7fe39a';
-        g.font = `600 38px ${FONT}`;
-        g.fillText(`BAND ${d.code}`, X, Y0 + 300);
+      g.fillStyle = ink;
+      if (it.kind === 'card') {
+        fit(g, it.label, '700', Math.min(48, it.h * 0.2), 22, it.w - 20);
+        g.fillText(it.label, it.x + (it.w - g.measureText(it.label).width) / 2, it.y + it.h - 22);
+        return;
       }
-      // the card: a strip of tape with the song's name, its tempo, where it is in the list, its stars
-      const c = d.songCard;
-      const cx = 640;
-      const cw = 560;
-      rounded(g, cx, Y0 + 10, cw, 340, 24);
-      g.fillStyle = '#1a1917';
-      g.fill();
-      g.lineWidth = 3;
-      g.strokeStyle = '#34322e';
-      g.stroke();
-      g.fillStyle = SOFT;
-      g.font = `600 30px ${FONT}`;
-      g.fillText(`SONG ${c.pos}`, cx + 28, Y0 + 56);
-      g.save();
-      g.translate(cx + 24, Y0 + 82);
-      g.rotate(-0.02);
-      g.fillStyle = '#ece2c6';
-      g.fillRect(0, 0, cw - 48, 92);
-      g.fillStyle = '#17150f';
-      g.font = `64px ${MARKER}`;
-      let px = 64;
-      while (g.measureText(c.name).width > cw - 90 && px > 36) g.font = `${--px}px ${MARKER}`;
-      g.fillText(c.name, 22, 68);
-      g.restore();
-      g.fillStyle = INK;
-      g.font = `500 38px ${FONT}`;
-      g.fillText(c.meta, cx + 28, Y0 + 238);
-      for (let i = 0; i < 3; i++) star(g, cx + 54 + i * 70, Y0 + 300, 26, i < c.stars);
-      g.fillStyle = SOFT;
-      g.font = `500 32px ${FONT}`;
-      const hint = d.line === 'Play a song?' ? 'Tap PLAY' : d.sub;
-      g.fillText(hint.length > 28 ? '' : hint, cx + 270, Y0 + 312);
+    }
+    if (it.kind === 'big') {
+      fit(g, it.label, '700', 76, 36, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+      g.fillText(it.label, it.x + 34, it.y + it.h / 2 + 10);
+      if (it.sub) {
+        g.fillStyle = it.off ? DIMI : SOFT;
+        fit(g, it.sub, '500', 36, 22, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+        g.fillText(it.sub, it.x + 34, it.y + it.h / 2 + 62);
+      }
       return;
     }
-    if (d.screen === 'results') {
-      // stars big, then the notes, then the line under it
-      for (let i = 0; i < 3; i++) star(g, X + 70 + i * 130, Y0 + 110, 52, i < Math.max(0, d.stars), d.gold);
-      g.fillStyle = INK;
-      fit(g, d.line, '700', 96, 50, R - 460);
-      g.fillText(d.line, X + 440, Y0 + 140);
-      g.fillStyle = SOFT;
-      fit(g, d.sub, '500', 52, 30, R - X);
-      g.fillText(d.sub, X, Y0 + 270);
+    if (it.kind === 'row') {
+      g.font = `${Math.min(56, it.h * 0.55)}px ${MARKER}`;
+      g.fillText(it.label, it.x + 28, it.y + it.h * 0.62);
+      if (it.sub) {
+        g.fillStyle = it.off ? DIMI : SOFT;
+        g.font = `500 30px ${FONT}`;
+        g.fillText(it.sub, it.x + 420, it.y + it.h * 0.6);
+      }
+      if (it.stars !== undefined && !it.off) for (let i = 0; i < 3; i++) star(g, it.x + it.w - 150 + i * 50, it.y + it.h / 2, 18, i < it.stars);
       return;
     }
-    if (d.screen === 'song' || d.screen === 'page' || !d.screen) {
-      const room = d.count > 0 ? R - 260 : R - X;
-      g.fillStyle = INK;
-      fit(g, d.line, '700', 92, 44, room);
-      g.fillText(d.line, X, Y0 + 110);
-      g.fillStyle = SOFT;
-      fit(g, d.sub, '500', 56, 30, room);
-      g.fillText(d.sub, X, Y0 + 190);
-      if (d.count > 0) {
-        g.fillStyle = INK;
-        g.font = `700 240px ${FONT}`;
-        const t = String(d.count);
-        g.fillText(t, CW - 70 - g.measureText(t).width, Y0 + 260);
-      }
-      if (d.stars >= 0) for (let i = 0; i < 3; i++) star(g, CW - 260 + i * 70, Y0 + 60, 26, i < d.stars, d.gold);
-      if (d.combo && d.combo >= 4) {
-        g.fillStyle = '#ffd34d';
-        g.font = `700 54px ${FONT}`;
-        const t = `x${d.combo}`;
-        g.fillText(t, CW - 70 - g.measureText(t).width, Y0 + 190);
-      }
-      // the song so far
-      if (d.progress !== undefined && d.progress >= 0) {
-        g.fillStyle = '#2a2927';
-        g.fillRect(X, Y0 + 300, R - X, 14);
-        g.fillStyle = INK;
-        g.fillRect(X, Y0 + 300, (R - X) * Math.min(1, d.progress), 14);
-      }
-      if (d.meter >= 0) {
-        g.fillStyle = '#2a2927';
-        g.fillRect(X, Y0 + 340, R - X, 10);
-        g.fillStyle = '#7fe39a';
-        g.fillRect(X, Y0 + 340, (R - X) * d.meter, 10);
-      }
+    // chip, button, play: the label in the middle (a second line under it)
+    const lines = it.label.split('\n');
+    const px = fit(g, lines.reduce((a, b) => (a.length > b.length ? a : b)), '700', it.kind === 'play' ? 72 : 50, 22, it.w - (it.icon ? it.h * 0.7 : 0) - 30);
+    const cx = it.x + (it.w - (it.icon ? it.h * 0.55 : 0)) / 2;
+    const top = it.y + it.h / 2 - ((lines.length - 1) * px * 1.1) / 2 + px * 0.35 - (it.sub ? 18 : 0);
+    lines.forEach((t, j) => g.fillText(t, cx - g.measureText(t).width / 2, top + j * px * 1.1));
+    if (it.sub) {
+      g.fillStyle = it.off ? DIMI : SOFT;
+      fit(g, it.sub, '500', 30, 18, it.w - 30);
+      g.fillText(it.sub, cx - g.measureText(it.sub).width / 2, top + 50);
     }
-  }
-
-  private drawButtons(g: CanvasRenderingContext2D, d: Display): void {
-    const labels = d.keyLabels ?? d.keys ?? ['<', 'PLAY', '>', '', ''];
-    KEYS.forEach((k: ModuleKey, i) => {
-      const s = SPOTS[i];
-      const text = labels[i] ?? '';
-      const off = !text;
-      rounded(g, s.x, s.y, s.w, s.h, 26);
-      g.fillStyle = off ? '#111113' : k === 'play' ? '#2b2420' : '#1d1d20';
-      g.fill();
-      g.lineWidth = 4;
-      g.strokeStyle = off ? '#1d1d1f' : k === 'play' ? '#ff5a3c' : '#3a3936';
-      g.stroke();
-      if (off) return;
-      g.fillStyle = INK;
-      const lines = text.split('\n');
-      let px = lines.length > 1 ? 44 : text.length <= 2 ? 96 : 56;
-      g.font = `700 ${px}px ${FONT}`;
-      while (lines.some((t) => g.measureText(t).width > s.w - 24) && px > 24) g.font = `700 ${--px}px ${FONT}`;
-      lines.forEach((t, j) => g.fillText(t, s.x + (s.w - g.measureText(t).width) / 2, s.y + s.h / 2 + px * 0.36 + (j - (lines.length - 1) / 2) * px * 1.1));
-    });
-    void DIM;
   }
 }

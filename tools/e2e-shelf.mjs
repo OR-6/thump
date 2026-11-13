@@ -39,33 +39,41 @@ const poke = async (name) => {
   await slapAt(st.targets[name], st.targets.panelNormal, { speed: 0.5, from: 0.05 });
   await wait(250);
 };
-const key = (k) => poke(`key-${k}`);
-const tab = (id) => poke(`tile-${id}`);
+// the menu: from free play, Instruments, then the instrument's card
+const ui = (id) => poke(`ui:${id}`);
+const tab = async (id) => {
+  if (!state().targets[`ui:inst:${id}`]) await ui('nav:instruments');
+  await ui(`inst:${id}`);
+};
 
 await goto('debug=1');
 let s = await placeKit();
 await slapAt([s.targets.table[0] + 0.06, DESK_Y, s.targets.table[2]]);
 s = await until((x) => x.game.found.includes('kit'), 3000);
 check('the drums come out on the first slap', s.game.found.includes('kit') && s.targets.inst?.[0] === 0, JSON.stringify(s.targets.inst));
+check('and the panel shows free play', s.game.display.page?.id === 'free' && s.game.display.page?.title === 'Drums', `${s.game.display.page?.id} ${s.game.display.page?.title}`);
 await wait(5500);
 const look = [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05];
 
 await tab('piano');
 s = state();
-check('the piano tab puts a piano on the desk', s.targets.inst?.[0] === 1 && s.game.display.line === 'Piano', `${s.game.display.line} / ${s.game.display.sub} inst=${s.targets.inst}`);
-check('its last two buttons say NOTES and SOUND', JSON.stringify(s.game.display.keys) === JSON.stringify(['<', 'PLAY', '>', 'NOTES', 'SOUND']), JSON.stringify(s.game.display.keys));
+check('Instruments, then the piano card, puts a piano on the desk', s.targets.inst?.[0] === 1 && s.game.display.page?.title === 'Piano', `${s.game.display.page?.id} ${s.game.display.page?.title} inst=${s.targets.inst}`);
 let before = s.debug.hits;
 await slapAt(s.targets.inst2);
 s = state();
 check('a piano key plays its note', s.debug.hits > before && s.debug.lastHit?.family === 'piano' && s.debug.lastHit?.zone === 2, JSON.stringify(s.debug.lastHit));
 shot('shelf-piano', look);
-await key('jam');
+await ui('nav:inst');
 s = state();
-check('NOTES changes the scale', /^Notes: (Sad|Bluesy|Dreamy|Happy)$/.test(s.game.display.inst?.detail ?? ''), s.game.display.inst?.detail);
+check("the piano's settings page: its notes and sounds", s.game.display.page?.id === 'inst' && !!s.targets['ui:scale:sad'], `${s.game.display.page?.id}`);
+await ui('scale:sad');
+s = state();
+check('Sad puts it in the sad notes', s.game.display.page?.items?.find((i) => i.id === 'scale:sad')?.on === true, JSON.stringify(s.game.display.page?.items?.filter((i) => i.on).map((i) => i.id)));
+await ui('nav:free');
 
 await tab('marimba');
 s = state();
-check('then a marimba', s.targets.inst?.[0] === 2 && s.game.display.line === 'Marimba', `${s.game.display.line} inst=${s.targets.inst}`);
+check('then a marimba', s.targets.inst?.[0] === 2 && s.game.display.page?.title === 'Marimba', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst0);
 s = state();
 check('its low bar plays', s.debug.lastHit?.family === 'marimba' && s.debug.lastHit?.zone === 0, JSON.stringify(s.debug.lastHit));
@@ -73,7 +81,7 @@ shot('shelf-marimba', look);
 
 await tab('guitar');
 s = state();
-check('then a guitar', s.targets.inst?.[0] === 3 && s.game.display.line === 'Guitar', `${s.game.display.line} inst=${s.targets.inst}`);
+check('then a guitar', s.targets.inst?.[0] === 3 && s.game.display.page?.title === 'Guitar', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst1);
 s = state();
 check('a chord pad picks a chord (and strums it softly)', s.debug.lastHit?.family === 'chord' && s.debug.lastHit?.zone === 1, JSON.stringify(s.debug.lastHit));
@@ -84,7 +92,7 @@ shot('shelf-guitar', look);
 
 await tab('handpan');
 s = state();
-check('then a handpan', s.targets.inst?.[0] === 4 && s.game.display.line === 'Handpan', `${s.game.display.line} inst=${s.targets.inst}`);
+check('then a handpan', s.targets.inst?.[0] === 4 && s.game.display.page?.title === 'Handpan', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst0);
 s = state();
 check('its middle rings', s.debug.lastHit?.family === 'handpan' && s.debug.lastHit?.zone === 0, JSON.stringify(s.debug.lastHit));
@@ -112,20 +120,24 @@ shot('shelf-handpan', look);
     await wait(300);
     return st;
   };
-  const tile = state().targets['tile-piano'];
-  check('the panel has a tab per instrument', !!tile && !!state().targets['tile-guitar'], Object.keys(state().targets).filter((k) => k.startsWith('tile')).join(','));
+  await ui('nav:instruments');
+  const tile = state().targets['ui:inst:piano'];
+  check('the instruments page has a card each', !!tile && !!state().targets['ui:inst:guitar'], Object.keys(state().targets).filter((k) => k.startsWith('ui:inst')).join(','));
   if (tile) {
     const st = await pinchAt(tile);
     s = state();
-    check('a pinch on the piano tab puts the piano out', s.targets.inst?.[0] === 1 && s.game.display.line === 'Piano', `inst=${s.targets.inst} pinching=${st.right.pinching} line=${s.game.display.line}`);
+    check('a pinch on the piano card puts the piano out', s.targets.inst?.[0] === 1 && s.game.display.page?.title === 'Piano', `inst=${s.targets.inst} pinching=${st.right.pinching} page=${s.game.display.page?.title}`);
   }
 }
 
-// the gear: settings
-await poke('gear');
+// the menu: settings, and back
+await ui('nav:main');
 s = state();
-check('the gear opens the settings', s.game.display.screen === 'page' && s.game.display.line === 'Settings', `${s.game.display.screen} ${s.game.display.line}`);
-await key('play');
+check('MENU shows the main menu', s.game.display.page?.id === 'main', s.game.display.page?.id);
+await ui('nav:settings');
+s = state();
+check('SETTINGS opens the settings page', s.game.display.page?.id === 'settings', s.game.display.page?.id);
+await ui('back');
 s = state();
 check('no frame errors', s.debug.errors === 0, `errors=${s.debug.errors}`);
 done('E2E shelf');

@@ -42,7 +42,7 @@ import { kitLayout, pickPad, type PadSpot } from '../kit/layout.js';
 import { KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
 import { LED } from '../kit/pad-view.js';
 import { KEYS, type ModuleKey } from '../ui/module.js';
-import { GEAR, PANEL, SPOTS, spotZone } from '../ui/panel.js';
+import { PANEL, itemZone } from '../ui/panel.js';
 import { Tag, DebugBoard } from '../ui/tag.js';
 import { audio, type Voice } from '../audio/engine.js';
 import { loadProgress, saveProgress, freshProgress, type Progress, type SavedPad } from '../persistence/progress.js';
@@ -328,6 +328,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     shelf: (dir) => this.shelfStep(dir),
+    bandState: () => ({ state: coop.status.state, players: coop.status.players ?? 1 }),
+    saveLevel: (level) => {
+      this.settings = { ...this.settings, level };
+      saveSettings(this.settings);
+    },
     bandSong: (i) => {
       if (!this.bandOn || this.band.host) return 'local';
       this.band.send({ k: 'ask', i });
@@ -409,11 +414,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     setting: (name, flip) => {
       const s = this.settings;
-      const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : !s.noWords;
+      const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : name === 'band' ? s.band : !s.noWords;
       if (!flip) return cur;
       const next = { ...s };
       if (name === 'oneHand') next.oneHand = !cur;
       else if (name === 'contrast') next.highContrast = !cur;
+      else if (name === 'band') next.band = !cur;
       else next.noWords = cur;
       saveSettings(next);
       this.applySettings(next);
@@ -929,6 +935,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     audio.setBed(s.band);
     this.game.opts.tempo = s.tempo;
     this.game.opts.offset = s.offset;
+    this.game.level = s.level;
     this.debug.offsetMs = Math.round(s.offset * 1000);
     if (was.highContrast !== s.highContrast) {
       this.kit.setContrast(s.highContrast);
@@ -1106,6 +1113,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     this.phone.beat();
     this.kit.module.set(this.game.display);
+    if (this.kit.module.version !== this.zonesFor) this.panelZones();
     this.debug.mode = this.game.mode;
     if (this.debug.found.length !== this.game.found.length) this.debug.found = this.game.found.slice();
     this.kit.update(dt);
@@ -2068,24 +2076,25 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private guitarChord = 0;
   private chordPadT = -9;
   private pianoChord = 0;
-  private shelfCfg(id: InstId): { scale: string; sound: string } {
+  private shelfCfg(id: InstId): { scale: string; sound: string; oct?: number } {
     const d = instDef(id);
     const c = this.settings.shelf[id] ?? { scale: SCALES[0].id, sound: d.sounds[0].id };
     // inside a track the instruments play its notes (its major or minor), with your sound
     const h = this.game.harmony();
-    return h?.song ? { scale: h.minor ? 'sad' : 'happy', sound: c.sound } : c;
+    return h?.song ? { scale: h.minor ? 'sad' : 'happy', sound: c.sound, oct: c.oct } : c;
   }
   /** Lowest notes: the piano round middle C, the handpan and guitar an octave down, all in the song's key. */
   private instRoot(id: InstId): number {
     const pc = this.game.keyPc;
-    // (the piano's tune sits above the band's chords: its root between F4 and E5)
-    return id === 'piano' ? 65 + ((pc + 7) % 12) : 48 + pc;
+    // (the piano's tune sits above the band's chords: its root between F4 and E5); your octave on top
+    const oct = (this.settings.shelf[id]?.oct ?? 0) * 12;
+    return (id === 'piano' ? 65 + ((pc + 7) % 12) : 48 + pc) + oct;
   }
   private shelfView(): ShelfView {
     const id = this.kit.inst;
     const d = instDef(id);
     const c = this.shelfCfg(id);
-    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name };
+    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name, oct: c.oct ?? 0 };
   }
   /** A song or a build wants this instrument out (null: the one you chose in free play). Not saved. */
   private useInstrument(id: InstId | null): void {
@@ -2114,12 +2123,23 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private pinchWas = [false, false];
   /** The stand shows what's on the shelf, lit for the one that's out. */
   private refreshStand(): void {
-    // (the instruments are tabs on the panel now; the rack stays put away)
-    this.kit.module.setTabs(SHELF.map((d) => ({ id: d.id, name: d.name, color: d.color })), this.kit.inst);
+    // (the instruments are on the panel now; the rack stays put away)
     this.stand.root.visible = false;
+    this.game.refreshDisplay();
     this.standShown = this.placement.phase === 'placed';
   }
   private standShown = false;
+  /** The panel's press zones: one per item on the page showing. */
+  private zonesFor = -1;
+  private panelZones(): void {
+    const p = this.kit.module;
+    this.zonesFor = p.version;
+    this.moduleSurface.zones = (p.page?.items ?? []).map((it, i) => {
+      const k = itemZone(it);
+      return { i, shape: 'rect' as const, x: k.x, z: k.z, w: k.w, h: k.h, degree: -1, midi: 0 } satisfies Zone;
+    });
+  }
+
   /** A pinch (world point) on the panel presses what it's on. */
   private pinchStand(at: Vector3): void {
     if (this.placement.phase !== 'placed') return;
@@ -2129,34 +2149,66 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (k >= 0) this.pressPanel(k);
   }
 
-  /** A button (0–4), an instrument tab, or the gear on the panel. */
+  /** An item on the panel was pressed. */
   private pressPanel(k: number): void {
+    const it = this.kit.module.itemAt(k);
+    if (!it || it.off) return;
     this.kit.module.pressKey(k);
     audio.tick();
-    if (k < KEYS.length) {
-      this.game.key(KEYS[k]);
-      return;
-    }
-    if (k === GEAR) {
-      this.game.openSettings();
-      return;
-    }
-    const id = this.kit.module.tabAt(k);
-    if (!id) return;
-    const m = this.game.mode;
-    if (m === 'play' || m === 'count') {
-      this.game.switchTo(id);
-      return;
-    }
-    if (m !== 'discover') return;
-    if (!this.kitSurface.discovered) {
-      this.hitAt.x = 0;
-      this.hitAt.z = 0;
-      this.discover(this.kitSurface);
-    }
-    this.putOut(id as InstId);
-    this.game.shelfPicked(this.shelfView());
+    this.panelAction(it.id);
   }
+
+  /** What a panel item does: instruments and their settings and the band here; the rest is the game's. */
+  private panelAction(id: string): void {
+    const [kind, arg] = [id.slice(0, id.indexOf(':')), id.slice(id.indexOf(':') + 1)];
+    if (kind === 'inst') {
+      const m = this.game.mode;
+      if (m === 'play' || m === 'count') return this.game.switchTo(arg);
+      if (m !== 'discover') return;
+      if (!this.kitSurface.discovered) {
+        this.hitAt.x = 0;
+        this.hitAt.z = 0;
+        this.discover(this.kitSurface);
+      }
+      this.putOut(arg as InstId);
+      this.game.shelfPicked(this.shelfView());
+      this.game.menu = 'free';
+      this.game.refreshDisplay();
+      return;
+    }
+    if (kind === 'scale' || kind === 'sound' || kind === 'oct') {
+      this.setShelf(kind, arg);
+      this.game.refreshDisplay();
+      return;
+    }
+    if (id === 'band:start') {
+      void coop.host();
+      return;
+    }
+    if (id === 'band:leave') {
+      coop.leave();
+      this.game.refreshDisplay();
+      return;
+    }
+    this.game.act(id);
+  }
+
+  /** Change the instrument's scale, sound, or octave (saved), and let it be heard. */
+  private setShelf(kind: 'scale' | 'sound' | 'oct', arg: string): void {
+    const id = this.kit.inst;
+    if (id === 'drums') return;
+    const c = { ...this.shelfCfg(id) };
+    if (kind === 'scale') c.scale = arg;
+    else if (kind === 'sound') c.sound = arg;
+    else c.oct = Math.max(-1, Math.min(1, (c.oct ?? 0) + (arg === '+1' ? 1 : -1)));
+    this.settings = { ...this.settings, shelf: { ...this.settings.shelf, [id]: c } };
+    saveSettings(this.settings);
+    this.putOut(id);
+    const t0 = audio.now();
+    if (id === 'guitar') this.strum(0, 0.6, 0, t0);
+    else for (let i = 0; i < 4; i++) this.playInst(id, id === 'handpan' ? i * 2 : i, 0.55, 0, t0 + i * 0.12);
+  }
+
   private tmp3 = new Vector3();
 
   /** The zones of a surface, the desk's bars, or a shelf instrument (as it would be laid out now). */
@@ -2883,10 +2935,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.moduleSurface.inv.copy(this.moduleSurface.world).invert();
     this.moduleSurface.bounds = { minX: -PANEL.w / 2, maxX: PANEL.w / 2, minZ: -PANEL.h / 2, maxZ: PANEL.h / 2 };
     this.moduleSurface.features = { facing: 'vertical', width: PANEL.w, length: PANEL.h, area: PANEL.w * PANEL.h, elevation: 0, hollow: 0, glass: 0, soft: 0, curved: 0, bump: false, label: 'module' };
-    this.moduleSurface.zones = SPOTS.map((_, i) => {
-      const k = spotZone(i);
-      return { i, shape: 'rect' as const, x: k.x, z: k.z, w: k.w, h: k.h, degree: -1, midi: 0 } satisfies Zone;
-    });
+    this.panelZones();
     this.moduleSurface.discovered = true;
     this.moduleSurface.detector.resetSurface(0);
     this.layout();
@@ -3237,16 +3286,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = root.localToWorld(this.tmp.set(z.x, 0, -z.z)).toArray().map(r4)));
     if (this.kit.inst === 'guitar') out.strum = root.localToWorld(this.tmp.set((STRUM.x0 + STRUM.x1) / 2, 0, -(STRUM.z0 + STRUM.z1) / 2)).toArray().map(r4);
     out.inst = [SHELF.findIndex((d) => d.id === this.kit.inst)];
-    SHELF.forEach((d, i) => {
-      const z = spotZone(5 + i);
-      out[`tile-${d.id}`] = this.tmp.set(z.x, 0, -z.z).applyMatrix4(this.moduleSurface.world).toArray().map(r4);
-    });
-    {
-      const z = spotZone(GEAR);
-      out.gear = this.tmp.set(z.x, 0, -z.z).applyMatrix4(this.moduleSurface.world).toArray().map(r4);
-      // which way the panel faces (pokes come in against it)
-      out.panelNormal = this.tmp.set(0, 1, 0).transformDirection(this.moduleSurface.world).toArray().map(r4);
+    for (const it of this.kit.module.page?.items ?? []) {
+      const z = itemZone(it);
+      out[`ui:${it.id}`] = this.tmp.set(z.x, 0, -z.z).applyMatrix4(this.moduleSurface.world).toArray().map(r4);
     }
+    // which way the panel faces (pokes come in against it)
+    out.panelNormal = this.tmp.set(0, 1, 0).transformDirection(this.moduleSurface.world).toArray().map(r4);
     for (const s of this.surfaces) {
       if (s.source !== 'plane' && s.source !== 'volume') continue;
       const cx = (s.bounds.minX + s.bounds.maxX) / 2;

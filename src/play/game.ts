@@ -19,6 +19,7 @@ import { LOOP_BEATS, TRACKS, assign, ownBar, played, quantise, steps, type Machi
 import { FAMILIES, type Family } from '../room/classify.js';
 import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
+import { buildPage, type PageId } from '../ui/menu.js';
 
 export type Unlock = 'tom' | 'jam' | 'loops' | 'swaps';
 /** Unlocked by finishing each song the first time. */
@@ -51,7 +52,11 @@ export interface GameStage {
   /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
   tempo(t: number): void;
   /** In-headset settings: read and switch (saved by the stage). */
-  setting(name: 'oneHand' | 'contrast' | 'words', flip: boolean): boolean;
+  setting(name: 'oneHand' | 'contrast' | 'words' | 'band', flip: boolean): boolean;
+  /** Playing together: the link's state and how many are in the band. */
+  bandState?(): { state: string; players: number };
+  /** Easy or Normal changed (saved). */
+  saveLevel?(level: 'easy' | 'normal'): void;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
   bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave' | 'turn', surface?: string): void;
   /** A good fill: a light sweep over every ring on the desk (no sound: the fill was the sound). */
@@ -115,6 +120,8 @@ export interface ShelfView {
   /** Plain names ('' when it has no choice). */
   scale: string;
   sound: string;
+  /** Octaves up or down from its own register. */
+  oct?: number;
 }
 
 export interface MoteView {
@@ -732,9 +739,14 @@ export class Game {
     let found: (typeof m.parts)[number] | undefined;
     if (inst === 'drums') {
       found = m.parts.find((p) => p.surface !== 'kit' && p.surface !== 'keys' && PART_INST[p.def.name] === 'drums' && p.def.name !== 'KICK' && p.def.name !== 'SNARE');
-      parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found);
+      // Normal: the hat too (two hands still: the third note at once goes back to the band)
+      parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found || (this.level === 'normal' && p.def.name === 'HAT'));
       if (found) foundName = say(found.def.name);
-    } else parts = m.parts.filter((p) => PART_INST[p.def.name] === (inst === 'marimba' ? 'piano' : inst) && p.def.name !== 'BASS');
+    } else {
+      parts = m.parts.filter((p) => PART_INST[p.def.name] === (inst === 'marimba' ? 'piano' : inst) && p.def.name !== 'BASS');
+      // Easy: the main line only (the tune, the first extra)
+      if (this.level === 'easy' && parts.length > 1) parts = parts.slice(0, 1);
+    }
     const rank = (key: string) => {
       const i = parts.findIndex((p) => p.key === key);
       return i >= 0 ? i : parts.findIndex((p) => p.surface !== 'kit' && key.startsWith(p.surface + ':'));
@@ -1124,6 +1136,8 @@ export class Game {
   /** A surface's instrument was found (its first hit). */
   discovered(family: Family, label: string, t: number): void {
     if (family === 'keys') return;
+    // the first tap on the desk: the drums are out, free play
+    if (family === 'kit' && this.menu === 'main' && this.mode === 'discover') this.menu = 'free';
     this.lastFound = { family, label };
     if (!this.found.includes(family)) this.found.push(family);
     if (family === 'kit' && this.kitAt < 0) this.kitAt = t;
@@ -1781,6 +1795,63 @@ export class Game {
     this.panelFields();
   }
 
+  /** The page the panel shows in free play (the others follow the mode). */
+  menu: PageId = 'main';
+  /** Easy (the beat, the tune) or Normal (more of each part). */
+  level: 'easy' | 'normal' = 'easy';
+
+  /** Something on the panel was pressed (an item's action id). */
+  act(id: string): void {
+    if (id.startsWith('key:')) return this.key(id.slice(4) as ModuleKey);
+    if (id === 'back') {
+      if (this.tuneOpen) this.tuneOpen = false;
+      else if (this.settingsOpen) this.settingsOpen = false;
+      else {
+        const up: Record<string, PageId> = { inst: 'instruments', instruments: this.found.includes('kit') ? 'free' : 'main', songs: 'main', band: 'main', free: 'main', main: 'main' };
+        this.menu = up[this.menu] ?? 'main';
+      }
+      this.refreshDisplay();
+      return;
+    }
+    if (id.startsWith('nav:')) {
+      const to = id.slice(4);
+      if (this.mode === 'results') this.leaveResults();
+      if (to === 'settings') this.settingsOpen = true;
+      else if (to === 'build') this.beginBuild(this.songSel);
+      else this.menu = to as PageId;
+      this.refreshDisplay();
+      return;
+    }
+    if (id.startsWith('song:')) {
+      const i = Number(id.slice(5));
+      if (i >= 0 && i <= this.nextSong()) this.songSel = i;
+      this.refreshDisplay();
+      return;
+    }
+    if (id === 'play') return this.playSong(this.songSel);
+    if (id === 'stop') {
+      if (this.mode === 'build') this.endBuild();
+      else if (this.mode === 'play' || this.mode === 'count') this.stop();
+      this.menu = 'songs';
+      this.refreshDisplay();
+      return;
+    }
+    if (id === 'again') return this.key('play');
+    if (id === 'next') return this.key('next');
+    if (id.startsWith('level:')) {
+      this.level = id === 'level:normal' ? 'normal' : 'easy';
+      this.stage.saveLevel?.(this.level);
+      this.refreshDisplay();
+      return;
+    }
+    if (id.startsWith('set:')) {
+      const k: Record<string, ModuleKey> = { 'set:slow': 'prev', 'set:onehand': 'next', 'set:contrast': 'jam', 'set:words': 'loop' };
+      if (k[id]) this.key(k[id]);
+      else if (id === 'set:backing') this.stage.setting('band', true);
+      this.refreshDisplay();
+    }
+  }
+
   /** What the panel needs beyond the lines: its screen, its buttons, the song card, what's on the desk, the song so far. */
   private panelFields(): void {
     const d = this.display;
@@ -1808,6 +1879,27 @@ export class Game {
     } else if (d.screen === 'results') {
       d.keys = ['', 'AGAIN', this.fromPerform ? (this.machine?.written ? 'MAKE IT\nYOURS' : 'NEXT\nSONG') : '', '', ''];
     }
+    // the page
+    const v = this.stage.shelf?.(0) ?? { id: 'drums', name: 'Drums', how: '', scale: '', sound: '', oct: 0 };
+    const pageId: PageId = this.tuneOpen ? 'tune' : this.settingsOpen ? 'settings' : this.mode === 'discover' ? this.menu : this.mode === 'build' ? 'build' : this.mode === 'results' ? 'results' : 'song';
+    const unlocked = this.nextSong();
+    const band = this.stage.bandState?.() ?? { state: 'idle', players: 1 };
+    const sw = this.machine ? ['drums', 'piano', 'marimba', 'handpan', 'guitar'].filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => PART_INST[p.def.name] === (i === 'marimba' ? 'piano' : i) && p.def.name !== 'BASS')) : [];
+    d.page = buildPage({
+      page: pageId,
+      line: pageId === 'free' ? (this.groove ? "The band's playing along" : '') : pageId === 'main' ? (this.found.includes('kit') ? '' : 'Or just tap the desk') : d.line,
+      sub: d.sub,
+      inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0 },
+      songs: TRACKS.map((t, i) => ({ name: t.name, meta: `${t.bpm} BPM${t.minor ? ', minor' : ''}`, stars: this.progress.stars[t.id] ?? 0, locked: i > unlocked })),
+      songSel: this.songSel,
+      level: this.level,
+      band: { state: band.state, code: this.code, players: band.players },
+      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false) },
+      next: this.fromPerform ? (this.machine?.written ? 'MAKE IT\nYOURS' : 'NEXT\nSONG') : '',
+      switchable: sw,
+      tune: d.keyLabels ?? undefined,
+    });
+    d.focus = pageId === 'songs' ? 'play' : pageId === 'main' && this.found.includes('kit') && this.offered ? 'nav:songs' : pageId === 'results' && this.resultsStage >= 4 ? 'again' : undefined;
   }
 
   private fillDisplay(): void {

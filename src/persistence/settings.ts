@@ -32,7 +32,9 @@ export interface Settings {
   tune: StrikeTune;
   /** The instrument on the desk in free play, and each instrument's scale and sound. */
   inst: string;
-  shelf: Record<string, { scale: string; sound: string }>;
+  shelf: Record<string, { scale: string; sound: string; oct?: number }>;
+  /** Songs: Easy or Normal. */
+  level: 'easy' | 'normal';
 }
 
 const KEY = 'settings.v1';
@@ -57,16 +59,17 @@ export function loadSettings(): Settings {
     tune: readTune(s.tune),
     inst: typeof s.inst === 'string' && /^[a-z]{1,12}$/.test(s.inst) ? s.inst : 'drums',
     shelf: readShelf(s.shelf),
+    level: s.level === 'normal' ? 'normal' : 'easy',
   };
 }
 
-function readShelf(v: unknown): Record<string, { scale: string; sound: string }> {
-  const out: Record<string, { scale: string; sound: string }> = {};
+function readShelf(v: unknown): Record<string, { scale: string; sound: string; oct?: number }> {
+  const out: Record<string, { scale: string; sound: string; oct?: number }> = {};
   if (!v || typeof v !== 'object') return out;
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
     if (!/^[a-z]{1,12}$/.test(k) || !x || typeof x !== 'object') continue;
-    const { scale, sound } = x as { scale?: unknown; sound?: unknown };
-    if (typeof scale === 'string' && typeof sound === 'string' && scale.length < 16 && sound.length < 16) out[k] = { scale, sound };
+    const { scale, sound, oct } = x as { scale?: unknown; sound?: unknown; oct?: unknown };
+    if (typeof scale === 'string' && typeof sound === 'string' && scale.length < 16 && sound.length < 16) out[k] = { scale, sound, ...(oct === -1 || oct === 1 ? { oct } : {}) };
   }
   return out;
 }
