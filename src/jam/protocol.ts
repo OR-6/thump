@@ -1,6 +1,6 @@
 /**
  * The phone jam's messages (pure, validated both ways). A friend's phone joins the headset with the
- * 4-letter code on the toy telephone and becomes the bass: tap the big felt pad and the headset
+ * 4-letter code on the drum module and becomes the bass: tap the big pad and the headset
  * plays a bass note in the song's chord, from where the phone is. The headset sends the beat so
  * the phone's light pulses in time.
  */
