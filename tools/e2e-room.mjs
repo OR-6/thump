@@ -59,7 +59,7 @@ await slapAt([s.targets.table[0] + 0.09, DESK_Y, s.targets.table[2]], [0, 1, 0])
 s = await until((x) => x.game.found.includes('kit'), 3000);
 check('a slap on the table discovers the kit', s.game.found.includes('kit'), JSON.stringify(s.game.found));
 check('and plays a drum', s.debug.hits > before && /kick|snare|hat|tom|rim|keys/.test(s.debug.lastHit?.family ?? ''), JSON.stringify(s.debug.lastHit));
-check('a one-word tag says what it is', s.debug.tag === 'Kit', s.debug.tag);
+check('no tape in the room: the panel says what it is', s.debug.tag !== 'Kit' && s.game.display.page?.title === 'Drums', `${s.debug.tag} / ${s.game.display.page?.title}`);
 check('the pads are drawn', !!s.targets.snare && !!s.targets.kick, Object.keys(s.targets).join(','));
 await wait(600);
 shot('room-02-kit', look);

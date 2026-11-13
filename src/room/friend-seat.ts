@@ -57,7 +57,8 @@ export class FriendSeat {
   /** Left (−1) to right (+1), for where their sound comes from. */
   readonly pan: number;
 
-  constructor(i: number, tray = false) {
+  /** `named`: their instrument's name on tape under the light (with hints in the room on). */
+  constructor(i: number, tray = false, private readonly named = false) {
     this.root.name = 'FriendSeat';
     const [x, y, z] = PLACES[i % PLACES.length];
     const s = tray ? TRAY : 1;
@@ -113,7 +114,7 @@ export class FriendSeat {
     this.halo.scale.setScalar(1 + this.k * 1.4);
     (this.halo.material as MeshBasicMaterial).opacity = 0.18 + 0.5 * this.k;
     this.faceT -= dt;
-    if (this.faceT <= 0 && this.name) {
+    if (this.faceT <= 0 && this.name && this.named) {
       this.faceT = 0.5;
       this.root.getWorldPosition(_at).add(_down);
       this.tag.pin(this.name.toUpperCase(), this.color, _at, head);

@@ -24,11 +24,12 @@ import { DRUM_H, buildDrum, buildHiHat } from '../scene-assets/lib/drums.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
 import { MARKER, whenFonts } from '../ui/fonts.js';
+import { contactShadow } from '../art/lighting.js';
 
 /** Low on the table: the real wood stops your hand, a centimetre and a half under the head. */
 const HEIGHT = DRUM_H;
 /** Each drum's lacquer (and the kick's dark front head). */
-const SHELL: Record<Lane, { shell: number; head?: number }> = { kick: { shell: 0x6e1a12, head: 0x1f1e22 }, snare: { shell: 0x1d1c20 }, hat: { shell: 0 }, tom: { shell: 0x5a3a22 }, gong: { shell: 0x3a2a18 } };
+const SHELL: Record<Lane, { shell: number; head?: number; throwOff?: boolean; port?: boolean }> = { kick: { shell: 0x7a1d14, head: 0x1c1b1f, port: true }, snare: { shell: 0x2a2a30, throwOff: true }, hat: { shell: 0 }, tom: { shell: 0x7a1d14 }, gong: { shell: 0x3a2a18 } };
 const SQUASH_S = 0.14;
 
 /** Each drum's LED colour. */
@@ -111,6 +112,9 @@ export class PadView {
    * head, two lines if it's long). Empty: none.
    */
   private nameMesh: Mesh | null = null;
+  private topCymbal: import('@iwsdk/core').Object3D | null = null;
+  private wobble = 0;
+  private wobbleT = 0;
   paint(name: string): void {
     if (!name) {
       if (this.nameMesh) this.nameMesh.visible = false;
@@ -165,6 +169,9 @@ export class PadView {
     this.hoopMat = ((model.getObjectByName('Hoop') ?? model.getObjectByName('Clutch')) as Mesh | undefined)?.material as MeshStandardMaterial | undefined;
     this.body.add(model);
     this.group.add(this.body);
+    this.topCymbal = lane === 'hat' ? (model.getObjectByName('Top') ?? null) : null;
+    // it sits on the desk: a soft shadow under it
+    this.group.add(contactShadow(spec.size * 1.5, spec.size * 1.5, 0.9));
     // the LED ring round the base, and its glow on the table
     this.led = new MeshBasicMaterial({ color: this.base.clone().multiplyScalar(0.25), toneMapped: false });
     const led = new Mesh(new RingGeometry(R * 1.04, R * 1.1, 64), this.led);
@@ -207,6 +214,10 @@ export class PadView {
   }
 
   hit(gain: number): void {
+    if (this.topCymbal) {
+      this.wobble = Math.max(this.wobble, (0.05 + 0.08 * gain) * (motion.calm ? 0.4 : 1));
+      this.wobbleT = 0;
+    }
     this.squashT = 0;
     this.squashK = gain;
     this.flash = Math.max(this.flash, 0.4 + 0.6 * gain);
@@ -271,6 +282,14 @@ export class PadView {
     this.ledGlow.opacity = lit * 0.9;
     // the hoop glints on a hit
     if (this.hoopMat) this.hoopMat.emissive.setScalar(this.flash * 0.35);
+    // a cymbal swings on its clutch and settles
+    if (this.topCymbal && this.wobble > 0.001) {
+      this.wobbleT += dt;
+      this.wobble *= Math.exp(-dt * 5);
+      const a = this.wobble * Math.sin(this.wobbleT * 34);
+      this.topCymbal.rotation.x = Math.PI - 0.035 + a;
+      this.topCymbal.rotation.z = 0.02 + a * 0.6;
+    }
   }
 
   get light(): number {

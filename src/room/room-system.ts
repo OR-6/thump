@@ -75,6 +75,7 @@ import { HandMallet, MALLET_HEAD_R } from './hand-mallet.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { Dimmer } from './dimmer.js';
 import { FriendSeat } from './friend-seat.js';
+import { setupLighting } from '../art/lighting.js';
 
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
 const RESUME_WINDOW_S = 4;
@@ -207,6 +208,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private lastWorld = new Vector3();
 
   init() {
+    // the instruments' light: a room to reflect, filmic tone mapping
+    setupLighting(this.renderer, this.world.scene);
     this.progress = loadProgress();
     const desk = this.progress.desk as Family | undefined;
     if (desk && (NEIGHBOURS.keys as string[]).includes(desk)) this.deskFamily = desk;
@@ -432,7 +435,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.05 * k++, () => p.hit(0.6));
     },
     changeSound: (dir) => this.changeSound(dir),
-    labels: (parts) => this.setLabels(parts),
+    // (part names on tape in the room only with hints on: otherwise they're on the panel)
+    labels: (parts) => this.setLabels(this.settings.noWords ? [] : parts),
     riser: (sec) => audio.riser(sec),
     drop: () => {
       audio.crash(0.9);
@@ -582,7 +586,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const used = new Set([...this.seats.values()].map((x) => x.root.userData.i as number));
       // (the middle seat first, then left and right)
       const i = [1, 0, 2].find((k) => !used.has(k)) ?? 0;
-      s = new FriendSeat(i, !this.tableOutline);
+      s = new FriendSeat(i, !this.tableOutline, !this.settings.noWords);
       s.root.userData.i = i;
       this.kit.root.add(s.root);
       this.seats.set(key, s);

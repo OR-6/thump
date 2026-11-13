@@ -4,6 +4,7 @@
  * your room has no instrument for), the module at the back, and your hands' shadows on the table.
  */
 import { DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture } from '@iwsdk/core';
+import { contactShadow } from '../art/lighting.js';
 import { LANES, PADS, type Lane } from '../config.js';
 import { PadView } from './pad-view.js';
 import { Panel } from '../ui/panel.js';
@@ -17,7 +18,7 @@ import { instZones, type InstId, type Scale } from './shelf.js';
 /** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.11 } as const;
 /** The kit's playing area (kit-local): the whole table here is the kit. */
-export const KIT_ZONE = { halfX: 0.3, back: -0.24, front: 0.12 } as const;
+export const KIT_ZONE = { halfX: 0.34, back: -0.24, front: 0.12 } as const;
 
 let shadowTex: CanvasTexture | null = null;
 function handShadowTexture(): CanvasTexture {
@@ -55,6 +56,8 @@ export class KitView {
     ['handpan', new Overlay('tongue', 10)],
     ['congas', new Overlay('congas', 4)],
   ]);
+  /** The instrument's contact shadow on the desk (sized to it when it comes out). */
+  private instShadow = contactShadow(1, 1, 0.85);
   /** The zones of the instrument on the desk (none for the drums: they have pads). */
   instZones: Zone[] = [];
   private handShadow: Mesh[] = [];
@@ -62,12 +65,18 @@ export class KitView {
   constructor() {
     this.root.name = 'Kit';
     // a soft key light from front-left and a cool rim from behind: the pads read against any table
-    const key = new DirectionalLight(0xfff6ea, 1.4);
-    key.position.set(-0.35, 0.5, 0.35);
+    // (the room environment, src/art/lighting.ts, gives the ambient and the reflections; these shape it)
+    const key = new DirectionalLight(0xfff3e4, 2.2);
+    key.position.set(-0.3, 0.7, 0.4);
     key.target.position.set(0, 0, -0.05);
-    const rim = new DirectionalLight(0xdfe8ff, 0.5);
-    rim.position.set(0.25, 0.3, -0.45);
-    this.root.add(key, key.target, rim, rim.target);
+    const fill = new DirectionalLight(0xe6eeff, 0.6);
+    fill.position.set(0.45, 0.25, 0.3);
+    fill.target.position.set(0, 0, -0.05);
+    const rim = new DirectionalLight(0xdfe8ff, 0.8);
+    rim.position.set(0.25, 0.35, -0.5);
+    this.root.add(key, key.target, fill, fill.target, rim, rim.target);
+    this.root.add(this.instShadow);
+    this.instShadow.visible = false;
     for (const lane of LANES) {
       if (lane === 'gong') continue;
       const p = new PadView(lane);
@@ -135,8 +144,11 @@ export class KitView {
     for (const [k, o] of this.shelf) o.group.visible = k === id;
     this.inst = id;
     this.instKey = `${id}:`;
+    // (only the one that's out shows: the drums put every other model away)
+    for (const [k, m] of this.models) m.root.visible = k === id;
     if (drums) {
       this.instZones = [];
+      this.instShadow.visible = false;
       return;
     }
     this.instZones = instZones(id, root, scale);
@@ -146,6 +158,21 @@ export class KitView {
     for (const [k, m] of this.models) m.root.visible = k === id;
     const model = this.models.get(id);
     model?.layout(this.instZones);
+    // its shadow: a soft ellipse a little past its footprint
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const q of this.instZones) {
+      const hw = q.shape === 'disc' ? q.w : q.w / 2;
+      const hd = q.shape === 'disc' ? q.w : q.h / 2;
+      x0 = Math.min(x0, q.x - hw);
+      x1 = Math.max(x1, q.x + hw);
+      z0 = Math.min(z0, q.z - hd);
+      z1 = Math.max(z1, q.z + hd);
+    }
+    this.instShadow.visible = Number.isFinite(x0);
+    if (this.instShadow.visible) {
+      this.instShadow.scale.set((x1 - x0) * 1.35 + 0.06, (z1 - z0) * 1.5 + 0.06, 1);
+      this.instShadow.position.set((x0 + x1) / 2, 0.0006, -(z0 + z1) / 2 - 0.01);
+    }
     o.rest = 0.12;
     // the piano's wide ebony key says what it is, on a strip of tape
     this.chordTag.mesh.visible = false;

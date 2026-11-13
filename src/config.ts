@@ -38,11 +38,12 @@ export const PALETTE = {
  * landing, hat out right and a little nearer, tom out left). z = 0 is where the palm rested.
  */
 export const PADS: Record<Lane, PadSpec> = {
-  // the whole kit fits an airplane tray (about 47 cm across): kick and snare under your hands, hat and tom beside
-  kick: { lane: 'kick', size: 0.1, x: -0.075, z: 0, color: PALETTE.tomato, mark: 'none' },
-  snare: { lane: 'snare', size: 0.09, x: 0.06, z: 0, color: PALETTE.mustard, mark: 'stripe' },
-  hat: { lane: 'hat', size: 0.07, x: 0.18, z: -0.02, color: PALETTE.teal, mark: 'notch' },
-  tom: { lane: 'tom', size: 0.09, x: -0.21, z: -0.02, color: PALETTE.plum, mark: 'ring' },
+  // drum-sized under your hands, 4 cm apart, and still about a tray's width (48 cm; 63 with the tom): kick and snare
+  // in front of you, the hat to the right, the tom to the left
+  kick: { lane: 'kick', size: 0.15, x: -0.095, z: 0.005, color: PALETTE.tomato, mark: 'none' },
+  snare: { lane: 'snare', size: 0.13, x: 0.085, z: 0, color: PALETTE.mustard, mark: 'stripe' },
+  hat: { lane: 'hat', size: 0.12, x: 0.25, z: -0.03, color: PALETTE.teal, mark: 'notch' },
+  tom: { lane: 'tom', size: 0.12, x: -0.265, z: -0.05, color: PALETTE.plum, mark: 'ring' },
   // the gong goes on a real wall within reach when there is one; this is the table-edge fallback
   gong: { lane: 'gong', size: 0.12, x: 0.29, z: -0.08, color: PALETTE.brass, mark: 'brass' },
 };

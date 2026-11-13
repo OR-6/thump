@@ -51,7 +51,8 @@ export function loadSettings(): Settings {
     hand: s.hand === 'left' || s.hand === 'right' ? s.hand : 'auto',
     oneHand: s.oneHand === true,
     tempo: num(s.tempo, 0.6, 1, 1),
-    noWords: s.noWords === true,
+    // (words in the room are opt-in: names and prompts live on the panel)
+    noWords: s.noWords !== false,
     lookToPlay: s.lookToPlay === true,
     band: s.band !== false,
     pendulum: s.pendulum === true,
