@@ -2,12 +2,12 @@
 /**
  * Assembles the submission video from headset recordings, in one command, once the footage is in.
  *
- *   node tools/video-assemble.mjs artifacts/video/shots.json artifacts/video/loomsong.mp4
+ *   node tools/video-assemble.mjs artifacts/video/shots.json artifacts/video/thump.mp4
  *
  * shots.json is a list, in story order, of { "clip": "path.mp4", "in": 3.0, "out": 9.5, "card": "05-phone", "chip": "f-plane" }
  * (card: a PNG name in artifacts/video-cards without .png, or null; chip: an optional feature chip, top right). The title card opens, the end card
- * closes, each shot gets its text card faded in over it, every clip is fitted to 1920x1080 and the music
- * ('Castles in the Sky', CC BY 4.0) runs quietly underneath, ducked under the game's own sound.
+ * closes, each shot gets its text card faded in over it, and every clip is fitted to 1920x1080. The sound
+ * is the game's own (the instruments and the real knocks the headset's microphone heard): no added music.
  * Needs ffmpeg. Keep the whole thing under 2:50 (judges may stop at 3:00).
  */
 import { execFileSync } from 'node:child_process';
@@ -21,7 +21,6 @@ if (!list || !out) {
 }
 const shots = JSON.parse(readFileSync(list, 'utf8'));
 const CARDS = 'artifacts/video-cards';
-const MUSIC = 'public/audio/music/garden-castles-in-the-sky.ogg';
 const tmp = join(dirname(out), '.assemble');
 mkdirSync(tmp, { recursive: true });
 const ff = (args) => execFileSync('ffmpeg', ['-loglevel', 'error', '-y', ...args], { stdio: 'inherit' });
@@ -56,12 +55,9 @@ shots.forEach((s, i) => {
 ff(['-loop', '1', '-t', '4', '-i', `${CARDS}/99-end.png`, '-f', 'lavfi', '-t', '4', '-i', 'anullsrc=r=48000:cl=stereo', '-vf', 'fade=t=in:st=0:d=0.5,format=yuv420p', '-r', '30', '-c:v', 'libx264', '-c:a', 'aac', '-shortest', `${tmp}/99.mp4`]);
 parts.push(`${tmp}/99.mp4`);
 
-// join, then lay the music under (quiet, ducked by the game's own sound, faded at the end)
+// join
 const listFile = `${tmp}/list.txt`;
 writeFileSync(listFile, parts.map((p) => `file '${resolve(p)}'`).join('\n') + '\n');
-ff(['-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', `${tmp}/joined.mp4`]);
-const total = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', `${tmp}/joined.mp4`], { encoding: 'utf8' }).trim());
-ff(['-i', `${tmp}/joined.mp4`, '-stream_loop', '-1', '-i', MUSIC,
-  '-filter_complex', `[1:a]volume=0.22,afade=t=in:st=0:d=2,afade=t=out:st=${Math.max(0, total - 4)}:d=4,atrim=0:${total}[m];[0:a][m]sidechaincompress=threshold=0.05:ratio=4:attack=50:release=600[mduck];[0:a][mduck]amix=inputs=2:duration=first:normalize=0[a]`,
-  '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-t', String(total), out]);
+ff(['-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', out]);
+const total = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', out], { encoding: 'utf8' }).trim());
 console.log(`wrote ${out} (${total.toFixed(1)} s)`);

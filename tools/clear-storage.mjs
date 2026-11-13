@@ -1,5 +1,5 @@
 // Clears this origin's localStorage (fresh first-run state for E2E). The page is about to be
-// reloaded: block its further writes too, or a save in the gap (a loom pose, a timer) undoes the clear.
+// reloaded: block its further writes too, or a save in the gap (a kit pose, a timer) undoes the clear.
 export default async function run({ page, frame }) {
   return await (frame ?? page).evaluate(() => {
     try {
