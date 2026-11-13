@@ -49,7 +49,7 @@ import { Game, type GameStage, type Room, type Unlock } from '../play/game.js';
 import { Surface, outlineOf } from './surface.js';
 import { Overlay, Sheen } from './overlay.js';
 import { Motes } from './motes.js';
-import { FAMILIES, type Family, type Features } from './classify.js';
+import { FAMILIES, nextSwap, swapsFor, type Family, type Features } from './classify.js';
 import { retune, zoneAt, zoneForDegree, type Zone } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
 import { coop, type CoopStatus } from '../net/coop.js';
@@ -69,6 +69,9 @@ const SIDES = ['left', 'right'] as const;
 const HOLD_DOTS = 20;
 /** Surfaces within this of the head are played (stand up and walk to the far ones). */
 const ACTIVE_M = 3;
+/** Swaps: a pinch this close to a found instrument, held this long, changes it. */
+const SWAP_NEAR_M = 0.06;
+const SWAP_HOLD_S = 0.7;
 /** Surfaces within this of a seated player's head carry a sheen and count in the room map. */
 const SEATED_M = 1.1;
 /** A hand this close to a surface (along its normal) is tested against it. */
@@ -350,6 +353,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     },
     unlock: (u: Unlock) => {
+      if (u === 'swaps') this.later(this.clock.t + 7, () => this.tellSwaps());
       if (u === 'tom') {
         this.layout();
         this.kit.pad('tom')?.appear('slide');
@@ -454,6 +458,88 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.timed.push({ at, fn });
   }
   private farTold = false;
+
+  // ------------------------------------------------------------------ swaps
+
+  /** Pinch and hold an instrument (after Kitchen Clock): it changes to the next that suits it. Off during songs and jams. */
+  private watchSwaps(): void {
+    if (!(this.progress.unlocks as string[]).includes('swaps')) return;
+    const busy = this.game.mode !== 'discover' && this.game.mode !== 'results';
+    for (let i = 0; i < 2; i++) {
+      const h = i === 0 ? hands.left : hands.right;
+      const w = this.holds[i];
+      if (busy || !h.tracked || !h.pinch.pinching) {
+        if (w.s) this.endHold(i);
+        continue;
+      }
+      if (!w.s) {
+        // a pinch starting within 6 cm of a found instrument
+        if (h.edge !== 'start') continue;
+        let best: Surface | null = null;
+        let bd = SWAP_NEAR_M;
+        for (const s of this.surfaces) {
+          if (!s.discovered || !swappable(s)) continue;
+          const d = s.distanceTo(h.pinchPoint);
+          if (d < bd) {
+            bd = d;
+            best = s;
+          }
+        }
+        if (!best) continue;
+        w.s = best;
+        w.t0 = this.clock.t;
+        w.at.copy(h.pinchPoint);
+        this.overlays.get(best)?.sweep();
+        audio.tick();
+        continue;
+      }
+      if (h.pinchPoint.distanceTo(w.at) > 0.05) {
+        this.endHold(i);
+        continue;
+      }
+      if (this.clock.t - w.t0 >= SWAP_HOLD_S) {
+        this.swap(w.s);
+        // one change per pinch: let go and pinch again for the next
+        w.t0 = Infinity;
+      }
+    }
+  }
+  private holds = [0, 1].map(() => ({ s: null as Surface | null, t0: 0, at: new Vector3() }));
+  private endHold(i: number): void {
+    this.holds[i].s = null;
+  }
+
+  /** The surface plays the next instrument that suits it; the room map and the saved room follow. */
+  private swap(s: Surface): void {
+    const from = s.voice?.family;
+    if (!from || !s.natural) return;
+    const to = nextSwap(s.natural, from);
+    if (to === from) return;
+    s.as = to === s.natural ? null : to;
+    s.setFeatures(s.features);
+    this.tune(s);
+    this.hitAt.x = s.anchor.x;
+    this.hitAt.z = s.anchor.z;
+    s.discovered = false;
+    this.dropOverlay(s);
+    this.keyRefs.clear();
+    this.discover(s);
+    this.game.rediscovered(from, this.surfaces.some((x) => x !== s && x.discovered && x.voice?.family === from));
+    this.swapTold = true;
+    if (DEBUG) console.log(`[thump] ${s.id} swapped ${from} → ${s.voice?.family}`);
+  }
+  private swapTold = false;
+
+  /** Once, when swaps unlock: say how, at a found instrument in reach. */
+  private tellSwaps(): void {
+    if (this.swapTold || this.settings.noWords) return;
+    const s = this.surfaces.filter((x) => x.discovered && swappable(x)).sort((a, b) => a.reach - b.reach)[0];
+    if (!s) return;
+    this.swapTold = true;
+    this.tmp.set(s.anchor.x, 0.06, -s.anchor.z).applyMatrix4(s.world);
+    this.tmp.y = Math.min(this.tmp.y, this.head.y);
+    this.tag.show(`Pinch and hold the ${surfaceName(s).toLowerCase()} to change its sound`, FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
+  }
 
   /** After the first song: if the room has instruments beyond a seated reach, say where. */
   private afterFirstSong(): void {
@@ -608,6 +694,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.updateReach();
     }
     this.readHands(delta);
+    this.watchSwaps();
     this.brushShakers(delta);
     if (AUTOPLAY) this.autoplay();
     this.game.tick(this.clock.t);
@@ -1023,7 +1110,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const local = w.applyMatrix4(this.tmpM2.copy(a.group.matrixWorld).invert());
       // one entry per place: a surface found again as something else replaces its old entry
       const near = list.findIndex((x) => x.family !== 'kit' && Math.hypot(x.x - local.x, x.y - local.y, x.z - local.z) < 0.15);
-      const entry = { family: s.voice.family, x: r4(local.x), y: r4(local.y), z: r4(local.z) };
+      const entry = { family: s.natural ?? s.voice.family, x: r4(local.x), y: r4(local.y), z: r4(local.z), ...(s.as ? { as: s.as } : {}) };
       if (near >= 0) list[near] = entry;
       else list.push(entry);
     }
@@ -1047,10 +1134,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return true;
     }
     for (const i of list) {
-      if (i.family !== s.voice.family) continue;
+      if (i.family !== s.natural) continue;
       const w = this.tmp2.set(i.x, i.y, i.z).applyMatrix4(a.group.matrixWorld);
       s.toZone(w, this.o);
       if (Math.abs(this.o.y) > 0.1 || !s.over(this.o.x, this.o.z, 0.05)) continue;
+      if (i.as && i.as in FAMILIES) {
+        s.as = i.as as Family;
+        s.setFeatures(s.features);
+        this.tune(s);
+      }
       this.hitAt.x = this.o.x;
       this.hitAt.z = this.o.z;
       this.restoring = true;
@@ -1103,6 +1195,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (DEBUG) console.log(`[thump] discovered ${s.id} '${s.label}' → ${v.family} (${v.why}) size ${v.size.toFixed(2)}`);
     if (!this.restoring) this.remember(s);
+    if (!this.restoring && !this.swapTold && swappable(s) && (this.progress.unlocks as string[]).includes('swaps')) this.later(this.clock.t + 2.5, () => this.tellSwaps());
     this.game.discovered(v.family, s === this.kitSurface ? 'table' : surfaceName(s).toLowerCase(), this.clock.t);
     this.refreshDebugSurfaces();
   }
@@ -1227,13 +1320,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         s.sink = o.sink;
         this.tune(s);
       }
-      if (o.voice?.family !== s.voice.family || Math.abs(o.normal.dot(s.normal)) < 0.95) continue;
+      if (o.natural !== s.natural || Math.abs(o.normal.dot(s.normal)) < 0.95) continue;
       const w = this.tmp.set(o.anchor.x, 0, -o.anchor.z).applyMatrix4(o.world);
       s.toZone(w, this.o);
       if (Math.abs(this.o.y) > 0.05 || !s.over(this.o.x, this.o.z, 0.1)) continue;
       this.orphans.splice(k, 1);
       this.dropSurface(o);
       s.id = o.id;
+      if (o.as) {
+        s.as = o.as;
+        s.setFeatures(s.features);
+        this.tune(s);
+      }
       this.hitAt.x = this.o.x;
       this.hitAt.z = this.o.z;
       this.restoring = true;
@@ -1929,6 +2027,11 @@ function fakeStrike(t: number): Strike {
 
 function mkPoints(): Point[] {
   return Array.from({ length: 6 }, () => ({ x: 0, y: 1, z: 0, r: 0.01 }));
+}
+
+/** A room surface whose physics suits more than one instrument (the kit's table and the module never swap). */
+function swappable(s: Surface): boolean {
+  return (s.source === 'plane' || s.source === 'volume') && !!s.natural && swapsFor(s.natural).length > 1;
 }
 
 function surfaceName(s: Surface): string {

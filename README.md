@@ -13,8 +13,9 @@ A hands-first mixed-reality music game for Meta Quest. **Every surface in your r
 3. Hit the wall, the door, the window: each becomes its instrument, drawn in light on the real surface (a gong ring, marimba bars, glockenspiel keys) and named for two seconds. The module's room map fills.
 4. With two instruments found, tap ▶ on the module: a song is cast onto your room's instruments. Notes fly as light to the exact pad, bar or key and light it a beat ahead. Stars at the end; each song unlocks the next (and a new song of the day).
 5. After the first song, tap **JAM**: a bandmate takes one of your instruments and plays two bars; you answer; it gets busier when you answer well and plays your own phrase back. The module shows a code: a friend types it on this page on their phone and their phone becomes the bass.
-6. After *Night Bus*, tap **REC**: four bars of whatever you play, anywhere in the room, loop back; layer up to three.
-7. Next time in the same room, the instruments you found are already drawn. In the headset, tap ◀ twice for settings (slow songs, one hand, contrast, words); tap ▶ twice to stop a song.
+6. After *Kitchen Clock*, pinch and hold any instrument you found: it changes to the next one that suits it (a window: glockenspiel, then bell, marimba, singing bowl, tongue drum). Saved with the room.
+7. After *Night Bus*, tap **REC**: four bars of whatever you play, anywhere in the room, loop back; layer up to three.
+8. Next time in the same room, the instruments you found are already drawn. In the headset, tap ◀ twice for settings (slow songs, one hand, contrast, words); tap ▶ twice to stop a song.
 
 ## How it works
 

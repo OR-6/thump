@@ -20,6 +20,8 @@ export interface SavedKit {
 /** An instrument found in a room, saved relative to that room's persistent anchor. */
 export interface SavedInstrument {
   family: string;
+  /** The player swapped it to this instrument. */
+  as?: string;
   /** Where its zones were centred (anchor-local metres). */
   x: number;
   y: number;
@@ -78,7 +80,10 @@ export function loadProgress(): Progress {
   if (r.rooms && typeof r.rooms === 'object') {
     for (const [uuid, list] of Object.entries(r.rooms as Record<string, unknown>)) {
       if (!Array.isArray(list)) continue;
-      const ok = list.filter((i): i is SavedInstrument => !!i && typeof i.family === 'string' && [i.x, i.y, i.z].every((n: unknown) => typeof n === 'number' && Number.isFinite(n))).slice(-40);
+      const ok = list
+        .filter((i): i is SavedInstrument => !!i && typeof i.family === 'string' && [i.x, i.y, i.z].every((n: unknown) => typeof n === 'number' && Number.isFinite(n)))
+        .slice(-40)
+        .map((i) => ({ family: i.family, x: i.x, y: i.y, z: i.z, ...(typeof i.as === 'string' && i.as.length < 20 ? { as: i.as } : {}) }));
       if (ok.length) p.rooms[uuid.slice(0, 80)] = ok;
     }
   }

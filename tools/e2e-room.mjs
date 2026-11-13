@@ -8,7 +8,7 @@
  *   node tools/e2e-room.mjs            discovery by real slaps
  *   node tools/e2e-room.mjs --song     also a song with the autoplayer
  */
-import { xr, state, wait, check, done, shot, goto, placeKit, until, HAND, DESK_Y } from './e2e-lib.mjs';
+import { xr, run, state, wait, check, done, shot, goto, placeKit, until, HAND, DESK_Y } from './e2e-lib.mjs';
 
 const SONG = process.argv.includes('--song');
 const FLAT = { pitch: 0, yaw: 0, roll: 0 };
@@ -84,6 +84,44 @@ for (const v of chosen.length ? chosen : vert.slice(0, 2)) {
   check(`and it plays (${v.family})`, (s.played[v.family] ?? 0) > 0 || !s.debug.audio, JSON.stringify(s.played));
   await wait(500);
   shot(`room-03-${v.family}`, target);
+}
+// swaps: pinch and hold a found instrument → it plays the next instrument that suits it, saved with the room
+{
+  const v = state().debug.surfaces.find((x) => x.discovered && x.id !== 'kit' && x.id !== 'module');
+  if (v) {
+    console.log('unlock:', run('tools/unlock-swaps.mjs'));
+    const at = s.targets[`surface-${v.id}`];
+    const n = s.targets[`normal-${v.id}`];
+    const target = [at[0], Math.min(at[1], 1.5), at[2]];
+    xr('set-transform', { device: 'headset', position: { x: at[0] + n[0] * 0.6, y: 1.5, z: at[2] + n[2] * 0.6 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });
+    xr('look-at', { device: 'headset', target: { x: at[0], y: at[1], z: at[2] } });
+    // where the pinch point sits relative to the hand, measured pinched well away from the wall
+    const P = [target[0] + n[0] * 0.4, target[1] + n[1] * 0.4, target[2] + n[2] * 0.4];
+    const ORI = { pitch: 0, yaw: 0, roll: 90 };
+    xr('set-transform', { device: HAND, position: { x: P[0], y: P[1], z: P[2] }, orientation: ORI });
+    xr('set-select-value', { device: HAND, value: 1 });
+    await wait(400);
+    const pp = state().right.pinchPoint;
+    xr('set-select-value', { device: HAND, value: 0 });
+    await wait(300);
+    const off = [pp[0] - P[0], pp[1] - P[1], pp[2] - P[2]];
+    const Q = (d) => ({ x: target[0] + n[0] * d - off[0], y: target[1] + n[1] * d - off[1], z: target[2] + n[2] * d - off[2] });
+    xr('set-transform', { device: HAND, position: Q(0.025), orientation: ORI });
+    await wait(300);
+    const fam0 = state().debug.surfaces.find((x) => x.id === v.id)?.family;
+    xr('set-select-value', { device: HAND, value: 1 });
+    await wait(1300);
+    xr('set-select-value', { device: HAND, value: 0 });
+    await wait(300);
+    xr('set-transform', { device: HAND, position: { x: P[0], y: P[1], z: P[2] }, orientation: ORI });
+    s = state();
+    const d = s.debug.surfaces.find((x) => x.id === v.id);
+    check(`pinch and hold ${v.id} swaps its instrument`, !!d?.discovered && d.family !== fam0, `${fam0} → ${d?.family}`);
+    const saved = Object.values(s.progress.rooms ?? {}).flat();
+    check('the swap is saved with the room', saved.some((x) => x.as === d?.family) || saved.length === 0, JSON.stringify(saved));
+    check('the room map plays the new instrument', s.game.found.includes(d?.family), JSON.stringify(s.game.found));
+    shot('room-03b-swap', target);
+  }
 }
 xr('set-transform', { device: 'headset', position: { x: 0, y: 1.2, z: 0 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });
 await wait(400);

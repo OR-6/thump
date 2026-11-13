@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { classify, type Features } from '../src/room/classify.js';
+import { classify, nextSwap, swapsFor, type Features } from '../src/room/classify.js';
+import { Surface } from '../src/room/surface.js';
 import { degreeMidi, rootNear, zoneAt, zonesFor, retune, zoneForDegree } from '../src/room/zones.js';
 
 const base: Features = { facing: 'vertical', width: 1, length: 1, area: 1, elevation: 1, hollow: 0, glass: 0, soft: 0, curved: 0, bump: false, label: '' };
@@ -100,4 +101,31 @@ describe('pitch zones', () => {
     expect(z[zoneForDegree(z, d + 5)].degree % 5).toBe(d % 5);
   });
   it('an invisible boundary wall is not an instrument', () => expect(classify(f({ width: 3, length: 2.5, label: 'invisible wall face' }))).toBeNull());
+});
+
+describe('swaps', () => {
+  it('a surface cycles through what suits it and back to its own', () => {
+    expect(swapsFor('marimba')[0]).toBe('marimba');
+    expect(swapsFor('marimba')).not.toContain('kit');
+    expect(swapsFor('marimba')).not.toContain('keys');
+    let at: ReturnType<typeof nextSwap> = 'marimba';
+    const seen = new Set([at]);
+    for (let k = 0; k < swapsFor('marimba').length; k++) seen.add((at = nextSwap('marimba', at)));
+    expect(at).toBe('marimba');
+    expect(seen.size).toBe(swapsFor('marimba').length);
+  });
+  it('the kit never swaps', () => expect(swapsFor('kit')).toEqual(['kit']));
+  it('a wall swapped to a tongue drum keeps it when re-measured, and drops a swap that no longer suits it', () => {
+    const s = new Surface('p1', 'plane', 'wall');
+    s.setFeatures(f({ width: 1.2, length: 1.2 }));
+    expect(s.natural).toBe('gong');
+    s.as = 'tongue';
+    s.setFeatures(s.features);
+    expect(s.voice?.family).toBe('tongue');
+    expect(s.natural).toBe('gong');
+    // it turns out soft: a shaker can't be a tongue drum, so it plays what it is
+    s.setFeatures({ ...s.features, soft: 0.9 });
+    expect(s.voice?.family).toBe('shaker');
+    expect(s.as).toBeNull();
+  });
 });

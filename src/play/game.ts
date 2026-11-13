@@ -23,7 +23,7 @@ export type Unlock = 'tom' | 'jam' | 'loops' | 'swaps';
 /** Unlocked by finishing each song the first time. */
 export const UNLOCK_AFTER: Record<string, Unlock[]> = {
   'porch-step': ['tom', 'jam'],
-  'kitchen-clock': [],
+  'kitchen-clock': ['swaps'],
   'night-bus': ['loops'],
   'big-room': [],
 };

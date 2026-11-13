@@ -137,3 +137,15 @@ export const NEIGHBOURS: Record<Family, Family[]> = {
   kit: [],
   keys: [],
 };
+
+/** What a surface can be swapped to: what its physics says first, then the neighbours that suit it (never the kit or the desk keys). */
+export function swapsFor(natural: Family): Family[] {
+  return [natural, ...NEIGHBOURS[natural].filter((f) => f !== 'kit' && f !== 'keys')];
+}
+
+/** The next instrument in a surface's swap cycle (back to its own after the last). */
+export function nextSwap(natural: Family, current: Family): Family {
+  const l = swapsFor(natural);
+  return l[(l.indexOf(current) + 1) % l.length];
+}
+

@@ -9,6 +9,7 @@ export default async function run({ page, frame }) {
         tracked: x.tracked,
         pinching: x.pinch.pinching,
         palm: x.palm.toArray(),
+        pinchPoint: x.pinchPoint.toArray(),
         indexTip: x.indexTip.toArray(),
         middleTip: x.middleTip.toArray(),
         ringTip: x.ringTip.toArray(),

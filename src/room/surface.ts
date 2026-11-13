@@ -9,7 +9,7 @@
  */
 import { Matrix4, Quaternion, Vector3 } from '@iwsdk/core';
 import { StrikeDetector } from '../kit/strike.js';
-import { classify, type Features, type Voice } from './classify.js';
+import { classify, swapsFor, type Family, type Features, type Voice } from './classify.js';
 import { zonesFor, type Bounds, type Zone } from './zones.js';
 
 export type SurfaceSource = 'plane' | 'volume' | 'kit' | 'module';
@@ -33,6 +33,10 @@ export class Surface {
   outline: { x: number; z: number }[] = [];
   features!: Features;
   voice: Voice | null = null;
+  /** What its physics says it is (before any swap). */
+  natural: Family | null = null;
+  /** The player swapped it to this instrument (null: it plays what it is). */
+  as: Family | null = null;
   zones: Zone[] = [];
   discovered = false;
   /** Where its zones are centred (zone coordinates); set by the first hit. */
@@ -89,7 +93,12 @@ export class Surface {
   /** Measure and decide its instrument. */
   setFeatures(f: Features, isKitTable = false): void {
     this.features = f;
-    this.voice = classify(f, isKitTable);
+    const v = classify(f, isKitTable);
+    this.voice = v;
+    this.natural = v?.family ?? null;
+    // a swap holds while it still suits what the surface is (a re-measured surface may drop it)
+    if (v && this.as && this.as !== v.family && swapsFor(v.family).includes(this.as)) this.voice = { ...v, family: this.as, why: `swapped from ${v.family}` };
+    else this.as = null;
   }
 
   /** Lay its zones out around `anchor` (zone coordinates), in key `keyPc`. */
