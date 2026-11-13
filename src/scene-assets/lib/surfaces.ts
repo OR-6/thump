@@ -27,6 +27,7 @@ function tex(w: number, h: number, px: (x: number, y: number) => [number, number
   t.minFilter = LinearMipmapLinearFilter;
   t.generateMipmaps = true;
   if (srgb) t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 8;
   t.needsUpdate = true;
   return t;
 }
@@ -60,7 +61,7 @@ export function headCoat(): DataTexture {
       const dx = (x - 63.5) / 64;
       const dy = (y - 63.5) / 64;
       const d = Math.hypot(dx, dy);
-      const wear = Math.exp(-Math.pow((d - 0.22) / 0.12, 2)) * 22 + Math.exp(-Math.pow(d / 0.16, 2)) * 10;
+      const wear = Math.exp(-Math.pow((d - 0.22) / 0.12, 2)) * 45 + Math.exp(-Math.pow(d / 0.16, 2)) * 20;
       const g = 250 - wear + (r() - 0.5) * 9;
       return [g, g, g - 3];
     }, true, false);
@@ -81,17 +82,18 @@ export function fineNormal(seed = 3, strength = 18): DataTexture {
  */
 export function cymbalRings(): { map: DataTexture; rough: DataTexture } {
   const map = once('rings', () =>
-    tex(4, 256, (_x, y) => {
-      const v = y / 255;
-      const groove = 0.5 + 0.5 * Math.sin(v * 520) * (v > 0.12 && v < 0.88 ? 1 : 0.15);
-      const g = 205 + groove * 50;
-      return [g, g * 0.94, g * 0.8];
+    tex(4, 1024, (_x, y) => {
+      const v = y / 1023;
+      const groove = 0.5 + 0.5 * Math.sin(v * 300) * (v > 0.12 && v < 0.88 ? 1 : 0.15);
+      // (fine and faint: real lathe rings are a sheen, not stripes)
+      const g = 222 + groove * 16;
+      return [g, g * 0.93, g * 0.78];
     }, true),
   );
   const rough = once('ringsR', () =>
-    tex(4, 256, (_x, y) => {
-      const v = y / 255;
-      const g = 95 + 40 * (0.5 + 0.5 * Math.sin(v * 520)) * (v > 0.12 && v < 0.88 ? 1 : 0.3);
+    tex(4, 1024, (_x, y) => {
+      const v = y / 1023;
+      const g = 90 + 22 * (0.5 + 0.5 * Math.sin(v * 300)) * (v > 0.12 && v < 0.88 ? 1 : 0.3);
       return [g, g, g];
     }, false),
   );

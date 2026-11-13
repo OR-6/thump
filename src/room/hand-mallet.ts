@@ -11,7 +11,7 @@ const _q = new Quaternion();
 
 /** How far the head is from the pinch (m), and its radius (a mallet's; a stick reaches further, its tip is small). */
 export const MALLET_LEN = 0.1;
-export const STICK_LEN = 0.14;
+export const STICK_LEN = 0.28;
 export const MALLET_HEAD_R = 0.012;
 
 export class HandMallet {

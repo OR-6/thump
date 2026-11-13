@@ -34,7 +34,8 @@ import {
   Quaternion,
 } from '@iwsdk/core';
 import { PADS, PLACE, STRIKE, type Lane } from '../config.js';
-import { hands, type Side } from '../input/hands.js';
+import { hands, type HandState, type Side } from '../input/hands.js';
+import { AirHits, type AirHit, type AirSurface } from '../input/air-hits.js';
 import { Placement, kitPose } from '../app/placement.js';
 import { FrameGuard } from '../app/frame-guard.js';
 import { occluderState } from '../input/occluders.js';
@@ -72,6 +73,7 @@ import { coop, type CoopStatus } from '../net/coop.js';
 import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R, MALLET_LEN, STICK_LEN } from './hand-mallet.js';
+import { KICK_DEPTH } from '../kit/pad-view.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { Dimmer } from './dimmer.js';
 import { FriendSeat } from './friend-seat.js';
@@ -1428,6 +1430,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private readHands(delta: number): void {
     const t = this.clock.t;
     const inv = this.tmpM.copy(this.kit.root.matrixWorld).invert();
+    // fists and sticks, and the drums' heads struck in the air
+    this.airTick(delta, inv);
     for (let i = 0; i < 2; i++) {
       const side = SIDES[i];
       const h = hands[side];
@@ -1446,16 +1450,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.pinchHeld[i] = h.tracked && h.pinch.pinching ? this.pinchHeld[i] + delta : 0;
       // a pinch on the stand picks an instrument
       const pinched = h.tracked && !h.controller && h.pinch.pinching;
-      // with the marimba out a pinch holds a mallet, with the drums a stick: its head is what strikes (and it's not a
-      // swap-pinch)
+      // a fist holds a stick (the drums) or a mallet (the marimba); its tip is what strikes. An open hand lets go, so
+      // fingertips can use the panel; a pinch is the panel's
       const stick = this.kit.inst === 'drums';
-      this.malletOn[i] = pinched && (this.kit.inst === 'marimba' || stick);
+      this.malletOn[i] = h.tracked && !h.controller && this.fist[i] && (this.kit.inst === 'marimba' || stick);
       if (this.malletOn[i]) {
         this.handMallets[i].setKind(stick);
-        HandMallet.tip(h.pinchPoint, h.knuckleIndex, h.palm, this.malletTip[i], stick ? STICK_LEN : MALLET_LEN);
+        if (stick) this.malletTip[i].copy(this.stickTip[i]);
+        else HandMallet.tip(h.palm, h.knuckleIndex, h.palm, this.malletTip[i], MALLET_LEN + 0.05);
         this.sample.pinching = false;
       }
-      this.handMallets[i].set(this.malletOn[i], h.pinchPoint, this.malletTip[i], delta);
+      this.handMallets[i].set(this.malletOn[i], h.palm, this.malletTip[i], delta);
       if (pinched && !this.pinchWas[i]) this.pinchStand(h.pinchPoint);
       this.pinchWas[i] = pinched;
       this.sample.pinching = this.swaps.holding(i) || (this.pinchHeld[i] > 0.15 && (this.progress.unlocks as string[]).includes('swaps'));
@@ -2277,6 +2282,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const x = this.hitAt.x;
     const kz = -this.hitAt.z; // kit-local z (toward the player)
     if (this.kit.inst !== 'drums') return this.hitInstrument(side, gain, st, t);
+    // (the drums stand up off the desk now: once they're out, they're struck where their heads are, in the air)
+    if (this.kitOutT >= 0 && this.clock.t - this.kitOutT > 1.2) return;
     // an edge key?
     if (this.kit.keys.group.visible) {
       for (let i = 0; i < this.kit.keyZones.length; i++) {
@@ -2301,6 +2308,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     let lane: Lane | 'rim' = this.hitAt.pad >= 0 ? this.hitAt.lane : this.drumAt(x, kz);
     if (lane !== 'rim' && !this.kit.pad(lane)?.visible) lane = 'snare';
     if (this.flam('kit', LANE_INDEX[lane] ?? 9, side, t)) return;
+    this.playLane(lane, gain, x, t, st);
+  }
+
+  /** A drum sounds and moves, and the song hears it (from the desk or from the air). */
+  private playLane(lane: Lane | 'rim', gain: number, x: number, t: number, st: Strike): void {
     const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
     audio.drum(lane, gain, pan, 0, 1);
     this.dimmer.hit(LED[lane === 'rim' ? 'snare' : lane], gain);
@@ -2310,6 +2322,103 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.kit.pad(lane)?.perfect();
     }
     this.record(this.kitSurface, 0, gain, st, g, lane);
+  }
+
+  // ------------------------------------------------------------------ hits in the air (drums on stands, sticks)
+
+  /** When the kit came out (its drums are struck in the air from a moment after). */
+  private kitOutT = -1;
+  private air = new AirHits(10);
+  private airOut: AirHit[] = [];
+  /** The drums' heads as surfaces (kit-local), refreshed each frame from where the pads are. */
+  private airSurf: AirSurface[] = [0, 1, 2, 3].map((i) => ({ id: i, face: 'up' as const, x: 0, y: 0, z: 0, r: -1 }));
+  private airCount = 0;
+  /** A fist holds a stick (a mallet with the marimba): per hand, with hysteresis. */
+  private fist = [false, false];
+  private stickTip = [new Vector3(), new Vector3()];
+  private stickDir = [new Vector3(0, -0.3, -1).normalize(), new Vector3(0, -0.3, -1).normalize()];
+  private airP = new Vector3();
+  private airStrike: Strike = { kind: 'stop', speed: 0, gain: 0, point: 0, height: 0, t: 0 };
+  /** Fingers curled to the palm (mean tip-to-palm distance, m): a fist under 6 cm, open again over 7.5. */
+  private curl(h: HandState): number {
+    return (h.indexTip.distanceTo(h.palm) + h.middleTip.distanceTo(h.palm) + h.ringTip.distanceTo(h.palm)) / 3;
+  }
+  private airTick(dt: number, inv: Matrix4): void {
+    if (this.kitOutT < 0 && this.game.found.includes('kit')) this.kitOutT = this.clock.t;
+    const drums = this.kit.inst === 'drums' && this.kitOutT >= 0 && this.placement.phase === 'placed';
+    // the heads, where the pads stand now
+    let n = 0;
+    if (drums)
+      for (const lane of AIR_LANES) {
+        const p = this.kit.pad(lane);
+        if (!p || !p.visible) continue;
+        const s = this.airSurf[n++];
+        s.id = AIR_LANES.indexOf(lane);
+        const r = p.radius;
+        if (lane === 'kick') {
+          s.face = 'front';
+          s.x = p.x;
+          s.y = r + 0.004;
+          s.z = p.z + KICK_DEPTH / 2;
+          s.r = r;
+        } else {
+          s.face = 'up';
+          s.x = p.x;
+          s.y = p.headY;
+          s.z = p.z;
+          s.r = r * 1.1;
+        }
+      }
+    this.airCount = n;
+    // (the rest can't be struck: a radius nothing is inside)
+    for (let k = n; k < this.airSurf.length; k++) this.airSurf[k].r = -1;
+    for (let i = 0; i < 2; i++) {
+      const h = i === 0 ? hands.left : hands.right;
+      const side: Side = i === 0 ? 'left' : 'right';
+      if (!h.tracked || h.controller) {
+        for (let k = 0; k < 5; k++) this.air.forget(i * 5 + k);
+        this.fist[i] = false;
+        continue;
+      }
+      // a fist (not a pinch: that's for the panel) holds a stick
+      const c = this.curl(h);
+      const was = this.fist[i];
+      this.fist[i] = was ? c < 0.075 : c < 0.06;
+      if (this.fist[i] !== was) this.air.forget(i * 5 + 4);
+      if (this.fist[i]) {
+        // along the hand from the palm through the index knuckle, a little down; it lags a touch (it has weight)
+        this.airP.subVectors(h.knuckleIndex, h.palm);
+        if (this.airP.lengthSq() > 1e-8) {
+          this.airP.normalize();
+          this.airP.y -= 0.25;
+          this.airP.normalize();
+          this.stickDir[i].lerp(this.airP, Math.min(1, dt / 0.025)).normalize();
+        }
+        this.stickTip[i].copy(h.palm).addScaledVector(this.stickDir[i], STICK_LEN);
+      }
+      if (!drums) continue;
+      // the points that can strike: three fingertips and the palm (an open hand), or the stick's tip (a fist)
+      const pts = this.fist[i] ? 1 : 4;
+      for (let k = 0; k < 5; k++) {
+        const use = this.fist[i] ? k === 4 : k < 4;
+        if (!use) continue;
+        const w = k === 0 ? h.indexTip : k === 1 ? h.middleTip : k === 2 ? h.ringTip : k === 3 ? this.airP.copy(h.palm).setY(h.palm.y - h.palmRadius) : this.stickTip[i];
+        this.airP.copy(w).applyMatrix4(inv);
+        this.airOut.length = 0;
+        this.air.update(i * 5 + k, this.airP.x, this.airP.y, this.airP.z, dt, this.airSurf, this.airOut);
+        for (const hit of this.airOut) {
+          const lane = AIR_LANES[hit.surface];
+          if (!lane || this.flam('air', hit.surface, side, this.clock.t)) continue;
+          this.handHitT[i] = this.clock.t;
+          this.airStrike.t = this.clock.t;
+          this.airStrike.speed = hit.speed;
+          this.airStrike.gain = hit.gain;
+          this.playLane(lane, hit.gain, this.airP.x, this.clock.t, this.airStrike);
+          this.debug.hits++;
+        }
+      }
+      void pts;
+    }
   }
 
   // ------------------------------------------------------------------ the instrument shelf
@@ -3329,7 +3438,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.progress.bandName = bandNameFor(!this.tableOutline);
       saveProgress(this.progress);
     }
-    this.kit.pad('kick')?.paint(this.progress.bandName);
+    // (no names painted on the instruments: the band's name is the panel's to show)
     this.debug.bandName = this.progress.bandName;
   }
 
@@ -3536,11 +3645,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (r.kind === 'pad' || r.kind === 'keys') {
       if (r.kind === 'pad') {
+        // (the drums are struck in the air now: as a stick would)
         const p = this.kit.pad(r.lane);
-        this.hitAt.x = p?.x ?? 0;
-        this.hitAt.z = -(p?.z ?? 0);
-        this.hitAt.pad = 0;
-        this.hitAt.lane = r.lane;
+        const st = fakeStrike(t);
+        this.playLane(r.lane, st.gain, p?.x ?? 0, t, st);
+        return;
       } else {
         const q = this.kit.keyZones[r.zone];
         this.hitAt.x = q.x;
@@ -3651,7 +3760,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (this.placement.phase !== 'placed') return out;
     const root = this.kit.root;
     root.updateMatrixWorld(true);
-    for (const [lane, p] of this.kit.pads) if (p.visible) out[lane] = root.localToWorld(this.tmp.set(p.x, 0.018, p.z)).toArray().map(r4);
+    // (each drum's head where it is struck: the kick's is its front, facing you; strike it along kickNormal reversed)
+    for (const [lane, p] of this.kit.pads)
+      if (p.visible) out[lane] = root.localToWorld(lane === 'kick' ? this.tmp.set(p.x, p.radius + 0.004, p.z + KICK_DEPTH / 2) : this.tmp.set(p.x, p.headY, p.z)).toArray().map(r4);
+    out.kickNormal = this.tmp.set(0, 0, 1).transformDirection(root.matrixWorld).toArray().map(r4);
     out.table = root.localToWorld(this.tmp.set(0, 0, 0)).toArray().map(r4);
     KEYS.forEach((k, i) => {
       const z = this.moduleSurface.zones[i];
@@ -3690,6 +3802,8 @@ const PLAY_REACH_M = 1.3;
 /** How fast the last chord's ring of light crosses the room (m/s); each instrument plays as it arrives. */
 const FINALE_SPEED = 2.2;
 const LANE_INDEX: Partial<Record<string, number>> = { kick: 0, snare: 1, hat: 2, tom: 3, rim: 4 };
+/** The drums struck in the air, in their surfaces' order. */
+const AIR_LANES: Lane[] = ['kick', 'snare', 'hat', 'tom'];
 
 const NOT_TRACKED: HandSample = { tracked: false, pinching: false, points: [] };
 

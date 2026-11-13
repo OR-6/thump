@@ -367,9 +367,11 @@ describe('pad layout and picking', () => {
     expect(pickPad(hand(0, 0.02, 0.3).points, 0, 0, pads)).toBe(-1);
   });
 
-  it('a left-handed kit is the mirror', () => {
+  it("a left-handed kit is the mirror (a right-hander's hi-hat is on the left)", () => {
+    const r = kitLayout(['hat'], { handed: 'right', oneHand: null })[0];
     const l = kitLayout(['hat'], { handed: 'left', oneHand: null })[0];
-    expect(l.x).toBeLessThan(0);
+    expect(r.x).toBeLessThan(0);
+    expect(l.x).toBeCloseTo(-r.x, 6);
   });
 
   it('a one-handed kit sits on the playing side', () => {

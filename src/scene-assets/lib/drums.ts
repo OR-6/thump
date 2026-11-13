@@ -8,8 +8,9 @@
 import { BoxGeometry, CylinderGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, Vector2 } from '@iwsdk/core';
 import { cymbalRings, fineNormal, headCoat, woodGrain } from './surfaces.js';
 
-/** The height of a drum's head above the desk (and of a hi-hat's lower cymbal). */
+/** The old low drums' head height (still the default shell depth for anything flat). */
 export const DRUM_H = 0.022;
+const DEFAULT_DEPTH = DRUM_H;
 
 export interface DrumLook {
   /** Shell lacquer colour. */
@@ -19,6 +20,10 @@ export interface DrumLook {
   /** A snare's throw-off on the side nearest you; a kick's port in its head. */
   throwOff?: boolean;
   port?: boolean;
+  /** Shell depth (m): a real drum's, about 0.4 of its width for a snare. */
+  depth?: number;
+  /** A chrome (metal) shell, the classic snare's. */
+  chromeShell?: boolean;
 }
 
 const chrome = () => new MeshStandardMaterial({ name: 'Chrome', color: 0xe8eaee, metalness: 1, roughness: 0.14 });
@@ -32,7 +37,7 @@ function named<T extends Object3D>(o: T, name: string): T {
 function hoopGeometry(r: number, y: number): LatheGeometry {
   const pts: Vector2[] = [];
   // up the inside, over the rounded top, down the outside: a hoop you'd see on a real snare
-  const t = 0.0022;
+  const t = 0.003;
   for (let k = 0; k <= 10; k++) {
     const a = Math.PI * (k / 10);
     pts.push(new Vector2(r + t - Math.cos(a) * t, y - 0.004 + Math.sin(a) * t + (k === 0 || k === 10 ? 0 : 0.004)));
@@ -44,14 +49,18 @@ function hoopGeometry(r: number, y: number): LatheGeometry {
 /** One drum, `d` across. Named parts: Shell, Head, Hoop, Lugs (each Lug with its Rod), and a snare's ThrowOff. */
 export function buildDrum(d: number, look: DrumLook): Group {
   const R = d / 2;
+  // (the shell's depth: a real drum's proportions unless told otherwise)
+  const DRUM_H = look.depth ?? DEFAULT_DEPTH;
   const g = named(new Group(), 'Drum');
   // the shell: lacquered wood under a clear coat, a slight bearing edge at the top
-  const shellMat = new MeshPhysicalMaterial({ name: 'Lacquer', color: look.shell, map: woodGrain(Math.round(R * 1000)), metalness: 0, roughness: 0.42, clearcoat: 1, clearcoatRoughness: 0.08 });
+  const shellMat = look.chromeShell
+    ? new MeshPhysicalMaterial({ name: 'ChromeShell', color: 0xe6e8ec, metalness: 1, roughness: 0.12 })
+    : new MeshPhysicalMaterial({ name: 'Lacquer', color: look.shell, map: woodGrain(Math.round(R * 1000)), metalness: 0, roughness: 0.42, clearcoat: 1, clearcoatRoughness: 0.08 });
   const shellPts = [new Vector2(R * 0.97, 0), new Vector2(R, 0.001), new Vector2(R, DRUM_H - 0.004), new Vector2(R * 0.985, DRUM_H - 0.0028)];
   const shell = named(new Mesh(new LatheGeometry(shellPts, 72), shellMat), 'Shell');
   // the head: coated, a slight crown, worn grey where the sticks land (the kick's is dark, with a port)
   const dark = look.head !== undefined;
-  const headMat = new MeshStandardMaterial({ name: 'Head', color: look.head ?? 0xf3efe6, map: dark ? null : headCoat(), normalMap: fineNormal(5, 14), roughness: dark ? 0.6 : 0.8 });
+  const headMat = new MeshStandardMaterial({ name: 'Head', color: look.head ?? 0xe6e0d2, map: dark ? null : headCoat(), normalMap: fineNormal(5, 14), roughness: dark ? 0.6 : 0.8 });
   const head = named(new Mesh(new CylinderGeometry(R * 0.985, R * 0.985, 0.0012, 72), headMat), 'Head');
   head.position.y = DRUM_H - 0.0016;
   // (top-face uvs for the wear: a cylinder's cap maps its circle to the texture)
@@ -60,7 +69,7 @@ export function buildDrum(d: number, look: DrumLook): Group {
     // the resonant head's port: a black ring off centre
     const port = named(new Mesh(new RingGeometry(R * 0.16, R * 0.2, 40), new MeshStandardMaterial({ name: 'Port', color: 0x0c0c0e, roughness: 0.5, metalness: 0.4 })), 'Port');
     port.rotation.x = -Math.PI / 2;
-    port.position.set(R * 0.45, DRUM_H - 0.0009, -R * 0.2);
+    port.position.set(R * 0.45, DRUM_H - 0.0009, R * 0.5);
     parts.push(port);
   }
   // the hoop over the head's edge: a rolled chrome lip
@@ -69,8 +78,8 @@ export function buildDrum(d: number, look: DrumLook): Group {
   // lugs on the shell, each with a tension rod up to the hoop and a claw over it
   const lugs = named(new Group(), 'Lugs');
   const lugMat = chrome();
-  const n = d > 0.12 ? 10 : 8;
-  const lugGeo = new BoxGeometry(0.004, 0.009, 0.006);
+  const n = d > 0.16 ? 10 : 8;
+  const lugGeo = new BoxGeometry(0.005, Math.min(0.014, DRUM_H * 0.4), 0.007);
   const rodGeo = new CylinderGeometry(0.0008, 0.0008, 0.008, 8);
   const clawGeo = new BoxGeometry(0.003, 0.0022, 0.004);
   for (let i = 0; i < n; i++) {
@@ -79,7 +88,8 @@ export function buildDrum(d: number, look: DrumLook): Group {
     const body = named(new Mesh(lugGeo, lugMat), 'Body');
     body.position.set(R + 0.002, DRUM_H * 0.45, 0);
     const rod = named(new Mesh(rodGeo, lugMat), 'Rod');
-    rod.position.set(R + 0.0022, DRUM_H * 0.45 + 0.0065, 0);
+    rod.position.set(R + 0.0022, DRUM_H * 0.72, 0);
+    rod.scale.y = (DRUM_H * 0.5) / 0.008;
     const claw = named(new Mesh(clawGeo, lugMat), 'Claw');
     claw.position.set(R + 0.0012, DRUM_H + 0.0006, 0);
     lug.add(body, rod, claw);
@@ -126,25 +136,16 @@ function cymbal(d: number, mat: MeshStandardMaterial, name: string): Mesh {
  * A hi-hat `d` across: two cymbals a centimetre apart on a short chrome stand (a rod, a clutch, three folding legs),
  * the top one tipped a little toward you. Named Bottom, Top, Rod, Clutch, Legs.
  */
-export function buildHiHat(d: number): Group {
+export function buildHiHat(d: number, height = DRUM_H + 0.004): Group {
   const g = named(new Group(), 'HiHat');
   const rings = cymbalRings();
   const mat = new MeshStandardMaterial({ name: 'Bronze', color: 0xd8a85a, map: rings.map, roughnessMap: rings.rough, metalness: 1, roughness: 1 });
   const rodMat = chrome();
-  const H = DRUM_H + 0.004;
-  const rod = named(new Mesh(new CylinderGeometry(0.0018, 0.0018, H + 0.014, 12), rodMat), 'Rod');
+  const H = height;
+  const rod = named(new Mesh(new CylinderGeometry(0.0022, 0.0022, H + 0.014, 12), rodMat), 'Rod');
   rod.position.y = (H + 0.014) / 2;
   const legs = named(new Group(), 'Legs');
-  const legGeo = new CylinderGeometry(0.0011, 0.0011, 0.03, 8);
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2 + 0.5;
-    const leg = new Mesh(legGeo, rodMat);
-    // from the rod's foot out and down to the desk
-    leg.position.set(Math.cos(a) * 0.012, 0.004, Math.sin(a) * 0.012);
-    leg.rotation.set(0, -a, 0);
-    leg.rotateZ(Math.PI / 2 - 0.25);
-    legs.add(leg);
-  }
+  legs.add(tripod(Math.min(0.06, H * 0.45), rodMat));
   const bottom = cymbal(d, mat, 'Bottom');
   bottom.position.y = H - 0.004;
   // the top cymbal hangs face down over it, a centimetre up, tipped toward you
@@ -154,5 +155,68 @@ export function buildHiHat(d: number): Group {
   const clutch = named(new Mesh(new CylinderGeometry(0.0038, 0.0038, 0.005, 14), rodMat), 'Clutch');
   clutch.position.y = H + 0.0095;
   g.add(legs, rod, bottom, top, clutch);
+  return g;
+}
+
+/**
+ * A drum stand's tripod: three legs from a collar on the rod out and down to the desk, `spread` from the centre
+ * (named Tripod). Feet at y 0.
+ */
+export function tripod(spread: number, mat: MeshStandardMaterial): Group {
+  const g = named(new Group(), 'Tripod');
+  const collarY = spread * 0.75;
+  const len = Math.hypot(spread, collarY);
+  const geo = new CylinderGeometry(0.0016, 0.0016, len, 8);
+  const foot = new CylinderGeometry(0.003, 0.003, 0.003, 10);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + Math.PI / 6;
+    const leg = new Mesh(geo, mat);
+    leg.position.set((Math.cos(a) * spread) / 2, collarY / 2, (Math.sin(a) * spread) / 2);
+    leg.rotation.set(0, -a, 0);
+    leg.rotateZ(Math.atan2(spread, collarY));
+    const f = new Mesh(foot, rubber());
+    f.position.set(Math.cos(a) * spread, 0.0015, Math.sin(a) * spread);
+    g.add(leg, f);
+  }
+  return g;
+}
+
+const rubber = () => new MeshStandardMaterial({ name: 'Rubber', color: 0x161616, roughness: 0.9 });
+
+/** A snare or tom stand: a tripod, a rod up to the basket, three arms gripping the drum's bottom (named Stand). */
+export function drumStand(height: number, drumR: number): Group {
+  const g = named(new Group(), 'Stand');
+  const m = chrome();
+  g.add(tripod(Math.min(0.07, drumR * 0.9), m));
+  const rod = named(new Mesh(new CylinderGeometry(0.003, 0.003, height, 12), m), 'Rod');
+  rod.position.y = height / 2;
+  g.add(rod);
+  const armGeo = new CylinderGeometry(0.0016, 0.0016, drumR * 0.85, 8);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const arm = new Mesh(armGeo, m);
+    arm.position.set((Math.cos(a) * drumR * 0.85) / 2, height - 0.004, (Math.sin(a) * drumR * 0.85) / 2);
+    arm.rotation.set(0, -a, Math.PI / 2 - 0.12);
+    g.add(arm);
+  }
+  return g;
+}
+
+/** A kick drum on its side, its front head facing you (+z), resting on two spurs; `d` across, `depth` deep. */
+export function buildKick(d: number, depth: number, look: DrumLook): Group {
+  const g = named(new Group(), 'Kick');
+  const drum = buildDrum(d, { ...look, depth });
+  // on its side: the head (local +y) turned to face the player (+z), the shell's back at z −depth/2
+  drum.rotation.x = Math.PI / 2;
+  drum.position.set(0, d / 2 + 0.004, -depth / 2);
+  g.add(drum);
+  // two spurs angled out to the desk at the front
+  const m = chrome();
+  for (const s of [-1, 1]) {
+    const spur = named(new Mesh(new CylinderGeometry(0.002, 0.002, d * 0.42, 8), m), 'Spur');
+    spur.position.set(s * d * 0.36, d * 0.14, depth * 0.18);
+    spur.rotation.z = s * 0.7;
+    g.add(spur);
+  }
   return g;
 }

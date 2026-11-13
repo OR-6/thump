@@ -40,10 +40,11 @@ export const PALETTE = {
 export const PADS: Record<Lane, PadSpec> = {
   // drum-sized under your hands, 4 cm apart, and still about a tray's width (48 cm; 63 with the tom): kick and snare
   // in front of you, the hat to the right, the tom to the left
-  kick: { lane: 'kick', size: 0.15, x: -0.095, z: 0.005, color: PALETTE.tomato, mark: 'none' },
-  snare: { lane: 'snare', size: 0.13, x: 0.085, z: 0, color: PALETTE.mustard, mark: 'stripe' },
-  hat: { lane: 'hat', size: 0.12, x: 0.25, z: -0.03, color: PALETTE.teal, mark: 'notch' },
-  tom: { lane: 'tom', size: 0.12, x: -0.265, z: -0.05, color: PALETTE.plum, mark: 'ring' },
+  // (as a right-handed drummer has them: hi-hat left of the snare, the kick in the middle, the tom to the right)
+  kick: { lane: 'kick', size: 0.18, x: 0.13, z: -0.03, color: PALETTE.tomato, mark: 'none' },
+  snare: { lane: 'snare', size: 0.13, x: -0.07, z: 0.02, color: PALETTE.mustard, mark: 'stripe' },
+  hat: { lane: 'hat', size: 0.12, x: -0.25, z: -0.02, color: PALETTE.teal, mark: 'notch' },
+  tom: { lane: 'tom', size: 0.12, x: 0.33, z: -0.06, color: PALETTE.plum, mark: 'ring' },
   // the gong goes on a real wall within reach when there is one; this is the table-edge fallback
   gong: { lane: 'gong', size: 0.12, x: 0.29, z: -0.08, color: PALETTE.brass, mark: 'brass' },
 };

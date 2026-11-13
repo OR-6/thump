@@ -12,7 +12,9 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  PCFSoftShadowMap,
   PMREMGenerator,
+  ShadowMaterial,
   PlaneGeometry,
   PointLight,
   Scene,
@@ -25,11 +27,12 @@ import {
 function roomEnvironment(renderer: WebGLRenderer): Texture {
   const scene = new Scene();
   const box = new BoxGeometry(1, 1, 1);
-  const room = new Mesh(box, new MeshStandardMaterial({ color: 0x8a7f74, side: BackSide, roughness: 1 }));
+  // (darker walls with bright panels: chrome and lacquer need dark to reflect as well as light)
+  const room = new Mesh(box, new MeshStandardMaterial({ color: 0x4a443e, side: BackSide, roughness: 1 }));
   room.scale.set(8, 4, 8);
   room.position.y = 1.6;
   scene.add(room);
-  const light = new PointLight(0xffffff, 60, 30, 2);
+  const light = new PointLight(0xffffff, 40, 30, 2);
   light.position.set(0, 3, 0);
   scene.add(light);
   // bright panels: a ceiling light, a window to one side, a softer one behind (what chrome and lacquer catch)
@@ -52,10 +55,13 @@ function roomEnvironment(renderer: WebGLRenderer): Texture {
 /** Set the renderer and scene up for the instruments. */
 export function setupLighting(renderer: WebGLRenderer, scene: Scene): void {
   renderer.toneMapping = ACESFilmicToneMapping;
+  // real shadows from the key light (soft-edged), caught on the desk
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFSoftShadowMap;
   renderer.toneMappingExposure = 1.05;
   scene.environment = roomEnvironment(renderer);
   // (the environment lights PBR materials; it is not drawn: passthrough is the background)
-  scene.environmentIntensity = 0.9;
+  scene.environmentIntensity = 1.0;
 }
 
 let blobTex: CanvasTexture | null = null;
@@ -89,4 +95,25 @@ export function contactShadow(w: number, d: number, strength = 1): Mesh {
   m.position.y = 0.0006;
   m.renderOrder = 1;
   return m;
+}
+
+/** A plane on the desk that shows only the shadows falling on it (over passthrough: the real desk darkens). */
+export function shadowCatcher(w: number, d: number): Mesh {
+  const m = new Mesh(new PlaneGeometry(w, d), new ShadowMaterial({ opacity: 0.32 }));
+  m.name = 'ShadowCatcher';
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.0004;
+  m.receiveShadow = true;
+  m.renderOrder = 0;
+  return m;
+}
+
+/** Every solid mesh under `root` casts a shadow (lights and glass don't). */
+export function castShadows(root: import('@iwsdk/core').Object3D): void {
+  root.traverse((o) => {
+    const m = o as Mesh;
+    if (!m.isMesh) return;
+    const mat = m.material as MeshBasicMaterial;
+    m.castShadow = !mat.transparent && !(mat as unknown as { isMeshBasicMaterial?: boolean }).isMeshBasicMaterial;
+  });
 }

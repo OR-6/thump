@@ -4,7 +4,7 @@
  * your room has no instrument for), the module at the back, and your hands' shadows on the table.
  */
 import { DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture } from '@iwsdk/core';
-import { contactShadow } from '../art/lighting.js';
+import { castShadows, contactShadow, shadowCatcher } from '../art/lighting.js';
 import { LANES, PADS, type Lane } from '../config.js';
 import { PadView } from './pad-view.js';
 import { Panel } from '../ui/panel.js';
@@ -69,13 +69,26 @@ export class KitView {
     const key = new DirectionalLight(0xfff3e4, 2.2);
     key.position.set(-0.3, 0.7, 0.4);
     key.target.position.set(0, 0, -0.05);
+    // its shadows: a tight box round the desk's instruments, soft at the edges
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    const sc = key.shadow.camera;
+    sc.left = -0.45;
+    sc.right = 0.45;
+    sc.top = 0.45;
+    sc.bottom = -0.45;
+    sc.near = 0.1;
+    sc.far = 1.6;
+    key.shadow.bias = -0.0005;
+    key.shadow.normalBias = 0.002;
+    key.shadow.radius = 3;
     const fill = new DirectionalLight(0xe6eeff, 0.6);
     fill.position.set(0.45, 0.25, 0.3);
     fill.target.position.set(0, 0, -0.05);
     const rim = new DirectionalLight(0xdfe8ff, 0.8);
     rim.position.set(0.25, 0.35, -0.5);
     this.root.add(key, key.target, fill, fill.target, rim, rim.target);
-    this.root.add(this.instShadow);
+    this.root.add(this.instShadow, shadowCatcher(1.1, 0.75));
     this.instShadow.visible = false;
     for (const lane of LANES) {
       if (lane === 'gong') continue;
@@ -85,6 +98,8 @@ export class KitView {
       this.pads.set(lane, p);
       this.padRoot.add(p.group);
     }
+    castShadows(this.padRoot);
+    castShadows(this.module.stand);
     // the table keys lie on the table (an overlay on the kit's own surface: zone z is away from you)
     this.keyZones = zonesFor('keys', { minX: -0.3, maxX: 0.3, minZ: -0.1, maxZ: 0.3 }, { x: KEYS_ROW.x, z: -KEYS_ROW.z }, 0.5);
     this.keys.group.visible = false;
@@ -159,6 +174,7 @@ export class KitView {
     for (const [k, m] of this.models) m.root.visible = k === id;
     const model = this.models.get(id);
     model?.layout(this.instZones);
+    if (model) castShadows(model.root);
     // its shadow: a soft ellipse a little past its footprint
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const q of this.instZones) {
