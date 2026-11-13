@@ -507,6 +507,42 @@ describe('the game', () => {
     expect(g.last!.stars).toBeGreaterThanOrEqual(2);
   });
 
+  it('free play: your first note brings a soft band in under you; two quiet bars and it lets go', () => {
+    const band: string[] = [];
+    const voiced: string[] = [];
+    const st = {
+      ...stage([]),
+      band: (e: { voice: string }) => band.push(e.voice),
+      voice: (k: string) => voiced.push(k),
+      freeHarmony: () => ({ inst: 'piano', root: 48, chords: [[0, 4, 7], [9, 12, 16], [5, 9, 12]] }),
+    };
+    const g = new Game(st, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    let t = 1;
+    g.tick(t);
+    expect(g.harmony()).toBeNull();
+    g.hit('piano:2', t, 0.7);
+    for (let k = 0; k < 90; k++) {
+      t += 1 / 30;
+      if (k % 20 === 0) g.hit('piano:3', t, 0.7);
+      g.tick(t);
+    }
+    expect(band).toContain('chord');
+    expect(band).toContain('bass');
+    expect(voiced).toContain('kit:kick');
+    // its chord is the one the chord pad and the strums follow, in your scale (not a song's)
+    expect(g.harmony()?.song).toBe(false);
+    expect(g.harmony()?.chord).toBe(48);
+    const n = band.length;
+    for (let k = 0; k < 300; k++) g.tick((t += 1 / 30));
+    expect(g.harmony()).toBeNull();
+    const after = band.length;
+    for (let k = 0; k < 60; k++) g.tick((t += 1 / 30));
+    expect(band.length).toBe(after);
+    expect(after).toBeGreaterThan(n);
+  });
+
   it('learns a steady lateness', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

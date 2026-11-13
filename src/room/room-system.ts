@@ -322,6 +322,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     shelf: (dir) => this.shelfStep(dir),
+    freeHarmony: () => {
+      const id = this.kit.inst;
+      const sc = scaleById(id === 'drums' ? 'happy' : (this.settings.shelf[id]?.scale ?? 'happy'));
+      return { inst: id, root: 48 + this.game.keyPc, chords: sc.chords };
+    },
     useInstrument: (id) => this.useInstrument(id as InstId | null),
     shelfSet: (which) => this.shelfChange(which),
     celebrate: (stars) => {
@@ -1972,18 +1977,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private chordPickedT = -9;
   /** The guitar's chord (0–2) and the piano chord pad's next chord. */
   private guitarChord = 0;
+  private chordPadT = -9;
   private pianoChord = 0;
   private shelfCfg(id: InstId): { scale: string; sound: string } {
     const d = instDef(id);
     const c = this.settings.shelf[id] ?? { scale: SCALES[0].id, sound: d.sounds[0].id };
     // inside a track the instruments play its notes (its major or minor), with your sound
     const h = this.game.harmony();
-    return h ? { scale: h.minor ? 'sad' : 'happy', sound: c.sound } : c;
+    return h?.song ? { scale: h.minor ? 'sad' : 'happy', sound: c.sound } : c;
   }
   /** Lowest notes: the piano round middle C, the handpan and guitar an octave down, all in the song's key. */
   private instRoot(id: InstId): number {
     const pc = this.game.keyPc;
-    return (id === 'piano' ? 60 : 48) + pc;
+    // (the piano's tune sits above the band's chords: its root between F4 and E5)
+    return id === 'piano' ? 65 + ((pc + 7) % 12) : 48 + pc;
   }
   private shelfView(): ShelfView {
     const id = this.kit.inst;
@@ -2065,15 +2072,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // the chord pad: the chord the song is on, else the next of the scale's three
       const h = this.game.harmony();
       const ch = h ? (h.chordMinor ? [0, 3, 7] : [0, 4, 7]) : scale.chords[this.pianoChord % scale.chords.length];
-      const base = h ? h.chord - 12 : root - 12;
-      for (const n of ch) audio.modal(snd.family ?? 'keys', base + n, vel * 0.7, pan, when, 0.5, `piano-chord`, n);
+      const base = (h ? h.chord : root) - 12;
+      // root, fifth, and the third an octave up (open, not muddy)
+      for (const n of [0, 7, 12 + (ch[1] - ch[0])]) audio.modal(snd.family ?? 'keys', base + ch[0] + n, vel * 0.7, pan, when, 0.5, `piano-chord`, n);
       return;
     }
     // (zone + 10 on the piano: the same key an octave and more down, for a bass line)
     const low = id === 'piano' && zone >= 10;
     const zi = low ? zone - 10 : zone;
     const z = this.kit.inst === id ? this.kit.instZones[zi] : null;
-    const midi = (z?.midi ?? scaleMidi(root, scale, zi)) - (low ? 24 : 0);
+    const midi = (z?.midi ?? scaleMidi(root, scale, zi)) - (low ? 24 : 0) + (low ? 0 : (snd.oct ?? 0) * 12);
     audio.modal(low ? 'keys' : (snd.family ?? 'keys'), midi, vel, pan, when, 0.5, `${id}${low ? 'lo' : ''}`, zi);
   }
 
@@ -2085,11 +2093,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const h = this.game.harmony();
     const notes = h && this.clock.t - this.chordPickedT > 2 ? strumNotes(h.chord, h.chordMinor ? [0, 3, 7] : [0, 4, 7]) : strumNotes(this.instRoot('guitar'), scale.chords[c % scale.chords.length]);
     const t0 = when || audio.now();
-    const gap = 0.009 + 0.02 * (1 - Math.min(1, vel));
-    for (let k = 0; k < notes.length; k++) {
-      const v = vel * (0.85 - k * 0.04);
-      if (snd.string) audio.pluck(notes[k], v, pan, t0 + k * gap, snd.string);
-      else audio.modal(snd.family ?? 'harp', notes[k], v, pan, t0 + k * gap, 0.5, `guitar${k}`, k);
+    const gap = 0.006 + 0.012 * (1 - Math.min(1, vel));
+    // in a track, a strum on an 'and' is an up-strum: the top four strings, high to low, lighter
+    const b = h ? this.game.clock.beatAt(this.clock.t) : 0;
+    const up = !!h && Math.abs(b - Math.floor(b) - 0.5) < 0.2;
+    const play = up ? notes.slice(-4).reverse() : notes;
+    for (let k = 0; k < play.length; k++) {
+      const v = vel * (up ? 0.7 : 1) * (0.85 - k * 0.04);
+      if (snd.string) audio.pluck(play[k], v, pan, t0 + k * gap, snd.string);
+      else audio.modal(snd.family ?? 'harp', play[k], v, pan, t0 + k * gap, 0.5, `guitar${k}`, k);
     }
   }
 
@@ -2136,8 +2148,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     } else if (best >= 0) {
       if (this.flam(id, best, side, t)) return;
-      if (id === 'piano' && best === PIANO_CHORD) this.pianoChord++;
-      this.playInst(id, best, gain, pan, 0);
+      // the chord pad: the next chord only after a pause (pumping it on the beat stays on one chord)
+      if (id === 'piano' && best === PIANO_CHORD && this.clock.t - this.chordPadT > 1.2 && this.chordPadT > 0) this.pianoChord++;
+      if (id === 'piano' && best === PIANO_CHORD) this.chordPadT = this.clock.t;
+      // (the bass part being built on the piano is heard where it will play: two octaves down)
+      this.playInst(id, best + (id === 'piano' && best !== PIANO_CHORD ? this.game.pianoLow() : 0), gain, pan, 0);
       o?.hit(best, gain);
       const g = this.game.hit(`${id}:${best}`, t, gain);
       if (g === 'perfect') o?.perfect(best);

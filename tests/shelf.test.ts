@@ -29,15 +29,17 @@ describe('the instrument shelf', () => {
     const z = handpanZones(50, scaleById('sad'));
     for (const a of z) for (const b of z) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(a.w + b.w);
   });
-  it('a strum is six strings: the root in the bass, then chord tones only, climbing', () => {
+  it('a strum is a guitar shape: the root on a low string, then chord tones only, climbing', () => {
+    expect(strumNotes(57, [0, 3, 7])).toEqual([45, 52, 57, 60, 64, 69]);
     for (const sc of SCALES)
       for (const ch of sc.chords) {
         const n = strumNotes(60, ch);
-        expect(n).toHaveLength(6);
-        expect(n[0]).toBeLessThanOrEqual(46);
+        expect(n.length).toBeGreaterThanOrEqual(5);
+        expect(n[0]).toBeGreaterThanOrEqual(40);
+        expect(n[0]).toBeLessThanOrEqual(51);
         expect(n[0] % 12).toBe((60 + ch[0]) % 12);
         const pcs = ch.map((c) => (60 + c) % 12);
-        for (let i = 1; i < 6; i++) {
+        for (let i = 1; i < n.length; i++) {
           expect(n[i]).toBeGreaterThan(n[i - 1]);
           expect(pcs).toContain(n[i] % 12);
         }

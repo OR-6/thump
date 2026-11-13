@@ -524,7 +524,8 @@ class Engine {
     if (b) return b;
     const sr = ctx.sampleRate;
     const f = 440 * Math.pow(2, (midi - 69) / 12);
-    const n = Math.max(2, sr / f);
+    // (the two-tap average delays half a sample: take it off, or the top strings ring flat)
+    const n = Math.max(2, sr / f - 0.5);
     const N = Math.floor(n);
     const frac = n - N;
     const len = Math.floor(sr * (kind === 'steel' ? 2.6 : 1.9));
@@ -559,14 +560,23 @@ class Engine {
     const src = ctx.createBufferSource();
     src.buffer = this.stringBuffer(ctx, midi, kind);
     const v = Math.max(0.05, Math.min(1, vel));
-    const g = this.out(ctx, this.drums, pan, 0.5, t, 0.9 * (0.15 + 0.85 * v));
+    const level = 0.9 * (0.15 + 0.85 * v);
+    const g = this.out(ctx, this.drums, pan, 0.5, t, level);
+    const dur = src.buffer.duration;
+    // let it fade out rather than stop dead at the end of the buffer
+    g.gain.setValueAtTime(level, t + dur - 0.3);
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
     const body = ctx.createBiquadFilter();
     body.type = 'peaking';
     body.frequency.value = kind === 'steel' ? 2400 : 180;
     body.gain.value = kind === 'steel' ? 3 : 5;
-    src.connect(body).connect(g);
+    // a soft pluck is darker as well as quieter
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1500 + 7000 * v;
+    src.connect(body).connect(lp).connect(g);
     src.start(t);
-    src.stop(t + src.buffer.duration);
+    src.stop(t + dur);
     this.lastGain = v;
     this.lastAt = t;
   }

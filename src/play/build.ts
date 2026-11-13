@@ -132,7 +132,7 @@ export const TRACKS: readonly TrackDef[] = [
       { name: 'CLAP', pattern: '....x...|....x..x', pitched: 'no' },
       { name: 'PERC', pattern: '.x...x..|.x...x..', pitched: 'no' },
       { name: 'KEYS', pattern: '2.3.4.3.|2...0...', pitched: 'yes' },
-      { name: 'KEYS 2', pattern: '7.......|5...4...', pitched: 'yes' },
+      { name: 'KEYS 2', pattern: '6.......|5...4...', pitched: 'yes' },
       { name: 'BASS', pattern: '0.0...3.|2.2...0.', pitched: 'if-it-can' },
     ],
   },
@@ -234,12 +234,14 @@ export function quantise(pattern: readonly Step[], hits: readonly RawHit[], keyF
  * Your own bar: what you played with the lights off, on the 16th grid, loudness against your loudest hit (`loud`), one
  * note per 16th (the loudest). Beats are loop phase (0..8).
  */
-export function ownBar(hits: readonly RawHit[], loud: number): MachineNote[] {
+export function ownBar(hits: readonly RawHit[], loud: number, swing = 0.5): MachineNote[] {
   const top = Math.max(0.05, loud);
   const by = new Map<number, RawHit>();
   for (const h of hits) {
     if (h.vel < 0.15) continue;
-    const g = (Math.round(h.beat * 4) / 4) % LOOP_BEATS;
+    // (on the 16ths; in a swung track the off-beat eighths sit late, where the hats are)
+    let g = (Math.round(h.beat * 4) / 4) % LOOP_BEATS;
+    if (swing !== 0.5 && Math.abs(g * 2 - Math.round(g * 2)) < 1e-6 && Math.round(g * 2) % 2 === 1) g += swing - 0.5;
     const was = by.get(g);
     if (!was || h.vel > was.vel) by.set(g, h);
   }

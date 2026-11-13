@@ -15,6 +15,8 @@ export interface InstSound {
   /** A sampled family (piano, handpan), or a plucked string kind (guitar). */
   family?: Family;
   string?: 'nylon' | 'steel';
+  /** Octaves up from the instrument's own register (a glock sits high). */
+  oct?: number;
 }
 
 export interface InstDef {
@@ -37,9 +39,9 @@ export const SHELF: readonly InstDef[] = [
     how: 'Every key fits',
     sounds: [
       { id: 'piano', name: 'Grand', family: 'keys' },
-      { id: 'vibes', name: 'Vibes', family: 'bowl' },
+      { id: 'bowl', name: 'Bowl', family: 'bowl' },
       { id: 'marimba', name: 'Marimba', family: 'marimba' },
-      { id: 'glock', name: 'Glock', family: 'glock' },
+      { id: 'glock', name: 'Glock', family: 'glock', oct: 1 },
     ],
     scales: true,
     color: 0xffa630,
@@ -63,7 +65,7 @@ export const SHELF: readonly InstDef[] = [
     sounds: [
       { id: 'steel', name: 'Steel', family: 'tongue' },
       { id: 'glass', name: 'Glass', family: 'bowl' },
-      { id: 'bells', name: 'Bells', family: 'bell' },
+      { id: 'bells', name: 'Bells', family: 'bell', oct: 1 },
     ],
     scales: true,
     color: 0x2ad1b5,
@@ -97,7 +99,8 @@ export const SCALES: readonly Scale[] = [
   // minor pentatonic; i VI VII
   { id: 'sad', name: 'Sad', steps: [0, 3, 5, 7, 10], chords: [[0, 3, 7], [8, 12, 15], [10, 14, 17]] },
   // the blues scale; I7 IV7 V7
-  { id: 'bluesy', name: 'Bluesy', steps: [0, 3, 5, 6, 7, 10], chords: [[0, 4, 7, 10], [5, 9, 12, 15], [7, 11, 14, 17]] },
+  // (the blues' flat fifth clashes with the chords on a full-size key: the I7 IV7 V7 make it bluesy)
+  { id: 'bluesy', name: 'Bluesy', steps: [0, 3, 5, 7, 10], chords: [[0, 4, 7, 10], [5, 9, 12, 15], [7, 11, 14, 17]] },
   // lydian; Imaj7 II vi
   { id: 'dreamy', name: 'Dreamy', steps: [0, 2, 4, 6, 7, 9, 11], chords: [[0, 4, 7, 11], [2, 6, 9, 12], [9, 12, 16, 19]] },
 ];
@@ -132,9 +135,10 @@ export function handpanZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [{ i: 0, shape: 'disc', x: 0, z: 0.02, w: 0.045, h: 0, degree: 0, midi: scaleMidi(root, scale, 0) }];
   // around the rim, alternating sides as the notes climb (alternate hands and you walk up the scale)
   const order = [0, 7, 1, 6, 2, 5, 3, 4];
+  const fifth = Math.max(0, scale.steps.indexOf(7));
   for (let k = 0; k < 8; k++) {
     const a = -Math.PI / 2 + ((order[k] + 0.5) / 8) * Math.PI * 2;
-    out.push({ i: k + 1, shape: 'disc', x: Math.cos(a) * 0.11, z: 0.02 - Math.sin(a) * 0.09, w: 0.03, h: 0, degree: k + 1, midi: scaleMidi(root, scale, k + 1) });
+    out.push({ i: k + 1, shape: 'disc', x: Math.cos(a) * 0.11, z: 0.02 - Math.sin(a) * 0.09, w: 0.03, h: 0, degree: k + fifth, midi: scaleMidi(root, scale, k + fifth) });
   }
   return out;
 }
@@ -151,18 +155,15 @@ export function guitarZones(root: number, scale: Scale): Zone[] {
 }
 
 /**
- * A chord as a guitar plays it: six strings, the root low in the bass (E2–A2 range), then chord tones climbing
- * through the octave above, each at least two semitones from the last. `root` is the key's root (any octave).
+ * A chord as a guitar plays it: the root on the lowest string that has it (E2 up to D#3), then the shapes a guitarist
+ * uses: root, fifth, octave (or the seventh), the third an octave up, the fifth above; a sixth string when the bass is
+ * low enough. `root` is the key's root (any octave); `chord` semitones above it.
  */
 export function strumNotes(root: number, chord: readonly number[]): number[] {
-  const pcs = chord.map((c) => (((root + c) % 12) + 12) % 12);
-  let bass = 40 + ((pcs[0] - 40 % 12 + 12) % 12);
-  if (bass > 46) bass -= 12;
-  const out = [bass];
-  let n = bass;
-  for (let k = 1; out.length < 6 && k < 40; k++) {
-    n++;
-    if (pcs.includes(n % 12) && n - out[out.length - 1] >= 3) out.push(n);
-  }
-  return out;
+  const pc = (((root + chord[0]) % 12) + 12) % 12;
+  const bass = 40 + ((pc - 4 + 12) % 12);
+  const third = chord[1] - chord[0];
+  const seventh = chord.length > 3 ? chord[3] - chord[0] : undefined;
+  const shape = bass <= 45 ? [0, 7, seventh ?? 12, 12 + third, 19, 24] : [0, 7, seventh ?? 12, 12 + third, 19];
+  return shape.map((o) => bass + o);
 }

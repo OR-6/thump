@@ -70,6 +70,8 @@ export interface GameStage {
   shelfSet?(which: 'scale' | 'sound'): ShelfView;
   /** Put this instrument on the desk for a song or a build (null: back to the one chosen in free play). */
   useInstrument?(id: string | null): void;
+  /** Free play: the instrument on the desk, its key's root (MIDI, near C3) and the three chords of its scale. */
+  freeHarmony?(): { inst: string; root: number; chords: readonly (readonly number[])[] };
   /** The tuning page: act on a key (null: just read), and what the page shows. */
   tune(k: ModuleKey | null): { line: string; sub: string; labels: string[] };
 }
@@ -290,12 +292,18 @@ export class Game {
    * The harmony right now, for the shelf's instruments: inside a track its scale and the chord under this bar (a MIDI
    * root, minor or not); null in free play (the instrument's own notes).
    */
-  harmony(): { minor: boolean; chord: number; chordMinor: boolean } | null {
+  harmony(): { minor: boolean; chord: number; chordMinor: boolean; song: boolean } | null {
     const track = this.bld?.track ?? this.perf?.track ?? (this.mode === 'results' && this.fromPerform ? this.machine?.track : null);
-    if (!track) return null;
+    if (!track) {
+      // free play with the band along: the chord under this bar, in your instrument's own scale
+      const g = this.groove;
+      if (!g || this.mode !== 'discover') return null;
+      const c = g.chords[GROOVE[Math.max(0, Math.floor(this.clock.beatAt(this.t) / 4)) % 4] % g.chords.length];
+      return { minor: false, chord: g.root + c[0], chordMinor: c[1] - c[0] === 3, song: false };
+    }
     const bar = Math.max(0, Math.floor(this.clock.beatAt(this.t) / 4));
     const i = bar % track.chords.length;
-    return { minor: !!track.minor, chord: track.chords[i], chordMinor: !!track.minorChords?.includes(i) };
+    return { minor: !!track.minor, chord: track.chords[i], chordMinor: !!track.minorChords?.includes(i), song: true };
   }
 
   /** Can a hand resting on this thing mute it? Only a part of the machine you're not playing right now. */
@@ -327,6 +335,7 @@ export class Game {
     const spb = secPerBeat(track.bpm, this.opts.tempo);
     this.clock.set(this.t + 0.3, spb);
     this.stage.useInstrument?.('drums');
+    this.groove = null;
     this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99, guard: -99, verdict: null, retried: false, pending: null, dropAt: -99, chordAt: -99, inst: 'drums', rose: false };
     this.stage.retune(track.key, track.minor);
     this.moteCount = 0;
@@ -402,6 +411,10 @@ export class Game {
     const z = this.room.zoneFor(surface, s.degree);
     // the bass on the piano plays its keys two octaves down (zone + 10)
     return `${surface}:${Math.max(0, z) + this.lowFor(surface)}`;
+  }
+  /** The piano's low octave right now (10 while the bass part is being built on it), else 0. */
+  pianoLow(): number {
+    return this.lowFor('piano');
   }
   /** The piano's low octave for the bass part being built (10), else 0. */
   private lowFor(surface: string): number {
@@ -570,7 +583,7 @@ export class Game {
           own = true;
           const loud = Math.max(...b.hits.map((h) => h.vel));
           const lit = pat.filter((s) => relOf(s.beat) < 4);
-          notes = [...quantise(lit, b.hits.filter((h) => !inOwn(h.beat)), (s) => this.keyFor(target.surface, target.key, s)), ...ownBar(mine, loud)];
+          notes = [...quantise(lit, b.hits.filter((h) => !inOwn(h.beat)), (s) => this.keyFor(target.surface, target.key, s)), ...ownBar(mine, loud, b.track.swing)];
           notes.sort((x, y) => (x.at ?? x.beat) - (y.at ?? y.beat));
         } else notes = quantise(pat, b.hits, (s) => this.keyFor(target.surface, target.key, s));
         const share = own ? Math.max(0.5, played(notes, pat.filter((s) => relOf(s.beat) < 4)) ) : played(notes, pat);
@@ -695,7 +708,17 @@ export class Game {
     const loops = Math.ceil(to / LOOP_BEATS);
     let foundName = '';
     if (inst === 'guitar') {
-      for (let b = Math.ceil(from / 2) * 2; b < to; b += 2) if (!inFill(b)) notes.push({ beat: b, part: 'guitar:9' as never, degree: -1, vel: b % 4 === 0 ? 0.9 : 0.7 });
+      // bars 1–8 a strum on every beat; then down, down-up, up, down-up (the 'ands' are up-strums)
+      const VEL = [0.9, 0.6, 0.8, 0.6];
+      const LATER = [0, 1, 1.5, 2.5, 3, 3.5];
+      for (let bar = Math.floor(from / 4); bar * 4 < to; bar++) {
+        const offs = bar < 8 ? [0, 1, 2, 3] : LATER;
+        for (const o of offs) {
+          const b = bar * 4 + o;
+          if (b < from || b >= to || inFill(b)) continue;
+          notes.push({ beat: b, part: 'guitar:9' as never, degree: -1, vel: o % 1 ? 0.6 : VEL[o] ?? 0.7 });
+        }
+      }
       return { notes, live, found: '' };
     }
     let parts: typeof m.parts = [];
@@ -704,7 +727,7 @@ export class Game {
       found = m.parts.find((p) => p.surface !== 'kit' && p.surface !== 'keys' && PART_INST[p.def.name] === 'drums' && p.def.name !== 'KICK' && p.def.name !== 'SNARE');
       parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found);
       if (found) foundName = say(found.def.name);
-    } else parts = m.parts.filter((p) => PART_INST[p.def.name] === inst);
+    } else parts = m.parts.filter((p) => PART_INST[p.def.name] === inst && p.def.name !== 'BASS');
     const rank = (key: string) => {
       const i = parts.findIndex((p) => p.key === key);
       return i >= 0 ? i : parts.findIndex((p) => p.surface !== 'kit' && key.startsWith(p.surface + ':'));
@@ -743,6 +766,7 @@ export class Game {
   beginPerform(): void {
     const m = this.machine;
     if (!m) return;
+    this.groove = null;
     this.stage.useInstrument?.('drums');
     const t = m.track;
     this.bld = null;
@@ -948,6 +972,59 @@ export class Game {
       if (best) break;
     }
     return best;
+  }
+
+  /**
+   * Free play's band: your first note on an instrument starts a soft groove at 90 under you (a beat, a held chord a
+   * bar and the bass; with the drums out, just chords and bass, you're the drummer; with the handpan, its low middle
+   * and a shaker). The chord pad and strums follow its chords. Two quiet bars and it lets go.
+   */
+  private groove: { root: number; chords: readonly (readonly number[])[]; inst: string; sched: number; last: number } | null = null;
+  private groovePlayed(key: string, t: number): void {
+    const f = this.stage.freeHarmony?.();
+    if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('handpan:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
+    if (this.groove) {
+      this.groove.last = t;
+      return;
+    }
+    const spb = 60 / 90;
+    // the band comes in on the next beat after a short breath
+    this.clock.set(t + 0.25, spb);
+    this.groove = { root: f.root, chords: f.chords, inst: f.inst, sched: -0.01, last: t };
+  }
+  private tickGroove(t: number): void {
+    const g = this.groove;
+    if (!g) return;
+    const beat = this.clock.beatAt(t);
+    const f = this.stage.freeHarmony?.();
+    if (t - g.last > 8 * this.clock.spb || (f && f.inst !== g.inst)) {
+      this.groove = null;
+      return;
+    }
+    if (f) {
+      g.root = f.root;
+      g.chords = f.chords;
+    }
+    const ahead = beat + TIMING.lookAheadS / this.clock.spb;
+    const spb = this.clock.spb;
+    for (let b = Math.floor(g.sched * 2 + 1) / 2; b <= ahead; b += 0.5) {
+      if (b <= g.sched || b < 0) continue;
+      const at = this.clock.timeAt(b);
+      const inBar = ((b % 4) + 4) % 4;
+      const bar = Math.floor(b / 4);
+      const c = g.chords[GROOVE[bar % 4] % g.chords.length];
+      const minor = c[1] - c[0] === 3;
+      const root = g.root + c[0];
+      if (inBar === 0) this.stage.band({ beat: b, voice: 'chord', midi: root + 12, len: 4, vel: 0.28, minor }, at, spb);
+      if (g.inst !== 'handpan' && (inBar === 0 || inBar === 2)) this.stage.band({ beat: b, voice: 'bass', midi: root - 12, len: 0.9, vel: inBar === 0 ? 0.7 : 0.55 }, at, spb);
+      if (g.inst === 'handpan' && inBar === 0 && bar % 2 === 0) this.stage.voice('handpan:0', at, 0.4);
+      if (g.inst !== 'drums') this.stage.band({ beat: b, voice: 'shaker', midi: 0, len: 0.1, vel: b % 1 ? 0.25 : 0.4 }, at, spb);
+      if (g.inst !== 'drums' && g.inst !== 'handpan') {
+        if (inBar === 0 || inBar === 2) this.stage.voice('kit:kick', at, 0.45);
+        if (inBar === 1 || inBar === 3) this.stage.voice('kit:rim', at, 0.3);
+      }
+    }
+    g.sched = Math.max(g.sched, Math.floor(ahead * 2) / 2);
   }
 
   /** The shelf on the module for a few seconds after a change (and which setting was just changed). */
@@ -1365,6 +1442,7 @@ export class Game {
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
     if (this.mode === 'build') return this.hitBuild(key, t, gain);
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
+    if (this.mode === 'discover' && this.looper.state === 'off') this.groovePlayed(key, t);
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
     if (this.perf) {
       const b = this.clock.beatAt(t - this.opts.offset);
@@ -1413,6 +1491,7 @@ export class Game {
       if (was !== this.looper.state || wasRec !== this.looper.recording || count !== this.display.count) this.refreshDisplay();
     }
     if (this.mode === 'discover') {
+      this.tickGroove(t);
       // the first song is offered once there are two instruments (or the table alone has had a while)
       if (!this.offered && (this.tried.size >= 2 || (this.room.things?.() ?? 0) >= 2 || (this.kitAt >= 0 && t - this.kitAt > 40) || (!this.room.things && this.found.length >= 2))) {
         this.offered = true;
@@ -1862,6 +1941,9 @@ export function tightPercent(offsets: readonly number[]): number {
   const med = a[Math.floor(a.length / 2)];
   return Math.max(0, Math.round(100 - med));
 }
+
+/** The free-play band's chords, a bar each: the scale's first chord twice, then its second and third. */
+const GROOVE = [0, 0, 1, 2];
 
 const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', handpan: 'Handpan', guitar: 'Guitar' };
 
