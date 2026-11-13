@@ -55,6 +55,8 @@ FREE PLAY, then a card each. Every one should unfold onto the desk when picked. 
 
 3e. Handpan. The big middle note ten times, then each of the eight round it. Alternate hands round the rim and you should walk up the scale. Good: the note you meant, every time.
 
+3e2. Congas. The middle of each drum ten times, then the edge ten times. Good: the middle sounds open and round, the edge sharper (a slap), low drum on the left. On the piano (outside a song), hit a small black key: you should hear the two white keys either side of it.
+
 3f. Settings and fit. On the piano's settings page, change the notes (HAPPY, SAD, BLUESY, DREAMY), a sound and LOWER or HIGHER; PLAY IT and check you hear the change. Switch to the drums and back: it should still be set the way you left it. Does each instrument fit your table without reaching? Say which one felt cramped or too far away.
 
 ## 4. A song on Easy, with a switch (7 min)
@@ -106,7 +108,11 @@ On the panel: PLAY TOGETHER, START A BAND. The panel shows a 4-letter code. On t
 | 3c marimba mallet: appeared?, head strikes?, right bar /10 | |
 | 3d guitar: chord positions, strums /10, brush counted once? | |
 | 3e handpan: middle /10, rim notes, walking the scale | |
+| 3e2 congas: middle vs edge heard?, low left / high right; piano black key plays two notes? | |
 | 3f settings heard and kept? fit, what felt cramped | |
+| Go wild!: room above eye level dims, tray and hands stay lit?, any flicker? | |
+| tray: panel top row reachable without touching the seat ahead? any presses you didn't mean? | |
+| band: friend's light across the desk, sound from their side? | |
 | 4 notes on target and on the beat?, stars, notes played, On time %, switch landed?, fps min | |
 | 5 build: time, where you hesitated, did the drop land?, how you performed it | |
 | 6 band: joined?, same beat?, friend's notes heard, how late, any echo | |

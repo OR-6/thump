@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/OR-6/thump/actions/workflows/ci.yml/badge.svg)](https://github.com/OR-6/thump/actions/workflows/ci.yml)
 
-A music game for Meta Quest 3, played sitting down. Tap your desk (or an airplane tray) and a drum kit comes up under your hands. A screen floating over the back of the desk lets you swap it for a piano, a marimba, a guitar or a handpan, pick a song and play your part while a band plays the rest, or make your own track a part at a time. Every note is in the scale, so there's no wrong one. Alone or with up to three friends in their own headsets. Hands only, in passthrough. Design notes: [docs/GAME-V3.md](docs/GAME-V3.md).
+A music game for Meta Quest 3, played sitting down. Tap your desk (or an airplane tray) and a drum kit comes up under your hands. A screen floating over the back of the desk lets you swap it for a piano, a marimba, a guitar, congas or a handpan, pick a song and play your part while a band plays the rest, or make your own track a part at a time. Every note is in the scale, so there's no wrong one. Alone or with up to three friends in their own headsets. Hands only, in passthrough. Design notes: [docs/GAME-V3.md](docs/GAME-V3.md).
 
 **Play:** open **https://or-6.github.io/thump/** in the Quest browser, put the controllers down and press *Enter mixed reality*.
 
@@ -18,11 +18,11 @@ Tap the desk and the drums come out: a kick and a snare under your hands, a hi-h
 
 The main menu has four tiles and a button: FREE PLAY, SONGS, MAKE A TRACK, PLAY TOGETHER, and SETTINGS in the corner.
 
-FREE PLAY opens the instruments, a card each: DRUMS, PIANO, MARIMBA, GUITAR, HANDPAN. Tap one and it unfolds onto the desk. Every instrument except the drums has a settings page:
+FREE PLAY opens the instruments, a card each: DRUMS, PIANO, MARIMBA, GUITAR, CONGAS, HANDPAN. Tap one and it unfolds onto the desk. Every instrument except the drums has a settings page:
 
-- Its notes: HAPPY, SAD, BLUESY, DREAMY.
-- Its sounds. Piano: Grand, Bowl, Marimba, Glock. Marimba: Marimba, Xylo, Glock. Guitar: Nylon, Steel, Harp. Handpan: Steel, Glass, Bells.
-- LOWER and HIGHER move it an octave.
+- Its notes: HAPPY, SAD, BLUESY, DREAMY (not on the congas: a drum has no notes to pick).
+- Its sounds. Piano: Grand, Bowl, Marimba, Glock. Marimba: Marimba, Xylo, Glock. Guitar: Nylon, Steel, Harp. Congas: Congas, Cajon, Frame drum. Handpan: Steel, Glass, Bells.
+- LOWER and HIGHER move it an octave (not the congas).
 - PLAY IT takes you back to the desk.
 
 Whatever you leave out is there next time.
@@ -32,27 +32,31 @@ Whatever you leave out is there next time.
 They're models of the real things and they move when you play them. All of it is sized for a tray.
 
 - Drums: coated heads, lacquered shells, chrome hoops, and a hi-hat of two bronze cymbals.
-- Piano: six ivory keys for the right hand that sink when you hit them, and a wide ebony chord key for the left. Keys are 5 cm wide and the whole piano is 44 cm.
+- Piano: six ivory keys for the right hand that sink when you hit them, and a wide ebony chord key for the left. Keys are 5 cm wide and the whole piano is 44 cm. Outside a song, each small black key plays the two white keys either side of it together.
 - Marimba: eight rosewood bars that bounce when hit. Pinch and a mallet appears in that hand; its head is what strikes. Your bare hand works too.
 - Guitar: lying flat on the desk. Three chord positions on the neck for the left hand; strum over the soundhole with the right, a hit or a brush down. The strings are synthesised in the browser.
+- Congas: two hand drums, a low one on the left and a high one on the right, wood staves and rawhide heads. The middle of a head is an open tone, the edge a slap.
 - Handpan: a low note in the middle, eight around it. Alternate hands round the rim and you walk up the scale.
 
 ## Songs
 
-Five songs: Kick Start, Two Step, Boom Bap 88, Lowrider, Night Shift. Each row shows its tempo and your stars, and the next one opens once you've played the one before. Pick EASY or NORMAL, check what you'll play (it's whatever is out on the desk; tap it to change), then PLAY.
+Five songs: Kick Start, Two Step, Boom Bap 88, Lowrider, Night Shift, and a sixth that changes every day (named for the day: "Friday's song"). LISTEN FIRST plays a song through once on your own instrument, then counts you straight in. Each row shows its tempo and your stars, and the next one opens once you've played the one before. Pick EASY or NORMAL, check what you'll play (it's whatever is out on the desk; tap it to change), then PLAY.
 
 The band plays the song as written and you play your part on what's out:
 
 - Drums: the beat. Normal adds the hat.
 - Piano or marimba: the tune. Normal adds the high tune.
-- Guitar: strums, and the chords follow the song.
-- Handpan: the extra percussion part.
+- Guitar: strums, and the chords follow the song. From bar 9 the rhythm moves; on Normal your other hand changes chord on the neck.
+- Congas: the extra percussion. Normal adds the hat's eighths as a tumbao.
+- Handpan: the bass line on Easy, the extra percussion on Normal.
 
-The notes fall onto the exact key, bar, field or drum that plays them and land on the beat. Hit one and it bursts. A song has two *Go wild!* stretches where anything you hit counts, and in the last bars the notes stop falling and the lights go dim (*Keep it going*).
+From bar 9 the tune goes up two notes every other time round, so the song has a second half.
+
+The notes fall onto the exact key, bar, field or drum that plays them and land on the beat. Hit one and it bursts. A song has two *Go wild!* stretches where anything you hit counts, and in the last bars on Normal the notes stop falling (*Keep it going*). During *Go wild!* the room above eye level goes dim and your hits wash it in their colour, never more than three times a second.
 
 In a song the panel shows its name, a progress bar, how many notes in a row, a card for each instrument you can switch to, and STOP. Tap a card to switch mid-song: it says "Piano next", takes over at the next loop, and gives you a bar to find it ("Find it, then join in").
 
-At the end you get your stars, how many notes you played out of the total, and *On time* as a percentage when you were close (or which side of the beat you were on). Then the band plays two more loops at full. AGAIN plays it again. After one of the five songs there's MAKE IT YOURS; after your own track, NEXT SONG. MENU goes back.
+At the end you get your stars, how many notes you played out of the total, and *On time* as a percentage when you were close (or which side of the beat you were on). Then the band plays your best two bars back with you on them, your notes in gold (*That was you*), with the song's name, your best run and NEW BEST when you beat your stars. AGAIN plays it again. After one of the five songs there's MAKE IT YOURS; after your own track, NEXT SONG. MENU goes back.
 
 ## Make a track
 
@@ -62,7 +66,7 @@ MAKE A TRACK builds the song one part at a time: BOOM, SMACK, TICK, EXTRA, TUNE,
 
 On the 2D page or on the panel (PLAY TOGETHER, START A BAND), one of you starts a band and gets a 4-letter code. Friends type it on the Thump page and tap *Join* before they enter mixed reality. Up to four headsets, wherever you all are. Then PICK A SONG and it starts for everyone on the same beat.
 
-The host's clock is the band's clock; the other headsets work out how far off theirs is by pinging it. Each headset's band leaves out the parts your friends are playing live, so you hear them, a little to one side, instead. In a real two-page test the song started within a thousandth of a beat on both. LEAVE leaves the band.
+The host's clock is the band's clock; the other headsets work out how far off theirs is by pinging it. Each friend sits across the desk as a light in their instrument's colour, with its name, that swells when they play, and their sound comes from that side. When you play the same song, your band leaves out the parts they're playing live (never the bass). On your own, the backing band's players sit there instead during a song. In a real two-page test the song started within a thousandth of a beat on both. LEAVE leaves the band.
 
 Signalling goes through the PeerJS public broker; after that it's peer-to-peer. Only the notes you play are sent, and each one is checked: a friend's headset can only ask for sounds the game already makes, at most 80 a second. No accounts, no voice. There's no phone mode.
 
