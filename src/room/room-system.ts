@@ -395,7 +395,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       saveSettings(this.settings);
     },
     tune: (k) => this.tunePage(k),
-    lightsDown: (on) => this.dimmer.set(on),
+    lightsDown: (on) => {
+      this.dimmer.set(on);
+      audio.echo(on, this.game.clock.spb);
+    },
     flourish: () => {
       for (const o of this.overlays.values()) o.sweep();
       this.kit.keys.sweep();

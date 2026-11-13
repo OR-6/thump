@@ -92,6 +92,17 @@ class Engine {
     this.master.connect(pad).connect(clip).connect(ctx.destination);
     this.drums = ctx.createGain();
     this.drums.connect(this.master);
+    // the fill's echo: a dotted-eighth delay on what's played, opened only during Go wild!
+    this.echoSend = ctx.createGain();
+    this.echoSend.gain.value = 0;
+    this.echoDelay = ctx.createDelay(2);
+    const fb = ctx.createGain();
+    fb.gain.value = 0.38;
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = 3800;
+    this.drums.connect(this.echoSend).connect(this.echoDelay).connect(tone).connect(this.master);
+    tone.connect(fb).connect(this.echoDelay);
     this.bedBus = ctx.createGain();
     this.bedBus.gain.value = this.bedOn ? 0.55 : 0;
     this.bedBus.connect(this.master);
@@ -109,6 +120,17 @@ class Engine {
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  }
+
+  private echoSend: GainNode | null = null;
+  private echoDelay: DelayNode | null = null;
+  /** Open (or close) the fill's echo, a dotted eighth at this tempo (seconds per beat). */
+  echo(on: boolean, spb: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.echoSend || !this.echoDelay) return;
+    const t = ctx.currentTime;
+    this.echoDelay.delayTime.setTargetAtTime(Math.min(1.9, 0.75 * spb), t, 0.01);
+    this.echoSend.gain.setTargetAtTime(on ? 0.42 : 0, t, on ? 0.05 : 0.2);
   }
 
   setBed(on: boolean): void {
