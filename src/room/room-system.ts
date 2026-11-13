@@ -252,8 +252,26 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private room: Room = {
     instruments: () => {
       const out: RoomInstrument[] = [];
+      // only what you can reach from where you are now (you press ▶ at the table: the door you found standing up
+      // stays out of the song rather than taking a part you can't play); the room still accompanies (see `accompany`)
+      this.updateReach();
+      for (const s of this.surfaces) if (s.discovered && s.voice && s.source !== 'kit' && s.source !== 'module' && s.reach <= PLAY_REACH_M) out.push({ id: s.id, family: s.voice.family, zones: s.zones.length });
+      return out;
+    },
+    everything: () => {
+      const out: RoomInstrument[] = [];
       for (const s of this.surfaces) if (s.discovered && s.voice && s.source !== 'kit' && s.source !== 'module') out.push({ id: s.id, family: s.voice.family, zones: s.zones.length });
       return out;
+    },
+    chordZone: (id, pcs) => {
+      const zones = this.surfaces.find((s) => s.id === id)?.zones ?? [];
+      // the first chord tone it has, nearest the middle of the instrument
+      for (const pc of pcs) {
+        let best = -1;
+        for (let i = 0; i < zones.length; i++) if (zones[i].degree >= 0 && zones[i].midi % 12 === pc && (best < 0 || Math.abs(i - zones.length / 2) < Math.abs(best - zones.length / 2))) best = i;
+        if (best >= 0) return best;
+      }
+      return -1;
     },
     zones: (id) => (id === 'keys' ? this.kit.keyZones.length : (this.surfaces.find((s) => s.id === id)?.zones.length ?? 0)),
     zoneFor: (id, degree) => zoneForDegree(id === 'keys' ? this.kit.keyZones : (this.surfaces.find((s) => s.id === id)?.zones ?? []), degree),
@@ -277,7 +295,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         o.sweep();
       }
       this.kit.keys.flashAll();
-      if (!motion.calm) this.finaleT = 0;
+      this.tutti(0.75);
       this.kit.keys.sweep();
       let k = 0;
       for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.08 * k++, () => p.hit(0.7));
@@ -382,11 +400,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (!this.settings.noWords) {
           if (s) this.tmp.set(s.anchor.x, 0.05, -s.anchor.z - 0.12).applyMatrix4(s.world);
           else this.tmp.set(0, 0.06, -0.12).applyMatrix4(this.kit.root.matrixWorld);
-          this.tag.show('Your bandmate plays this', 0xf2efe6, this.tmp, this.head, 3);
+          this.tag.show('Mine first. Then yours.', 0xf2efe6, this.tmp, this.head, 3);
         }
       } else if (event === 'happy') {
         // pleased: up to the top and back
         motif([2, 4, 5], 0.09, 0.45);
+      } else if (event === 'leave') {
+        // its goodbye: down the bars and home
+        motif([4, 2, 0], 0.14, 0.5);
       } else if (event === 'turn') {
         o?.sweep();
         this.kit.module.pressKey(3);
@@ -445,7 +466,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private updateFinale(dt: number): void {
     if (this.finaleT < 0) return;
     if (!this.finale) {
-      const g = new RingGeometry(0.985, 1, 96);
+      const g = new RingGeometry(0.95, 1, 128);
       g.rotateX(-Math.PI / 2);
       this.finale = new Mesh(g, asLight(new MeshBasicMaterial({ color: 0xfff4dc, transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })));
       this.finale.frustumCulled = false;
@@ -453,8 +474,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.worldRoot.add(this.finale);
     }
     this.finaleT += dt;
-    const k = Math.min(1, this.finaleT / 2.2);
-    const r = 0.25 + 4.5 * (1 - Math.pow(1 - k, 2));
+    // the ring travels at the wave's speed (instruments sound as it reaches them), fading as it goes
+    const r = 0.2 + this.finaleT * FINALE_SPEED;
+    const k = Math.min(1, r / 5);
     this.kit.root.getWorldPosition(this.finale.position);
     this.finale.position.y += 0.01;
     this.finale.scale.setScalar(r);
@@ -853,6 +875,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.farCheckAt = this.clock.t + 3;
       this.afterFirstSong();
     }
+    // three found and a quiet spell: the one thing no single hit shows you
+    if (!this.tuttiTold && this.game.mode === 'discover' && this.game.found.length >= 3 && this.clock.t - this.lastFoundT > 12 && this.clock.t - this.slamT > 12 && !this.tag.shownText) {
+      this.tuttiTold = true;
+      if (!this.settings.noWords) {
+        this.tmp.set(0, 0.08, 0.02).applyMatrix4(this.kit.root.matrixWorld);
+        this.tag.show('Both hands at once.', 0xff5a3c, this.tmp, this.head, 4);
+      }
+    }
     for (const sh of this.sheens.values()) sh.update(dt);
     this.kitSheen?.update(dt);
     this.kit.module.root.updateMatrixWorld();
@@ -1192,6 +1222,54 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.record(s, z, gain, st, grade);
   }
 
+  private slamT = -9;
+  private tuttiTold = false;
+  private slamSide: Side = 'left';
+
+  /**
+   * The whole orchestra at once: every instrument you've found plays a note of one chord where it stands (the
+   * low ones the root, the high ones the third and fifth), each lighting as it sounds, a ring of light running out
+   * from the kit. A two-hand slam on the table outside a song, and every song's last chord.
+   */
+  private tutti(vel: number): void {
+    const t0 = audio.now();
+    let k = 0;
+    // root, third, fifth, octave (as steps of the pentatonic the zones are laid in)
+    const chord = [0, 2, 3, 5];
+    for (const s of this.surfaces) {
+      if (!s.discovered || !s.voice || s === this.kitSurface || s === this.moduleSurface) continue;
+      const o = this.overlays.get(s);
+      const melodic = FAMILIES[s.voice.family].melodic;
+      // pitched instruments take chord tones in their own register; drums just hit
+      let zi = 0;
+      if (melodic && s.zones.length > 1) {
+        const want = chord[k % chord.length];
+        zi = zoneForDegree(s.zones, Math.ceil(s.zones[0].degree / 5) * 5 + want);
+      }
+      const z = s.zones[zi];
+      if (!z) continue;
+      this.lastWorld.set(z.x, 0, -z.z).applyMatrix4(s.world);
+      // a wave out from the kit: each instrument plays as the ring of light reaches it (and a hair apart, like players)
+      this.kit.root.getWorldPosition(this.tmp2);
+      const delay = motion.calm ? 0.012 * k : this.tmp2.distanceTo(this.lastWorld) / FINALE_SPEED + Math.random() * 0.01;
+      audio.modal(s.voice.family, z.midi, vel * (melodic ? 0.8 : 0.9), this.panOf(this.lastWorld), t0 + delay, s.voice.size, s.id, zi);
+      this.later(this.clock.t + delay, () => {
+        o?.hit(zi, vel);
+        o?.flashAll();
+      });
+      k++;
+    }
+    // the kit and the bars too
+    for (const p of this.kit.pads.values()) if (p.visible) p.hit(vel);
+    audio.drum('kick', vel, 0, t0);
+    if (this.kit.keys.group.visible) {
+      const q = this.kit.keyZones[0];
+      if (q) audio.modal(this.deskFamily, q.midi, vel * 0.7, 0, t0 + 0.006, 0.5, 'desk', 0);
+      this.kit.keys.flashAll();
+    }
+    if (!motion.calm) this.finaleT = 0;
+  }
+
   /** Both hands on the same pad or bar within 25 ms is one note (a flam reads as a double otherwise). */
   private flamSurface = '';
   private flamZone = -1;
@@ -1235,6 +1313,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     let lane: Lane | 'rim' = this.hitAt.pad >= 0 ? this.hitAt.lane : this.drumAt(x, kz);
     if (lane !== 'rim' && !this.kit.pad(lane)?.visible) lane = 'snare';
     if (this.flam('kit', LANE_INDEX[lane] ?? 9, side, t)) return;
+    // both hands slam the table together, hard, outside a song: the whole orchestra answers
+    if (gain > 0.7 && side !== this.slamSide && t - this.slamT < 0.05 && (this.game.mode === 'discover' || this.game.mode === 'results') && this.game.looper.state === 'off') {
+      this.slamT = -9;
+      this.tutti(0.9);
+    } else if (gain > 0.7) {
+      this.slamT = t;
+      this.slamSide = side;
+    }
     const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
     audio.drum(lane, gain, pan, 0, 1);
     if (lane !== 'rim') this.kit.pad(lane)?.hit(gain);
@@ -1410,10 +1496,23 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const where = surfaceName(s);
       const subject = where === 'Floor' ? 'The floor' : where === 'Top' ? 'This' : `Your ${where.toLowerCase()}`;
       const name = `${subject} is ${withArticle(v.family)}${isGlass(s) ? '. Gently.' : ''}`;
-      // the tag stands just off the surface where it was hit, facing you
-      this.tmp.set(this.hitAt.x, 0.05, -this.hitAt.z).applyMatrix4(s.world);
+      // the tag never covers what it names: above an instrument on a wall, over one on a top, facing you
       if (s === this.kitSurface) this.tmp.set(0, 0.1, 0.05).applyMatrix4(s.world);
-      else this.tmp.y += 0.07;
+      else {
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let maxZ = -Infinity;
+        for (const z of s.zones) {
+          const hw = z.shape === 'rect' ? z.w / 2 : z.w;
+          const hh = z.shape === 'rect' ? z.h / 2 : z.w;
+          minX = Math.min(minX, z.x - hw);
+          maxX = Math.max(maxX, z.x + hw);
+          maxZ = Math.max(maxZ, z.z + hh);
+        }
+        const cx = Number.isFinite(minX) ? (minX + maxX) / 2 : this.hitAt.x;
+        if (s.features?.facing === 'vertical') this.tmp.set(cx, 0.05, -(Number.isFinite(maxZ) ? maxZ + 0.06 : this.hitAt.z + 0.1)).applyMatrix4(s.world);
+        else this.tmp.set(cx, 0.14, -this.hitAt.z).applyMatrix4(s.world);
+      }
       this.tag.show(name, FAMILIES[v.family].color, this.tmp, this.head);
       this.debug.tag = name;
     }
@@ -1608,7 +1707,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const want = !s.discovered && !!s.voice && s.reach <= SEATED_M;
       const has = this.sheens.get(s);
       if (want && !has) {
-        const sh = new Sheen(s);
+        const sh = new Sheen(s, s.voice ? FAMILIES[s.voice.family].color : 0xffffff);
         const holder = new Group();
         holder.matrixAutoUpdate = false;
         holder.matrix.copy(s.world);
@@ -1622,7 +1721,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     }
     if (!this.kitSurface.discovered && !this.kitSheen) {
-      this.kitSheen = new Sheen(this.kitSurface);
+      this.kitSheen = new Sheen(this.kitSurface, FAMILIES.kit.color);
       this.kit.root.add(this.kitSheen.group);
     }
     this.refreshDebugSurfaces();
@@ -2117,6 +2216,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 }
 
 const GUARD_NAMES = ['RoomSystem.hands', 'RoomSystem.swaps', 'RoomSystem.game'];
+/** A found instrument takes a part in a song only if it's this close to your head when the song starts. */
+const PLAY_REACH_M = 1.3;
+/** How fast the last chord's ring of light crosses the room (m/s); each instrument plays as it arrives. */
+const FINALE_SPEED = 2.2;
 const LANE_INDEX: Partial<Record<string, number>> = { kick: 0, snare: 1, hat: 2, tom: 3, rim: 4 };
 
 const NOT_TRACKED: HandSample = { tracked: false, pinching: false, points: [] };

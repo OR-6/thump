@@ -37,7 +37,7 @@ Tune, then re-test the same ten hits. Read out the final values at the end.
 ## 1. Feel first: the table (15 min)
 
 **1a. The first slap (1 min).** The module says *Hit anything*. Slap the table.
-- Good: the kit draws itself (black pads with coloured rims, amber bars at the back), a tag "Table · drum kit", a drum sound **with** your palm.
+- Good: the kit draws itself (black pads with coloured rims, amber bars at the back), a tag "Your table is a drum kit", a drum sound **with** your palm.
 - Read: line 2 (planes, meshes, surfaces, table mm, anchor).
 
 **1b. Ten per pad (5 min).** Ten medium slaps on each pad (kick, snare, hat), about one per second; then ten soft fingertip taps on the snare.
@@ -59,7 +59,7 @@ Tune, then re-test the same ten hits. Read out the final values at the end.
 - Read: hits/s (line 1), doubles. Good: ≥ 8 hits/s, no missed beats you can hear.
 
 **1g. Table bars (2 min).** Tap the amber bars along the back, left to right.
-- Good: a tag "Table · marimba" on the first, notes climbing left to right.
+- Good: a tag "The bars are a balafon" on the first, notes climbing left to right.
 
 ## 2. Placement on two tables (5 min)
 
@@ -70,7 +70,7 @@ Tune, then re-test the same ten hits. Read out the final values at the end.
 ## 3. The wall (4 min)
 
 Stand or lean to a wall. Ten flat slaps, one per second.
-- Good: the first one draws a ring on the real wall with a tag "Wall · gong", a long boom; ≥ 9/10 heard; the ring sits on the wall (not floating or sunk; say how far off).
+- Good: the first one draws a ring on the real wall with a tag "Your wall is a gong", a long boom; ≥ 9/10 heard; the ring sits on the wall (not floating or sunk; say how far off).
 - Read: line 3 for one slap (label, `stop`/`cross`, m/s).
 
 ## 4. The door, the window, the cupboard (6 min)

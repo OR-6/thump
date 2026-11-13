@@ -25,6 +25,8 @@ export const MODULE = {
 export type ModuleKey = 'prev' | 'play' | 'next' | 'jam' | 'loop';
 export const KEYS: readonly ModuleKey[] = ['prev', 'play', 'next', 'jam', 'loop'];
 const KEY_X = [-0.116, -0.058, 0, 0.058, 0.116];
+/** Printed under each key on the module's front edge: what tapping it twice does. */
+const LEGEND = ['SETTINGS ×2', 'STOP ×2', 'SONGS', '', 'CLEAR ×2'];
 
 export interface Display {
   /** The big line (≤ 18 characters). */
@@ -107,9 +109,37 @@ export class Module {
       this.keyMats.push(mat);
       this.root.add(key);
     });
+    // the legend printed along the front edge, like the hardware it is: what a double tap does
+    const lc = document.createElement('canvas');
+    lc.width = 1024;
+    lc.height = 116;
+    const lt = new CanvasTexture(lc);
+    lt.colorSpace = SRGBColorSpace;
+    lt.anisotropy = 4;
+    const legend = new Mesh(new PlaneGeometry(MODULE.w, MODULE.h), new MeshBasicMaterial({ map: lt, transparent: true, toneMapped: false }));
+    legend.position.set(0, MODULE.h / 2, MODULE.d / 2 + 0.0006);
+    this.root.add(legend);
+    const drawLegend = () => {
+      const g = lc.getContext('2d')!;
+      g.clearRect(0, 0, lc.width, lc.height);
+      g.fillStyle = '#9a968c';
+      g.textBaseline = 'middle';
+      g.font = `600 34px ${FONT}`;
+      LEGEND.forEach((t, i) => {
+        if (!t) return;
+        const x = lc.width / 2 + (KEY_X[i] / MODULE.w) * lc.width;
+        g.fillText(t, x - g.measureText(t).width / 2, lc.height * 0.42);
+      });
+      // a thin rule under the legend, as printed
+      g.fillStyle = '#3a3a3e';
+      g.fillRect(24, lc.height * 0.78, lc.width - 48, 2);
+      lt.needsUpdate = true;
+    };
+    drawLegend();
     this.root.position.set(MODULE.x, 0, MODULE.z);
     this.draw(this.shown);
     whenFonts(() => {
+      drawLegend();
       this.draw(this.shown);
       this.drawKeys(this.shown);
     });
@@ -203,9 +233,6 @@ export class Module {
       while (g.measureText(d.sub).width > W - 56 && sp2 > 36) g.font = `500 ${--sp2}px ${FONT}`;
       g.fillStyle = '#d6d2c8';
       g.fillText(d.sub, 28, 190);
-      g.fillStyle = '#8f8b82';
-      g.font = `500 34px ${FONT}`;
-      g.fillText('Each key says what it does', 28, 258);
       this.tex.needsUpdate = true;
       return;
     }

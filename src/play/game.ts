@@ -22,9 +22,9 @@ import type { Display, ModuleKey } from '../ui/module.js';
 export type Unlock = 'tom' | 'jam' | 'loops' | 'swaps';
 /** Unlocked by finishing each song the first time. */
 export const UNLOCK_AFTER: Record<string, Unlock[]> = {
-  'porch-step': ['tom', 'jam'],
-  'kitchen-clock': ['swaps'],
-  'night-bus': ['loops'],
+  'porch-step': ['tom', 'jam', 'swaps'],
+  'kitchen-clock': ['loops'],
+  'night-bus': [],
   'big-room': [],
 };
 
@@ -66,6 +66,10 @@ export interface Room {
   zoneFor(surface: string, degree: number): number;
   /** The scale degree a zone of a surface plays. */
   degreeOf(surface: string, zone: number): number;
+  /** Every instrument found, near or far (the ones that accompany a song). */
+  everything?(): RoomInstrument[];
+  /** The zone of a surface that sounds one of these pitch classes (a chord tone), or −1. */
+  chordZone?(surface: string, pcs: readonly number[]): number;
 }
 
 export type Mode = 'discover' | 'count' | 'play' | 'results' | 'jam';
@@ -259,7 +263,7 @@ export class Game {
     if (k === 'loop') {
       if (this.mode === 'play' || this.mode === 'count' || this.mode === 'jam') return;
       if (!(this.progress.unlocks as string[]).includes('loops')) {
-        this.display.sub = 'REC unlocks after Night Bus';
+        this.display.sub = 'After Kitchen Clock';
         return;
       }
       if (twice) {
@@ -276,7 +280,7 @@ export class Game {
     }
     if (k === 'jam') {
       if (this.mode === 'jam') this.endJam();
-      else if (!(this.progress.unlocks as string[]).includes('jam')) this.display.sub = 'JAM unlocks after Porch Step';
+      else if (!(this.progress.unlocks as string[]).includes('jam')) this.display.sub = 'After Porch Step';
       else if (this.mode !== 'play' && this.mode !== 'count') this.beginJam();
     }
   }
@@ -407,10 +411,14 @@ export class Game {
       mate.report(share);
       this.jamShares.push(share);
       this.stage.bandmate(share >= 0.7 ? 'happy' : 'simpler', this.jamSurface);
-      if (share >= 0.7) this.stage.celebrate(share >= 0.95 ? 3 : 2);
       this.jamCycle++;
-      if (this.jamCycle >= 8) this.endJam();
-      else this.refreshDisplay();
+      if (this.jamCycle >= 8) {
+        // the jam ends together: its goodbye, then the whole room's last chord
+        this.stage.bandmate('leave', this.jamSurface);
+        const avg = this.jamShares.reduce((a, b) => a + b, 0) / Math.max(1, this.jamShares.length);
+        this.stage.celebrate(avg >= 0.9 ? 3 : avg >= 0.6 ? 2 : 1);
+        this.endJam();
+      } else this.refreshDisplay();
     }
   }
 
@@ -448,6 +456,9 @@ export class Game {
     this.selected = i;
     this.offered = true;
     this.cast = cast(song.parts, this.room.instruments());
+    const casted = new Set(Object.values(this.cast).map((c) => c?.surface));
+    this.accompanists = (this.room.everything?.() ?? []).filter((r) => !casted.has(r.id));
+    this.accompBar = -1;
     this.stage.casting(this.cast);
     this.stage.retune(song.key);
     const chart = this.stage.setting('oneHand', false) ? oneHanded(song.notes) : song.notes;
@@ -582,7 +593,33 @@ export class Game {
     this.refreshDisplay();
   }
 
-  private onBed = (e: BedEvent): void => this.stage.band(e, this.clock.timeAt(e.beat), this.clock.spb);
+  private onBed = (e: BedEvent): void => {
+    this.stage.band(e, this.clock.timeAt(e.beat), this.clock.spb);
+    if (e.voice === 'chord' && this.song && this.mode !== 'jam' && e.beat >= 0) this.accompany(e);
+  };
+
+  /**
+   * The rest of the orchestra: every instrument you found that has no part in this song plays along softly, lit as it
+   * sounds. Pitched ones ring a tone of the chord every other bar; drums and gongs mark each four-bar phrase.
+   */
+  private accompanists: RoomInstrument[] = [];
+  private accompBar = -1;
+  private accompany(e: BedEvent): void {
+    const bar = Math.floor(e.beat / 4);
+    if (bar === this.accompBar || !this.accompanists.length) return;
+    this.accompBar = bar;
+    const at = this.clock.timeAt(bar * 4);
+    const third = e.minor ? 3 : 4;
+    const pcs = [e.midi % 12, (e.midi + third) % 12, (e.midi + 7) % 12];
+    const last = this.song ? bar === this.song.bars - 1 : false;
+    this.accompanists.forEach((r, k) => {
+      const melodic = FAMILIES[r.family].melodic;
+      if (melodic && (bar % 2 === 0 || last)) {
+        const z = this.room.chordZone?.(r.id, [pcs[k % 3], ...pcs]) ?? -1;
+        if (z >= 0) this.stage.voice(`${r.id}:${z}`, at + k * 0.015, 0.3);
+      } else if (!melodic && (bar % 4 === 0 || last)) this.stage.voice(`${r.id}:0`, at, bar === 0 ? 0.55 : 0.42);
+    });
+  }
   private onMiss = (n: { lane: string }): void => {
     this.energy = Math.max(0.15, this.energy - 0.05);
     this.stage.missed(n.lane);
@@ -688,7 +725,7 @@ export class Game {
               : this.weakRuns >= 2 && this.opts.tempo > 0.95
                 ? 'Slower? Tap ◀ twice'
                 : have < need
-                  ? 'Tap ▶. Find more, hear more'
+                  ? 'Tap ▶'
                   : 'Tap ▶ to play';
           d.pulse = jamNew ? 'jam' : 'play';
           d.stars = this.progress.stars[sel.id] ?? 0;
@@ -715,7 +752,7 @@ export class Game {
         d.line = s.stars === 3 ? 'In the pocket' : s.stars === 2 ? 'Nearly there' : 'Once more?';
         d.stars = s.stars;
         const next = this.selected < this.available() ? this.songAt(this.selected) : null;
-        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: a tom, and JAM' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
+        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'A tom, a bandmate, and swaps' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
         break;
       }
     }

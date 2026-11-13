@@ -149,7 +149,8 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
         const k = i - (n - 1) / 2;
         const rr = r * (1 - i * 0.12);
         if (family === 'slit') out.push({ i, shape: 'rect', x: c.x + k * r * 2.3, z: c.z, w: r * 1.6, h: r * 0.9, degree: -1, midi: degreeMidi(root, d0) });
-        else if (family === 'cajon') out.push({ i, shape: 'disc', x: c.x, z: c.z + k * r * 2.2, w: rr, h: 0, degree: -1, midi: degreeMidi(root, d0) });
+        // a cajón is a box: its bass in the big face, its slap in a strip along the top edge
+        else if (family === 'cajon') out.push(i === 0 ? { i, shape: 'rect', x: c.x, z: c.z - r * 0.5, w: r * 2.4, h: r * 2.2, degree: -1, midi: degreeMidi(root, d0) } : { i, shape: 'rect', x: c.x, z: c.z + r * 1.05, w: r * 2.4, h: r * 0.55, degree: -1, midi: degreeMidi(root, d0) });
         else out.push({ i, shape: 'disc', x: c.x + k * r * 2.2, z: c.z, w: rr, h: 0, degree: -1, midi: degreeMidi(root, d0) });
       }
       break;
@@ -188,7 +189,7 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
       // the table marimba (see below)
       // the table marimba: eight bars drawn on the wood, running toward you, low on the left, a hand wide
       for (let i = 0; i < 8; i++) {
-        const len = 0.1 - i * 0.005;
+        const len = 0.11 - i * 0.007;
         out.push({ i, shape: 'rect', x: anchor.x + (i - 3.5) * 0.066, z: anchor.z, w: 0.05, h: len, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
       }
       break;

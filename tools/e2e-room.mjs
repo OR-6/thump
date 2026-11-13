@@ -149,6 +149,18 @@ check('the room map counts what was found', s.game.display.found.length >= 2, JS
 check('the module offers a song once two are found', s.game.display.pulse === 'play', `${s.game.display.line} / ${s.game.display.sub}`);
 shot('room-04-module', look);
 
+// both hands slam the table at once: every instrument found answers (the tutti; the emulator can't land both hands
+// together, so the chord is played directly and the gesture's timing is left to the device session)
+{
+  const before = state().played;
+  run('tools/tutti.mjs');
+  await wait(500);
+  const after = state().played;
+  const rang = Object.keys(after).filter((f) => (after[f] ?? 0) > (before[f] ?? 0) && !['kick', 'snare', 'hat', 'tom', 'rim'].includes(f));
+  check('the whole room answers at once (tutti)', rang.length >= 2, `rang: ${rang.join(',')}`);
+  s = state();
+}
+
 // tap PLAY on the module
 const play = s.targets['key-play'];
 await slapAt(play, [0, 1, 0], { speed: 0.6, from: 0.05 });

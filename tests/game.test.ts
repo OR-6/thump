@@ -169,11 +169,10 @@ describe('the game', () => {
     expect(g.tuneOpen).toBe(false);
   });
 
-  it('a song finished before its unlock existed still grants it (swaps after Kitchen Clock)', () => {
+  it('a song finished before its unlock existed still grants it (swaps after Porch Step)', () => {
     const p = freshProgress();
     p.introDone = true;
     p.stars['porch-step'] = 3;
-    p.stars['kitchen-clock'] = 2;
     p.unlocks = ['tom', 'jam'];
     new Game(stage([]), p, room([]));
     expect(p.unlocks).toContain('swaps');
@@ -226,7 +225,7 @@ describe('the game', () => {
     expect(g.mate!.level).toBeLessThan(2);
   });
 
-  it('REC: locked until Night Bus; then records what you play anywhere and plays it back', () => {
+  it('REC: locked until Kitchen Clock; then records what you play anywhere and plays it back', () => {
     const voiced: string[] = [];
     const st = { ...stage([]), voice: (key: string) => voiced.push(key) };
     const p = freshProgress();
@@ -234,7 +233,7 @@ describe('the game', () => {
     g.start(0);
     g.tick(1);
     g.key('loop');
-    expect(g.display.sub).toMatch(/Night Bus/);
+    expect(g.display.sub).toMatch(/Kitchen Clock/);
     p.unlocks.push('loops');
     g.tick(5);
     g.key('loop');

@@ -72,7 +72,7 @@ The default state after placement. Undiscovered reachable surfaces carry a faint
 - Charts are written in **parts** (kick, snare, hat, tom, rim, melody, bass, chime, shake, gong) with scale degrees for pitched parts. **Casting:** each part maps to a discovered instrument (exact family, then the nearest family: marimba ↔ glockenspiel ↔ tongue ↔ bowl ↔ bell; bass → gong/tongue/stomp); anything missing falls back to the table's **table keys** (five slim light bars at the front of the kit). Early songs use two surfaces; later ones up to five.
 - Notes are **light motes travelling across the room** from the module to the exact pad, bar or key, which lights a beat ahead. Windows ±60/±120 ms (×1.5 slow), stars at 70% / 90%, no fail state, gold at full tempo.
 - Songs: *Porch Step* 80 bpm (kit + melody), *Kitchen Clock* 92 (+ hat, bass), *Night Bus* 104 (kit, melody, chime), *Big Room* 76 (gong, marimba, kit). P1: *Rain on the Window*, *Sofa Shuffle*, *Call & Answer*, *Your Room*.
-- Unlocks: song 1 → the tom and JAM; song 2 → swaps; song 3 → loops.
+- Unlocks: song 1 → the tom, JAM and swaps; song 2 → loops (a ten-minute judge sees the depth).
 
 ### 3.7 Free play and loops (P0 free play; P1 loops)
 
@@ -88,7 +88,7 @@ A friend opens the page on a phone, types the 4-letter code shown on the module,
 
 ### 3.10 Instrument swaps (P1)
 
-Pinch and hold a found instrument (0.7 s, within 6 cm): it changes to the next instrument its physics suits (a window: glockenspiel → bell → marimba → bowl → tongue drum → back), never the kit. One change per pinch; off during songs and jams. Saved with the room under its anchor. Unlocked by Kitchen Clock.
+Pinch and hold a found instrument (0.7 s, within 6 cm): it changes to the next instrument its physics suits (a window: glockenspiel → harp → triangle → chimes → tubular bells → … → back), never the kit; the desk's bars too. One change per pinch; off during songs, jams and loops. Saved with the room under its anchor. Unlocked by Porch Step.
 
 ### 3.11 Accessibility (P0 basics)
 

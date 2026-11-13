@@ -7,16 +7,13 @@
  * Two draws per instrument (the shapes, and their additive glow), whatever its zone count.
  */
 import {
+  SphereGeometry,
   Path,
   type Material,
-  BufferGeometry,
   Color,
   DoubleSide,
-  Float32BufferAttribute,
   Group,
   InstancedMesh,
-  LineBasicMaterial,
-  LineLoop,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -82,7 +79,7 @@ function geos() {
 }
 
 /** Instruments drawn as bars, keys, strings or tubes (rectangles); the rest are drums and rings (discs). */
-const BARS = new Set<Family>(['marimba', 'xylophone', 'glock', 'harp', 'tubular', 'keys', 'slit']);
+const BARS = new Set<Family>(['marimba', 'xylophone', 'glock', 'harp', 'tubular', 'keys', 'slit', 'cajon']);
 
 export class Overlay {
   readonly group = new Group();
@@ -133,7 +130,7 @@ export class Overlay {
     const isBar = BARS.has(family);
     this.backing = new InstancedMesh(isBar ? g.box : g.disc, new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false, side: DoubleSide }), max);
     this.backing.renderOrder = 3;
-    this.detail = new InstancedMesh(family === 'gong' ? g.ring : g.disc, new MeshBasicMaterial({ transparent: true, opacity: family === 'gong' ? 0.22 : 0.85, depthWrite: false, toneMapped: false, side: DoubleSide }), max * 12);
+    this.detail = new InstancedMesh(family === 'gong' || family === 'frame' ? g.ring : g.disc, new MeshBasicMaterial({ transparent: true, opacity: family === 'gong' ? 0.22 : 0.85, depthWrite: false, toneMapped: false, side: DoubleSide }), max * 12);
     this.detail.renderOrder = 4;
     for (const m of [this.backing, this.detail]) {
       m.frustumCulled = false;
@@ -294,11 +291,17 @@ export class Overlay {
         const along = z.w >= z.h;
         for (let e = 0; e < 2; e++) {
           const sgn = e ? 1 : -1;
-          const off = (along ? z.w : z.h) / 2 - 0.007;
+          // where a bar is strung or mounted: about a fifth of the way in from each end
+          const off = (along ? z.w : z.h) * 0.28;
           _p.set(z.x + (along ? sgn * off * k : 0), LIFT * 1.3, -(z.z + (along ? 0 : sgn * off * k)));
           _m.compose(_p, _q, _s.setScalar(0.0045));
           this.detail.setMatrixAt(d++, _m);
         }
+      } else if (this.family === 'frame') {
+        // a frame drum is a skin tacked over a hoop: a second rim just inside the first
+        _p.set(z.x, LIFT * 1.3, -z.z);
+        _m.compose(_p, _q, _s.set(z.w * 0.86 * k, 1, z.w * 0.86 * k));
+        this.detail.setMatrixAt(d++, _m);
       } else if (this.family === 'gong') {
         for (const f of GONG_RINGS) {
           _p.set(z.x, LIFT * 1.3, -z.z);
@@ -406,21 +409,25 @@ const GONG_RINGS = [0.2, 0.62, 0.66];
 /** Detail round a drum's rim: [how many, at what share of its radius, how big]. */
 const LUGS: Partial<Record<Family, [number, number, number]>> = {
   timpani: [8, 1.12, 0.085],
-  frame: [10, 1.1, 0.07],
   congas: [6, 1.14, 0.11],
-  cajon: [4, 1.16, 0.09],
   stomp: [10, 1.1, 0.065],
   tambourine: [5, 0.8, 0.17],
 };
 
 /** A faint sheen and outline on an undiscovered surface: "there's something here". */
+/**
+ * An undiscovered surface in reach: "there's something here". A breath of light on it, and a few motes in the
+ * colour of what it will play, drifting a couple of centimetres above it, each fading in and out on its own time.
+ */
 export class Sheen {
   readonly group = new Group();
   private fill: Mesh;
-  private line: LineLoop;
-  private t = Math.random() * 6;
+  private motes: InstancedMesh;
+  private t = Math.random() * 20;
+  private seeds: Float32Array;
+  private span: { x0: number; x1: number; z0: number; z1: number };
 
-  constructor(s: Surface) {
+  constructor(s: Surface, color = 0xffffff) {
     const shape = new Shape();
     const pts = s.outline.length >= 3 ? s.outline : rectOutline(s);
     // the outline in surface-local x/−z (zone z is −local z)
@@ -429,31 +436,61 @@ export class Sheen {
     const geo = new ShapeGeometry(shape);
     // ShapeGeometry is in x/y: lay it into x/z with zone z → local −z
     geo.rotateX(-Math.PI / 2);
-    this.fill = new Mesh(geo, asLight(new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.04, depthWrite: false, toneMapped: false, side: DoubleSide })));
+    this.fill = new Mesh(geo, asLight(new MeshBasicMaterial({ color, transparent: true, opacity: 0.02, depthWrite: false, toneMapped: false, side: DoubleSide })));
     this.fill.position.y = 0.002;
-    const lg = new BufferGeometry();
-    const v: number[] = [];
-    for (const p of pts) v.push(p.x, 0.003, -p.z);
-    lg.setAttribute('position', new Float32BufferAttribute(v, 3));
-    this.line = new LineLoop(lg, new LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false, toneMapped: false }));
-    this.group.add(this.fill, this.line);
-    this.fill.renderOrder = this.line.renderOrder = 3;
+    this.fill.renderOrder = 3;
+    const b = s.bounds;
+    // on a big wall, only the part you can reach gets motes (around the middle, a metre across at most)
+    const cx = (b.minX + b.maxX) / 2;
+    const cz = (b.minZ + b.maxZ) / 2;
+    const hx = Math.min(0.5, (b.maxX - b.minX) / 2);
+    const hz = Math.min(0.5, (b.maxZ - b.minZ) / 2);
+    this.span = { x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz };
+    const n = Math.round(6 + 10 * Math.min(1, (hx * hz * 4) / 0.6));
+    moteGeo ??= new SphereGeometry(1, 6, 4);
+    this.motes = new InstancedMesh(moteGeo, asLight(new MeshBasicMaterial({ toneMapped: false })), n);
+    this.motes.frustumCulled = false;
+    this.motes.renderOrder = 4;
+    const c = new Color(color);
+    for (let k = 0; k < n; k++) this.motes.setColorAt(k, c);
+    this.seeds = new Float32Array(n * 4);
+    for (let k = 0; k < this.seeds.length; k++) this.seeds[k] = Math.random();
+    this.group.add(this.fill, this.motes);
+    this.update(0);
   }
 
   update(dt: number): void {
-    this.t += dt;
-    const k = motion.calm ? 0.5 : 1;
-    (this.fill.material as MeshBasicMaterial).opacity = 0.08 + 0.06 * k * (0.5 + 0.5 * Math.sin(this.t * 2.2));
-    (this.line.material as LineBasicMaterial).opacity = 0.45 + 0.3 * k * (0.5 + 0.5 * Math.sin(this.t * 2.2 + 1));
+    this.t += dt * (motion.calm ? 0.4 : 1);
+    const t = this.t;
+    // a slow breath on the surface, about every five seconds
+    (this.fill.material as MeshBasicMaterial).opacity = 0.015 + 0.03 * Math.pow(0.5 + 0.5 * Math.sin(t * 1.25), 3);
+    const sp = this.span;
+    for (let k = 0; k < this.motes.count; k++) {
+      const a = this.seeds[k * 4];
+      const b = this.seeds[k * 4 + 1];
+      const ph = this.seeds[k * 4 + 2] * 6.283;
+      const life = 3 + this.seeds[k * 4 + 3] * 3;
+      const u = (t / life + a * 10) % 1;
+      // fades in, glows, fades out; drifting a little as it goes
+      const glow = Math.sin(u * Math.PI);
+      const x = sp.x0 + (sp.x1 - sp.x0) * ((a + 0.04 * Math.sin(t * 0.3 + ph)) % 1);
+      const z = sp.z0 + (sp.z1 - sp.z0) * ((b + 0.04 * Math.cos(t * 0.27 + ph)) % 1);
+      _p.set(x, 0.015 + 0.03 * u, -z);
+      _m.compose(_p, _q.identity(), _s.setScalar(0.0022 * glow + 0.0002));
+      this.motes.setMatrixAt(k, _m);
+    }
+    this.motes.instanceMatrix.needsUpdate = true;
   }
 
   dispose(): void {
     this.fill.geometry.dispose();
-    this.line.geometry.dispose();
     (this.fill.material as Material).dispose();
-    (this.line.material as Material).dispose();
+    (this.motes.material as Material).dispose();
+    this.motes.dispose();
   }
 }
+
+let moteGeo: SphereGeometry | null = null;
 
 function rectOutline(s: Surface): { x: number; z: number }[] {
   const b = s.bounds;

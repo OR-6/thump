@@ -104,6 +104,14 @@ export const BIG_ROOM: Song = {
   bed: bed({ roots: [55, 55, 48, 50], bass: 'x.......', chord: 'hold', shaker: false }, 16),
 };
 
+/** Titles for the song of the day (written, not generated). */
+const DAILY_TITLES = [
+  'Kettle On', 'Second Post', 'Tuesday Rain', 'Spare Key', 'Low Tide', 'Upstairs', 'Lamplight', 'Back Door',
+  'Paper Boats', 'Early Bus', 'Cold Tea', 'Short Days', 'Loose Change', 'Night Shift', 'Late Summer', 'Front Step',
+  'Window Seat', 'Last Orders', 'Slow Clock', 'Bright Spell', 'Long Way Round', 'Odd Socks', 'Garden Gate', 'First Frost',
+  'Coat Hooks', 'Sunday Best', 'Radio On', 'Dust Motes', 'Home Again', 'Half Light',
+];
+
 /** Today's song: the same for everyone on a day, different every day (a seeded arrangement). */
 export function dailySong(day: string): Song {
   let seed = 7;
@@ -129,9 +137,7 @@ export function dailySong(day: string): Song {
     { r: [0, 2, 5, 0], m: [1] },
   ];
   const prog = pick(progs);
-  const first = ['Paper', 'Kettle', 'Tin', 'Window', 'Sunday', 'Hallway', 'Velvet', 'Lamp', 'Copper', 'Attic', 'Porch', 'Ferry'];
-  const second = ['Lanterns', 'Rain', 'Steps', 'Radio', 'Garden', 'Tide', 'Bells', 'Hours', 'Weather', 'Parade', 'Letters', 'Lights'];
-  const name = `${pick(first)} ${pick(second)}`;
+  const name = pick(DAILY_TITLES);
   return {
     id: `day-${day}`,
     name,
