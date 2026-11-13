@@ -142,7 +142,12 @@ export interface MachineNote {
   vel: number;
   /** Filled in because you didn't play it (shown and played softer). */
   filled: boolean;
+  /** The pattern step it belongs to, when your timing moved it off it (the pocket). */
+  at?: number;
 }
+
+/** How far your own timing may move a recorded note off the grid (beats: a 32nd). */
+export const POCKET = 0.125;
 
 export interface RawHit {
   /** Beat within the recorded loop (0..8). */
@@ -182,23 +187,28 @@ export function quantise(pattern: readonly Step[], hits: readonly RawHit[], keyF
     });
     if (best >= 0) {
       used.add(best);
-      out.push({ key: hits[best].key, beat: st.beat, vel: level(hits[best].vel), filled: false });
+      // your pocket: a little of where you actually put it stays (a third of it, never more than a 32nd)
+      let off = hits[best].beat - st.beat;
+      if (off > LOOP_BEATS / 2) off -= LOOP_BEATS;
+      if (off < -LOOP_BEATS / 2) off += LOOP_BEATS;
+      const feel = Math.max(-POCKET, Math.min(POCKET, off * 0.33));
+      out.push({ key: hits[best].key, beat: (st.beat + feel + LOOP_BEATS) % LOOP_BEATS, vel: level(hits[best].vel), filled: false, at: st.beat });
     } else out.push({ key: keyFor(st), beat: st.beat, vel: 0.3 * st.vel, filled: true });
   }
   // your own extra notes, on the nearest eighth, where nothing else is
   hits.forEach((h, i) => {
     if (used.has(i) || h.vel < 0.25) return;
     const beat = (Math.round(h.beat * 2) / 2) % LOOP_BEATS;
-    if (out.some((n) => Math.abs(n.beat - beat) < 0.01)) return;
+    if (out.some((n) => Math.abs((n.at ?? n.beat) - beat) < 0.01)) return;
     out.push({ key: h.key, beat, vel: level(h.vel) * 0.9, filled: false });
   });
-  return out.sort((a, b) => a.beat - b.beat);
+  return out.sort((a, b) => (a.at ?? a.beat) - (b.at ?? b.beat));
 }
 
 /** How much of a part you actually played (0..1): the share of pattern notes that weren't filled in. */
 export function played(notes: readonly MachineNote[], pattern: readonly Step[]): number {
   if (!pattern.length) return 1;
-  return notes.filter((n) => !n.filled && pattern.some((s) => Math.abs(s.beat - n.beat) < 0.01)).length / pattern.length;
+  return notes.filter((n) => !n.filled && pattern.some((s) => Math.abs(s.beat - (n.at ?? n.beat)) < 0.01)).length / pattern.length;
 }
 
 /**

@@ -264,8 +264,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     muted: (surface) => this.covered[0] === surface || this.covered[1] === surface,
     things: () => {
       // things kept by touch, and anything else in the room you've played (a window, a door)
-      let n = 0;
-      for (const s of this.touched) if (s.confirmed) n++;
+      // (every thing you've touched counts while it's there; one that's used is kept for good)
+      let n = this.touched.length;
       for (const s of this.surfaces) if (s.source !== 'touch' && s !== this.kitSurface && s !== this.moduleSurface && s.voice && s.discovered) n++;
       return n;
     },
@@ -1328,6 +1328,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // glass is for taps: a hard hit plays no louder than a gentle one
     const g0 = isGlass(s) ? Math.min(gain, 0.55) : gain;
     if (s.source === 'touch') {
+      s.lastHitT = this.clock.t;
       this.playPad(s, z, g0, this.panOf(this.lastWorld), 0);
       this.touchedAgain(s);
       this.game.focusPad(soundById(s.sound)?.name ?? '', this.clock.t);
@@ -1711,7 +1712,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const speed = h.palm.distanceTo(this.prevPalm[i]) / dt;
         if (speed < 0.12)
           for (const s of this.touched) {
-            if (!this.game.uses(s.id)) continue;
+            // (not what you're playing, and not a hand that just hit it and stayed)
+            if (!this.game.coverable(s.id) || this.clock.t - s.lastHitT < 0.5) continue;
             s.toZone(h.palm, this.o);
             const b = s.bounds;
             if (this.o.y > -0.01 && this.o.y < 0.08 && this.o.x > b.minX - 0.02 && this.o.x < b.maxX + 0.02 && this.o.z > b.minZ - 0.02 && this.o.z < b.maxZ + 0.02) {
@@ -1726,7 +1728,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.coverCand[i] = hit;
         this.coverFor[i] = 0;
       }
-      const now = hit && this.coverFor[i] >= 0.25 ? hit : null;
+      const now = hit && this.coverFor[i] >= 0.6 ? hit : null;
       if (now !== this.covered[i]) {
         const was = this.covered[i];
         this.covered[i] = now;
@@ -2615,10 +2617,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const want = this.game.buildAsks();
       if (want) {
         this.autoNext = t + 0.8;
-        // drums on the kit's pads, the perc on a thing you found (so it's yours to play live), the rest on the bars
-        const lane = want === 'KICK' ? 'kick' : want === 'SNARE' ? 'snare' : want === 'HAT' ? 'hat' : null;
-        const thing = want === 'PERC' ? this.room.instruments().find((x) => x.zones < 4) : undefined;
-        this.autoHit(lane ? `kit:${lane}` : thing ? `${thing.id}:0` : 'keys:2', t);
+        // whatever the module suggests (your things first), as a player following the glow would
+        this.autoHit(this.game.suggestion() ?? 'keys:2', t);
       } else if (this.game.buildRunning()) {
         // let the machine run a moment, then perform on it
         if (this.autoRunAt < 0) this.autoRunAt = t;

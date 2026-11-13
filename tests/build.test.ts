@@ -9,7 +9,7 @@ describe('build: making a part', () => {
     expect(kick[0].vel).toBe(1);
     expect(steps('2.3..4..|3...2...').map((s) => s.degree)).toEqual([2, 3, 4, 3, 2]);
   });
-  it('a sloppy take comes out on the grid, as loud as it was played', () => {
+  it('a sloppy take comes out on the grid, keeping a little of your feel, as loud as it was played', () => {
     const hits = [
       { beat: 0.12, key: 'kit:kick', vel: 0.9 },
       { beat: 2.9, key: 'kit:kick', vel: 0.5 },
@@ -17,7 +17,11 @@ describe('build: making a part', () => {
       { beat: 6.2, key: 'kit:kick', vel: 0.8 },
     ];
     const n = quantise(kick, hits, () => 'kit:kick');
-    expect(n.map((x) => x.beat)).toEqual([0, 3, 4, 6]);
+    expect(n.map((x) => x.at ?? x.beat)).toEqual([0, 3, 4, 6]);
+    // a third of how early or late you were stays (your pocket), never more than a 32nd
+    expect(n[0].beat).toBeCloseTo(0.04, 2);
+    expect(n[1].beat).toBeCloseTo(3 - 0.033, 2);
+    expect(n.every((x) => Math.abs(x.beat - (x.at ?? x.beat)) <= 0.125 + 1e-9)).toBe(true);
     // loudness against your loudest hit (0.9 here): 0.5 sits between, never down with the filled notes
     expect(n[1].vel).toBeCloseTo(0.55 + 0.45 * (0.5 / 0.9));
     expect(n[0].vel).toBeCloseTo(1);

@@ -135,4 +135,8 @@ describe('finding things by touch', () => {
     }
     expect(hits).toBe(1);
   });
+  it('the side of a mug rings like its rim; higher up a face is a lid', () => {
+    expect(touchVoice(0.08, 0.1)?.sound).toBe('bell');
+    expect(touchVoice(0.2, 0.1)?.sound).toBe('ride');
+  });
 });

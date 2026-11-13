@@ -53,6 +53,9 @@ export class Surface {
   /** Measured softness: the deepest a hand went past the surface after a hit, smoothed (m). */
   sink = 0;
 
+  /** When it was last hit (s, the room's clock): a hand that just hit it and stayed isn't covering it. */
+  lastHitT = -9;
+
   constructor(
     public id: string,
     readonly source: SurfaceSource,

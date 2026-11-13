@@ -177,8 +177,10 @@ export class TouchFinder {
  */
 export function touchVoice(above: number, up: number, lateral = 0): { sound: string; size: number; tone: number; what: string } | null {
   if (up < 0.6) {
-    // a face toward you: above the desk a lid or a screen (a ride, soft), below it the desk's front or a drawer
-    return above > 0.04 ? { sound: 'ride', size: 0.5, tone: 0, what: 'lid' } : { sound: 'cowbell', size: 0.5, tone: 0, what: 'edge' };
+    // a face toward you: the side of a mug (a bell), higher a lid or a screen (a ride, soft), below the desk's
+    // front or a drawer
+    if (above > 0.04 && above < 0.12) return { sound: 'bell', size: Math.min(1, (above - 0.04) / 0.08), tone: 0, what: 'cup' };
+    return above >= 0.12 ? { sound: 'ride', size: 0.5, tone: 0, what: 'lid' } : { sound: 'cowbell', size: 0.5, tone: 0, what: 'edge' };
   }
   if (above < -0.08) {
     // under the desk: in front of you your knees, out to the side the chair's arms
