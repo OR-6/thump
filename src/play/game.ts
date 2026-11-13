@@ -744,7 +744,8 @@ export class Game {
       // (never the clap: you can't clap and hit the snare on the same beat)
       found = m.parts.find((p) => p.surface !== 'kit' && p.surface !== 'keys' && PART_INST[p.def.name] === 'drums' && p.def.name !== 'KICK' && p.def.name !== 'SNARE' && p.def.name !== 'CLAP');
       // Normal: the hat too (two hands still: the third note at once goes back to the band)
-      parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found || (this.level === 'normal' && p.def.name === 'HAT'));
+      // (Easy: the hat joins after the first Go wild!; Normal: from the start)
+      parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found || p.def.name === 'HAT');
       if (found) foundName = say(found.def.name);
     } else if (inst === 'handpan' && this.level === 'easy') {
       // Easy handpan: the bass line on its notes (on the beat, the low middle mostly), not the off-beat extras
@@ -767,6 +768,7 @@ export class Game {
           if (beat < from || beat >= to || inFill(beat)) return;
           // an arc: kick and snare first; your own thing joins at bar 5
           if (p === found && beat < 16) return;
+          if (p.def.name === 'HAT' && this.level === 'easy' && beat < 32) return;
           notes.push({ beat, part: this.onInst(inst, n.key, k) as never, degree: -1, vel: Math.max(0.6, n.vel) });
         });
     }

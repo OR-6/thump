@@ -10,6 +10,8 @@ import { Panel } from '../ui/panel.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
 import { GuitarModel, HandpanModel, MarimbaModel, PianoModel, type DeskModel } from '../scene-assets/lib/instruments.js';
+import { Tag } from '../ui/tag.js';
+import { Vector3 } from '@iwsdk/core';
 import { guitarZones, handpanZones, marimbaZones, pianoZones, type InstId, type Scale } from './shelf.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
@@ -85,6 +87,8 @@ export class KitView {
       m.root.visible = false;
       this.root.add(m.root);
     }
+    this.chordTag.mesh.visible = false;
+    this.root.add(this.chordTag.mesh);
     const g = new PlaneGeometry(1, 1);
     g.rotateX(-Math.PI / 2);
     for (let i = 0; i < 2; i++) {
@@ -122,6 +126,7 @@ export class KitView {
    */
   setInstrument(id: InstId, root: number, scale: Scale): void {
     const drums = id === 'drums';
+    this.chordTag.mesh.visible = false;
     this.padRoot.visible = drums;
     this.keys.group.visible = drums && this.keyZones.length > 0 && this.keysShown;
     for (const [k, o] of this.shelf) o.group.visible = k === id;
@@ -138,6 +143,17 @@ export class KitView {
     const model = this.models.get(id);
     model?.layout(this.instZones);
     o.rest = 0.12;
+    // the piano's wide ebony key says what it is, on a strip of tape
+    this.chordTag.mesh.visible = false;
+    if (id === 'piano') {
+      const q = this.instZones[this.instZones.length - 1];
+      if (q) {
+        const at = new Vector3(q.x, 0.0135, -(q.z - q.h * 0.22));
+        this.chordTag.pin('CHORD', 0xffa630, at, at.clone().add(new Vector3(0, 1, 0)));
+        this.chordTag.mesh.rotation.set(-Math.PI / 2, 0, 0.04);
+        this.chordTag.mesh.scale.setScalar(1);
+      }
+    }
     o.group.position.y = id === 'piano' ? 0.0125 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? 0.022 : 0;
     this.unfoldT = 0;
     o.reveal(0, 0.03);
@@ -153,6 +169,7 @@ export class KitView {
     ['handpan', new HandpanModel()],
   ]);
   private unfoldT = 1;
+  private chordTag = new Tag(0.075, 0.022);
   /** How long the unfold takes (quicker when a song is on: the notes are already coming). */
   unfoldS = 0.5;
 
