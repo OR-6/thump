@@ -673,7 +673,7 @@ describe('the game', () => {
     expect(voiced.some((k) => k.startsWith('piano:') && Number(k.slice(6)) >= 10)).toBe(true);
   });
 
-  it('the second half changes chords (IV–V in a major song) and comes home; its bass follows', () => {
+  it('the second half changes chords (IV–ii in a major song) and comes home; its bass follows', () => {
     const band: { voice: string; midi: number; beat: number }[] = [];
     const g = new Game({ ...stage([]), band: (e: { voice: string; midi: number; beat: number }) => band.push(e) }, freshProgress(), room([]));
     g.start(0);
@@ -689,7 +689,7 @@ describe('the game', () => {
       if (b >= 0 && chordAt[b] === undefined && g.mode === 'play') chordAt[b] = g.harmony()!.chord;
     }
     expect(chordAt[8]).toBe(tr.chords[0] + 5);
-    expect(chordAt[9]).toBe(tr.chords[0] + 7);
+    expect(chordAt[9]).toBe(tr.chords[0] + 2);
     expect(chordAt[12]).toBe(tr.chords[0]);
     // the bed's chord and its bass in bar 9 are the four chord
     expect(band.some((e) => e.voice === 'chord' && e.beat === 32 && e.midi === tr.chords[0] + 5)).toBe(true);

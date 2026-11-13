@@ -122,7 +122,7 @@ export function buildPage(m: MenuInput): Page {
       items.push({ id: 'nav:instruments', label: m.inst.name.toUpperCase(), sub: 'You play this', icon: m.inst.id, kind: 'button', x: 910, y: 262, w: 426, h: 150 });
       items.push({ id: 'listen', label: 'LISTEN FIRST', kind: 'button', x: 910, y: 432, w: 426, h: 110 });
       items.push({ id: 'play', label: 'PLAY', kind: 'play', x: 910, y: 562, w: 426, h: 208 });
-      return { id: 'songs', title: 'Songs', line: '', items };
+      return { id: 'songs', title: 'Songs', line: m.sub, items };
     }
     case 'band': {
       const items: Item[] = [back()];

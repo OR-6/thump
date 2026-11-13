@@ -747,7 +747,7 @@ export class Game {
         }
         // the chord change, on the neck (the pads are the song's chords in turn)
         const b = bar * 4;
-        if (this.level !== 'easy' && bar >= (this.level === 'hard' ? 0 : 8) && n > 1 && b >= from && b < to && !inFill(b)) notes.push({ beat: b, part: `guitar:${(bar % n) % 3}` as never, degree: -1, vel: 0.7 });
+        if (this.level !== 'easy' && bar >= (this.level === 'hard' ? 0 : 8) && n > 1 && b >= from && b < to && !inFill(b)) notes.push({ beat: b, part: `guitar:${b >= CHANGE[0] && b < CHANGE[1] ? (m.track.minor ? 1 + (bar % 2) : bar % 2 ? 1 : 2) : (bar % n) % 3}` as never, degree: -1, vel: 0.7 });
       }
       notes.sort((a, b) => a.beat - b.beat);
       return { notes, live, found: '' };
@@ -777,8 +777,12 @@ export class Game {
       if (this.level === 'easy' && parts.length > 1) parts = parts.slice(0, 1);
     }
     const rank = (key: string) => {
+      // (the left hand's chord and the tom are extras: they're what goes when both hands are busy)
+      if (key === 'piano:6' || key === 'kit:tom') return 99;
       const i = parts.findIndex((p) => p.key === key);
-      return i >= 0 ? i : parts.findIndex((p) => p.surface !== 'kit' && key.startsWith(p.surface + ':'));
+      if (i >= 0) return i;
+      const j = parts.findIndex((p) => p.surface !== 'kit' && key.startsWith(p.surface + ':'));
+      return j >= 0 ? j : parts.length;
     };
     for (const p of parts) {
       if (!(inst === 'congas' && p.def.name === 'SNARE')) live.add(p.key);
@@ -800,7 +804,9 @@ export class Game {
           // an arc: kick and snare first; your own thing joins at bar 5
           if (p === found && beat < 16) return;
           if (p.def.name === 'HAT' && this.level === 'easy' && beat < 32) return;
-          let part = inst === 'congas' ? congaAt(n.at ?? n.beat) : inst === 'drums' && p.def.name === 'PERC' ? 'kit:tom' : this.onInst(inst, n.key, k, p.def.name);
+          // (the bass line was written for the home chords: in the change it's the band's)
+          if (p.def.name === 'BASS' && beat >= CHANGE[0] && beat < CHANGE[1]) return;
+          let part = inst === 'congas' ? congaAt(n.at ?? n.beat, m.track.id === 'night-shift') : inst === 'drums' && p.def.name === 'PERC' ? 'kit:tom' : this.onInst(inst, n.key, k, p.def.name);
           if (up > 0 && beat >= SECOND[0] && beat < SECOND[1]) part = lift(part, up);
           notes.push({ beat, part: part as never, degree: -1, vel: Math.max(0.6, n.vel) });
         });
@@ -810,6 +816,11 @@ export class Game {
       for (let bar = Math.ceil(from / 4); bar * 4 < to; bar++) if (!inFill(bar * 4)) notes.push({ beat: bar * 4, part: 'piano:6' as never, degree: -1, vel: 0.7 });
     notes.sort((a, b) => a.beat - b.beat || rank(a.part as string) - rank(b.part as string));
     // two hands: never more than two things at once (the later part's note goes back to the bed)
+    // the same note twice on one beat (two parts landing on one drum): one hit is one note, so it's one note
+    for (let i = notes.length - 1; i >= 1; i--) for (let j = i - 1; j >= 0 && notes[i].beat - notes[j].beat < 0.01; j--) if (notes[j].part === notes[i].part) {
+      notes.splice(i, 1);
+      break;
+    }
     for (let i = notes.length - 1; i >= 2; i--) if (Math.abs(notes[i].beat - notes[i - 2].beat) < 0.01) notes.splice(i, 1);
     return { notes, live, found: foundName };
   }
@@ -1044,12 +1055,14 @@ export class Game {
       // the end: the band holds the five chord on the last downbeat, waiting for your hit to take it home
       if (ahead >= end && !this.domSent && !this.listening && this.stage.bandState?.().state !== 'connected') {
         this.domSent = true;
-        this.stage.band({ beat: end, voice: 'chord', midi: p.track.chords[0] + 7, len: 8, vel: 0.34, minor: false }, this.clock.timeAt(end), this.clock.spb);
+        this.stage.band({ beat: end, voice: 'chord', midi: p.track.chords[0] + 7, len: 12, vel: 0.5, minor: false }, this.clock.timeAt(end), this.clock.spb);
+        this.stage.band({ beat: end, voice: 'bass', midi: p.track.chords[0] + 7 - 24, len: 12, vel: 0.7 }, this.clock.timeAt(end), this.clock.spb);
       }
       // the second half's change: the band's bass on its roots, on 1 and 3
       if (backing)
         for (let b = Math.floor(p.sched) + 1; b <= ahead; b++)
-          if (b >= CHANGE[0] && b < CHANGE[1] && b % 2 === 0) {
+          // (not if the bass is someone's live part: theirs is the one)
+          if (b >= CHANGE[0] && b < CHANGE[1] && b % 2 === 0 && !this.friendParts.has('BASS') && !m.parts.some((q) => q.def.name === 'BASS' && p.live.has(q.key))) {
             const c = songChord(p.track, Math.floor(b / 4), true);
             this.stage.band({ beat: b, voice: 'bass', midi: c.root - 24, len: 0.9, vel: b % 4 === 0 ? 0.75 : 0.6 }, this.clock.timeAt(b), this.clock.spb);
           }
@@ -1095,7 +1108,7 @@ export class Game {
   private resultsT0 = 0;
   /** Your best two bars are playing back: the panel gives them the stage. */
   private get replaying(): boolean {
-    return this.mode === 'results' && this.fromPerform && !!this.lap && this.lap.live.size > 0;
+    return this.mode === 'results' && this.fromPerform && !!this.lap && this.lap.mine.length >= 3;
   }
 
   private endPerform(): void {
@@ -1142,7 +1155,7 @@ export class Game {
     for (const u of this.newUnlocks) this.stage.unlock(u);
     // the machine plays two loops through at full, from the next downbeat (your bow)
     const now = this.clock.beatAt(this.t);
-    const from = Math.ceil((now + 0.5) / 4) * 4;
+    const from = Math.ceil((now + 0.5) / LOOP_BEATS) * LOOP_BEATS;
     // your best two bars (the most notes you hit), played back in your part's place
     let bestW = 0;
     let bestN = -1;
@@ -1203,7 +1216,17 @@ export class Game {
               if (at > l.sched && at <= ahead && at >= l.from && at < end) this.stage.voice(n.key, this.clock.timeAt(at), (n.filled ? n.vel * 0.85 : n.vel) * 0.75);
             }
           }
+          // the band's chords under it, one a bar (the bed ended with the song)
+          if (this.stage.setting('band', false))
+            for (let bar = 0; bar < 2; bar++) {
+              const at = l.from + L * LOOP_BEATS + bar * 4;
+              if (at <= l.sched || at > ahead || at >= end) continue;
+              const c = songChord(m.track, bar, false);
+              this.stage.band({ beat: at, voice: 'chord', midi: c.root, len: 4, vel: 0.4, minor: c.minor }, this.clock.timeAt(at), this.clock.spb);
+            }
           for (const h of l.mine) {
+            // (a chord change on the guitar's neck isn't strummed again)
+            if (h.key === 'guitar:0' || h.key === 'guitar:1' || h.key === 'guitar:2') continue;
             const at = l.from + L * LOOP_BEATS + h.beat;
             if (at > l.sched && at <= ahead && at >= l.from - 0.25 && at < end) this.stage.voice(h.key, this.clock.timeAt(at), Math.min(1, h.gain), false, true);
           }
@@ -1257,7 +1280,7 @@ export class Game {
       this.groove.last = t;
       // and keeps following you: a note a little off the band's eighths nudges the band a little toward it
       const spb = this.clock.spb;
-      const beat = this.clock.beatAt(t);
+      const beat = this.clock.beatAt(t - this.opts.offset);
       const off = beat - Math.round(beat * 2) / 2;
       if (Math.abs(off) < 0.2) this.clock.set(this.clock.start + off * spb * 0.15, spb);
       return;
@@ -1379,6 +1402,10 @@ export class Game {
     if (this.mode === 'results' && this.fromPerform && this.machine && (k === 'play' || k === 'next')) {
       const m = this.machine;
       const inst = this.perfInst;
+      if (k === 'play' && this.lastBest.wasEasy3 && this.level !== 'hard') {
+        this.level = this.level === 'easy' ? 'normal' : 'hard';
+        this.stage.saveLevel?.(this.level);
+      }
       this.leaveResults();
       if (k === 'play') this.beginPerform(inst);
       // > after a song: make it your own (build it); after your own: the next song
@@ -1765,6 +1792,8 @@ export class Game {
       const b = this.clock.beatAt(t - this.opts.offset);
       if (within(this.perf.fills, b, 0.25)) {
         this.perf.fillHits.push(b);
+        // (your solo is yours: it can come back round in the replay)
+        if (this.played.length < 400) this.played.push({ key, beat: b, gain });
         const off = Math.abs(b * 2 - Math.round(b * 2)) / 2;
         return off < 0.08 ? 'perfect' : 'good';
       }
@@ -1890,7 +1919,7 @@ export class Game {
     this.display.meter = this.energy;
     if (this.perf) this.tickPerform(beat);
     // (the last hit waits from the last downbeat)
-    if (this.perf && !this.listening && beat >= song.bars * 4 && this.lastHit(t)) return;
+    if (this.perf && !this.listening && beat >= song.bars * 4 - 0.25 && this.lastHit(t)) return;
     if (beat >= song.bars * 4 + 1) {
       if (this.perf && this.listening) this.endListen();
       else if (this.perf) this.endPerform();
@@ -1913,7 +1942,12 @@ export class Game {
       this.finalWait = t;
       this.refreshDisplay();
     }
-    if (t - this.finalWait > 5) {
+    if (t - this.finalWait > 4) {
+      // nobody hit it: the band takes it home anyway
+      const tr = p.track;
+      const at = this.clock.timeAt(this.clock.beatAt(t));
+      this.stage.band({ beat: 0, voice: 'chord', midi: tr.chords[0], len: 4, vel: 0.45, minor: !!tr.minorChords?.includes(0) }, at, this.clock.spb);
+      this.stage.band({ beat: 0, voice: 'bass', midi: tr.chords[0] - 24, len: 4, vel: 0.6 }, at, this.clock.spb);
       this.finalWait = -1;
       return false;
     }
@@ -2132,14 +2166,8 @@ export class Game {
       this.refreshDisplay();
       return;
     }
-    // (three stars on Easy: again is on Normal)
-    if (id === 'again') {
-      if (this.fromPerform && this.lastBest.wasEasy3 && this.level !== 'hard') {
-        this.level = this.level === 'easy' ? 'normal' : 'hard';
-        this.stage.saveLevel?.(this.level);
-      }
-      return this.key('play');
-    }
+    // (three stars: again is a level up; key('play') does it)
+    if (id === 'again') return this.key('play');
     if (id === 'next') {
       // the next song as written (after any)
       const i = this.machine ? (this.tracks.indexOf(this.machine.track) + 1) % this.tracks.length : this.nextSong();
@@ -2201,8 +2229,9 @@ export class Game {
     const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
       page: pageId,
-      line: pageId === 'free' ? (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try SONGS' : '') : pageId === 'main' ? (this.found.includes('kit') ? '' : 'Tap the desk to start') : pageId === 'songs' && this.t - this.bandWait < 4 ? 'Asking the band to start it' : d.line,
-      sub: d.sub,
+      line: pageId === 'free' ? (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try SONGS' : '') : pageId === 'main' ? (this.found.includes('kit') ? '' : 'Tap the desk to start') : d.line,
+      // (the songs page's line: your turn after a listen, or the band being asked)
+      sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0 },
       songs: this.tracks.map((t) => ({ name: t.name, meta: `${t.id.startsWith('daily-') ? 'Today: ' : ''}${t.bpm < 85 ? 'slow' : t.bpm < 100 ? 'steady' : 'quick'}, ${t.minor ? 'moody' : 'bright'}`.replace(/^[a-z]/, (c) => c.toUpperCase()), stars: this.progress.stars[t.id] ?? 0, locked: false })),
       songSel: this.songSel,
@@ -2346,11 +2375,11 @@ export class Game {
           }
           if (this.finalWait >= 0) {
             d.line = 'Bring it home';
-            d.sub = "The band's waiting on your hit";
+            d.sub = 'One big hit on the glowing one';
             break;
           }
           d.line = inFill ? 'Solo!' : big ? "Band's back in" : b >= this.perf.holdFrom ? 'No lights now' : this.song!.name;
-          d.sub = inFill ? "They've dropped out. Anything goes" : big ? 'Follow the lights' : b >= this.perf.holdFrom ? "Hold it down, they're with you" : joins ? `${this.perf.joins} comes in next` : 'Hit what glows';
+          d.sub = inFill ? "They've dropped out. Hit lots, anything" : big ? 'Follow the lights' : b >= this.perf.holdFrom ? "Hold it down, they're with you" : joins ? `${this.perf.joins} comes in next` : 'Hit what glows';
           d.meter = this.energy;
           break;
         }
@@ -2464,7 +2493,7 @@ export function fillScore(beats: readonly number[]): { slots: number; onGrid: nu
   const on = beats.filter((b) => Math.abs(b * 2 - Math.round(b * 2)) < 0.25).length;
   const onGrid = beats.length ? on / beats.length : 0;
   // (a solo is one bar: five of its eight eighths, mostly on them)
-  return { slots, onGrid, good: slots >= 5 && onGrid >= 0.4 };
+  return { slots, onGrid, good: slots >= 4 && onGrid >= 0.4 };
 }
 
 /** Which way you leaned against the beat (offsets in seconds, + late): −1 ahead, +1 behind, 0 on it (within 25 ms). */
@@ -2495,14 +2524,14 @@ function within(spans: readonly (readonly [number, number])[], b: number, early:
   for (let i = 0; i < spans.length; i++) if (b >= spans[i][0] - early && b < spans[i][1]) return true;
   return false;
 }
-/** Bars 9–12 (beats 32–48): the song's chords change (IV–V in major, VI–VII in minor), then it comes home. */
+/** Bars 9–12 (beats 32–48): the song's chords change (IV–ii in major, VI–VII in minor), then it comes home. */
 const CHANGE = [32, 48] as const;
 /**
  * A song's chord in bar `bar`: its own two in turn, and in a performance the second half's change, all major (the
  * pentatonic tune fits over every one), back home on bar 13.
  */
 function songChord(t: TrackDef, bar: number, perform: boolean): { root: number; minor: boolean } {
-  if (perform && bar * 4 >= CHANGE[0] && bar * 4 < CHANGE[1]) return { root: t.chords[0] + (t.minor ? [8, 10] : [5, 7])[bar % 2], minor: false };
+  if (perform && bar * 4 >= CHANGE[0] && bar * 4 < CHANGE[1]) return { root: t.chords[0] + (t.minor ? [8, 10] : [5, 2])[bar % 2], minor: !t.minor && bar % 2 === 1 };
   const i = bar % t.chords.length;
   return { root: t.chords[i], minor: !!t.minorChords?.includes(i) };
 }
@@ -2514,9 +2543,10 @@ const FINAL_KEYS: Record<string, readonly string[]> = { drums: ['kit:kick', 'kit
  * The congas, by where the note falls in the bar: the backbeat (2 and 4) a slap on the high drum, 1 and 3 its open
  * tone, anything between on the low drum. The same place, the same stroke, every bar.
  */
-function congaAt(b: number): string {
+function congaAt(b: number, halfTime = false): string {
   const x = ((b % 4) + 4) % 4;
-  if (Math.abs(x - Math.round(x)) < 0.1) return Math.round(x) % 2 === 1 ? 'congas:3' : 'congas:2';
+  // (a half-time song's backbeat is on 3)
+  if (Math.abs(x - Math.round(x)) < 0.1) return (halfTime ? Math.round(x) === 2 : Math.round(x) % 2 === 1) ? 'congas:3' : 'congas:2';
   return 'congas:0';
 }
 /** A note `by` steps up its instrument (turning back down at the top), for the B section. */
