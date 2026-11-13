@@ -15,7 +15,8 @@ function stage(log: string[]): GameStage {
     casting: () => {},
     tempo: () => {},
     missed: () => {},
-    setting: () => false,
+    // (the backing band is on, as by default)
+    setting: (n: string) => n === 'band',
     tune: () => ({ line: 'Speed', sub: '', labels: [] }),
     bandmate: (e, s) => log.push(`bandmate ${e} ${s}`),
   };

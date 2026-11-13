@@ -931,9 +931,11 @@ export class Game {
       // the machine follows you: louder and fuller as you lock in; when you lose it the perc and keys drop out
       // until you're back. In a fill it steps right back so you're heard
       const thin = this.energy < 0.35 && ahead < p.holdFrom;
+      // BACKING BAND off: just you (the chords go quiet in the engine, the other parts here)
+      const backing = this.stage.setting('band', false);
       for (let L = Math.max(0, Math.floor(p.sched / LOOP_BEATS)); L * LOOP_BEATS <= Math.min(ahead, end); L++)
         for (const part of m.parts) {
-          if (p.live.has(part.key) || this.room.muted?.(part.surface)) continue;
+          if (p.live.has(part.key) || this.room.muted?.(part.surface) || !backing) continue;
           // a friend in the band is playing this part live: theirs is the one you hear
           if (this.friendInsts.size && this.friendInsts.has(PART_INST[part.def.name] === 'piano' && this.friendInsts.has('marimba') ? 'marimba' : PART_INST[part.def.name] ?? '')) continue;
           if (thin && (part.def.name.startsWith('PERC') || part.def.name.startsWith('KEYS'))) continue;
@@ -1083,6 +1085,7 @@ export class Game {
   private groove: { root: number; chords: readonly (readonly number[])[]; inst: string; sched: number; last: number } | null = null;
   private groovePlayed(key: string, t: number): void {
     const f = this.stage.freeHarmony?.();
+    if (!this.stage.setting('band', false)) return;
     if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('handpan:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
     if (this.groove) {
       this.groove.last = t;
