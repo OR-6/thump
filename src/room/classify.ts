@@ -30,7 +30,7 @@ export const FAMILIES: Record<Family, FamilyInfo> = {
   shaker: { name: 'shaker', color: 0x7ee07a, melodic: false, order: 7 },
   block: { name: 'wood block', color: 0xff8a3c, melodic: false, order: 8 },
   stomp: { name: 'stomp', color: 0xff4d6a, melodic: false, order: 9 },
-  keys: { name: 'edge keys', color: 0xffa630, melodic: true, order: 10 },
+  keys: { name: 'table keys', color: 0xffa630, melodic: true, order: 10 },
 };
 
 /** What a surface's measurements say. Lengths in metres, all features 0..1. */

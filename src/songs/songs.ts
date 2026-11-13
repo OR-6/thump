@@ -100,6 +100,45 @@ export const BIG_ROOM: Song = {
   bed: bed({ roots: [55, 52, 48, 50], minor: [1], bass: 'x.......', chord: 'hold', shaker: false }, 16),
 };
 
+/** Today's song: the same for everyone on a day, different every day (a seeded arrangement). */
+export function dailySong(day: string): Song {
+  let seed = 7;
+  for (const ch of day) seed = (seed * 31 + ch.charCodeAt(0)) % 2147483647;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const pick = <T,>(a: readonly T[]) => a[Math.floor(rnd() * a.length)];
+  const grooves = [
+    { kick: 'x...x...', snare: '..x...x.' },
+    { kick: 'x..x....', snare: '..x...x.' },
+    { kick: 'x...x.x.', snare: '..x...x.' },
+  ];
+  const lines = ['0.2.4.2.', '4.2.0...', '0...4.5.', '2.4.5.4.', '5.4.2.0.', '0.2.0.4.', '4...2...'];
+  const g = pick(grooves);
+  const mel = Array.from({ length: 4 }, () => pick(lines)).join('|');
+  const mel2 = Array.from({ length: 4 }, () => pick(lines)).join('|');
+  const key = Math.floor(rnd() * 12);
+  const bpm = 84 + Math.floor(rnd() * 5) * 4;
+  return {
+    id: `day-${day}`,
+    name: 'Song of the day',
+    mood: 'new every day',
+    bpm,
+    bars: 16,
+    beatsPerBar: 4,
+    key,
+    parts: ['kick', 'snare', 'hat', 'melody', 'chime'],
+    notes: cat(
+      repeat(g, 0, 4),
+      grid({ melody: mel }, 4),
+      repeat({ ...g, hat: '.x...x..' }, 8, 4),
+      grid({ melody: mel2 }, 8),
+      repeat(g, 12, 3),
+      grid({ chime: '....5...|....7...|....5...' }, 12),
+      grid({ kick: 'X.......', melody: '..0.....' }, 15),
+    ),
+    bed: bed({ roots: [60 + key - 12, 57 + key - 12, 53 + key - 12, 55 + key - 12].map((r) => r + 12), minor: [1], bass: 'x...5...', chord: '..x...x.', shaker: true }, 16),
+  };
+}
+
 /** In order of unlocking. */
 export const SONGS: readonly Song[] = [PORCH_STEP, KITCHEN_CLOCK, NIGHT_BUS, BIG_ROOM];
 

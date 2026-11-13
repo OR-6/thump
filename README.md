@@ -35,4 +35,4 @@ node tools/e2e-room.mjs --song
 
 ## Licence
 
-Code: MIT (see LICENSE). Fonts: Lilita One, SIL Open Font License (public/fonts).
+Code: MIT (see LICENSE).

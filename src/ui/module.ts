@@ -10,20 +10,20 @@ export const MODULE = {
   /** Kit-local centre of its base. */
   x: 0,
   z: -0.25,
-  w: 0.22,
-  d: 0.1,
+  w: 0.3,
+  d: 0.13,
   h: 0.034,
-  /** The display's tilt back from vertical-facing (radians from flat). */
-  tilt: 0.42,
+  /** The display's tilt back from facing straight at you (radians): it looks up at a seated player. */
+  tilt: 0.6,
   /** Keys along the front edge (module-local x), each this wide. */
-  keyW: 0.042,
-  keyD: 0.026,
-  keyZ: 0.03,
+  keyW: 0.062,
+  keyD: 0.034,
+  keyZ: 0.04,
 } as const;
 
 export type ModuleKey = 'prev' | 'play' | 'next' | 'jam';
 export const KEYS: readonly ModuleKey[] = ['prev', 'play', 'next', 'jam'];
-const KEY_X = [-0.075, -0.025, 0.025, 0.075];
+const KEY_X = [-0.105, -0.035, 0.035, 0.105];
 
 export interface Display {
   /** The big line (≤ 18 characters). */
@@ -39,6 +39,13 @@ export interface Display {
   stars: number;
   /** Which key pulses for attention. */
   pulse: ModuleKey | null;
+  /** A count-in number (4..1), or 0. */
+  count: number;
+  /** Days you've played (shown small), and a gold mark for the selected song. */
+  day: number;
+  gold: boolean;
+  /** A phone-jam code to show, or ''. */
+  code: string;
 }
 
 const INK = '#f2efe6';
@@ -55,12 +62,12 @@ export class Module {
   private press = new Float32Array(4);
   private pulseT = 0;
   private last = '';
-  shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null };
+  shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '' };
 
   constructor() {
     this.root.name = 'Module';
-    this.canvas.width = 640;
-    this.canvas.height = 220;
+    this.canvas.width = 840;
+    this.canvas.height = 285;
     this.tex = new CanvasTexture(this.canvas);
     this.tex.colorSpace = SRGBColorSpace;
     this.tex.anisotropy = 4;
@@ -100,7 +107,7 @@ export class Module {
   }
 
   set(d: Display): void {
-    const key = `${d.line}|${d.sub}|${d.found.join(',')}|${d.total}|${Math.round(d.meter * 20)}|${d.stars}`;
+    const key = `${d.line}|${d.sub}|${d.found.join(',')}|${d.total}|${Math.round(d.meter * 24)}|${d.stars}|${d.count}|${d.day}|${d.gold}|${d.code}`;
     this.shown = d;
     if (key === this.last) return;
     this.last = key;
@@ -117,37 +124,51 @@ export class Module {
     // faint scan lines: a real monochrome panel
     g.fillStyle = '#ffffff06';
     for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 1);
-    g.fillStyle = INK;
     g.textBaseline = 'alphabetic';
-    let px = 64;
-    g.font = `600 ${px}px ${FONT}`;
-    while (g.measureText(d.line).width > W - 48 && px > 30) g.font = `600 ${--px}px ${FONT}`;
-    g.fillText(d.line, 24, 82);
-    g.font = `500 30px ${FONT}`;
-    g.fillStyle = '#b9b5ab';
-    g.fillText(d.sub, 24, 124);
-    // the room map: one icon per instrument found, dim slots for the rest
-    const slots = Math.max(d.total, d.found.length);
-    for (let i = 0; i < Math.min(10, slots); i++) {
-      const x = 36 + i * 46;
-      const f = d.found[i];
-      icon(g, f ?? null, x, 172, 16, f ? INK : DIM);
-    }
-    if (d.total > 0) {
-      g.font = `600 30px ${FONT}`;
+    if (d.count > 0) {
+      // the count-in, big
       g.fillStyle = INK;
-      const txt = `${d.found.length}/${Math.max(d.total, d.found.length)}`;
-      g.fillText(txt, W - 24 - g.measureText(txt).width, 184);
+      g.font = `700 190px ${FONT}`;
+      const txt = String(d.count);
+      g.fillText(txt, (W - g.measureText(txt).width) / 2, 210);
+      this.tex.needsUpdate = true;
+      return;
     }
-    if (d.stars >= 0) {
-      for (let i = 0; i < 3; i++) star(g, W - 150 + i * 46, 82 - 22, 18, i < d.stars);
+    g.fillStyle = INK;
+    let px = 84;
+    g.font = `650 ${px}px ${FONT}`;
+    const room = d.stars >= 0 ? W - 230 : W - 56;
+    while (g.measureText(d.line).width > room && px > 40) g.font = `650 ${--px}px ${FONT}`;
+    g.fillText(d.line, 28, 98);
+    g.font = `500 46px ${FONT}`;
+    g.fillStyle = '#c9c5bb';
+    g.fillText(d.sub, 28, 162, W - 56);
+    if (d.stars >= 0) for (let i = 0; i < 3; i++) star(g, W - 180 + i * 64, 70, 26, i < d.stars, d.gold);
+    // the room map: one LED per instrument the room has, lit in its colour once found
+    const slots = Math.min(9, Math.max(d.total, d.found.length));
+    for (let i = 0; i < slots; i++) {
+      const f = d.found[i];
+      const x = 44 + i * 52;
+      g.beginPath();
+      g.arc(x, 222, 15, 0, Math.PI * 2);
+      if (f) {
+        g.fillStyle = `#${FAMILIES[f].color.toString(16).padStart(6, '0')}`;
+        g.fill();
+      } else {
+        g.strokeStyle = DIM;
+        g.lineWidth = 4;
+        g.stroke();
+      }
     }
+    g.font = `600 38px ${FONT}`;
+    g.fillStyle = INK;
+    const right = d.code ? `Phone ${d.code}` : d.day > 1 ? `Day ${d.day}` : slots ? `${d.found.length}/${slots}` : '';
+    if (right) g.fillText(right, W - 28 - g.measureText(right).width, 236);
     if (d.meter >= 0) {
-      // a segmented meter along the bottom edge
-      const segs = 20;
+      const segs = 24;
       for (let i = 0; i < segs; i++) {
         g.fillStyle = i / segs < d.meter ? INK : DIM;
-        g.fillRect(24 + i * ((W - 48) / segs), H - 14, (W - 48) / segs - 4, 6);
+        g.fillRect(28 + i * ((W - 56) / segs), H - 16, (W - 56) / segs - 5, 8);
       }
     }
     this.tex.needsUpdate = true;
@@ -207,7 +228,7 @@ function keyTexture(k: ModuleKey): CanvasTexture {
   return t;
 }
 
-function star(g: CanvasRenderingContext2D, x: number, y: number, r: number, filled: boolean): void {
+function star(g: CanvasRenderingContext2D, x: number, y: number, r: number, filled: boolean, gold = false): void {
   g.beginPath();
   for (let i = 0; i < 10; i++) {
     const a = -Math.PI / 2 + (i * Math.PI) / 5;
@@ -216,7 +237,7 @@ function star(g: CanvasRenderingContext2D, x: number, y: number, r: number, fill
     else g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
   }
   g.closePath();
-  g.fillStyle = INK;
+  g.fillStyle = gold ? '#ffd34d' : INK;
   g.strokeStyle = filled ? INK : DIM;
   g.lineWidth = 3;
   if (filled) g.fill();

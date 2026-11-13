@@ -1,6 +1,6 @@
 /**
  * The table's instrument, in kit-local space (origin on the table at the kit's centre, +X right, +Z
- * toward the player): the drum pads, the edge keys (a slim row of light bars that plays any melody
+ * toward the player): the drum pads, the table keys (a slim row of light bars that plays any melody
  * your room has no instrument for), the module at the back, and your hands' shadows on the table.
  */
 import { DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture } from '@iwsdk/core';
@@ -10,7 +10,7 @@ import { Module } from '../ui/module.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
 
-/** The edge keys' row (kit-local, between the pads and the module). */
+/** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.15 } as const;
 /** The kit's playing area (kit-local): the whole table here is the kit. */
 export const KIT_ZONE = { halfX: 0.38, back: -0.21, front: 0.2 } as const;
@@ -56,10 +56,10 @@ export class KitView {
       this.pads.set(lane, p);
       this.root.add(p.group);
     }
-    // the edge keys lie on the table (an overlay on the kit's own surface: zone z is away from you)
+    // the table keys lie on the table (an overlay on the kit's own surface: zone z is away from you)
     this.keyZones = zonesFor('keys', { minX: -0.3, maxX: 0.3, minZ: -0.1, maxZ: 0.3 }, { x: KEYS_ROW.x, z: -KEYS_ROW.z }, 0.5);
     this.keys.group.visible = false;
-    this.keys.rest = 0.3;
+    this.keys.rest = 0.12;
     this.root.add(this.keys.group, this.module.root);
     const g = new PlaneGeometry(1, 1);
     g.rotateX(-Math.PI / 2);
@@ -77,7 +77,7 @@ export class KitView {
     return this.pads.get(lane);
   }
 
-  /** The kit appears (its first hit): the pads you have, and the edge keys. */
+  /** The kit appears (its first hit): the pads you have, and the table keys. */
   reveal(lanes: readonly Lane[]): void {
     for (const l of lanes) this.pads.get(l)?.appear('fade');
     this.keys.build(this.keyZones);

@@ -10,7 +10,7 @@ import { TIMING } from '../config.js';
 import { secPerBeat, type BedEvent, type Song } from '../songs/chart.js';
 import { EventCursor, SongClock } from '../songs/sequencer.js';
 import { NoteJudge, windows, type Grade, type JudgeNote, type Summary } from '../songs/judge.js';
-import { SONGS } from '../songs/songs.js';
+import { SONGS, dailySong } from '../songs/songs.js';
 import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/cast.js';
 import { bed } from '../songs/chart.js';
 import { Bandmate } from '../bandmate/bandmate.js';
@@ -23,8 +23,8 @@ export type Unlock = 'tom' | 'jam' | 'loops' | 'swaps';
 export const UNLOCK_AFTER: Record<string, Unlock[]> = {
   'porch-step': ['tom'],
   'kitchen-clock': ['jam'],
-  'night-bus': ['loops'],
-  'big-room': ['swaps'],
+  'night-bus': [],
+  'big-room': [],
 };
 
 export interface GameStage {
@@ -32,7 +32,7 @@ export interface GameStage {
   band(e: BedEvent, at: number, spb: number): void;
   /** Light the target `key` ("surface:zone") this frame (0..1). */
   light(key: string, k: number): void;
-  /** A celebration: a light sweep across every instrument (and the crowd of lights on the module). */
+  /** A celebration: a light sweep across every instrument, a note per star. */
   celebrate(stars: number): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class). */
   retune(keyPc: number): void;
@@ -41,6 +41,12 @@ export interface GameStage {
   unlock(u: Unlock): void;
   /** The bandmate plays target `key` at game time `at` (sound and light on its instrument). */
   voice(key: string, at: number, vel: number): void;
+  /** A song was cast (which instruments it uses: the table keys brighten when they're in it). */
+  casting(c: Cast): void;
+  /** A note went by unplayed: its target dims for a moment. */
+  missed(key: string): void;
+  /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
+  tempo(t: number): void;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
   bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave', surface?: string): void;
 }
@@ -88,7 +94,14 @@ export class Game {
   readonly graded = { perfect: 0, good: 0, extra: 0 };
   readonly offsets: number[] = [];
   /** What the module shows now. */
-  readonly display: Display = { line: 'Hit anything', sub: 'Your room is an orchestra', found: [], total: 0, meter: -1, stars: -1, pulse: null };
+  readonly display: Display = { line: 'Hit anything', sub: 'Your room is an orchestra', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '' };
+  /** The songs to choose from: the four, and today's. */
+  readonly list: Song[] = [...SONGS, dailySong(dayKey())];
+  /** A phone-jam code to show on the display ('' for none). */
+  code = '';
+  private lastTap: Record<string, number> = {};
+  private stopAsked = -1;
+  private weakRuns = 0;
   private t = 0;
   private modeT = 0;
   private bedCursor: EventCursor<BedEvent> | null = null;
@@ -115,7 +128,14 @@ export class Game {
   available(): number {
     let n = 1;
     for (let i = 0; i < SONGS.length - 1; i++) if (SONGS[i].id in this.progress.stars) n = i + 2;
-    return Math.min(SONGS.length, n);
+    // today's song joins once you've played one
+    return SONGS[0].id in this.progress.stars ? n + 1 : n;
+  }
+
+  /** Song `i` of the choosable list (the daily song last). */
+  private songAt(i: number): Song {
+    const n = this.available();
+    return i === n - 1 && SONGS[0].id in this.progress.stars ? this.list[this.list.length - 1] : this.list[i];
   }
 
   start(t: number): void {
@@ -135,6 +155,18 @@ export class Game {
 
   /** A module key was tapped. */
   key(k: ModuleKey): void {
+    const twice = this.t - (this.lastTap[k] ?? -9) < 0.9;
+    this.lastTap[k] = this.t;
+    if (this.mode === 'results') this.leaveResults();
+    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count') {
+      // tap ◀ twice: slow mode on or off
+      this.opts.tempo = this.opts.tempo < 0.95 ? 1 : 0.75;
+      this.stage.tempo(this.opts.tempo);
+      this.lastTap[k] = -9;
+      this.refreshDisplay();
+      this.display.sub = this.opts.tempo < 0.95 ? 'Slow mode · same stars' : 'Full speed';
+      return;
+    }
     if (k === 'prev' || k === 'next') {
       if (this.mode === 'play' || this.mode === 'count') return;
       const n = this.available();
@@ -143,8 +175,14 @@ export class Game {
       return;
     }
     if (k === 'play') {
-      if (this.mode === 'play' || this.mode === 'count') this.stop();
-      else {
+      if (this.mode === 'play' || this.mode === 'count') {
+        // stopping a song takes two taps (a stray hit never ends it)
+        if (twice) this.stop();
+        else {
+          this.stopAsked = this.t;
+          this.display.sub = 'Tap ▶ again to stop';
+        }
+      } else {
         if (this.mode === 'jam') this.endJam();
         this.begin(this.selected);
       }
@@ -291,12 +329,13 @@ export class Game {
 
   /** Start song `i`, cast onto the room as it is now. */
   begin(i: number): void {
-    const song = SONGS[i];
+    const song = this.songAt(i);
     if (!song) return;
     this.song = song;
     this.selected = i;
     this.offered = true;
     this.cast = cast(song.parts, this.room.instruments());
+    this.stage.casting(this.cast);
     this.stage.retune(song.key);
     const notes: JudgeNote[] = song.notes.map((n) => ({ beat: n.beat, lane: noteKey(n, this.cast, (s) => this.room.zones(s)), vel: n.vel }));
     const spb = secPerBeat(song.bpm, this.opts.tempo);
@@ -314,6 +353,7 @@ export class Game {
 
   /** Stop the song now (no stars). */
   stop(): void {
+    this.stage.casting({});
     this.mode = 'discover';
     this.song = null;
     this.judge = null;
@@ -325,6 +365,7 @@ export class Game {
 
   /** The player hit target `key` at game time `t`. */
   hit(key: string, t: number, gain: number): Grade | 'extra' | null {
+    if (this.mode === 'results' && t - this.modeT > 1.5) this.leaveResults();
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
     const at = t - this.opts.offset - this.clock.start;
@@ -354,13 +395,17 @@ export class Game {
       return;
     }
     if (this.mode === 'results') {
-      if (t - this.modeT >= 5) {
-        this.mode = 'discover';
-        this.song = null;
-        this.stage.retune(0);
-        this.refreshDisplay();
+      // the stars fill one at a time; the results stay until you play on (or a while passes)
+      const shown = Math.min(this.last?.stars ?? 0, Math.floor((t - this.modeT) / 0.45));
+      if (shown !== this.display.stars) {
+        this.display.stars = shown;
       }
+      if (t - this.modeT >= 15) this.leaveResults();
       return;
+    }
+    if (this.stopAsked > 0 && t - this.stopAsked > 1.2) {
+      this.stopAsked = -1;
+      this.refreshDisplay();
     }
     const song = this.song!;
     const beat = this.clock.beatAt(t);
@@ -391,9 +436,17 @@ export class Game {
     if (beat >= song.bars * 4 + 1) this.end();
   }
 
+  private leaveResults(): void {
+    this.mode = 'discover';
+    this.song = null;
+    this.stage.retune(0);
+    this.refreshDisplay();
+  }
+
   private onBed = (e: BedEvent): void => this.stage.band(e, this.clock.timeAt(e.beat), this.clock.spb);
-  private onMiss = (): void => {
+  private onMiss = (n: { lane: string }): void => {
     this.energy = Math.max(0.15, this.energy - 0.05);
+    this.stage.missed(n.lane);
   };
 
   private end(): void {
@@ -402,6 +455,7 @@ export class Game {
     const p = this.progress;
     const i = SONGS.indexOf(song);
     const first = !(song.id in p.stars);
+    this.stage.casting({});
     p.stars[song.id] = Math.max(p.stars[song.id] ?? 0, s.stars);
     if (s.stars === 3 && this.tempoAtStart >= 0.999) p.gold[song.id] = true;
     const today = dayKey();
@@ -422,8 +476,10 @@ export class Game {
     this.modeT = this.t;
     this.moteCount = 0;
     this.judge = null;
-    this.selected = Math.min(this.available() - 1, i + 1);
+    this.weakRuns = s.stars <= 1 ? this.weakRuns + 1 : 0;
+    this.selected = i >= 0 ? Math.min(this.available() - 1, i + 1) : this.selected;
     this.refreshDisplay();
+    this.display.stars = 0;
   }
 
   private learnOffset(): void {
@@ -442,7 +498,11 @@ export class Game {
     d.stars = -1;
     d.meter = -1;
     d.pulse = null;
-    const sel = SONGS[this.selected];
+    const sel = this.songAt(this.selected);
+    d.count = 0;
+    d.day = this.progress.days.length;
+    d.gold = !!this.progress.gold[sel.id];
+    d.code = this.code;
     switch (this.mode) {
       case 'discover':
         if (!this.offered) {
@@ -452,14 +512,15 @@ export class Game {
           d.line = sel.name;
           const need = wants(sel.parts);
           const have = this.found.filter((f) => f !== 'kit').length;
-          d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : have < need ? `Tap play · find ${need - have} more` : 'Tap play';
+          d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : this.weakRuns >= 2 && this.opts.tempo > 0.95 ? 'Slower? Tap ◀ twice' : have < need ? 'Tap play · more found, more parts' : 'Tap play';
           d.pulse = (this.progress.unlocks as string[]).includes('jam') && !this.jammed ? 'jam' : 'play';
           d.stars = this.progress.stars[sel.id] ?? 0;
         }
         break;
       case 'count':
         d.line = this.song!.name;
-        d.sub = `${Math.round(this.song!.bpm * this.opts.tempo)} bpm · get ready`;
+        d.sub = `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
+        d.count = Math.max(1, Math.min(4, Math.ceil(-this.clock.beatAt(this.t))));
         break;
       case 'play':
         d.line = this.song!.name;
@@ -474,9 +535,10 @@ export class Game {
         break;
       case 'results': {
         const s = this.last!;
-        d.line = s.stars === 3 ? 'Brilliant' : s.stars === 2 ? 'Lovely' : 'Song done';
+        d.line = s.stars === 3 ? 'Brilliant' : s.stars === 2 ? 'Lovely' : 'One star · again?';
         d.stars = s.stars;
-        d.sub = this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : `${s.perfect + s.good} of ${s.total} notes`;
+        const next = this.selected < this.available() ? this.songAt(this.selected) : null;
+        d.sub = this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
         break;
       }
     }
@@ -529,5 +591,5 @@ function cap(s: string): string {
 }
 
 function unlockLine(u: Unlock): string {
-  return u === 'tom' ? 'New: a tom on your table' : u === 'jam' ? 'New: jam with a bandmate' : u === 'loops' ? 'New: loops' : 'New: move instruments';
+  return u === 'tom' ? 'New: a tom on your table' : 'New: JAM with a bandmate';
 }

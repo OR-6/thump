@@ -21,8 +21,8 @@ export interface PadSpec {
   mark: 'none' | 'stripe' | 'notch' | 'ring' | 'brass';
 }
 
-/** Felt colours: the felt-and-wood toy palette. */
-export const FELT = {
+/** Accent colours. */
+export const PALETTE = {
   tomato: 0xe2563b,
   mustard: 0xf2b632,
   teal: 0x2a9d8f,
@@ -38,12 +38,12 @@ export const FELT = {
  * landing, hat out right and a little nearer, tom out left). z = 0 is where the palm rested.
  */
 export const PADS: Record<Lane, PadSpec> = {
-  kick: { lane: 'kick', size: 0.14, x: -0.09, z: 0, color: FELT.tomato, mark: 'none' },
-  snare: { lane: 'snare', size: 0.12, x: 0.09, z: 0, color: FELT.mustard, mark: 'stripe' },
-  hat: { lane: 'hat', size: 0.09, x: 0.235, z: 0.06, color: FELT.teal, mark: 'notch' },
-  tom: { lane: 'tom', size: 0.11, x: -0.245, z: 0.06, color: FELT.plum, mark: 'ring' },
+  kick: { lane: 'kick', size: 0.14, x: -0.09, z: 0, color: PALETTE.tomato, mark: 'none' },
+  snare: { lane: 'snare', size: 0.12, x: 0.09, z: 0, color: PALETTE.mustard, mark: 'stripe' },
+  hat: { lane: 'hat', size: 0.09, x: 0.235, z: 0.06, color: PALETTE.teal, mark: 'notch' },
+  tom: { lane: 'tom', size: 0.11, x: -0.245, z: 0.06, color: PALETTE.plum, mark: 'ring' },
   // the gong goes on a real wall within reach when there is one; this is the table-edge fallback
-  gong: { lane: 'gong', size: 0.16, x: 0.36, z: -0.1, color: FELT.brass, mark: 'brass' },
+  gong: { lane: 'gong', size: 0.16, x: 0.36, z: -0.1, color: PALETTE.brass, mark: 'brass' },
 };
 
 /** Hit zones are this much larger than the felt (fingertips land wide at speed). */

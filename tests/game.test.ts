@@ -12,6 +12,9 @@ function stage(log: string[]): GameStage {
     save: () => log.push('save'),
     unlock: (u) => log.push(`unlock ${u}`),
     voice: () => {},
+    casting: () => {},
+    tempo: () => {},
+    missed: () => {},
     bandmate: (e, s) => log.push(`bandmate ${e} ${s}`),
   };
 }
@@ -73,7 +76,7 @@ describe('the game', () => {
     expect(p.stars['porch-step']).toBe(3);
     expect(p.unlocks).toContain('tom');
     expect(log).toContain('unlock tom');
-    expect(g.available()).toBe(2);
+    expect(g.available()).toBe(3); // Kitchen Clock, and today's song
     expect(g.selected).toBe(1);
     // back to free play after the results
     g.tick(200);
@@ -89,18 +92,37 @@ describe('the game', () => {
     expect(g.last?.stars).toBe(1);
   });
 
-  it('◀ ▶ choose among unlocked songs only; PLAY during a song stops it', () => {
+  it('◀ ▶ choose among unlocked songs (and today\'s); PLAY twice during a song stops it, once does not', () => {
     const p = freshProgress();
     p.stars['porch-step'] = 2;
     const g = new Game(stage([]), p, room([]));
     g.start(0);
-    expect(g.available()).toBe(2);
+    expect(g.available()).toBe(3);
+    g.tick(1);
     g.key('next');
+    g.tick(3);
     g.key('next');
-    expect(g.selected).toBe(g.selected % 2);
+    expect(g.selected).toBe(2);
     g.begin(0);
+    g.tick(4);
+    g.key('play');
+    expect(g.mode).toBe('count');
+    g.tick(4.3);
     g.key('play');
     expect(g.mode).toBe('discover');
+  });
+
+  it('tap ◀ twice: slow mode, saved', () => {
+    let saved = 0;
+    const st = { ...stage([]), tempo: (t: number) => (saved = t) };
+    const g = new Game(st, freshProgress(), room([]));
+    g.start(0);
+    g.tick(1);
+    g.key('prev');
+    g.tick(1.3);
+    g.key('prev');
+    expect(g.opts.tempo).toBe(0.75);
+    expect(saved).toBe(0.75);
   });
 
   it('learns a steady lateness', () => {

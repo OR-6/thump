@@ -2,7 +2,7 @@
  * Casting (pure): a song is written in parts; your room has instruments. When a song starts, each part
  * goes to the instrument in your room that suits it best: its own family first, then the nearest
  * family, each instrument used once where possible; anything your room lacks falls back to the table
- * (the kit for drums, the edge keys for notes). Then each note becomes a target: a pad, a bar or a key.
+ * (the kit for drums, the table keys for notes). Then each note becomes a target: a pad, a bar or a key.
  */
 import type { Family } from '../room/classify.js';
 import { DRUMS, type DrumPart, type Note, type Part } from './chart.js';

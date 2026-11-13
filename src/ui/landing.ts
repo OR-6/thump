@@ -19,7 +19,7 @@ export function mountLanding(world: World): void {
         <p class="tag">Play your room.</p>
       </header>
       <ul class="kit" aria-hidden="true"><li style="--c:#ff5a3c">Table · drum kit</li><li style="--c:#fff1d0">Wall · gong</li><li style="--c:#ffa630">Door · marimba</li><li style="--c:#8fd8ff">Window · glockenspiel</li></ul>
-      <p class="lede">Every surface in your room is an instrument. Your table is a drum kit, your wall a gong, your door a marimba, your window a glockenspiel. Hit anything to find out what it plays, then play songs across your own room. Made for your hands, on Meta Quest.</p>
+      <p class="lede">Every surface in your room is an instrument. Hit anything to find out what it plays, then play songs across your own room, with your hands.</p>
       <div class="go">
         <button id="enter-xr" class="patch" type="button">Enter mixed reality</button>
         <p class="xr-fail" role="alert" hidden>Mixed reality didn't start. Allow what Quest asks for, then press Enter again.</p>

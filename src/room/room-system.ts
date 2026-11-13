@@ -65,8 +65,10 @@ const RESUME_WINDOW_S = 4;
 const FOVEATION = [0.5, 0.75, 1];
 const SIDES = ['left', 'right'] as const;
 const HOLD_DOTS = 20;
-/** Surfaces within this of the head carry a sheen and count in the room map (stand up to reach the far ones). */
+/** Surfaces within this of the head are played (stand up and walk to the far ones). */
 const ACTIVE_M = 3;
+/** Surfaces within this of a seated player's head carry a sheen and count in the room map. */
+const SEATED_M = 1.1;
 /** A hand this close to a surface (along its normal) is tested against it. */
 const NEAR_MIN = -0.12;
 const NEAR_MAX = 0.32;
@@ -292,11 +294,29 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     celebrate: (stars) => {
+      // a light sweep across every instrument, the kit's LEDs in order, and a note for each star as it fills
       for (const o of this.overlays.values()) o.sweep();
       this.kit.keys.sweep();
-      for (const p of this.kit.pads.values()) if (p.visible) p.hit(0.5);
-      audio.chime(stars === 3 ? [72, 76, 79, 84] : stars === 2 ? [72, 76, 79] : [72, 76], 0.16);
-      audio.cheer(8, stars >= 2);
+      let k = 0;
+      for (const p of this.kit.pads.values()) if (p.visible) this.later(this.clock.t + 0.08 * k++, () => p.hit(0.7));
+      for (let i = 0; i < stars; i++) this.later(this.clock.t + 0.45 * (i + 1), () => audio.chime([76 + i * 4], 0.1, 0.9));
+      this.afterFirstSong();
+    },
+    casting: (c) => {
+      // the table keys sit quiet until a song uses them
+      const used = Object.values(c).some((t) => t?.surface === 'keys');
+      this.kit.keys.rest = used ? 0.45 : 0.12;
+    },
+    missed: (key) => {
+      const r = this.ref(key);
+      if (!r) return;
+      if (r.kind === 'pad') this.kit.pad(r.lane)?.miss();
+      else if (r.kind === 'keys') this.kit.keys.miss(r.zone);
+      else if (r.surface) this.overlays.get(r.surface)?.miss(r.zone);
+    },
+    tempo: (t) => {
+      this.settings = { ...this.settings, tempo: t };
+      saveSettings(this.settings);
     },
     retune: (pc) => {
       for (const s of this.surfaces) if (s.discovered && s.voice && FAMILIES[s.voice.family].melodic) retune(s.zones, s.voice.family, s.voice.size, pc);
@@ -354,6 +374,24 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   };
   /** The bandmate's notes, lit when they play. */
   private pendingLights: { at: number; key: string; vel: number }[] = [];
+  private timed: { at: number; fn: () => void }[] = [];
+  private later(at: number, fn: () => void): void {
+    this.timed.push({ at, fn });
+  }
+  private farTold = false;
+
+  /** After the first song: if the room has instruments beyond a seated reach, say where. */
+  private afterFirstSong(): void {
+    if (this.farTold || this.settings.noWords) return;
+    const far = this.surfaces.find((s) => !s.discovered && s.voice && FAMILIES[s.voice.family].melodic && s.reach > SEATED_M && s.reach <= ACTIVE_M);
+    if (!far) return;
+    this.farTold = true;
+    this.later(this.clock.t + 5, () => {
+      this.tmp.set((far.bounds.minX + far.bounds.maxX) / 2, 0.06, -(far.bounds.minZ + far.bounds.maxZ) / 2).applyMatrix4(far.world);
+      this.tmp.y = Math.min(this.tmp.y, this.head.y);
+      this.tag.show(`Stand up · try the ${surfaceName(far).toLowerCase()}`, FAMILIES[far.voice!.family].color, this.tmp, this.head, 6);
+    });
+  }
 
   /** Resolve a target key ("surface:zone"), cached. */
   private ref(key: string): KeyRef | null {
@@ -484,6 +522,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.readHands(delta);
     if (AUTOPLAY) this.autoplay();
     this.game.tick(this.clock.t);
+    for (let i = this.timed.length - 1; i >= 0; i--) {
+      if (this.timed[i].at <= this.clock.t) {
+        const f = this.timed[i].fn;
+        this.timed.splice(i, 1);
+        f();
+      }
+    }
     for (let i = this.pendingLights.length - 1; i >= 0; i--) {
       const p = this.pendingLights[i];
       const d = this.clock.t - p.at;
@@ -504,7 +549,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.module.root.updateMatrixWorld();
     this.kit.module.root.getWorldPosition(this.tmp2);
     this.tmp2.y += 0.06;
-    this.motes.update(this.game.motes, this.game.moteCount, this.tmp2, this.resolveMote);
+    this.motes.update(this.game.motes, this.game.moteCount, this.tmp2, this.head, this.resolveMote);
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
     if (this.debug.anchored) this.saveKitPose();
   }
@@ -676,6 +721,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     audio.modal(s.voice.family, zone.midi, gain, this.panOf(this.lastWorld), 0, s.voice.size);
     this.overlays.get(s)?.hit(z, gain);
     const grade = this.game.hit(`${s.id}:${z}`, t, gain);
+    if (grade === 'perfect') {
+      this.overlays.get(s)?.perfect(z);
+      audio.chime([96], 0, 0.25);
+    }
     this.record(s, z, gain, st, grade);
   }
 
@@ -693,6 +742,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           audio.modal('keys', q.midi, gain, this.panOf(this.lastWorld));
           this.kit.keys.hit(i, gain);
           const g = this.game.hit(`keys:${i}`, t, gain);
+          if (g === 'perfect') {
+            this.kit.keys.perfect(i);
+            audio.chime([96], 0, 0.25);
+          }
           this.record(this.kitSurface, i, gain, st, g, 'keys');
           return;
         }
@@ -705,6 +758,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     audio.drum(lane, gain, pan, 0, 1);
     if (lane !== 'rim') this.kit.pad(lane)?.hit(gain);
     const g = this.game.hit(`kit:${lane === 'rim' ? 'snare' : lane}`, t, gain);
+    if (g === 'perfect' && lane !== 'rim') {
+      this.kit.pad(lane)?.perfect();
+      audio.chime([96], 0, 0.25);
+    }
     this.record(this.kitSurface, 0, gain, st, g, lane);
   }
 
@@ -1015,7 +1072,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     let fams = new Set<Family>();
     for (const s of this.surfaces) {
       s.reach = s.source === 'kit' || s.source === 'module' ? 0 : s.distanceTo(this.head);
-      if (s.voice && s.source !== 'module' && s.reach <= ACTIVE_M) fams.add(s.voice.family);
+      if (s.voice && s.source !== 'module' && (s.reach <= SEATED_M || s.discovered)) fams.add(s.voice.family);
     }
     fams = new Set([...fams].filter((f) => f !== 'keys'));
     if (this.game.roomTotal !== fams.size) {
@@ -1028,7 +1085,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private rebuildSheens(): void {
     for (const s of this.surfaces) {
       if (s.source === 'module' || s.source === 'kit') continue;
-      const want = !s.discovered && !!s.voice && s.reach <= ACTIVE_M;
+      const want = !s.discovered && !!s.voice && s.reach <= SEATED_M;
       const has = this.sheens.get(s);
       if (want && !has) {
         const sh = new Sheen(s);
@@ -1222,7 +1279,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     } catch {
       /* unsupported */
     }
-    if (this.game.mode === 'discover' && this.game.found.length === 0) this.game.start(this.clock.t);
+    if (this.game.mode === 'discover' && this.game.found.length === 0) {
+      this.game.start(this.clock.t);
+      // the first words, at hand height over the table (the module says it too)
+      if (!this.settings.noWords && !this.kitSurface.discovered) {
+        this.tmp.set(0, 0.12, 0.02).applyMatrix4(root.matrixWorld);
+        this.tag.show('Hit anything', 0xff5a3c, this.tmp, this.head, 6);
+      }
+    }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();
   }
 

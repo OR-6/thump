@@ -68,6 +68,7 @@ function shadowTexture(): CanvasTexture {
   return shadowTex;
 }
 
+const _white = new Color(0xffffff);
 let flat: PlaneGeometry | null = null;
 function flatPlane(): PlaneGeometry {
   if (!flat) {
@@ -80,7 +81,7 @@ function flatPlane(): PlaneGeometry {
 export class PadView {
   readonly group = new Group();
   /** The squashing part (head, rim, hoop). */
-  readonly felt = new Group();
+  readonly body = new Group();
   private head: MeshStandardMaterial;
   private led: MeshBasicMaterial;
   private ledGlow: MeshBasicMaterial;
@@ -115,8 +116,8 @@ export class PadView {
     const hoop = new Mesh(new TorusGeometry(R * 1.005, 0.0016, 8, 64), new MeshStandardMaterial({ color: 0xd8dade, metalness: 1, roughness: 0.22 }));
     hoop.rotation.x = -Math.PI / 2;
     hoop.position.y = HEIGHT + 0.0035;
-    this.felt.add(body, rim, hoop);
-    this.group.add(this.felt);
+    this.body.add(body, rim, hoop);
+    this.group.add(this.body);
     // the LED ring round the base, and its glow on the table
     this.led = new MeshBasicMaterial({ color: this.base.clone().multiplyScalar(0.25), toneMapped: false });
     const led = new Mesh(new RingGeometry(R * 1.04, R * 1.1, 64), this.led);
@@ -165,6 +166,19 @@ export class PadView {
     this.rippleT = 0;
   }
 
+  private white = 0;
+  private dim = 0;
+
+  /** Hit right on time: a white flash of the ring. */
+  perfect(): void {
+    this.white = 1;
+  }
+
+  /** Its note went by unplayed: the ring dims for a moment. */
+  miss(): void {
+    this.dim = 1;
+  }
+
   setGlow(k: number): void {
     if (k > this.ask) this.ask = k;
   }
@@ -188,7 +202,7 @@ export class PadView {
       sy = 1 - amp * env;
       sxz = 1 + amp * 0.3 * env;
     }
-    this.felt.scale.set(s * sxz, s * sy, s * sxz);
+    this.body.scale.set(s * sxz, s * sy, s * sxz);
     if (this.rippleT < 1) {
       this.rippleT = Math.min(1, this.rippleT + dt / 0.3);
       this.ripple.scale.setScalar(this.radius * (0.15 + 0.82 * this.rippleT));
@@ -196,11 +210,14 @@ export class PadView {
       this.ripple.position.y = HEIGHT * sy + 0.0008;
     }
     this.flash = Math.max(0, this.flash - dt * 4);
-    const target = Math.max(this.ask * 0.8, this.flash);
+    this.white = Math.max(0, this.white - dt * 3);
+    this.dim = Math.max(0, this.dim - dt * 2.5);
+    const target = Math.max(this.ask * 0.8, this.flash, this.white);
     this.shown += (target - this.shown) * Math.min(1, dt * 30);
     this.ask = 0;
-    this.led.color.copy(this.base).multiplyScalar(0.22 + 0.78 * this.shown);
-    this.ledGlow.opacity = this.shown * 0.9;
+    const lit = this.shown * (1 - 0.7 * this.dim);
+    this.led.color.copy(this.base).multiplyScalar((0.22 + 0.78 * lit) * (1 - 0.6 * this.dim)).lerp(_white, this.white * 0.8);
+    this.ledGlow.opacity = lit * 0.9;
   }
 
   get light(): number {

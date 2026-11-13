@@ -57,6 +57,13 @@ export class Overlay {
   readonly group = new Group();
   private shapes: InstancedMesh;
   private glow: InstancedMesh;
+  /** A dark backing under each shape, so light reads on a white wall or a bright window. */
+  private backing: InstancedMesh;
+  /** Fine detail: note dots at a bar's ends, a gong's rings and strike spot. */
+  private detail: InstancedMesh;
+  private detailN = 0;
+  private dim: Float32Array;
+  private white: Float32Array;
   private zones: Zone[] = [];
   private base = new Color();
   /** Light per zone: asked this frame (beat light), and a hit's flash fading. */
@@ -66,7 +73,7 @@ export class Overlay {
   private revealT = 1;
   private sweepT = -1;
   private hc = false;
-  /** Brightness at rest (the table's edge keys sit quieter than a door's bars). */
+  /** Brightness at rest (the table keys sit quieter than a door's bars). */
   rest = 0.55;
 
   constructor(readonly family: Family, max = 12) {
@@ -82,6 +89,18 @@ export class Overlay {
       this.group.add(m);
     }
     this.glow.renderOrder = 5;
+    const isBar = family === 'marimba' || family === 'glock' || family === 'keys';
+    this.backing = new InstancedMesh(isBar ? g.box : g.disc, new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false, side: DoubleSide }), max);
+    this.backing.renderOrder = 3;
+    this.detail = new InstancedMesh(g.ring, new MeshBasicMaterial({ transparent: true, opacity: family === 'gong' ? 0.32 : 0.85, depthWrite: false, toneMapped: false, side: DoubleSide }), max * 4);
+    this.detail.renderOrder = 4;
+    for (const m of [this.backing, this.detail]) {
+      m.frustumCulled = false;
+      m.count = 0;
+      this.group.add(m);
+    }
+    this.dim = new Float32Array(max);
+    this.white = new Float32Array(max);
     this.ask = new Float32Array(max);
     this.flash = new Float32Array(max);
     this.shown = new Float32Array(max);
@@ -114,6 +133,16 @@ export class Overlay {
     if (i >= 0 && i < this.ask.length && k > this.ask[i]) this.ask[i] = k;
   }
 
+  /** Zone `i` was hit right on time: a white flash. */
+  perfect(i: number): void {
+    if (i >= 0 && i < this.white.length) this.white[i] = 1;
+  }
+
+  /** Zone `i`'s note went by unplayed: it dims for a moment. */
+  miss(i: number): void {
+    if (i >= 0 && i < this.dim.length) this.dim[i] = 1;
+  }
+
   /** Zone `i` was hit with loudness `gain`. */
   hit(i: number, gain: number): void {
     if (i >= 0 && i < this.flash.length) this.flash[i] = Math.max(this.flash[i], 0.5 + 0.5 * gain);
@@ -139,8 +168,52 @@ export class Overlay {
       _m.compose(_p, _q, _s);
       this.glow.setMatrixAt(i, _m);
     }
+    // the dark backing, a little larger than each shape
+    for (let i = 0; i < n; i++) {
+      const z = this.zones[i];
+      const k = Math.min(1, Math.max(0, reveal * (n + 2) - i * 0.9) / 2);
+      _p.set(z.x, LIFT * 0.4, -z.z);
+      if (z.shape === 'rect') _s.set(z.w * k + 0.008, 1, z.h + 0.008);
+      else _s.set(z.w * k * 1.08, 1, z.w * k * 1.08);
+      _m.compose(_p, _q, _s);
+      this.backing.setMatrixAt(i, _m);
+    }
+    this.backing.count = n;
+    // detail: note dots at each bar's ends; a gong's fine rings and strike spot; a dot in each tongue
+    let d = 0;
+    for (let i = 0; i < n; i++) {
+      const z = this.zones[i];
+      const k = Math.min(1, Math.max(0, reveal * (n + 2) - i * 0.9) / 2);
+      if (k <= 0) continue;
+      if (z.shape === 'rect') {
+        const along = z.w >= z.h;
+        for (const sgn of [-1, 1]) {
+          const off = (along ? z.w : z.h) / 2 - 0.007;
+          _p.set(z.x + (along ? sgn * off * k : 0), LIFT * 1.3, -(z.z + (along ? 0 : sgn * off * k)));
+          _m.compose(_p, _q, _s.setScalar(0.0032));
+          this.detail.setMatrixAt(d++, _m);
+        }
+      } else if (this.family === 'gong') {
+        for (const f of [0.32, 0.55, 0.75]) {
+          _p.set(z.x, LIFT * 1.3, -z.z);
+          _m.compose(_p, _q, _s.set(z.w * f * k, 1, z.w * f * k));
+          this.detail.setMatrixAt(d++, _m);
+        }
+        _p.set(z.x, LIFT * 1.3, -z.z);
+        _m.compose(_p, _q, _s.setScalar(z.w * 0.1 * k));
+        this.detail.setMatrixAt(d++, _m);
+      } else {
+        _p.set(z.x, LIFT * 1.3, -z.z);
+        _m.compose(_p, _q, _s.setScalar(z.w * 0.22 * k));
+        this.detail.setMatrixAt(d++, _m);
+      }
+    }
+    this.detail.count = this.detailN = d;
+    (this.detail.material as MeshBasicMaterial).color.copy(this.base);
     this.shapes.instanceMatrix.needsUpdate = true;
     this.glow.instanceMatrix.needsUpdate = true;
+    this.backing.instanceMatrix.needsUpdate = true;
+    this.detail.instanceMatrix.needsUpdate = true;
   }
 
   update(dt: number): void {
@@ -158,14 +231,17 @@ export class Overlay {
     }
     for (let i = 0; i < n; i++) {
       this.flash[i] = Math.max(0, this.flash[i] - dt * 3.5);
+      this.white[i] = Math.max(0, this.white[i] - dt * 3);
+      this.dim[i] = Math.max(0, this.dim[i] - dt * 2.5);
       const sw = sweepAt >= 0 ? Math.max(0, 1 - Math.abs(i - sweepAt) / 1.5) * 0.8 : 0;
-      const target = Math.max(this.ask[i] * 0.75, this.flash[i], sw);
+      const target = Math.max(this.ask[i] * 0.75, this.flash[i], sw, this.white[i]);
       this.shown[i] += (target - this.shown[i]) * Math.min(1, dt * 30);
       this.ask[i] = 0;
-      const s = this.shown[i];
-      // the shape: its accent, brighter as it lights; the glow: dark (invisible, additive) at rest
-      this.shapes.setColorAt(i, _c.copy(this.base).multiplyScalar(this.rest + (1 - this.rest) * s).lerp(WHITE, s * 0.35));
-      this.glow.setColorAt(i, _c.copy(this.base).multiplyScalar(0.06 + s * 0.9));
+      const s = this.shown[i] * (1 - 0.7 * this.dim[i]);
+      const rest = this.rest * (1 - 0.7 * this.dim[i]);
+      // the shape: its accent, brighter as it lights (white on a perfect hit); the glow: nothing at rest
+      this.shapes.setColorAt(i, _c.copy(this.base).multiplyScalar(rest + (1 - rest) * s).lerp(WHITE, Math.max(s * 0.35, this.white[i] * 0.85)));
+      this.glow.setColorAt(i, _c.copy(this.base).lerp(WHITE, this.white[i] * 0.6).multiplyScalar(s * 0.9));
     }
     if (this.shapes.instanceColor) this.shapes.instanceColor.needsUpdate = true;
     if (this.glow.instanceColor) this.glow.instanceColor.needsUpdate = true;
@@ -208,8 +284,8 @@ export class Sheen {
   update(dt: number): void {
     this.t += dt;
     const k = motion.calm ? 0.5 : 1;
-    (this.fill.material as MeshBasicMaterial).opacity = 0.03 + 0.03 * k * (0.5 + 0.5 * Math.sin(this.t * 2.2));
-    (this.line.material as LineBasicMaterial).opacity = 0.18 + 0.14 * k * (0.5 + 0.5 * Math.sin(this.t * 2.2 + 1));
+    (this.fill.material as MeshBasicMaterial).opacity = 0.08 + 0.06 * k * (0.5 + 0.5 * Math.sin(this.t * 2.2));
+    (this.line.material as LineBasicMaterial).opacity = 0.45 + 0.3 * k * (0.5 + 0.5 * Math.sin(this.t * 2.2 + 1));
   }
 
   dispose(): void {
