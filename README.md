@@ -31,8 +31,8 @@ Whatever you leave out is there next time.
 
 They're models of the real things and they move when you play them. All of it is sized for a tray.
 
-- Drums: coated heads, lacquered shells, chrome hoops, and a hi-hat of two bronze cymbals.
-- Piano: six ivory keys for the right hand that sink when you hit them, and a wide ebony chord key for the left. Keys are 5 cm wide and the whole piano is 44 cm. Outside a song, each small black key plays the two white keys either side of it together.
+- Drums: a kick (15 cm, a dark head with a port and your band's name), a snare (13 cm, coated head worn grey where sticks land, a throw-off) and a hi-hat (two 12 cm turned brass cymbals on a small tripod that swing when hit), with clear-coated wood shells, chrome hoops, lugs and tension rods. The heads sit just above the desk, so the hit is the real desk.
+- Piano: two octaves at real key size (white keys 23.5 mm apart and 150 mm long, black keys 11 by 95 mm, grouped two and three as on any keyboard) in a lacquered case with a felt rail, 41 cm across. Every white key is a note of the scale, and the tune sits in the middle. The red button on the left plays a chord. Outside a song, a black key plays the two white keys either side of it together.
 - Marimba: eight rosewood bars that bounce when hit. Pinch and a mallet appears in that hand; its head is what strikes. Your bare hand works too.
 - Guitar: lying flat on the desk. Three chord positions on the neck for the left hand; strum over the soundhole with the right, a hit or a brush down. The strings are synthesised in the browser.
 - Congas: two hand drums, a low one on the left and a high one on the right, wood staves and rawhide heads. The middle of a head is an open tone, the edge a slap.

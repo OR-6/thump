@@ -140,33 +140,55 @@ export function scaleMidi(root: number, scale: Scale, d: number): number {
   return root + oct * 12 + scale.steps[((d % n) + n) % n];
 }
 
-/** Index of the piano's chord pad (after its six keys). */
-export const PIANO_CHORD = 6;
+/** The keyboard at real key size (white keys 23.5 mm apart, 150 mm long; black keys 11 by 95 mm). */
+export const KEYBOARD = { whites: 14, pitch: 0.0235, gap: 0.001, len: 0.15, blackW: 0.011, blackLen: 0.095, x0: -0.118, front: -0.03 } as const;
+/** Index of the piano's chord button (after its fourteen keys). */
+export const PIANO_CHORD = 14;
+/** A piano note's zone plus this is the same key two octaves down (the bass line). */
+export const PIANO_LOW = 20;
+/** Where the song's tune starts on the keyboard (its first scale note is the sixth white key). */
+const TUNE_AT = 5;
 
 /**
- * The piano: six big keys for the right hand (low to high, every one in the scale, the root first) and one wide pad
- * for the left that plays a whole chord. 44 cm across, keys 5 cm wide (fingertips land within ~1.5 cm).
+ * The piano: two octaves of real keys (every white key a note of the scale, low to high; the tune sits in the middle,
+ * on the sixth key and up) and a red chord button on the case to their left for the other hand. 41 cm across.
  */
 export function pianoZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [];
-  for (let i = 0; i < 6; i++) out.push({ i, shape: 'rect', x: -0.085 + i * 0.056, z: 0.03, w: 0.05, h: 0.12, degree: i, midi: scaleMidi(root, scale, i) });
-  out.push({ i: PIANO_CHORD, shape: 'rect', x: -0.175, z: 0.03, w: 0.09, h: 0.12, degree: -1, midi: root - 12 });
+  const K = KEYBOARD;
+  for (let i = 0; i < K.whites; i++) {
+    const d = i - TUNE_AT;
+    out.push({ i, shape: 'rect', x: K.x0 + i * K.pitch, z: K.front + K.len / 2, w: K.pitch - K.gap, h: K.len, degree: d, midi: scaleMidi(root, scale, d) });
+  }
+  out.push({ i: PIANO_CHORD, shape: 'disc', x: K.x0 - 0.05, z: 0.05, w: 0.022, h: 0, degree: -1, midi: root - 12 });
   return out;
 }
 
+/** Each black key's place in an octave of white keys (C D E F G A B): after which white key, and its offset. */
+const BLACKS: readonly [number, number][] = [
+  [0, -0.13],
+  [1, 0.13],
+  [3, -0.16],
+  [4, 0],
+  [5, 0.16],
+];
+
 /**
- * The piano's ebony keys, at the back between the ivory ones the way a keyboard looks (two, a gap, two): each plays
- * the two keys either side of it together (in the scale, so never a wrong note). Zone coordinates; `a`, `b` the two.
+ * The piano's black keys, where a keyboard has them (two over C D E, three over F G A B), at the back between the
+ * white keys: each plays the white keys either side of it together (both in the scale, so never a wrong note).
+ * Zone coordinates; `a`, `b` the two white keys.
  */
 export function pianoBlacks(zones: readonly Zone[]): { a: number; b: number; x: number; z: number; w: number; h: number }[] {
-  const white = zones.filter((q) => q.degree >= 0);
+  const K = KEYBOARD;
+  const white = zones.filter((q) => q.i < PIANO_CHORD);
   const out: { a: number; b: number; x: number; z: number; w: number; h: number }[] = [];
-  for (let i = 0; i < white.length - 1; i++) {
-    if (i === 2) continue;
-    const a = white[i];
-    const b = white[i + 1];
-    out.push({ a: a.i, b: b.i, x: (a.x + b.x) / 2, z: a.z + a.h * 0.225, w: 0.018, h: a.h * 0.55 });
-  }
+  for (let o = 0; o * 7 < white.length; o++)
+    for (const [after, off] of BLACKS) {
+      const a = o * 7 + after;
+      if (a + 1 >= white.length) continue;
+      const x = (white[a].x + white[a + 1].x) / 2 + off * K.pitch;
+      out.push({ a: white[a].i, b: white[a + 1].i, x, z: K.front + K.len - K.blackLen / 2, w: K.blackW, h: K.blackLen });
+    }
   return out;
 }
 

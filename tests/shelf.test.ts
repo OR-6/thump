@@ -14,16 +14,33 @@ describe('the instrument shelf', () => {
       for (const z of handpanZones(50, sc)) expect(sc.steps).toContain((((z.midi - 50) % 12) + 12) % 12);
     }
   });
-  it('the piano climbs left to right, keys at least 5 cm wide, and it fits a tray', () => {
+  it('the piano: two octaves of real keys (23.5 mm apart, 150 mm long), climbing, in the scale; it fits a tray', () => {
     const z = pianoZones(60, scaleById('happy'));
     const keys = z.slice(0, PIANO_CHORD);
-    for (let i = 1; i < keys.length; i++) expect(keys[i].midi).toBeGreaterThan(keys[i - 1].midi);
-    for (const k of keys) expect(k.w).toBeGreaterThanOrEqual(0.05);
-    const left = Math.min(...z.map((k) => k.x - k.w / 2));
-    const right = Math.max(...z.map((k) => k.x + k.w / 2));
-    expect(right - left).toBeLessThan(0.46);
-    // nothing overlaps
-    for (const a of z) for (const b of z) if (a !== b) expect(Math.abs(a.x - b.x)).toBeGreaterThanOrEqual((a.w + b.w) / 2);
+    expect(keys).toHaveLength(14);
+    for (let i = 1; i < keys.length; i++) {
+      expect(keys[i].midi).toBeGreaterThan(keys[i - 1].midi);
+      expect(keys[i].x - keys[i - 1].x).toBeCloseTo(0.0235, 4);
+    }
+    for (const k of keys) expect(k.h).toBeCloseTo(0.15, 4);
+    const left = Math.min(...z.map((k) => k.x - (k.shape === 'disc' ? k.w : k.w / 2)));
+    const right = Math.max(...z.map((k) => k.x + (k.shape === 'disc' ? k.w : k.w / 2)));
+    expect(right - left).toBeLessThan(0.44);
+    // the tune's first note is in the middle (the sixth key)
+    expect(keys[5].degree).toBe(0);
+  });
+  it('black keys where a keyboard has them: two over C D E, three over F G A B, 11 by 95 mm, each playing its two neighbours', () => {
+    const z = pianoZones(60, scaleById('happy'));
+    const bl = pianoBlacks(z);
+    expect(bl).toHaveLength(10);
+    expect(bl.map((b) => b.a)).toEqual([0, 1, 3, 4, 5, 7, 8, 10, 11, 12]);
+    for (const k of bl) {
+      expect(k.b).toBe(k.a + 1);
+      expect(k.x).toBeGreaterThan(z[k.a].x);
+      expect(k.x).toBeLessThan(z[k.b].x);
+      expect(k.w).toBeCloseTo(0.011, 4);
+      expect(k.h).toBeCloseTo(0.095, 4);
+    }
   });
   it('the congas: two drums apart, each a middle inside its edge; the middle is open, the edge slaps', () => {
     const z = congaZones();
@@ -42,19 +59,6 @@ describe('the instrument shelf', () => {
     expect(percVoice('congas', 0).slap).toBe(false);
     expect(percVoice('cajon', 1).tone).toBe(1);
     expect(percVoice('cajon', 2).size).toBeLessThan(percVoice('cajon', 0).size);
-  });
-  it("the piano's ebony keys: four, at the back between two ivory ones, each playing those two", () => {
-    const z = pianoZones(60, scaleById('happy'));
-    const bl = pianoBlacks(z);
-    expect(bl).toHaveLength(4);
-    for (const k of bl) {
-      expect(k.b).toBe(k.a + 1);
-      expect(k.x).toBeGreaterThan(z[k.a].x);
-      expect(k.x).toBeLessThan(z[k.b].x);
-      // at the back half, narrower than the gap's neighbours
-      expect(k.z).toBeGreaterThan(z[k.a].z);
-      expect(k.w).toBeLessThan(z[k.a].w / 2);
-    }
   });
   it('handpan notes never overlap each other or the ding', () => {
     const z = handpanZones(50, scaleById('sad'));

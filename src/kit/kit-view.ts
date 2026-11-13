@@ -50,7 +50,7 @@ export class KitView {
   /** The instrument's id and a colon: what its notes' keys start with. */
   instKey = 'drums:';
   readonly shelf = new Map<Exclude<InstId, 'drums'>, Overlay>([
-    ['piano', new Overlay('keys', 8)],
+    ['piano', new Overlay('keys', 16)],
     ['marimba', new Overlay('marimba', 8)],
     ['guitar', new Overlay('harp', 10)],
     ['handpan', new Overlay('tongue', 10)],
@@ -174,17 +174,8 @@ export class KitView {
       this.instShadow.position.set((x0 + x1) / 2, 0.0006, -(z0 + z1) / 2 - 0.01);
     }
     o.rest = 0.12;
-    // the piano's wide ebony key says what it is, on a strip of tape
+    // (the piano's chord button is red rubber on its case: no tape)
     this.chordTag.mesh.visible = false;
-    if (id === 'piano') {
-      const q = this.instZones[this.instZones.length - 1];
-      if (q) {
-        const at = new Vector3(q.x, 0.0188, -(q.z - q.h * 0.22));
-        this.chordTag.pin('CHORD', 0xffa630, at, at.clone().add(new Vector3(0, 1, 0)));
-        this.chordTag.mesh.rotation.set(-Math.PI / 2, 0, 0.04);
-        this.chordTag.mesh.scale.setScalar(1);
-      }
-    }
     o.group.position.y = id === 'piano' ? 0.0125 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? 0.022 : id === 'congas' ? 0.021 : 0;
     this.unfoldT = 0;
     o.reveal(0, 0.03);
@@ -207,11 +198,11 @@ export class KitView {
 
   /** A note was played on the instrument out (zone i): it moves. */
   instStruck(i: number, gain: number): void {
-    this.models.get(this.inst)?.struck(i % 10, gain);
+    this.models.get(this.inst)?.struck(i % 20, gain);
   }
   /** The piano's ebony key j went down. */
   blackStruck(j: number, gain: number): void {
-    if (this.inst === 'piano') this.models.get('piano')?.struck(7 + j, gain);
+    if (this.inst === 'piano') this.models.get('piano')?.struck(30 + j, gain);
   }
 
   /** The overlay of the instrument on the desk (null for the drums). */

@@ -7,6 +7,7 @@
  * through `GameStage` and `Room`, so unit tests drive it with fakes and a bot.
  */
 import { TIMING } from '../config.js';
+import { PIANO_CHORD, PIANO_LOW } from '../kit/shelf.js';
 import { oneHanded, secPerBeat, type BedEvent, type Note, type Song, bed as chordBed } from '../songs/chart.js';
 import { EventCursor, SongClock } from '../songs/sequencer.js';
 import { NoteJudge, windows, type Grade, type JudgeNote, type Summary } from '../songs/judge.js';
@@ -431,7 +432,7 @@ export class Game {
   private keyFor(surface: string, key: string, s: Step): string {
     if (s.degree < 0) return key;
     const z = this.room.zoneFor(surface, s.degree);
-    // the bass on the piano plays its keys two octaves down (zone + 10)
+    // the bass on the piano plays its keys two octaves down (zone + PIANO_LOW)
     return `${surface}:${Math.max(0, z) + this.lowFor(surface)}`;
   }
   /** The piano's low octave right now (10 while the bass part is being built on it), else 0. */
@@ -441,7 +442,7 @@ export class Game {
   /** The piano's low octave for the bass part being built (10), else 0. */
   private lowFor(surface: string): number {
     const b = this.bld;
-    return b && surface === 'piano' && b.track.parts[b.part]?.name === 'BASS' ? 10 : 0;
+    return b && surface === 'piano' && b.track.parts[b.part]?.name === 'BASS' ? PIANO_LOW : 0;
   }
 
   private hitBuild(key: string, t: number, gain: number): Grade | 'extra' | null {
@@ -778,7 +779,7 @@ export class Game {
     }
     const rank = (key: string) => {
       // (the left hand's chord and the tom are extras: they're what goes when both hands are busy)
-      if (key === 'piano:6' || key === 'kit:tom') return 99;
+      if (key === `piano:${PIANO_CHORD}` || key === 'kit:tom') return 99;
       const i = parts.findIndex((p) => p.key === key);
       if (i >= 0) return i;
       const j = parts.findIndex((p) => p.surface !== 'kit' && key.startsWith(p.surface + ':'));
@@ -813,7 +814,7 @@ export class Game {
     }
     // Hard on the piano: your left hand on the CHORD key as each bar's chord comes in
     if (inst === 'piano' && this.level === 'hard')
-      for (let bar = Math.ceil(from / 4); bar * 4 < to; bar++) if (!inFill(bar * 4)) notes.push({ beat: bar * 4, part: 'piano:6' as never, degree: -1, vel: 0.7 });
+      for (let bar = Math.ceil(from / 4); bar * 4 < to; bar++) if (!inFill(bar * 4)) notes.push({ beat: bar * 4, part: `piano:${PIANO_CHORD}` as never, degree: -1, vel: 0.7 });
     notes.sort((a, b) => a.beat - b.beat || rank(a.part as string) - rank(b.part as string));
     // two hands: never more than two things at once (the later part's note goes back to the bed)
     // the same note twice on one beat (two parts landing on one drum): one hit is one note, so it's one note
@@ -838,13 +839,13 @@ export class Game {
     }
     if (inst === 'drums' || key.startsWith(inst + ':')) {
       // (the bass's low octave on the piano is played on the same key)
-      return inst === 'piano' && key.startsWith('piano:') ? `piano:${Number(key.slice(6)) % 10}` : key;
+      return inst === 'piano' && key.startsWith('piano:') ? `piano:${Number(key.slice(6)) % PIANO_LOW}` : key;
     }
     // (an unpitched extra on the handpan walks its notes; a line with notes keeps its scale degrees)
     if (inst === 'handpan' && (key.startsWith('kit:') || key.startsWith('clap:') || key.startsWith('handpan:'))) return key.startsWith('handpan:') ? key : `handpan:${1 + (k % 8)}`;
     const i = key.indexOf(':');
     const degree = this.room.degreeOf(key.slice(0, i), Number(key.slice(i + 1)));
-    return `${inst}:${Math.max(0, this.room.zoneFor(inst, degree)) % 10}`;
+    return `${inst}:${Math.max(0, this.room.zoneFor(inst, degree)) % PIANO_LOW}`;
   }
 
   /** Perform on the machine: it drops to a bed, the kit parts are yours to play on your own things. */
@@ -871,7 +872,7 @@ export class Game {
         if (def.name === 'CLAP') return 'clap:0';
         if (def.name.startsWith('PERC')) return `handpan:${1 + ((k * 3) % 8)}`;
         const z = Math.max(0, this.room.zoneFor('piano', Math.max(0, s.degree)));
-        return `piano:${z + (def.name === 'BASS' ? 10 : 0)}`;
+        return `piano:${z + (def.name === 'BASS' ? PIANO_LOW : 0)}`;
       };
       const notes = st.map((s, k) => ({ key: keyOf(s, k), beat: s.beat, vel: s.vel, filled: false }));
       const key = notes[0]?.key ?? 'kit:kick';
@@ -2550,7 +2551,7 @@ function congaAt(b: number, halfTime = false): string {
   return 'congas:0';
 }
 /** A note `by` steps up its instrument (turning back down at the top), for the B section. */
-const TOP: Record<string, number> = { piano: 5, marimba: 7, handpan: 8 };
+const TOP: Record<string, number> = { piano: 13, marimba: 7, handpan: 8 };
 function lift(key: string, by: number): string {
   const i = key.indexOf(':');
   const inst = key.slice(0, i);
