@@ -18,7 +18,9 @@ describe('build: making a part', () => {
     ];
     const n = quantise(kick, hits, () => 'kit:kick');
     expect(n.map((x) => x.beat)).toEqual([0, 3, 4, 6]);
-    expect(n[1].vel).toBeCloseTo(0.5);
+    // loudness against your loudest hit (0.9 here): 0.5 sits between, never down with the filled notes
+    expect(n[1].vel).toBeCloseTo(0.55 + 0.45 * (0.5 / 0.9));
+    expect(n[0].vel).toBeCloseTo(1);
     expect(n.every((x) => !x.filled)).toBe(true);
     expect(played(n, kick)).toBe(1);
   });
@@ -103,3 +105,11 @@ describe('build: close notes', () => {
   });
 });
 
+describe('build: gentle hands', () => {
+  it('a take of soft taps comes out as a full part, its accents kept', () => {
+    const kick = steps('X.....x.|x...x...');
+    const n = quantise(kick, kick.map((s, i) => ({ beat: s.beat, key: 'k', vel: i === 0 ? 0.3 : 0.18 })), () => 'k');
+    expect(n[0].vel).toBeCloseTo(1);
+    expect(Math.min(...n.map((x) => x.vel))).toBeGreaterThan(0.75);
+  });
+});

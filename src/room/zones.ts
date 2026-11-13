@@ -187,10 +187,11 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
     }
     case 'keys': {
       // the table marimba (see below)
-      // the table marimba: eight bars drawn on the wood, running toward you, low on the left, a hand wide
+      // the table marimba: eight bars drawn on the wood, running toward you, low on the left, two fingers wide
+      // (40 cm across: a tray table holds it)
       for (let i = 0; i < 8; i++) {
-        const len = 0.11 - i * 0.007;
-        out.push({ i, shape: 'rect', x: anchor.x + (i - 3.5) * 0.066, z: anchor.z, w: 0.05, h: len, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
+        const len = 0.075 - i * 0.003;
+        out.push({ i, shape: 'rect', x: anchor.x + (i - 3.5) * 0.05, z: anchor.z, w: 0.042, h: len, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
       }
       break;
     }

@@ -15,7 +15,7 @@ import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/c
 import { bed } from '../songs/chart.js';
 import { Bandmate } from '../bandmate/bandmate.js';
 import { Looper } from './looper.js';
-import { LOOP_BEATS, TRACKS, assign, quantise, steps, type MachineNote, type PartDef, type RawHit, type Step, type TrackDef } from './build.js';
+import { LOOP_BEATS, TRACKS, assign, played, quantise, steps, type MachineNote, type PartDef, type RawHit, type Step, type TrackDef } from './build.js';
 import { FAMILIES, type Family } from '../room/classify.js';
 import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
@@ -204,6 +204,14 @@ export class Game {
     sched: number;
     /** The last count-in click scheduled. */
     clicked: number;
+    /** After a part goes in, hits don't pick the next thing until this beat (you're still playing along). */
+    guard: number;
+    /** The part just put in, and how much of it you played (shown during the guard). */
+    verdict: { name: string; hit: number; of: number } | null;
+    /** This part was already played once more (a take with almost nothing in it gets one retry). */
+    retried: boolean;
+    /** A thing already in the machine was hit while picking: a second hit on it picks it. */
+    pending: { key: string; t: number } | null;
   } | null = null;
 
   /** The first track not built yet that the things you've found open, or −1. */
@@ -226,7 +234,9 @@ export class Game {
 
   /** The part the module is asking for a thing for (the autoplayer), or null. */
   buildAsks(): string | null {
-    return this.bld?.phase === 'assign' ? this.bld.track.parts[this.bld.part].name : null;
+    const b = this.bld;
+    // (not while the part that just went in is still being shown: hits pick nothing then)
+    return b?.phase === 'assign' && this.clock.beatAt(this.t) >= b.guard ? b.track.parts[b.part].name : null;
   }
 
   buildRunning(): boolean {
@@ -254,7 +264,7 @@ export class Game {
     this.song = null;
     const spb = secPerBeat(track.bpm, this.opts.tempo);
     this.clock.set(this.t + 0.3, spb);
-    this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99 };
+    this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99, guard: -99, verdict: null, retried: false, pending: null };
     this.stage.retune(track.key);
     this.moteCount = 0;
     this.refreshDisplay();
@@ -288,8 +298,31 @@ export class Game {
       b.part = b.parts.length;
       b.phase = 'assign';
       b.target = null;
+      b.verdict = null;
+      b.guard = -99;
+      b.retried = false;
       this.refreshDisplay();
     }
+  }
+
+  /** Where the module suggests a part should go (lit softly while it asks): a key, or null. */
+  private suggestFor(name: string): string | null {
+    const b = this.bld!;
+    if (name === 'KICK') return 'kit:kick';
+    if (name === 'SNARE') return 'kit:snare';
+    if (name === 'HAT') return 'kit:hat';
+    if (name === 'CLAP') return null;
+    const used = (id: string) => b.parts.some((p) => p.surface === id);
+    const free = this.room.instruments().filter((x) => !used(x.id));
+    if (name.startsWith('KEYS')) {
+      const k = free.find((x) => x.zones >= 4);
+      return k ? `${k.id}:3` : 'keys:3';
+    }
+    if (name === 'BASS') {
+      const k = free.find((x) => x.family === 'congas') ?? free.find((x) => x.zones >= 4);
+      return k ? `${k.id}:0` : 'keys:0';
+    }
+    return free.length ? `${free[0].id}:0` : 'kit:tom';
   }
 
   /** The key a pattern note plays on for a target (pitched parts: the zone with its degree). */
@@ -304,13 +337,26 @@ export class Game {
     if (!b) return null;
     const beat = this.clock.beatAt(t - this.opts.offset);
     if (b.phase === 'assign') {
+      // still playing along with the part that just went in: that's not picking the next thing
+      if (beat < b.guard) return null;
       const def = b.track.parts[b.part];
+      // a thing already in the machine picks this part too only on a second hit (a stray tap along with the loop doesn't)
+      const surface = key.slice(0, key.indexOf(':'));
+      // (the desk's bars are a keyboard: several parts share them happily)
+      if (surface !== 'keys' && b.parts.some((p) => p.key === key || (p.surface === surface && surface !== 'kit'))) {
+        if (!b.pending || b.pending.key !== key || t - b.pending.t > 0.6) {
+          b.pending = { key, t };
+          return null;
+        }
+      }
+      b.pending = null;
       const a = assign(def, key, (sfc) => this.room.zones(sfc));
       b.target = { surface: a.surface, key: a.key };
       b.moved = a.moved;
-      // recording starts on the next loop at least a bar away (the count-in)
-      b.recStart = Math.ceil((beat + 4) / LOOP_BEATS) * LOOP_BEATS;
+      // recording starts on the next bar at least four beats away (the count-in); the take runs two bars from there
+      b.recStart = Math.ceil((beat + 4) / 4) * 4;
       b.hits = [];
+      b.clicked = Math.floor(beat);
       b.phase = 'count';
       this.refreshDisplay();
       return null;
@@ -321,10 +367,12 @@ export class Game {
       // (unpitched parts: only the thing you chose; pitched: any of its keys)
       const def = b.track.parts[b.part];
       if (def.pitched === 'no' && key !== b.target.key && b.target.surface === 'kit') return null;
-      b.hits.push({ beat: (rel + LOOP_BEATS) % LOOP_BEATS, key, vel: gain });
+      // where in the machine's two-bar loop this hit falls
+      const phase = ((beat % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS;
+      b.hits.push({ beat: phase, key, vel: gain });
       // a grade for the light: close to a pattern note is a perfect
       const st = steps(def.pattern);
-      const d = Math.min(...st.map((s) => Math.abs(s.beat - ((rel + LOOP_BEATS) % LOOP_BEATS))));
+      const d = Math.min(...st.map((s) => Math.min(Math.abs(s.beat - phase), LOOP_BEATS - Math.abs(s.beat - phase))));
       return d * this.clock.spb < 0.06 ? 'perfect' : d * this.clock.spb < 0.13 ? 'good' : 'extra';
     }
     return null;
@@ -352,19 +400,28 @@ export class Game {
       b.sched = ahead;
     }
     this.moteCount = 0;
+    if (b.phase === 'assign') {
+      if (b.verdict && beat >= b.guard) {
+        b.verdict = null;
+        this.refreshDisplay();
+      }
+      // the module's suggestion breathes on the beat (anything else works too)
+      const sug = beat >= b.guard ? this.suggestFor(b.track.parts[b.part].name) : null;
+      if (sug) this.stage.light(sug, 0.25 + 0.35 * Math.pow(1 - (beat - Math.floor(beat)), 2));
+    }
     if (b.phase === 'count' || b.phase === 'rec') {
       const def = b.track.parts[b.part];
       const target = b.target!;
-      // the count-in: a soft click on each of the last four beats before recording
+      // the count-in: a soft click on every beat until recording, the downbeat of the take's bar louder
       const nextClick = Math.ceil(beat);
-      if (nextClick >= b.recStart - 4 && nextClick < b.recStart && nextClick > b.clicked && nextClick - beat < TIMING.lookAheadS / spb + 0.05) {
+      if (nextClick < b.recStart && nextClick > b.clicked && nextClick - beat < TIMING.lookAheadS / spb + 0.05) {
         b.clicked = nextClick;
         this.stage.band({ beat: nextClick, voice: 'shaker', midi: 0, len: 0.2, vel: nextClick === b.recStart - 4 ? 0.9 : 0.6 }, this.clock.timeAt(nextClick), spb);
       }
       // the part's notes light on your thing a beat ahead and fly to it from the module
       let k = 0;
       for (const s of steps(def.pattern)) {
-        const at = b.recStart + s.beat;
+        const at = b.recStart + ((s.beat - (b.recStart % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS);
         const d = at - beat;
         const key = this.keyFor(target.surface, target.key, s);
         if (d <= TIMING.glowBeats && d > -0.3) this.stage.light(key, 1 - Math.max(0, d) / TIMING.glowBeats);
@@ -377,20 +434,36 @@ export class Game {
       }
       this.moteCount = k;
       if (b.phase === 'count') {
-        const n = Math.max(0, Math.min(4, Math.ceil(b.recStart - beat)));
+        const n = Math.max(0, Math.min(8, Math.ceil(b.recStart - beat)));
         if (beat >= b.recStart) {
           b.phase = 'rec';
           this.refreshDisplay();
-        } else if (n !== this.display.count && n <= 4) this.refreshDisplay();
+        } else if (n !== this.display.count) this.refreshDisplay();
       } else if (beat >= b.recStart + LOOP_BEATS + 0.35) {
         // the part is in: snapped, filled, looping from the next loop on
-        const notes = quantise(steps(def.pattern), b.hits, (s) => this.keyFor(target.surface, target.key, s));
+        const pat = steps(def.pattern);
+        const notes = quantise(pat, b.hits, (s) => this.keyFor(target.surface, target.key, s));
+        const share = played(notes, pat);
+        // almost nothing played: once more, straight away (only once; then it goes in filled)
+        if (share < 0.34 && !b.retried) {
+          b.retried = true;
+          b.recStart = Math.ceil((beat + 4) / 4) * 4;
+          b.hits = [];
+          b.clicked = Math.floor(beat);
+          b.phase = 'count';
+          this.refreshDisplay();
+          return;
+        }
+        b.retried = false;
         b.parts.push({ def, surface: target.surface, key: target.key, notes });
-        // the new part's notes already inside the scheduled window (its next loop's downbeat) go out now, once
-        const from = b.recStart + LOOP_BEATS;
+        b.verdict = { name: def.name, hit: Math.round(share * pat.length), of: pat.length };
+        b.guard = Math.ceil(beat) + 4;
+        // the new part's notes already inside the scheduled window go out now, once
+        const base = Math.floor(beat / LOOP_BEATS) * LOOP_BEATS;
         for (const n of notes) {
-          const at = from + n.beat;
-          if (at > beat - 0.02 && at <= b.sched) this.stage.voice(n.key, this.clock.timeAt(at), n.filled ? n.vel * 0.85 : n.vel);
+          let at = base + n.beat;
+          if (at <= beat - 0.02) at += LOOP_BEATS;
+          if (at <= b.sched) this.stage.voice(n.key, this.clock.timeAt(at), n.filled ? n.vel * 0.85 : n.vel);
         }
         b.part++;
         b.target = null;
@@ -420,13 +493,19 @@ export class Game {
     }
     d.line = `${b.part + 1}/${n}  ${def.name}`;
     if (b.phase === 'assign') {
+      if (b.verdict) {
+        // what just went in, and what's next (hits pick nothing for this bar)
+        const v = b.verdict;
+        d.line = v.hit >= v.of ? `${v.name}: every note` : `${v.name}: ${v.hit} of ${v.of}`;
+        d.sub = `Next: ${def.name}`;
+        return;
+      }
       d.sub = ASK[def.name];
       return;
     }
     if (b.phase === 'count') {
-      d.count = Math.max(1, Math.min(4, Math.ceil(b.recStart - this.clock.beatAt(this.t))));
-      d.sub = b.moved ? 'Play this one on the keys' : 'Play along';
-      if (d.count > 4) d.count = 0;
+      d.count = Math.max(1, Math.min(8, Math.ceil(b.recStart - this.clock.beatAt(this.t))));
+      d.sub = b.retried ? 'Once more' : b.moved ? 'Play this one on the keys' : 'Play along';
       d.line = def.name;
       return;
     }
@@ -455,7 +534,10 @@ export class Game {
     if (!m) return;
     const t = m.track;
     this.bld = null;
-    const live = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p.def.name === 'HAT');
+    // you play the kick, the snare and the part on a thing you found (your cup, your book); the rest is the bed
+    const found = m.parts.find((p) => p.surface !== 'kit' && p.surface !== 'keys' && !p.def.name.startsWith('KEYS') && p.def.name !== 'BASS');
+    const live = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found);
+    const rank = (key: string) => live.findIndex((p) => p.key === key);
     // 16 bars with a fill in bars 7–8 and 15–16, then 4 bars of hold it (scored, never shown)
     const bars = 20;
     const fills: [number, number][] = [
@@ -473,7 +555,9 @@ export class Game {
           const rec = p.notes.find((n) => Math.abs(n.beat - s.beat) < 0.01);
           notes.push({ beat, part: (rec?.key ?? p.key) as never, degree: -1, vel: s.vel });
         }
-    notes.sort((a, b) => a.beat - b.beat);
+    notes.sort((a, b) => a.beat - b.beat || rank(a.part as string) - rank(b.part as string));
+    // two hands: never more than two things at once (the later part's note goes back to the bed)
+    for (let i = notes.length - 1; i >= 2; i--) if (Math.abs(notes[i].beat - notes[i - 2].beat) < 0.01) notes.splice(i, 1);
     const song: Song = { id: t.id, name: t.name, mood: 'yours', bpm: t.bpm, bars, beatsPerBar: 4, key: t.key, parts: [], notes, bed: [] };
     this.perf = { track: t, live: new Set(live.map((p) => p.key)), fills, fillHits: [], fillsJudged: 0, goodFills: 0, holdFrom, sched: -0.01 };
     // the song engine, with each note on the thing you chose
@@ -548,6 +632,10 @@ export class Game {
     const tight = tightPercent(j.notes.filter((n) => n.grade === 'perfect' || n.grade === 'good').map((n) => n.offset));
     this.last = { ...s, stars };
     this.lastTight = tight;
+    this.lastLean = lean(j.notes.filter((n) => n.grade === 'perfect' || n.grade === 'good').map((n) => n.offset));
+    this.fromPerform = true;
+    this.resultsStage = -1;
+    this.learnOffset();
     const pr = this.progress;
     pr.stars[p.track.id] = Math.max(pr.stars[p.track.id] ?? 0, stars);
     if (stars === 3 && this.tempoAtStart >= 0.999) pr.gold[p.track.id] = true;
@@ -573,6 +661,12 @@ export class Game {
   }
   /** Tight %, last performance. */
   lastTight = -1;
+  /** Ahead of the beat (−1), behind it (+1) or on it (0), last performance. */
+  private lastLean = 0;
+  /** The results on screen came from performing your machine (▶ again plays it again). */
+  private fromPerform = false;
+  /** 0 counting up, 1 the score, 2 what's new, 3 again / next. */
+  private resultsStage = -1;
 
   /** A pad on a thing was hit: show its sound, with ◀ ▶ to change it. */
   focusPad(name: string, t: number): void {
@@ -603,6 +697,13 @@ export class Game {
   key(k: ModuleKey): void {
     const twice = this.t - (this.lastTap[k] ?? -9) < 0.9;
     this.lastTap[k] = this.t;
+    if (this.mode === 'results' && this.fromPerform && this.machine && (k === 'play' || k === 'next')) {
+      const next = this.nextTrack();
+      this.leaveResults();
+      if (k === 'next' && next >= 0) this.beginBuild(next);
+      else this.beginPerform();
+      return;
+    }
     if (this.mode === 'results') this.leaveResults();
     if (this.tuneOpen) {
       // ◀ ▶▶ choose, − + change, ▶ closes
@@ -994,23 +1095,21 @@ export class Game {
       return;
     }
     if (this.mode === 'results') {
-      // the stars fill one at a time; the results stay until you play on (or a while passes)
-      const shown = Math.min(this.last?.stars ?? 0, Math.floor((t - this.modeT) / 0.45));
-      if (shown !== this.display.stars) {
-        this.display.stars = shown;
-      }
-      // the notes you played count up under it for the first second
-      if (t - this.modeT < 1.3 && this.last) {
-        const k = Math.min(1, (t - this.modeT) / 1.1);
-        const n = Math.round((this.last.perfect + this.last.good) * (1 - Math.pow(1 - k, 3)));
-        this.display.sub = `${n} of ${this.last.total}`;
-      } else if (this.display.sub.endsWith(` of ${this.last?.total ?? -1}`) && t - this.modeT < 1.6) {
-        const st = this.display.stars;
+      // the notes you played count up, the stars fill one at a time, and the score stays; then what's new, then
+      // again / next. The results stay until you play on (or a while passes)
+      const el = t - this.modeT;
+      const stage = el < 1.3 ? 0 : el < 4 ? 1 : el < 7 && this.newUnlocks.length ? 2 : 3;
+      if (stage !== this.resultsStage) {
+        this.resultsStage = stage;
         this.refreshDisplay();
-        this.display.stars = st;
+      }
+      this.display.stars = Math.min(this.last?.stars ?? 0, Math.floor(el / 0.45));
+      if (stage === 0 && this.last) {
+        const k = Math.min(1, el / 1.1);
+        this.display.line = `${Math.round((this.last.perfect + this.last.good) * (1 - Math.pow(1 - k, 3)))} of ${this.last.total}`;
       }
       this.tickEncore(t);
-      if (t - this.modeT >= 15) this.leaveResults();
+      if (el >= 20) this.leaveResults();
       return;
     }
     if (this.stopAsked > 0 && t - this.stopAsked > 1.2) {
@@ -1032,8 +1131,10 @@ export class Game {
       const d = n.beat - beat;
       if (d > TIMING.travelBeats + 0.01) break;
       if (d < -0.6) continue;
-      if (this.perf && n.beat >= this.perf.holdFrom) continue;
-      if (n.grade === null && d <= TIMING.glowBeats && d > -0.3) this.stage.light(n.lane, 1 - Math.max(0, d) / TIMING.glowBeats);
+      // in the last bars the lights go dim (you keep it going) and nothing flies in
+      const dim = !!this.perf && n.beat >= this.perf.holdFrom;
+      if (n.grade === null && d <= TIMING.glowBeats && d > -0.3) this.stage.light(n.lane, (1 - Math.max(0, d) / TIMING.glowBeats) * (dim ? 0.22 : 1));
+      if (dim) continue;
       if (k < MAX_MOTES) {
         const m = this.motes[k++];
         m.key = n.lane;
@@ -1114,6 +1215,8 @@ export class Game {
       this.newUnlocks.push(u);
     }
     this.learnOffset();
+    this.fromPerform = false;
+    this.resultsStage = -1;
     this.stage.save(p);
     this.stage.celebrate(s.stars);
     this.startEncore(s.stars, song);
@@ -1280,7 +1383,7 @@ export class Game {
           const b = this.clock.beatAt(this.t);
           const inFill = this.perf.fills.some(([a, z]) => b >= a && b < z);
           d.line = inFill ? 'Fill!' : b >= this.perf.holdFrom ? 'Keep it going' : this.song!.name;
-          d.sub = inFill ? 'Anything counts' : b >= this.perf.holdFrom ? 'No lights now' : `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
+          d.sub = inFill ? 'Anything counts' : b >= this.perf.holdFrom ? 'Lights down' : `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
           d.meter = this.energy;
           break;
         }
@@ -1296,9 +1399,18 @@ export class Game {
         break;
       case 'results': {
         const s = this.last!;
-        d.line = this.lastTight >= 0 ? `Tight ${this.lastTight}%` : `${s.perfect + s.good} of ${s.total}`;
+        const st = this.resultsStage;
+        d.line = `${s.perfect + s.good} of ${s.total}`;
         d.stars = s.stars;
-        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: JAM and REC' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : s.stars < 3 ? 'Again? Tap ▶' : `${s.perfect + s.good} of ${s.total}`;
+        // how it felt in time: a number when it was close, a word that says which way when it wasn't
+        const feel = this.lastTight >= 70 ? `Tight ${this.lastTight}%` : this.lastLean < 0 ? 'A bit ahead of the beat' : this.lastLean > 0 ? 'A bit behind the beat' : 'Loose';
+        const fresh = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: JAM and REC' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : '';
+        const next = this.fromPerform && this.nextTrack() >= 0 && !this.built(TRACKS[this.nextTrack()].id);
+        if (st <= 1) d.sub = this.fromPerform && this.lastTight >= 0 ? feel : s.stars < 3 ? 'Again? Tap ▶' : `${s.perfect + s.good} of ${s.total}`;
+        else if (st === 2 && fresh) d.sub = fresh;
+        else d.sub = this.fromPerform ? (next ? 'Again ▶   New track ▶▶' : 'Again? Tap ▶') : 'Again? Tap ▶';
+        if (st <= 1 && this.fromPerform) d.pulse = null;
+        else d.pulse = 'play';
         break;
       }
     }
@@ -1374,6 +1486,14 @@ export function fillScore(beats: readonly number[]): { slots: number; onGrid: nu
   return { slots, onGrid, good: slots >= 6 && onGrid >= 0.6 };
 }
 
+/** Which way you leaned against the beat (offsets in seconds, + late): −1 ahead, +1 behind, 0 on it (within 25 ms). */
+export function lean(offsets: readonly number[]): number {
+  if (!offsets.length) return 0;
+  const o = offsets.slice().sort((a, b) => a - b);
+  const med = o[Math.floor(o.length / 2)];
+  return med < -0.025 ? -1 : med > 0.025 ? 1 : 0;
+}
+
 /** Tight %: 100 minus the median timing error in milliseconds (offsets in seconds), never below 0. */
 export function tightPercent(offsets: readonly number[]): number {
   if (!offsets.length) return 0;
@@ -1387,9 +1507,9 @@ const ASK: Record<string, string> = {
   KICK: 'Hit what plays the kick',
   SNARE: 'Hit what plays the snare',
   HAT: 'Hit what plays the hat',
-  PERC: 'Hit something new for perc',
+  PERC: 'Anything new: a cup, a book',
   KEYS: 'Hit what plays the keys',
-  BASS: 'Hit what plays the bass',
+  BASS: 'Your knee, or anything',
   'PERC 2': 'Hit something else for perc',
   CLAP: 'Clap, or hit what claps',
   'KEYS 2': 'Hit what plays the high keys',

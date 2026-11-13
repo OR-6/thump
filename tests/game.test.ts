@@ -109,7 +109,11 @@ describe('the game', () => {
     expect(g.last?.stars).toBe(3);
     // (hits land up to a 30 fps frame after the note here, so not 100)
     expect(g.lastTight).toBeGreaterThan(60);
-    expect(g.display.line).toMatch(/Tight \d+%/);
+    // the score first and it stays: notes played, then how it sat in time
+    g.tick((t += 1.6));
+    expect(g.display.line).toMatch(/^\d+ of \d+$/);
+    expect(g.display.sub).toMatch(/Tight \d+%|ahead|behind|Loose/);
+    expect(g.display.stars).toBe(3);
     // the machine played under it: the parts you don't play live (perc, keys, bass), never the ones you do
     expect(voiced.slice(before).some((k) => k.startsWith('keys:'))).toBe(true);
     expect(voiced.slice(before).some((k) => k === 'kit:kick' || k.startsWith('t1:'))).toBe(false);
@@ -250,6 +254,67 @@ describe('the game', () => {
     expect(played.some((k) => k === 'kit:kick')).toBe(true);
     expect(played.some((k) => k.startsWith('t1:'))).toBe(true);
     expect(played.some((k) => k.startsWith('keys:'))).toBe(true);
+  });
+
+  it('build: a stray tap right after a part goes in picks nothing; the module says what went in and what is next', () => {
+    const g = new Game(stage([]), freshProgress(), room([{ id: 't1', family: 'bell', zones: 1 }]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    g.key('play');
+    let t = 45.1;
+    g.tick(t);
+    g.hit('kit:kick', t, 0.8);
+    for (let k = 0; k < 600 && g.display.sub !== 'Next: SNARE'; k++) {
+      t += 1 / 30;
+      g.tick(t);
+      g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+    }
+    expect(g.display.line).toMatch(/^KICK: (every note|\d+ of \d+)$/);
+    // still tapping along on the kick: nothing is picked
+    g.hit('kit:kick', t, 0.8);
+    expect(g.buildAsks()).toBeNull();
+    for (let k = 0; k < 120 && g.buildAsks() === null; k++) g.tick((t += 1 / 30));
+    expect(g.buildAsks()).toBe('SNARE');
+    // the kick again, once: still nothing; twice quickly: it plays the snare too
+    g.hit('kit:kick', t, 0.8);
+    expect(g.buildAsks()).toBe('SNARE');
+    g.hit('kit:kick', t + 0.2, 0.8);
+    expect(g.buildAsks()).toBeNull();
+  });
+
+  it('perform: never three things at once, and ▶ on the results plays your machine again', () => {
+    const g = new Game(stage([]), freshProgress(), room([{ id: 't1', family: 'bell', zones: 1 }]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    g.key('play');
+    let t = 45.1;
+    for (const key of ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom']) {
+      g.tick(t);
+      g.hit(key, t, 0.8);
+      for (let k = 0; k < 900 && g.buildAsks() === null && !g.buildRunning(); k++) {
+        t += 1 / 30;
+        g.tick(t);
+        g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+      }
+    }
+    g.key('play');
+    const at = new Map<number, number>();
+    for (let k = 0; k < 4000 && g.mode !== 'results'; k++) {
+      t += 1 / 30;
+      g.tick(t);
+      g.dueBetween(t - 1 / 30, t, (kk) => {
+        const ms = Math.round(t * 1000);
+        at.set(ms, (at.get(ms) ?? 0) + 1);
+        g.hit(kk, t, 0.8);
+      });
+    }
+    expect(g.mode).toBe('results');
+    expect(Math.max(...at.values())).toBeLessThanOrEqual(2);
+    g.tick((t += 2));
+    g.key('play');
+    expect(g.mode).toBe('count');
   });
 
   it('learns a steady lateness', () => {

@@ -10,21 +10,21 @@ import { FAMILIES, type Family } from '../room/classify.js';
 export const MODULE = {
   /** Kit-local centre of its base. */
   x: 0,
-  z: -0.3,
-  w: 0.3,
+  z: -0.22,
+  w: 0.26,
   d: 0.13,
   h: 0.034,
   /** The display's tilt back from facing straight at you (radians): it looks up at a seated player. */
   tilt: 0.6,
   /** Keys along the front edge (module-local x), each this wide. */
-  keyW: 0.05,
+  keyW: 0.044,
   keyD: 0.034,
   keyZ: 0.04,
 } as const;
 
 export type ModuleKey = 'prev' | 'play' | 'next' | 'jam' | 'loop';
 export const KEYS: readonly ModuleKey[] = ['prev', 'play', 'next', 'jam', 'loop'];
-const KEY_X = [-0.116, -0.058, 0, 0.058, 0.116];
+const KEY_X = [-0.1, -0.05, 0, 0.05, 0.1];
 /** Printed under each key on the module's front edge: what tapping it twice does. */
 const LEGEND = ['SETTINGS ×2', 'STOP ×2', 'TRACKS', '', 'CLEAR ×2'];
 

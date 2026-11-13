@@ -960,7 +960,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.tuttiTold = true;
       if (!this.settings.noWords) {
         this.tmp.set(0, 0.08, 0.02).applyMatrix4(this.kit.root.matrixWorld);
-        this.tag.show('Slam both hands down', 0xff5a3c, this.tmp, this.head, 4);
+        this.tag.show('Both hands down, together', 0xff5a3c, this.tmp, this.head, 4);
       }
     }
     for (const sh of this.sheens.values()) sh.update(dt);
@@ -2485,9 +2485,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const want = this.game.buildAsks();
       if (want) {
         this.autoNext = t + 0.8;
-        // drums on the kit's pads, everything else on the desk's bars
+        // drums on the kit's pads, the perc on a thing you found (so it's yours to play live), the rest on the bars
         const lane = want === 'KICK' ? 'kick' : want === 'SNARE' ? 'snare' : want === 'HAT' ? 'hat' : null;
-        this.autoHit(lane ? `kit:${lane}` : 'keys:2', t);
+        const thing = want === 'PERC' ? this.room.instruments().find((x) => x.zones < 4) : undefined;
+        this.autoHit(lane ? `kit:${lane}` : thing ? `${thing.id}:0` : 'keys:2', t);
       } else if (this.game.buildRunning()) {
         // let the machine run a moment, then perform on it
         if (this.autoRunAt < 0) this.autoRunAt = t;

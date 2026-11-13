@@ -153,7 +153,7 @@ export interface RawHit {
 
 /**
  * What a recorded part plays: each pattern note you hit near (within a third of a beat) is played where the pattern
- * puts it, as loud as you hit it, on the bar or key you hit (pitched parts keep your choice: everything is in key).
+ * puts it, as loud as you hit it next to your loudest hit in the take, on the bar or key you hit (pitched parts keep your choice: everything is in key).
  * Pattern notes you missed are filled in softly. Extra hits you added land on the nearest eighth if it's free.
  * `keyFor` gives the key a missed pattern note plays on (a pitched part: the zone for its degree).
  */
@@ -161,6 +161,10 @@ export function quantise(pattern: readonly Step[], hits: readonly RawHit[], keyF
   const used = new Set<number>();
   const out: MachineNote[] = [];
   const n = pattern.length;
+  // loudness is yours relative to your own loudest hit in the take: gentle taps on a tray make a full part too
+  let loud = 0.05;
+  for (const h of hits) if (h.vel > loud) loud = h.vel;
+  const level = (v: number) => Math.min(1, 0.55 + 0.45 * Math.max(0, v) / loud);
   for (let k = 0; k < n; k++) {
     const st = pattern[k];
     // a hit belongs to this step if it's within a third of a beat, and nearer this step than its neighbours
@@ -178,7 +182,7 @@ export function quantise(pattern: readonly Step[], hits: readonly RawHit[], keyF
     });
     if (best >= 0) {
       used.add(best);
-      out.push({ key: hits[best].key, beat: st.beat, vel: Math.max(0.3, Math.min(1, hits[best].vel)), filled: false });
+      out.push({ key: hits[best].key, beat: st.beat, vel: level(hits[best].vel), filled: false });
     } else out.push({ key: keyFor(st), beat: st.beat, vel: 0.3 * st.vel, filled: true });
   }
   // your own extra notes, on the nearest eighth, where nothing else is
@@ -186,7 +190,7 @@ export function quantise(pattern: readonly Step[], hits: readonly RawHit[], keyF
     if (used.has(i) || h.vel < 0.25) return;
     const beat = (Math.round(h.beat * 2) / 2) % LOOP_BEATS;
     if (out.some((n) => Math.abs(n.beat - beat) < 0.01)) return;
-    out.push({ key: h.key, beat, vel: Math.min(1, h.vel) * 0.9, filled: false });
+    out.push({ key: h.key, beat, vel: level(h.vel) * 0.9, filled: false });
   });
   return out.sort((a, b) => a.beat - b.beat);
 }
