@@ -21,7 +21,7 @@ Short and dry. Leave gaps; the music does most of it.
 - 0:10 "Pick what's on the desk."
 - 0:18 "Every note's in the scale. You can't hit a wrong one."
 - 0:24 "Pick a song. The notes fall onto what plays them."
-- 0:40 "Swap instruments halfway if you like."
+- 0:40 "Swap instruments halfway if you like. And the band waits for your last hit."
 - 0:52 "Or make your own, a part at a time."
 - 1:04 (no words: the silent bar, then the drop)
 - 1:10 "Friends join from their own desks."
@@ -33,13 +33,13 @@ In the Shot column, quoted lines and capital-letter labels are exactly what the 
 
 | # | Time | Shot | How to get it | Caption |
 |---|---|---|---|---|
-| 1 | 0:00–0:08 | A tray table, two hands. A palm rests, the panel appears over the back of the table ("Or just tap the desk"). One tap and the drums come up under the hands. A few hits on the kick, snare and hat; the soft band comes in under them | Fresh start, sit down, enter mixed reality | "Tap the desk." |
-| 2 | 0:08–0:18 | A fingertip near the panel: FREE PLAY lights as it gets close, then presses. The cards: DRUMS, PIANO, MARIMBA, GUITAR, HANDPAN. Poke PIANO and the piano unfolds onto the desk; a run on the ivory keys, the keys sinking | Straight on from shot 1 | "Pick what's on the desk." |
-| 3 | 0:18–0:24 | Quick cuts: a pinch and a mallet appears, a roll on the marimba bars as they bounce; a chord on the guitar's neck and a strum over the soundhole; a run round the handpan | INSTRUMENTS on the panel, then each card, a few seconds each | "No wrong notes." |
+| 1 | 0:00–0:08 | A tray table, two hands. A palm rests, the panel appears over the back of the table ("Tap the desk to start"). One tap and the drums come up under the hands. A few hits on the kick, snare and hat; the soft band comes in under them | Fresh start, sit down, enter mixed reality | "Tap the desk." |
+| 2 | 0:08–0:18 | A fingertip near the panel: FREE PLAY lights as it gets close, then presses. The cards: DRUMS, PIANO, MARIMBA, GUITAR, CONGAS, HANDPAN. Poke PIANO and the piano unfolds onto the desk; a run on the ivory keys, the keys sinking | Straight on from shot 1 | "Pick what's on the desk." |
+| 3 | 0:18–0:24 | Quick cuts: a pinch and a mallet appears, a roll on the marimba bars as they bounce; a chord on the guitar's neck and a strum over the soundhole; open tones and slaps on the congas; a run round the handpan | INSTRUMENTS on the panel, then each card, a few seconds each | "No wrong notes." |
 | 4 | 0:24–0:40 | Piano out. SONGS on the panel, Kick Start, EASY, PLAY. The count-in, then notes falling onto the piano keys and bursting as they're hit, the band playing the rest. Hold close on the keys | Straight on from shot 3, with the piano out | "Play along with the band." |
-| 5 | 0:40–0:52 | Mid-song, poke the DRUMS card: "Drums next", the drums come out at the next loop, "Find it, then join in", the notes start falling on the drums. Then "Go wild!" and a fast fill. End on the results: the stars and "On time" | Straight on from shot 4 | "Swap mid-song." |
+| 5 | 0:40–0:52 | Mid-song, poke the DRUMS card: "Drums next", the drums come out at the next loop, "Find it, then join in", the notes start falling on the drums. Then "Go wild!": the room above dims and a fast fill washes it in colour. At the end "Last one!": the band holds, one big hit and they land on it with you. Then the results and "That was you" as your best two bars play back in gold | Straight on from shot 4 | "Swap mid-song." |
 | 6 | 0:52–1:10 | MAKE A TRACK. "1/6  BOOM", "Hit when it glows", the lit bar copied, "Your turn: play anything", a bar of your own. Cut to TUNE: the piano comes out by itself. Cut to the last part, "Everything, in…": a silent bar, the riser, then the whole track drops in at once | MENU, then MAKE A TRACK | "Make it yours." |
-| 7 | 1:10–1:25 | Two people at two desks. On the panel PLAY TOGETHER, START A BAND, "Code …: friends type it on the Thump page". The friend types it on their Thump page and taps *Join*, then "2 in the band" on the panel. PICK A SONG: it starts on both at once, and a note from the friend lands to one side | See *Before you record* | "Play together, from anywhere." |
+| 7 | 1:10–1:25 | Two people at two desks. On the panel PLAY TOGETHER, START A BAND, "Code …: friends type it on the Thump page". The friend types it on their Thump page and taps *Join*, then "2 in the band" on the panel. PICK A SONG: it starts on both at once; the friend is a light across the desk in their instrument's colour that swells as they play, and their notes come from that side | See *Before you record* | "Play together, from anywhere." |
 | 8 | 1:25–1:30 | End card | Title card | "or-6.github.io/thump" |
 
 Shoot two or three takes of each. Keep your head still during the action and move only between shots. Don't stage the results: use whatever you get.
@@ -48,7 +48,7 @@ Feature chips (top right): hand tracking on shots 1–6, passthrough on 1 and 4,
 
 ## Assembling it
 
-The cut list and captions used by the tools are from an earlier version of the video. Update both to the table above before assembling: `docs/video-shots.json` (clip names, `in`/`out`, card, chip) and the caption text in `tools/video-cards.mjs`.
+The cut list (`docs/video-shots.json`) and the captions (`tools/video-cards.mjs`) follow the table above. Set each shot's `in`/`out` once you have the takes.
 
 1. Copy the headset recordings into `artifacts/video/`, named as in `docs/video-shots.json`, and set each shot's `in`/`out` seconds.
 2. Make the cards once (with the dev server up): `npx @iwsdk/cli browser run tools/video-cards.mjs` → `artifacts/video-cards/`.

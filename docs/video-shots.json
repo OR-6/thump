@@ -1,11 +1,9 @@
 [
-  { "clip": "artifacts/video/01-door.mp4", "in": 0.0, "out": 5.0, "card": "01-instrument", "chip": "f-hands" },
-  { "clip": "artifacts/video/02-hit.mp4", "in": 0.0, "out": 9.0, "card": "02-hit", "chip": "f-plane" },
-  { "clip": "artifacts/video/03-kit.mp4", "in": 0.0, "out": 8.0, "card": "03-kit", "chip": "f-hands" },
-  { "clip": "artifacts/video/04-wall.mp4", "in": 0.0, "out": 14.0, "card": "04-wall", "chip": "f-scene" },
-  { "clip": "artifacts/video/05-song.mp4", "in": 0.0, "out": 29.0, "card": "05-song", "chip": "f-passthrough" },
-  { "clip": "artifacts/video/06-jam.mp4", "in": 0.0, "out": 20.0, "card": "06-jam", "chip": null },
-  { "clip": "artifacts/video/07-phone.mp4", "in": 0.0, "out": 15.0, "card": "07-phone", "chip": null },
-  { "clip": "artifacts/video/08-remember.mp4", "in": 0.0, "out": 15.0, "card": "08-remember", "chip": "f-anchor" },
-  { "clip": "artifacts/video/09-hands.mp4", "in": 0.0, "out": 15.0, "card": "09-hands", "chip": null }
+  { "clip": "artifacts/video/01-tap.mp4", "in": 0.0, "out": 8.0, "card": "01-tap", "chip": "f-plane" },
+  { "clip": "artifacts/video/02-pick.mp4", "in": 0.0, "out": 10.0, "card": "02-pick", "chip": "f-hands" },
+  { "clip": "artifacts/video/03-notes.mp4", "in": 0.0, "out": 6.0, "card": "03-notes", "chip": "f-hands" },
+  { "clip": "artifacts/video/04-song.mp4", "in": 0.0, "out": 16.0, "card": "04-song", "chip": "f-passthrough" },
+  { "clip": "artifacts/video/05-swap.mp4", "in": 0.0, "out": 12.0, "card": "05-swap", "chip": "f-hands" },
+  { "clip": "artifacts/video/06-make.mp4", "in": 0.0, "out": 18.0, "card": "06-make", "chip": "f-hands" },
+  { "clip": "artifacts/video/07-together.mp4", "in": 0.0, "out": 15.0, "card": "07-together", "chip": null }
 ]

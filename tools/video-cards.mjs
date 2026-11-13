@@ -27,7 +27,7 @@ export default async function run({ page, frame }) {
       g.fillStyle = '#ff5a3c';
       g.fillRect(W / 2 - 60, 720, 120, 8);
     };
-    make('00-title', full('Thump', 'Play your room.'));
+    make('00-title', full('Thump', 'A band on your desk.'));
     make('99-end', full('or-6.github.io/thump', 'Open it in your Quest browser'));
     const caption = (text) => (g) => {
       g.font = `600 64px ${FONT}`;
@@ -43,16 +43,15 @@ export default async function run({ page, frame }) {
       g.fillStyle = '#f2efe6';
       g.fillText(text, x + 60, y + 76);
     };
+    // (the captions in docs/VIDEO.md's shot table, in order)
     const caps = {
-      '01-instrument': 'Every surface is an instrument.',
-      '02-hit': 'Hit something.',
-      '03-kit': 'Your table is a drum kit.',
-      '04-wall': 'Your wall, a gong. Your window, keys.',
-      '05-song': 'Songs cast onto your room.',
-      '06-jam': 'A bandmate that listens.',
-      '07-phone': "A friend's phone is the bass.",
-      '08-remember': 'Your room remembers.',
-      '09-hands': 'Made for every pair of hands.',
+      '01-tap': 'Tap the desk.',
+      '02-pick': "Pick what's on the desk.",
+      '03-notes': 'No wrong notes.',
+      '04-song': 'Play along with the band.',
+      '05-swap': 'Swap mid-song.',
+      '06-make': 'Make it yours.',
+      '07-together': 'Play together, from anywhere.',
     };
     for (const [k, v] of Object.entries(caps)) make(k, caption(v));
     const chip = (text) => (g) => {

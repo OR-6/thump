@@ -108,7 +108,8 @@ export class Waterfall {
     this.slabs.count = ns;
     this.discs.count = nd;
     this.beams.count = nb;
-    for (const m of [this.slabs, this.discs, this.beams]) {
+    for (let i = 0; i < 3; i++) {
+      const m = i === 0 ? this.slabs : i === 1 ? this.discs : this.beams;
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }

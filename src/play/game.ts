@@ -998,7 +998,7 @@ export class Game {
           for (const n of part.notes) {
             const at = L * LOOP_BEATS + n.beat;
             if (at <= p.sched || at > ahead || at >= end) continue;
-            const inFill = p.fills.some(([a, z]) => at >= a && at < z);
+            const inFill = within(p.fills, at, 0);
             // the last bars: the whole machine back at full under you, lights down
             const level = inFill ? 0.22 : at >= p.holdFrom ? 0.95 : 0.25 + 0.6 * this.energy;
             this.stage.voice(n.key, this.clock.timeAt(at), (n.filled ? n.vel * 0.85 : n.vel) * level);
@@ -1028,7 +1028,7 @@ export class Game {
       this.refreshDisplay();
     }
     // the display follows: Fill!, Big fill, Hold it
-    const key = p.fills.some(([a, z]) => beat >= a && beat < z) ? 1 : beat < p.big ? 3 : beat >= p.holdFrom ? 2 : p.joins && beat >= 12 && beat < 16 ? 4 : 0;
+    const key = within(p.fills, beat, 0) ? 1 : beat < p.big ? 3 : beat >= p.holdFrom ? 2 : p.joins && beat >= 12 && beat < 16 ? 4 : 0;
     if (key !== this.perfShown) {
       // the room goes dark for the fill, and comes back up when it lands (not when listening)
       this.stage.lightsDown?.(key === 1 && !this.listening);
@@ -1692,7 +1692,7 @@ export class Game {
     }
     if (this.perf) {
       const b = this.clock.beatAt(t - this.opts.offset);
-      if (this.perf.fills.some(([a, z]) => b >= a - 0.25 && b < z)) {
+      if (within(this.perf.fills, b, 0.25)) {
         this.perf.fillHits.push(b);
         const off = Math.abs(b * 2 - Math.round(b * 2)) / 2;
         return off < 0.08 ? 'perfect' : 'good';
@@ -2239,7 +2239,7 @@ export class Game {
       case 'play':
         if (this.perf) {
           const b = this.clock.beatAt(this.t);
-          const inFill = this.perf.fills.some(([a, z]) => b >= a && b < z);
+          const inFill = within(this.perf.fills, b, 0);
           const big = b < this.perf.big;
           const joins = !!this.perf.joins && b >= 12 && b < 16;
           if (this.perf.queued || this.perf.graceTo > 0) {
@@ -2394,6 +2394,11 @@ const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', mari
 
 /** Which instrument each part is played on (it comes out on the desk when the part is asked for). */
 const PART_INST: Record<string, string> = { KICK: 'drums', SNARE: 'drums', HAT: 'drums', CLAP: 'drums', PERC: 'handpan', 'PERC 2': 'handpan', KEYS: 'piano', 'KEYS 2': 'piano', BASS: 'piano' };
+/** Is beat b inside one of these stretches (from `early` beats before each)? (A plain loop: it runs every frame.) */
+function within(spans: readonly (readonly [number, number])[], b: number, early: number): boolean {
+  for (let i = 0; i < spans.length; i++) if (b >= spans[i][0] - early && b < spans[i][1]) return true;
+  return false;
+}
 /** The song's second half (the tune two notes up, every other time round): bars 9–14. */
 const SECOND = [32, 56] as const;
 /** Where the last hit lights: the instrument's biggest note. */
