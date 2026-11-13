@@ -10,8 +10,8 @@ The design the code is built from. Section numbers match the references in the s
 
 **The headset turns your room into an orchestra: every surface you can reach becomes an instrument chosen by its physics (the table a drum kit, the wall a gong, the door a marimba, the window a glockenspiel); you discover them by hitting them, then play songs cast across your own room.**
 
-- **Only possible in mixed reality.** A desk already knocks without a headset. With one, your door is a marimba with pitched light bars drawn across it. Turn passthrough off and there is nothing to play .
-- **Every room is a different instrument set.** Size, orientation, hollowness, glass and softness decide each instrument and its voice; a big door's marimba is deeper than a cupboard's tongue drum. "Holding up in rooms the developer never tested" is the concept itself.
+- **Only possible in mixed reality.** A desk already knocks without a headset. With one, your door is a marimba with pitched light bars drawn across it. Turn passthrough off and there is nothing to play.
+- **Every room is a different instrument set.** Size, orientation, hollowness, glass and softness decide each instrument and its voice; a big door's marimba is deeper than a small one's. "Holding up in rooms the developer never tested" is the concept itself.
 - **Explains itself in two words:** "Hit anything." Each first hit reveals an instrument drawn onto the real surface.
 - **The real surface is the haptics:** your palm stops on real wood, glass, fabric.
 - **A complete arc in ten minutes:** discover the kit and a few instruments, play a song cast onto them, earn stars, unlock the next, jam with a bandmate who claims an instrument.
@@ -47,46 +47,48 @@ The v1 detector, generalised to any surface frame and hardened by the feel revie
 | What the shape says | Family | Voice by size |
 |---|---|---|
 | horizontal, table height, large, hard | **kit** (left kick, centre snare, right hat, edge rim; tom when unlocked) | table size: kick depth |
-| vertical, large, solid | **gong** | bigger = lower, longer |
-| vertical, hollow, door-sized | **marimba**: 8 light bars, low at the bottom, high at the top | register by size |
-| hollow box (cupboard, drawer) | **tongue drum**: 5 tongues around where you hit | box size |
-| glass | **glockenspiel**: 8 keys across the pane, low left to high right | pane size |
-| curved shell | **singing bowl**, a ring of 6 notes | diameter |
-| small bump, tall (mug) | **bell** | height |
-| small flat bump, shelf | **wood block** | size |
-| soft | **shaker** | area |
-| floor | **stomp** | — |
+| vertical, large, solid | **gong**; further walls **timpani**, **frame drum**, **tubular bells**, **bass drum** in turn | bigger = lower, longer |
+| vertical, hollow, door-sized | **marimba** (8 light bars, low at the bottom); a second door **xylophone** | register by size |
+| hollow box (cupboard, drawer) | **kalimba**: 5 tongues around where you hit; a second **slit drum** | box size |
+| glass (a window) | **glockenspiel**: 8 keys across the pane, low left to high right, gentle taps only; a second **harp** | pane size |
+| another table top | **congas**: three drums low to high | — |
+| small flat top, shelf | **wood block** | size |
+| soft | **shaker**; a second **tambourine** | area |
+| floor | **bass drum** | — |
+| screens, pictures, lamps, plants | never instruments | — |
+
+Swaps reach the rest: **vibraphone**, **chimes**, **triangle**, **cajón**. Small objects on the table (a mug as a bell) need the room mesh: not built.
 
 Melodic zones sit around the spot of the first hit (it was in reach), clamped into the surface, in the current key (C major pentatonic, or the song's key while it plays).
 
 ### 3.4 Sounds (P0)
 
-**Recorded instruments** (CC0, Versilian Community Sample Library): twenty families, 172 clips, two or three loudness layers each, re-pitched to the note (the nearest recorded note is never more than a few semitones away), per-hit variation (±6 cents, ±1 dB) and a darker tone for softer hits. Same-kind surfaces are orchestrated (`orchestrate()`): the biggest wall a gong, the next timpani, then a frame drum, tubular bells, a bass drum. The modal synthesiser (decaying partials struck by a noise burst) plays while clips load. A 1.9 s room reverb; a soft limiter with 12 dB of headroom. No AI-generated audio.
+**Recorded instruments** (CC0, Versilian Community Sample Library): twenty families and a piano for the band, 186 clips, two or three loudness layers each, re-pitched to the note (the nearest recorded note is never more than a few semitones away), per-hit variation (±6 cents, ±1 dB) and a darker tone for softer hits. Same-kind surfaces are orchestrated (`orchestrate()`): the biggest wall a gong, the next timpani, then a frame drum, tubular bells, a bass drum. The modal synthesiser (decaying partials struck by a noise burst) plays while clips load. A 1.9 s room reverb; a soft limiter with 12 dB of headroom. No AI-generated audio.
 
 ### 3.5 Discover (P0)
 
 The default state after placement. Undiscovered reachable surfaces carry a faint sheen; the first hit on each draws its overlay with a light sweep and names it for two seconds ("Door · marimba"); the module's room map counts and shows family icons. The room map is saved: next session in the same room the instruments are already drawn.
 
-### 3.6 Songs (P0: 4; P1: 8)
+### 3.6 Songs
 
 - Charts are written in **parts** (kick, snare, hat, tom, rim, melody, bass, chime, shake, gong) with scale degrees for pitched parts. **Casting:** each part maps to a discovered instrument (exact family, then the nearest family: marimba ↔ glockenspiel ↔ tongue ↔ bowl ↔ bell; bass → gong/tongue/stomp); anything missing falls back to the table's **table keys** (five slim light bars at the front of the kit). Early songs use two surfaces; later ones up to five.
 - Notes are **light motes travelling across the room** from the module to the exact pad, bar or key, which lights a beat ahead. Windows ±60/±120 ms (×1.5 slow), stars at 70% / 90%, no fail state, gold at full tempo.
-- Songs: *Porch Step* 80 bpm (kit + melody), *Kitchen Clock* 92 (+ hat, bass), *Night Bus* 104 (kit, melody, chime), *Big Room* 76 (gong, marimba, kit). P1: *Rain on the Window*, *Sofa Shuffle*, *Call & Answer*, *Your Room*.
+- Songs: *Porch Step* 80 bpm (kit + melody), *Kitchen Clock* 92 (+ hat, bass), *Night Bus* 104 (kit, melody, chime), *Big Room* 76 (gong, melody, kit), *Open House* 96 (the whole orchestra), and a song of the day. Found instruments without a part accompany softly; the last chord is the whole room.
 - Unlocks: song 1 → the tom, JAM and swaps; song 2 → loops (a ten-minute judge sees the depth).
 
-### 3.7 Free play and loops (P0 free play; P1 loops)
+### 3.7 Free play and loops
 
-Always on outside songs; melodic surfaces in key. Loop reel (P1): 8 bars, lightly quantised, three layers.
+Always on outside songs; melodic surfaces in key. REC: 4 bars, quantised to sixteenths, three layers.
 
-### 3.8 Jam and the bandmate (P1)
+### 3.8 Jam and the bandmate
 
 A rule-based musical agent, named honestly. It **claims** one discovered melodic instrument (its lights pulse there), plays a two-bar call, you answer; it listens (which surfaces, when, how hard), gets busier when you answer well and simpler when you struggle, echoes your own groove back once a jam, nudges a sound you keep playing late, counts you back in when you stop.
 
-### 3.9 Phone jam (P1)
+### 3.9 Phone jam (beta)
 
 A friend opens the page on a phone, types the 4-letter code shown on the module, and the phone becomes an instrument your room doesn't have (bass first). The headset plays it in key.
 
-### 3.10 Instrument swaps (P1)
+### 3.10 Instrument swaps
 
 Pinch and hold a found instrument (0.7 s, within 6 cm): it changes to the next instrument its physics suits (a window: glockenspiel → harp → triangle → chimes → tubular bells → … → back), never the kit; the desk's bars too. One change per pinch; off during songs, jams and loops. Saved with the room under its anchor. Unlocked by Porch Step.
 

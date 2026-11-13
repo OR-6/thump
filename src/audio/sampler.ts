@@ -29,20 +29,31 @@ export class Sampler {
   private loading = false;
   private last = new Map<string, string>();
 
-  /** Fetch and decode every clip (about 4 MB), a few at a time. */
+  private prefetched = new Map<string, Promise<Response>>();
+
+  /** Start downloading the kit's clips as soon as the page loads (decoding waits for audio to start). */
+  prefetch(): void {
+    if (typeof fetch === 'undefined' || this.prefetched.size) return;
+    for (const k of ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:rim', 'keys']) for (const s of SAMPLES[k] ?? []) this.prefetched.set(s.file, fetch(BASE + s.file).catch(() => new Response(null, { status: 404 })));
+  }
+
+  /** Fetch and decode every clip (about 5 MB), a few at a time. */
   load(ctx: BaseAudioContext): void {
     if (this.loading) return;
     this.loading = true;
+    // what you hear first loads first: the kit, the desk's bars, the band, then the rest of the room
+    const first = ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:rim', 'keys', 'band:piano'];
+    const keys = [...first.filter((k) => SAMPLES[k]), ...Object.keys(SAMPLES).filter((k) => !first.includes(k))];
     const files: string[] = [];
-    for (const list of Object.values(SAMPLES)) for (const s of list) files.push(s.file);
+    for (const k of keys) for (const s of SAMPLES[k]) files.push(s.file);
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < files.length) {
         const f = files[next++];
         try {
-          const res = await fetch(BASE + f);
+          const res = await (this.prefetched.get(f) ?? fetch(BASE + f));
           if (!res.ok) continue;
-          const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+          const buf = await ctx.decodeAudioData(await res.clone().arrayBuffer());
           this.buffers.set(f, buf);
         } catch {
           /* that clip stays synthesised */

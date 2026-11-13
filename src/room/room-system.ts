@@ -260,9 +260,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return out;
     },
     everything: () => {
-      const out: RoomInstrument[] = [];
-      for (const s of this.surfaces) if (s.discovered && s.voice && s.source !== 'kit' && s.source !== 'module') out.push({ id: s.id, family: s.voice.family, zones: s.zones.length });
-      return out;
+      // the three nearest found instruments (a room of eight playing along at once is a wall of sound, not an orchestra)
+      const list = this.surfaces.filter((s) => s.discovered && s.voice && s.source !== 'kit' && s.source !== 'module').sort((a, b) => a.reach - b.reach);
+      return list.slice(0, 3).map((s) => ({ id: s.id, family: s.voice!.family, zones: s.zones.length }));
     },
     chordZone: (id, pcs) => {
       const zones = this.surfaces.find((s) => s.id === id)?.zones ?? [];
@@ -403,7 +403,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (!this.settings.noWords) {
           if (s) this.tmp.set(s.anchor.x, 0.05, -s.anchor.z - 0.12).applyMatrix4(s.world);
           else this.tmp.set(0, 0.06, -0.12).applyMatrix4(this.kit.root.matrixWorld);
-          this.tag.show('Mine first. Then yours.', 0xf2efe6, this.tmp, this.head, 3);
+          this.tag.show('Listen, then answer.', 0xf2efe6, this.tmp, this.head, 3);
         }
       } else if (event === 'happy') {
         // pleased: up to the top and back
@@ -494,6 +494,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private malletL = new Vector3();
   private malletR = new Vector3();
   private malletDir = new Vector3();
+  private malletsUntil = -1;
   private malletTo(r: KeyRef, at: number): void {
     if (r.kind === 'keys') {
       const q = this.kit.keyZones[r.zone];
@@ -513,11 +514,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private updateMallets(): void {
     const m = this.kit.module.root;
     m.updateMatrixWorld();
-    this.malletL.set(-0.035, MODULE.h + 0.008, 0.045);
-    this.malletR.set(0.035, MODULE.h + 0.008, 0.052);
+    // crossed at rest on the back of the module, behind the display, clear of the keys
+    this.malletL.set(-0.01, MODULE.h + 0.006, -0.058);
+    this.malletR.set(0.01, MODULE.h + 0.012, -0.058);
     m.localToWorld(this.malletL);
     m.localToWorld(this.malletR);
     this.malletDir.set(1, 0, 0).transformDirection(m.matrixWorld);
+    // only around a jam: a song or the settings page has the table to itself
+    const mode = this.game.mode;
+    if (mode === 'jam') this.malletsUntil = this.clock.t + 2.5;
+    if (mode !== 'jam' && (this.clock.t > this.malletsUntil || this.game.settingsOpen || this.game.tuneOpen || mode === 'play' || mode === 'count')) {
+      this.mallets.hide();
+      return;
+    }
     this.mallets.update(this.clock.t, this.malletL, this.malletR, this.malletDir, this.head);
   }
 
@@ -682,13 +691,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (s) {
       this.tmp.set(s.anchor.x, 0.06, -s.anchor.z).applyMatrix4(s.world);
       this.tmp.y = Math.min(this.tmp.y, this.head.y);
-      this.tag.show(`${surfaceName(s)}: pinch and hold to swap`, FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
+      this.tag.show(`Pinch and hold the ${surfaceName(s).toLowerCase()}: a new sound`, FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
       return;
     }
     if (!this.kit.keys.group.visible) return;
     const q = this.kit.keyZones[3];
     this.tmp.set(q ? q.x : 0, 0.07, q ? -q.z : -0.16).applyMatrix4(this.kit.root.matrixWorld);
-    this.tag.show('Bars: pinch and hold to swap', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
+    this.tag.show('Pinch and hold the bars: a new sound', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
     this.kit.keys.sweep();
   }
 
@@ -913,18 +922,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.afterFirstSong();
     }
     // three found and a quiet spell: the one thing no single hit shows you
-    if (!this.tuttiTold && this.game.mode === 'discover' && this.game.found.length >= 3 && this.clock.t - this.lastFoundT > 12 && this.clock.t - this.slamT > 12 && !this.tag.shownText) {
+    if (!this.tuttiTold && this.game.mode === 'discover' && this.game.found.length >= 2 && this.clock.t - this.lastFoundT > 10 && this.clock.t - this.lastTutti > 12 && !this.tag.shownText) {
       this.tuttiTold = true;
       if (!this.settings.noWords) {
         this.tmp.set(0, 0.08, 0.02).applyMatrix4(this.kit.root.matrixWorld);
-        this.tag.show('Both hands at once.', 0xff5a3c, this.tmp, this.head, 4);
+        this.tag.show('Slam both hands down.', 0xff5a3c, this.tmp, this.head, 4);
       }
     }
     for (const sh of this.sheens.values()) sh.update(dt);
     this.kitSheen?.update(dt);
     this.kit.module.root.updateMatrixWorld();
-    this.kit.module.root.getWorldPosition(this.tmp2);
-    this.tmp2.y += 0.06;
+    this.tmp2.set(0, 0.13, -0.05);
+    this.kit.module.root.localToWorld(this.tmp2);
     this.motes.update(this.game.motes, this.game.moteCount, this.tmp2, this.head, this.resolveMote);
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
     if (this.debug.anchored) this.saveKitPose();
@@ -1260,6 +1269,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private slamT = -9;
+  private lastTutti = -9;
   private tuttiTold = false;
   private slamSide: Side = 'left';
 
@@ -1324,6 +1334,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private hitKit(side: Side, gain: number, st: Strike, t: number): void {
+    // both hands slam the table together, outside a song, anywhere on it (pads or bars): the whole orchestra answers
+    if (gain > 0.5 && side !== this.slamSide && t - this.slamT < 0.07 && t - this.lastTutti > 4 && (this.game.mode === 'discover' || this.game.mode === 'results') && this.game.looper.state === 'off') {
+      this.slamT = -9;
+      this.lastTutti = t;
+      this.tutti(0.9);
+    } else if (gain > 0.5) {
+      this.slamT = t;
+      this.slamSide = side;
+    }
     const x = this.hitAt.x;
     const kz = -this.hitAt.z; // kit-local z (toward the player)
     // an edge key?
@@ -1350,14 +1369,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     let lane: Lane | 'rim' = this.hitAt.pad >= 0 ? this.hitAt.lane : this.drumAt(x, kz);
     if (lane !== 'rim' && !this.kit.pad(lane)?.visible) lane = 'snare';
     if (this.flam('kit', LANE_INDEX[lane] ?? 9, side, t)) return;
-    // both hands slam the table together, hard, outside a song: the whole orchestra answers
-    if (gain > 0.7 && side !== this.slamSide && t - this.slamT < 0.05 && (this.game.mode === 'discover' || this.game.mode === 'results') && this.game.looper.state === 'off') {
-      this.slamT = -9;
-      this.tutti(0.9);
-    } else if (gain > 0.7) {
-      this.slamT = t;
-      this.slamSide = side;
-    }
     const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
     audio.drum(lane, gain, pan, 0, 1);
     if (lane !== 'rim') this.kit.pad(lane)?.hit(gain);
@@ -1952,7 +1963,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // the first words, at hand height over the table (the module says it too)
       if (!this.settings.noWords && !this.kitSurface.discovered) {
         this.tmp.set(0, 0.12, 0.02).applyMatrix4(root.matrixWorld);
-        this.tag.show('Hit the table. Then anything that glows.', 0xff5a3c, this.tmp, this.head, 6);
+        this.tag.show('Hit the table. Then what glows.', 0xff5a3c, this.tmp, this.head, 6);
       }
     }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();

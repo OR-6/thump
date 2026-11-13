@@ -25,9 +25,9 @@ export function mountLanding(world: World): void {
         <li><span class="who">The wall</span><i></i><span class="what" style="--c:#e8a44a">gong</span></li>
         <li><span class="who">The next wall</span><i></i><span class="what" style="--c:#d4703a">timpani</span></li>
         <li><span class="who">Your door</span><i></i><span class="what" style="--c:#ffc14d">marimba</span></li>
-        <li><span class="who">The window</span><i></i><span class="what" style="--c:#6fa8ff">harp, played gently</span></li>
+        <li><span class="who">The window</span><i></i><span class="what" style="--c:#8fd8ff">glockenspiel, played gently</span></li>
         <li><span class="who">The cupboard</span><i></i><span class="what" style="--c:#2ad1b5">kalimba</span></li>
-        <li><span class="who">The lamp</span><i></i><span class="what" style="--c:#b28dff">vibraphone</span></li>
+        <li><span class="who">Another table</span><i></i><span class="what" style="--c:#ff7aa2">congas</span></li>
       </ol>
       <p class="conductor">Conducted by your two hands.</p>
       <p class="lede">Every surface in your room is an instrument. Hit anything to find out what it plays, then play songs across your own room.</p>

@@ -31,11 +31,11 @@ Feature chips (top right): **hand tracking** on shots 1–2, **plane detection**
 |---|---|---|---|---|
 | 1 | 0:00–0:05 | **Cold open:** a flat hand taps the real door; light spreads from the hand and marimba bars snap in; a marimba note | Fresh start; walk to the door; hit it once | "Every surface is an instrument." |
 | 2 | 0:05–0:12 | Back at the desk: "Hit anything"; a slap, and the kit blooms out from the palm, each pad sounding as it appears | Fresh start, sit down first | "Hit anything." |
-| 3 | 0:12–0:24 | The wall becomes a gong (bronze, a long bloom, rings across the wall); the next wall a timpani; the window a harp, played gently | Lean or stand | "Your walls, a gong and timpani. Your window, a harp." |
+| 3 | 0:12–0:24 | The wall becomes a gong (bronze, a long bloom, rings across the wall); the next wall a timpani; the window a glockenspiel, played gently | Lean or stand | "Your walls, a gong and timpani. Your window, a glockenspiel." |
 | 4 | 0:24–0:30 | **The tutti:** both hands slam the table and the whole room answers, a ring of light crossing the room, each instrument sounding as it arrives | Three instruments found, then both hands at once | "The whole room, at once." |
 | 5 | 0:30–1:00 | *Porch Step*: notes fly as light to the desk's bars and the pads; the instruments you found join in softly; the last chord crosses the room | Tap ▶ on the module | "Songs cast onto your room." |
 | 6 | 1:00–1:18 | **JAM:** the bandmate's mallets fly from the module to its instrument and play; "Your turn"; you answer | After the first song, tap JAM (or `?unlock=all`) | "A bandmate at your table." |
-| 7 | 1:18–1:30 | **Swap:** pinch and hold the window; it becomes a glockenspiel, then chimes | After Porch Step | "Change any sound." |
+| 7 | 1:18–1:30 | **Swap:** pinch and hold the window; the glockenspiel becomes a harp | After Porch Step | "Change any sound." |
 | 8 | 1:30–1:42 | A friend's phone in frame, tapping the bass pad in time with the light | Tap JAM; the code on the module; join from the phone | "A friend's phone is the bass." |
 | 9 | 1:42–1:55 | Headset off and on: the kit and the door's bars are still drawn | Real re-entry | "Your room remembers." |
 | 10 | 1:55–2:08 | Seated only (the airplane test): kit and bars, swap the bars to a vibraphone, play | Sit, hands on the desk | "A whole instrument at any desk." |

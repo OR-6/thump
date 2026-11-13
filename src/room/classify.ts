@@ -125,6 +125,8 @@ export function labelHints(label: string): Partial<Pick<Features, 'hollow' | 'gl
 export function classify(f: Features, isKitTable = false): Voice | null {
   const h = { ...f, ...mergeHints(f) };
   if (/invisible/.test(f.label)) return null; // a boundary Quest drew, not a real surface
+  // never ask anyone to hit a screen, a framed picture, a lamp or a plant
+  if (/screen|wall art|picture|lamp|plant/.test(f.label)) return null;
   if (isKitTable) return { family: 'kit', size: norm(f.area, 0.3, 2), why: 'the table the kit is on' };
   if (f.facing === 'down') return null;
   if (f.area < 0.01 && !f.bump) return null;

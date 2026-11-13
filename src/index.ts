@@ -9,8 +9,10 @@ import { HandOccluderSystem } from './input/occluders.js';
 import { RoomSystem } from './room/room-system.js';
 import { mountLanding } from './ui/landing.js';
 import { loadFonts } from './ui/fonts.js';
+import { audio } from './audio/engine.js';
 
 loadFonts();
+audio.sampler.prefetch();
 
 const container = document.getElementById('scene-container') as HTMLDivElement;
 

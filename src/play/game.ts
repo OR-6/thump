@@ -216,8 +216,8 @@ export class Game {
       else if (k === 'prev') {
         this.opts.tempo = this.opts.tempo < 0.95 ? 1 : 0.75;
         this.stage.tempo(this.opts.tempo);
-        if (twice) {
-          // the second tap undid the first; open the tuning page
+        if (twice && this.opts.debug) {
+          // the second tap undid the first; open the tuning page (device sessions only: ?debug=1)
           this.settingsOpen = false;
           this.tuneOpen = true;
           this.lastTap[k] = -9;
@@ -460,6 +460,8 @@ export class Game {
     const casted = new Set(Object.values(this.cast).map((c) => c?.surface));
     this.accompanists = (this.room.everything?.() ?? []).filter((r) => !casted.has(r.id));
     this.accompBar = -1;
+    // a song that opens on its tune alone keeps that opening to itself
+    this.opensAlone = !song.notes.some((n) => n.beat < 16 && n.degree < 0);
     this.played.length = 0;
     this.encore.length = 0;
     this.encoreAt = -1;
@@ -618,6 +620,7 @@ export class Game {
    */
   private accompanists: RoomInstrument[] = [];
   private accompBar = -1;
+  private opensAlone = false;
   private accompany(e: BedEvent): void {
     const bar = Math.floor(e.beat / 4);
     if (bar === this.accompBar || !this.accompanists.length) return;
@@ -625,13 +628,15 @@ export class Game {
     const at = this.clock.timeAt(bar * 4);
     const third = e.minor ? 3 : 4;
     const pcs = [e.midi % 12, (e.midi + third) % 12, (e.midi + 7) % 12];
-    const last = this.song ? bar === this.song.bars - 1 : false;
+    const half = this.song ? Math.floor(this.song.bars / 2) : -1;
     this.accompanists.forEach((r, k) => {
       const melodic = FAMILIES[r.family].melodic;
-      if (melodic && (bar % 2 === 0 || last)) {
+      // pitched ones ring the chord quietly every other bar (not under a melody-alone opening)
+      if (melodic && bar % 2 === 0 && !(bar < 4 && this.opensAlone)) {
         const z = this.room.chordZone?.(r.id, [pcs[k % 3], ...pcs]) ?? -1;
-        if (z >= 0) this.stage.voice(`${r.id}:${z}`, at + k * 0.015, 0.3);
-      } else if (!melodic && (bar % 4 === 0 || last)) this.stage.voice(`${r.id}:0`, at, bar === 0 ? 0.55 : 0.42);
+        if (z >= 0) this.stage.voice(`${r.id}:${z}`, at + k * 0.015, 0.22);
+      } else if (!melodic && bar === half) this.stage.voice(`${r.id}:0`, at, 0.25);
+      // drums and gongs keep themselves for the last chord (the whole room plays that)
     });
   }
   private onMiss = (n: { lane: string }): void => {
@@ -772,7 +777,7 @@ export class Game {
               : this.weakRuns >= 2 && this.opts.tempo > 0.95
                 ? 'Slower? Tap ◀ twice'
                 : have < need
-                  ? 'Tap ▶'
+                  ? 'Tap ▶ to play'
                   : 'Tap ▶ to play';
           d.pulse = jamNew ? 'jam' : 'play';
           d.stars = this.progress.stars[sel.id] ?? 0;

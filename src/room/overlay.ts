@@ -446,7 +446,7 @@ export class Sheen {
     const hx = Math.min(0.5, (b.maxX - b.minX) / 2);
     const hz = Math.min(0.5, (b.maxZ - b.minZ) / 2);
     this.span = { x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz };
-    const n = Math.round(6 + 10 * Math.min(1, (hx * hz * 4) / 0.6));
+    const n = Math.round(14 + 10 * Math.min(1, (hx * hz * 4) / 0.6));
     moteGeo ??= new SphereGeometry(1, 6, 4);
     this.motes = new InstancedMesh(moteGeo, asLight(new MeshBasicMaterial({ toneMapped: false })), n);
     this.motes.frustumCulled = false;
@@ -463,7 +463,7 @@ export class Sheen {
     this.t += dt * (motion.calm ? 0.4 : 1);
     const t = this.t;
     // a slow breath on the surface, about every five seconds
-    (this.fill.material as MeshBasicMaterial).opacity = 0.015 + 0.03 * Math.pow(0.5 + 0.5 * Math.sin(t * 1.25), 3);
+    (this.fill.material as MeshBasicMaterial).opacity = 0.025 + 0.07 * Math.pow(0.5 + 0.5 * Math.sin(t * 1.25), 3);
     const sp = this.span;
     for (let k = 0; k < this.motes.count; k++) {
       const a = this.seeds[k * 4];
@@ -476,7 +476,7 @@ export class Sheen {
       const x = sp.x0 + (sp.x1 - sp.x0) * ((a + 0.04 * Math.sin(t * 0.3 + ph)) % 1);
       const z = sp.z0 + (sp.z1 - sp.z0) * ((b + 0.04 * Math.cos(t * 0.27 + ph)) % 1);
       _p.set(x, 0.015 + 0.03 * u, -z);
-      _m.compose(_p, _q.identity(), _s.setScalar(0.0022 * glow + 0.0002));
+      _m.compose(_p, _q.identity(), _s.setScalar(0.0055 * glow + 0.0005));
       this.motes.setMatrixAt(k, _m);
     }
     this.motes.instanceMatrix.needsUpdate = true;

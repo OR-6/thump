@@ -49,6 +49,8 @@ class Mallet {
 
   /** Where it is at time t, flying from its last place to the next note's spot, striking on the note. */
   private placed = false;
+  /** Turned this far from the module's line at rest (the two lie crossed). */
+  restYaw = 0;
   update(t: number, rest: Vector3, restDir: Vector3, head: Vector3): void {
     // the first time: they start where they rest
     if (!this.placed) {
@@ -90,7 +92,9 @@ class Mallet {
     } else this.goHome(t, rest);
     // point the head at what it's about to hit (or along the module at rest), the shaft trailing back toward you
     this.group.position.copy(this.pos);
-    _b.copy(next ? next.at : this.pos).sub(head).setY(0);
+    const resting = !next && (!this.lastHit || t - this.lastHitT > HOME_AFTER_S);
+    if (resting) _b.copy(restDir).applyAxisAngle(_up, this.restYaw);
+    else _b.copy(next ? next.at : this.pos).sub(head).setY(0);
     if (_b.lengthSq() < 1e-6) _b.copy(restDir);
     _m.lookAt(_a.copy(this.pos).add(_b.normalize()), this.pos, _up);
     _q.setFromRotationMatrix(_m);
@@ -121,6 +125,8 @@ export class Mallets {
     const shaft = new CylinderGeometry(0.0035, 0.0035, 0.12, 8);
     const head = new SphereGeometry(0.011, 12, 8);
     this.m = [new Mallet(0xfff2dc, shaft, head), new Mallet(0xfff2dc, shaft, head)];
+    this.m[0].restYaw = 0.4;
+    this.m[1].restYaw = -0.4 + Math.PI;
     for (const x of this.m) this.group.add(x.group);
     this.group.name = 'Mallets';
   }

@@ -143,10 +143,10 @@ describe('the game', () => {
     expect(g.settingsOpen).toBe(false);
   });
 
-  it('in Settings, tap ◀ twice: the tuning page (slow mode unchanged); its keys go to the stage; ▶ closes it', () => {
+  it('with ?debug=1, in Settings, tap ◀ twice: the tuning page (slow mode unchanged); its keys go to the stage; ▶ closes it', () => {
     const keys: (string | null)[] = [];
     const st = { ...stage([]), tune: (k: string | null) => (keys.push(k), { line: 'Speed 0.35 m/s', sub: 'x', labels: ['◀', 'Done', '▶', '−', '+'] }) };
-    const g = new Game(st as never, freshProgress(), room([]));
+    const g = new Game(st as never, freshProgress(), room([]), { tempo: 1, offset: 0, debug: true });
     g.start(0);
     g.tick(1);
     g.key('prev');
