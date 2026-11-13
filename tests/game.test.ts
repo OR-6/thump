@@ -101,7 +101,7 @@ describe('the game', () => {
       t += 1 / 30;
       g.tick(t);
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t + 0.004, 0.8));
-      if (g.display.line === 'Fill!') sawFill = true;
+      if (g.display.line === 'Go wild!') sawFill = true;
       if (g.display.line === 'Keep it going') sawHold = true;
     }
     expect(g.mode).toBe('results');
@@ -112,7 +112,7 @@ describe('the game', () => {
     // the score first and it stays: notes played, then how it sat in time
     g.tick((t += 1.6));
     expect(g.display.line).toMatch(/^\d+ of \d+$/);
-    expect(g.display.sub).toMatch(/Tight \d+%|ahead|behind|Loose/);
+    expect(g.display.sub).toMatch(/On time \d+%|ahead|behind|Loose/);
     expect(g.display.stars).toBe(3);
     // the machine played under it: the parts you don't play live (perc, keys, bass), never the ones you do
     expect(voiced.slice(before).some((k) => k.startsWith('keys:'))).toBe(true);
@@ -231,7 +231,7 @@ describe('the game', () => {
     expect(g.display.line).toBe('Build a track?');
     g.key('play');
     expect(g.mode).toBe('build');
-    expect(g.display.sub).toBe('Hit what plays the kick');
+    expect(g.display.sub).toBe('Pick the big boom');
     let t = 45.1;
     const parts = ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom'];
     for (const key of parts) {
@@ -265,12 +265,12 @@ describe('the game', () => {
     let t = 45.1;
     g.tick(t);
     g.hit('kit:kick', t, 0.8);
-    for (let k = 0; k < 600 && g.display.sub !== 'Next: SNARE'; k++) {
+    for (let k = 0; k < 600 && g.display.sub !== 'Next: SMACK'; k++) {
       t += 1 / 30;
       g.tick(t);
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
     }
-    expect(g.display.line).toMatch(/^KICK: (yours|every note|\d+ of \d+)$/);
+    expect(g.display.line).toMatch(/^BOOM: (yours|every note|\d+ of \d+)$/);
     // still tapping along on the kick: nothing is picked
     g.hit('kit:kick', t, 0.8);
     expect(g.buildAsks()).toBeNull();
@@ -314,7 +314,7 @@ describe('the game', () => {
     expect(Math.max(...at.values())).toBeLessThanOrEqual(2);
     // a few seconds in, the results name the thing of yours that carried it
     g.tick((t += 4.5));
-    expect(g.display.sub).toBe('The hat never missed');
+    expect(g.display.sub).toBe('The tick never missed');
     g.key('play');
     expect(g.mode).toBe('count');
   });
@@ -337,7 +337,7 @@ describe('the game', () => {
         t += 1 / 30;
         now = t;
         g.tick(t);
-        if (g.display.sub === 'All of it, on the one') log.push('silent');
+        if (g.display.sub === 'Everything, in…') log.push('silent');
         g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
       }
     }
@@ -383,7 +383,7 @@ describe('the game', () => {
       }
     }
     // the tape says what each thing plays
-    expect(labels[labels.length - 1]).toContain('HAT@t1:0');
+    expect(labels[labels.length - 1]).toContain('TICK@t1:0');
     cover = true;
     let from = voiced.length;
     for (let k = 0; k < 180; k++) g.tick((t += 1 / 30));

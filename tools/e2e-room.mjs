@@ -204,11 +204,11 @@ shot('room-04-module', look);
 const play = s.targets['key-play'];
 await slapAt(play, [0, 1, 0], { speed: 0.6, from: 0.05 });
 s = await until((x) => x.game.mode === 'build', 3000);
-check('PLAY on the module starts building a track', s.game.mode === 'build' && /kick/.test(s.game.display.sub), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
+check('PLAY on the module starts building a track', s.game.mode === 'build' && /boom/.test(s.game.display.sub), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
 // slap the kick: it's assigned, the count-in starts and the part's notes fly to it
 await slapAt([s.targets.kick[0], DESK_Y, s.targets.kick[2]], [0, 1, 0]);
 s = await until((x) => x.game.motes > 0, 8000);
-check('the kick is assigned and its notes fly to it', s.game.motes > 0 && /KICK/.test(s.game.display.line), `motes=${s.game.motes} ${s.game.display.line} / ${s.game.display.sub}`);
+check('the kick is assigned and its notes fly to it', s.game.motes > 0 && /BOOM/.test(s.game.display.line), `motes=${s.game.motes} ${s.game.display.line} / ${s.game.display.sub}`);
 shot('room-05-build', look);
 s = state();
 check('no frame errors', s.debug.errors === 0, `errors=${s.debug.errors}`);

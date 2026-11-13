@@ -58,6 +58,8 @@ export interface GameStage {
   flourish?(): void;
   /** Everything comes in at once (the machine dropping back in, a big fill landing): every thing rings and lights. */
   drop?(): void;
+  /** The bar before a drop: a rising sweep, `seconds` long. */
+  riser?(seconds: number): void;
   /** Tape on each thing in the machine saying which part it plays (keys of the parts, and their names). */
   labels?(parts: readonly { key: string; name: string }[]): void;
   /** ◀ ▶ on the pad last hit: the next sound in the bank on it; its name, or null when there's no pad. */
@@ -242,6 +244,8 @@ export class Game {
     chordAt: number;
     /** The instrument on the desk for it. */
     inst: string;
+    /** The riser before the drop has started. */
+    rose: boolean;
   } | null = null;
 
   /** The first track not built yet that the things you've found open, or −1. */
@@ -277,8 +281,8 @@ export class Game {
     if (!this.stage.labels) return;
     const b = this.bld;
     const parts = b ? b.parts : this.machine?.parts ?? [];
-    const out = parts.map((p) => ({ key: p.key, name: p.def.name }));
-    if (b?.target && (b.phase === 'count' || b.phase === 'rec')) out.push({ key: b.target.key, name: b.track.parts[b.part].name });
+    const out = parts.map((p) => ({ key: p.key, name: say(p.def.name) }));
+    if (b?.target && (b.phase === 'count' || b.phase === 'rec')) out.push({ key: b.target.key, name: say(b.track.parts[b.part].name) });
     this.stage.labels(out);
   }
 
@@ -323,7 +327,7 @@ export class Game {
     const spb = secPerBeat(track.bpm, this.opts.tempo);
     this.clock.set(this.t + 0.3, spb);
     this.stage.useInstrument?.('drums');
-    this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99, guard: -99, verdict: null, retried: false, pending: null, dropAt: -99, chordAt: -99, inst: 'drums' };
+    this.bld = { track, part: 0, phase: 'assign', target: null, moved: false, recStart: 0, hits: [], parts: [], sched: 0, clicked: -99, guard: -99, verdict: null, retried: false, pending: null, dropAt: -99, chordAt: -99, inst: 'drums', rose: false };
     this.stage.retune(track.key, track.minor);
     this.moteCount = 0;
     this.pushLabels();
@@ -490,6 +494,10 @@ export class Game {
     this.moteCount = 0;
     if (b.phase === 'run' && b.dropAt > 0) {
       const left = Math.ceil(b.dropAt - beat);
+      if (beat >= b.dropAt - 4 && !b.rose) {
+        b.rose = true;
+        this.stage.riser?.((b.dropAt - beat) * spb);
+      }
       if (beat >= b.dropAt) {
         b.dropAt = -1;
         this.stage.drop?.();
@@ -578,7 +586,7 @@ export class Game {
         }
         b.retried = false;
         b.parts.push({ def, surface: target.surface, key: target.key, notes });
-        b.verdict = { name: def.name, hit: own ? -1 : Math.round(share * pat.length), of: pat.length };
+        b.verdict = { name: say(def.name), hit: own ? -1 : Math.round(share * pat.length), of: pat.length };
         b.guard = Math.ceil(beat) + 4;
         // the new part's notes already inside the scheduled window go out now, once
         const base = Math.floor(beat / LOOP_BEATS) * LOOP_BEATS;
@@ -617,20 +625,20 @@ export class Game {
       if (b.dropAt > 0 && left <= 4) {
         // the silent bar before everything drops in
         d.count = Math.max(1, left);
-        d.sub = 'All of it, on the one';
+        d.sub = 'Everything, in…';
         return;
       }
       d.sub = b.dropAt > 0 ? `${n} parts in` : 'Your track. Perform? ▶';
       d.pulse = b.dropAt > 0 ? null : 'play';
       return;
     }
-    d.line = `${b.part + 1}/${n}  ${def.name}`;
+    d.line = `${b.part + 1}/${n}  ${say(def.name)}`;
     if (b.phase === 'assign') {
       if (b.verdict) {
         // what just went in, and what's next (hits pick nothing for this bar)
         const v = b.verdict;
         d.line = v.hit < 0 ? `${v.name}: yours` : v.hit >= v.of ? `${v.name}: every note` : `${v.name}: ${v.hit} of ${v.of}`;
-        d.sub = `Next: ${def.name}`;
+        d.sub = `Next: ${say(def.name)}`;
         return;
       }
       d.sub = ASK[def.name];
@@ -638,12 +646,12 @@ export class Game {
     }
     if (b.phase === 'count') {
       d.count = Math.max(1, Math.min(8, Math.ceil(b.recStart - this.clock.beatAt(this.t))));
-      d.sub = b.retried ? 'Once more' : b.moved ? 'Play this one on the keys' : 'Play along';
-      d.line = def.name;
+      d.sub = b.retried ? 'Once more' : b.moved ? 'Play this one on the keys' : 'Hit when it glows';
+      d.line = say(def.name);
       return;
     }
     // the take's second bar: no lights, play what you like
-    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Your bar' : 'Play along';
+    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Now make your own' : 'Hit when it glows';
   }
 
   // ---------------------------------------------------------------- perform
@@ -693,7 +701,7 @@ export class Game {
     if (inst === 'drums') {
       found = m.parts.find((p) => p.surface !== 'kit' && p.surface !== 'keys' && PART_INST[p.def.name] === 'drums' && p.def.name !== 'KICK' && p.def.name !== 'SNARE');
       parts = m.parts.filter((p) => p.def.name === 'KICK' || p.def.name === 'SNARE' || p === found);
-      if (found) foundName = found.def.name;
+      if (found) foundName = say(found.def.name);
     } else parts = m.parts.filter((p) => PART_INST[p.def.name] === inst);
     const rank = (key: string) => {
       const i = parts.findIndex((p) => p.key === key);
@@ -930,7 +938,7 @@ export class Game {
           if (x.grade === 'perfect' || x.grade === 'good') got++;
         }
       if (n < 4) continue;
-      const part = this.machine?.parts.find((p) => p.surface === surface)?.def.name.toLowerCase() ?? 'part';
+      const part = say(this.machine?.parts.find((p) => p.surface === surface)?.def.name ?? 'part').toLowerCase();
       const word = this.room.wordFor?.(surface);
       const who = word ? `Your ${word}` : `The ${part}`;
       const share = got / n;
@@ -1730,8 +1738,8 @@ export class Game {
             d.meter = this.energy;
             break;
           }
-          d.line = inFill ? 'Fill!' : big ? 'Big fill' : b >= this.perf.holdFrom ? 'Keep it going' : this.song!.name;
-          d.sub = inFill ? 'Anything counts' : big ? 'Back in' : b >= this.perf.holdFrom ? 'Lights down' : joins ? `${this.perf.joins} comes in next` : `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
+          d.line = inFill ? 'Go wild!' : big ? 'Huge!' : b >= this.perf.holdFrom ? 'Keep it going' : this.song!.name;
+          d.sub = inFill ? 'Hit anything, fast' : big ? 'Back to the glow' : b >= this.perf.holdFrom ? 'Lights down' : joins ? `${this.perf.joins} comes in next` : 'Hit what glows';
           d.meter = this.energy;
           break;
         }
@@ -1751,7 +1759,7 @@ export class Game {
         d.line = `${s.perfect + s.good} of ${s.total}`;
         d.stars = s.stars;
         // how it felt in time: a number when it was close, a word that says which way when it wasn't
-        const feel = this.lastTight >= 70 ? `Tight ${this.lastTight}%` : this.lastLean < 0 ? 'A bit ahead of the beat' : this.lastLean > 0 ? 'A bit behind the beat' : 'Loose';
+        const feel = this.lastTight >= 70 ? `On time ${this.lastTight}%` : this.lastLean < 0 ? 'A bit ahead of the beat' : this.lastLean > 0 ? 'A bit behind the beat' : 'Loose';
         const fresh = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: JAM and REC' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : '';
         const next = this.fromPerform && this.nextTrack() >= 0 && !this.built(TRACKS[this.nextTrack()].id);
         if (st <= 1) d.sub = this.fromPerform && this.lastTight >= 0 ? feel : s.stars < 3 ? 'Again? Tap ▶' : `${s.perfect + s.good} of ${s.total}`;
@@ -1862,16 +1870,22 @@ const KNOCKS = new Set<string>(['block', 'clave', 'slit', 'cajon', 'frame', 'con
 
 /** What the module asks for each part. */
 const ASK: Record<string, string> = {
-  KICK: 'Hit what plays the kick',
-  SNARE: 'Hit what plays the snare',
-  HAT: 'Hit what plays the hat',
-  PERC: 'Anything new: a cup, a book',
-  KEYS: 'Hit what plays the keys',
-  BASS: 'Low keys, or anything',
-  'PERC 2': 'Hit something else for perc',
-  CLAP: 'Clap, or hit what claps',
-  'KEYS 2': 'Hit what plays the high keys',
+  KICK: 'Pick the big boom',
+  SNARE: 'Pick the smack',
+  HAT: 'Pick the tick',
+  PERC: 'Tap the glowing note',
+  KEYS: 'Tap the glowing key',
+  BASS: 'Pick the low notes',
+  'PERC 2': 'Another note on this one',
+  CLAP: 'Clap your hands',
+  'KEYS 2': 'A high key this time',
 };
+
+/** What a part is called where people read it: what it sounds like, not drummer's words. */
+const SAY: Record<string, string> = { KICK: 'BOOM', SNARE: 'SMACK', HAT: 'TICK', CLAP: 'CLAP', PERC: 'EXTRA', 'PERC 2': 'EXTRA 2', KEYS: 'TUNE', 'KEYS 2': 'HIGH TUNE', BASS: 'BASS' };
+export function say(part: string): string {
+  return SAY[part] ?? part;
+}
 
 const NO_KEYS: ModuleKey[] = [];
 const LOOP_LOCKED: ModuleKey[] = ['loop'];

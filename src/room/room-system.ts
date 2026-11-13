@@ -361,7 +361,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     changeSound: (dir) => this.changeSound(dir),
     labels: (parts) => this.setLabels(parts),
+    riser: (sec) => audio.riser(sec),
     drop: () => {
+      audio.crash(0.9);
       // everything at once: every ring flashes and sweeps, every pad on the desk thumps, the room answers
       for (const o of this.overlays.values()) {
         o.flashAll();
@@ -962,6 +964,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     try {
       this.game.tick(this.clock.t);
+      this.showBeat();
     } catch (e) {
       this.partFailed(2, e);
     }
@@ -1770,6 +1773,34 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
       }
     }
+  }
+
+  /**
+   * The beat you can see: in a track, everything on the desk brightens a little on each beat, more on the first of the
+   * loop, so there's something to move with before you know the song.
+   */
+  private beatShown = false;
+  private showBeat(): void {
+    const m = this.game.mode;
+    const on = m === 'build' || m === 'play' || m === 'count';
+    const o = this.kit.instOverlay();
+    if (!on) {
+      if (this.beatShown) {
+        this.beatShown = false;
+        this.kit.keys.rest = 0.35;
+        if (o) o.rest = 0.45;
+      }
+      return;
+    }
+    this.beatShown = true;
+    const b = this.game.clock.beatAt(this.clock.t);
+    if (b < -4) return;
+    const f = b - Math.floor(b);
+    const first = (((Math.floor(b) % 8) + 8) % 8) === 0;
+    const k = Math.exp(-f * 9) * (first ? 1 : 0.55);
+    for (const p of this.kit.pads.values()) p.setGlow(0.2 * k);
+    this.kit.keys.rest = 0.35 + 0.22 * k;
+    if (o) o.rest = 0.45 + 0.3 * k;
   }
 
   /** Two palms meeting: a hand clap, and a flash of light between them. */

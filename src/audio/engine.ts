@@ -916,6 +916,50 @@ class Engine {
     n.connect(bp).connect(g);
   }
 
+  /** The bar before a drop: noise rising through a narrowing band, louder to the end (`dur` seconds from now). */
+  riser(dur: number): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const n = this.noiseSrc(ctx, t, Math.min(0.95, dur));
+    // (the noise buffer is a second long: loop it for a long bar)
+    n.loop = true;
+    n.stop(t + dur + 0.05);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 2.5;
+    bp.frequency.setValueAtTime(400, t);
+    bp.frequency.exponentialRampToValueAtTime(6000, t + dur);
+    const g = this.out(ctx, this.master, 0, 0.6, t, 1);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, t + dur * 0.97);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.04);
+    n.connect(bp).connect(g);
+  }
+
+  /** The one after a drop: a crash (bright noise ringing out) and a sub thump you feel. */
+  crash(vel = 1): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const n = this.noiseSrc(ctx, t, 0.95);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 5200;
+    const g = this.out(ctx, this.master, 0.15, 0.8, t, 1);
+    this.env(g.gain, t, 0.3 * vel, 0.004, 1.6);
+    n.connect(hp).connect(g);
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.35);
+    const s = this.out(ctx, this.master, 0, 0, t, 1);
+    this.env(s.gain, t, 0.7 * vel, 0.005, 0.55);
+    o.connect(s);
+    o.start(t);
+    o.stop(t + 0.7);
+  }
+
   /** The crowd cheering: a patter of tiny claps and a happy "ooh", by size (3–12). */
   cheer(size: number, big = false): void {
     const ctx = this.ready();
