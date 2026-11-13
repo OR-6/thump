@@ -576,6 +576,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.updateReach();
     }
     this.readHands(delta);
+    this.brushShakers(delta);
     if (AUTOPLAY) this.autoplay();
     this.game.tick(this.clock.t);
     for (let i = this.timed.length - 1; i >= 0; i--) {
@@ -752,6 +753,37 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     return best;
   }
+  /** Soft surfaces (shakers) keep sounding while a hand brushes across them, louder the faster. */
+  private brushPrev = new Map<Surface, Float64Array>();
+  private brushShakers(dt: number): void {
+    if (dt <= 0 || dt > 0.1) return;
+    for (const s of this.surfaces) {
+      if (!s.discovered || s.voice?.family !== 'shaker') continue;
+      let prev = this.brushPrev.get(s);
+      if (!prev) this.brushPrev.set(s, (prev = new Float64Array([NaN, NaN, NaN, NaN])));
+      let level = 0;
+      for (let i = 0; i < 2; i++) {
+        const h = hands[SIDES[i]];
+        if (!h.tracked) {
+          prev[i * 2] = NaN;
+          continue;
+        }
+        s.toZone(h.palm, this.o);
+        const on = this.o.y - h.palmRadius < 0.04 && this.o.y > -0.08 && s.over(this.o.x, this.o.z, 0.02);
+        const px = prev[i * 2];
+        const pz = prev[i * 2 + 1];
+        prev[i * 2] = on ? this.o.x : NaN;
+        prev[i * 2 + 1] = this.o.z;
+        if (!on || Number.isNaN(px)) continue;
+        const speed = Math.hypot(this.o.x - px, this.o.z - pz) / dt;
+        level = Math.max(level, Math.min(1, (speed - 0.12) / 0.6));
+      }
+      this.lastWorld.set(s.anchor.x, 0, -s.anchor.z).applyMatrix4(s.world);
+      audio.sustain(s.id, level, this.panOf(this.lastWorld), s.voice.size);
+      if (level > 0.05) this.overlays.get(s)?.light(0, level);
+    }
+  }
+
   private untracked = [0, 0];
   private handLatch = [-Infinity, -Infinity];
   private hitHand = 0;

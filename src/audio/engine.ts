@@ -594,6 +594,31 @@ class Engine {
     }
   }
 
+  /** Sustained shakers, one per soft surface: a looping noise whose level follows how fast the hand brushes. */
+  private sustains = new Map<string, { g: GainNode; bp: BiquadFilterNode }>();
+  sustain(id: string, level: number, pan = 0, size = 0.5): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    let v = this.sustains.get(id);
+    if (!v) {
+      if (level <= 0.01) return;
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = 1.2;
+      const g = this.out(ctx, this.drums, pan, 0.6, ctx.currentTime, 0);
+      src.connect(bp).connect(g);
+      src.start();
+      v = { g, bp };
+      this.sustains.set(id, v);
+    }
+    const t = ctx.currentTime;
+    v.bp.frequency.setTargetAtTime(6500 - 2500 * size + 1500 * level, t, 0.03);
+    v.g.gain.setTargetAtTime(0.28 * Math.min(1, level), t, level > 0.01 ? 0.03 : 0.08);
+  }
+
   /** The phone's bass: a round plucked low note, from where the phone is. */
   bass(midi: number, vel: number, pan = 0): void {
     const ctx = this.ready();
