@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <meta name="description" content="Thump: your desk is a drum machine. A mixed-reality music game for Meta Quest 3. Hit your desk, your mug and your books, then build a track." />
-    <meta property="og:title" content="Thump: your desk is a drum machine" />
-    <meta property="og:description" content="Hit your desk, your mug, your knee. Each one plays." />
+    <meta name="description" content="Thump: a band on your desk. A mixed-reality music game for Meta Quest 3. Drums, a piano, a guitar and a handpan under your hands; build a track and play it, alone or with friends." />
+    <meta property="og:title" content="Thump: a band on your desk" />
+    <meta property="og:description" content="Drums, piano, guitar, handpan, on your desk. Hands only." />
     <meta property="og:url" content="https://or-6.github.io/thump/" />
     <meta name="theme-color" content="#0d0d0f" />
     <title>Thump</title>
@@ -52,6 +52,12 @@
       .power:focus-visible { outline: 2px solid #b6f0c4; outline-offset: 3px; }
       .power .led { width: 10px; height: 10px; border-radius: 50%; background: #ff5a3c; box-shadow: 0 0 10px #ff5a3c; }
       .power.small { font-size: 15px; padding: 10px 16px; width: auto; }
+      .together { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-top: 18px; padding-top: 16px; border-top: 1px solid #26262b; }
+      .together .tlabel { grid-column: 1 / -1; font: 600 11px 'Barlow Condensed', var(--sans); letter-spacing: 2px; color: #77736b; }
+      .together input { min-width: 0; font: 600 20px 'Barlow Condensed', var(--sans); letter-spacing: 6px; text-transform: uppercase; text-align: center; color: #b6f0c4; background: #1f2a22; border: 0; border-radius: 4px; padding: 8px; box-shadow: inset 0 2px 6px #000c; }
+      .together input::placeholder { color: #4b6b54; }
+      .together input:focus-visible { outline: 2px solid #b6f0c4; outline-offset: 2px; }
+      #band-status { grid-column: 1 / -1; margin: 0; min-height: 1.2em; font: 500 15px 'Barlow Condensed', var(--sans); letter-spacing: 0.5px; color: #b6f0c4; }
       .manual { padding-top: 26px; color: #d8d2c4; font: 400 17px/1.6 var(--sans); max-width: 440px; }
       .manual p { margin: 0 0 14px; }
       .note { font-size: 14px; color: #a39d8f; margin: 14px 0 0; line-height: 1.5; }

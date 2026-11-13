@@ -47,7 +47,7 @@ export interface Display {
   /** Days you've played (shown small), and a gold mark for the selected song. */
   day: number;
   gold: boolean;
-  /** A phone-jam code to show, or ''. */
+  /** The band's code (playing together), or ''. */
   code: string;
   /** Labels printed on each key (the settings and tuning pages), or null for the keys' own glyphs. */
   keyLabels: string[] | null;
@@ -274,7 +274,7 @@ export class Module {
     }
     g.font = `600 38px ${FONT}`;
     g.fillStyle = INK;
-    const right = d.code ? `Phone ${d.code}` : d.day > 1 ? `Day ${d.day}` : slots ? `${d.found.length}/${slots}` : '';
+    const right = d.code ? `Band ${d.code}` : d.day > 1 ? `Day ${d.day}` : slots ? `${d.found.length}/${slots}` : '';
     if (right) g.fillText(right, W - 28 - g.measureText(right).width, 236);
     if (d.meter >= 0) {
       const segs = 24;

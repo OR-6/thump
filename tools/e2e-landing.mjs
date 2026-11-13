@@ -19,7 +19,9 @@ writeFileSync('tools/.probe.mjs', `export default async function run({ page, fra
 }); }\n`);
 const r = run('tools/.probe.mjs');
 check('the page is shown outside the headset', r.shown);
-check('one line: your desk is a drum machine; pads to try', /YOUR DESK IS A DRUM MACHINE/i.test(r.text) && /MUG/.test(r.text), r.text.slice(0, 160));
+check('one line: a band on your desk; pads for each instrument', /A BAND ON YOUR DESK/i.test(r.text) && /PIANO/.test(r.text) && /GUITAR/.test(r.text) && /HANDPAN/.test(r.text), r.text.slice(0, 160));
+check('play together: start a band or type a code', /PLAY TOGETHER/.test(r.text) && /Start a band/i.test(r.text), r.text.match(/PLAY TOGETHER.{0,60}/)?.[0] ?? '');
+check('no desk-object pitch left', !/drum machine|your mug|chair arm/i.test(r.text), r.text.match(/drum machine|your mug|chair arm/i)?.[0] ?? '');
 check('no felt-era copy left', !/felt|crowd|plush|loom/i.test(r.text), r.text.match(/felt|crowd|plush|loom/i)?.[0] ?? '');
 check('Enter mixed reality is there', r.enter);
 check('a setting writes through', r.hc);

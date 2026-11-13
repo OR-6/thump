@@ -1,13 +1,14 @@
 /**
- * The 2D page shown outside the headset: the hook, one button to enter mixed reality, and the
- * settings folded away (DESIGN.md §3.15). On a laptop or phone it says how to play on a Quest instead.
+ * The 2D page shown outside the headset: a sampler whose pads play the instruments you'll have on your desk, one
+ * button to enter mixed reality, playing together (start a band or type a friend's code), and the settings folded
+ * away. On a laptop or phone it says how to play on a Quest instead.
  */
 import { VisibilityState, type World } from '@iwsdk/core';
 import { audio, type Voice } from '../audio/engine.js';
-import { soundById } from '../audio/bank.js';
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { loadProgress, saveProgress, freshProgress } from '../persistence/progress.js';
-import { mountPhoneJam } from '../jam/phone.js';
+import { coop, normaliseCode, type CoopStatus } from '../net/coop.js';
+import { strumNotes } from '../kit/shelf.js';
 
 const LIVE_URL = 'or-6.github.io/thump';
 
@@ -19,26 +20,33 @@ export function mountLanding(world: World): void {
       <section class="sampler" aria-label="Thump">
         <header class="top">
           <span class="brand">THUMP</span>
-          <span class="model">DESK SAMPLER · 28 SOUNDS</span>
+          <span class="model">DESK SAMPLER · 4 INSTRUMENTS</span>
         </header>
-        <div class="lcd" aria-live="polite"><span class="lcd-main">YOUR DESK IS A DRUM MACHINE</span><span class="lcd-sub">tap a pad</span></div>
-        <div class="pads" role="group" aria-label="Try the sounds">
-          <button class="pad" data-s="kick" style="--c:#ff5a3c"><i>DESK LEFT</i></button>
-          <button class="pad" data-s="snare" style="--c:#f4f1ea"><i>DESK MIDDLE</i></button>
-          <button class="pad" data-s="hat" style="--c:#2ad1d1"><i>DESK RIGHT</i></button>
-          <button class="pad" data-s="bell" style="--c:#9ef0e0"><i>MUG</i></button>
-          <button class="pad" data-s="block" style="--c:#ff8a3c"><i>BOOK</i></button>
-          <button class="pad" data-s="chime" style="--c:#b8c4ff"><i>BOTTLE</i></button>
-          <button class="pad" data-s="keys" style="--c:#ffa630"><i>KEYBOARD</i></button>
-          <button class="pad" data-s="ride" style="--c:#d6e2ea"><i>LAPTOP LID</i></button>
-          <button class="pad" data-s="congas" style="--c:#ff7aa2"><i>KNEE</i></button>
-          <button class="pad" data-s="cowbell" style="--c:#e0b85a"><i>CHAIR ARM</i></button>
-          <button class="pad" data-s="clave" style="--c:#d99a5b"><i>PHONE</i></button>
-          <button class="pad" data-s="clap" style="--c:#ff9e7a"><i>HANDS</i></button>
+        <div class="lcd" aria-live="polite"><span class="lcd-main">A BAND ON YOUR DESK</span><span class="lcd-sub">tap a pad</span></div>
+        <div class="pads" role="group" aria-label="Try the instruments">
+          <button class="pad" data-k="d" data-v="kick" style="--c:#ff5a3c"><i>BOOM</i></button>
+          <button class="pad" data-k="d" data-v="snare" style="--c:#f4f1ea"><i>SMACK</i></button>
+          <button class="pad" data-k="d" data-v="hat" style="--c:#2ad1d1"><i>TICK</i></button>
+          <button class="pad" data-k="p" data-v="60" style="--c:#ffa630"><i>PIANO</i></button>
+          <button class="pad" data-k="p" data-v="64" style="--c:#ffa630"><i>PIANO</i></button>
+          <button class="pad" data-k="p" data-v="67" style="--c:#ffa630"><i>PIANO</i></button>
+          <button class="pad" data-k="g" data-v="0" style="--c:#6fa8ff"><i>GUITAR</i></button>
+          <button class="pad" data-k="g" data-v="9" style="--c:#6fa8ff"><i>GUITAR</i></button>
+          <button class="pad" data-k="g" data-v="5" style="--c:#6fa8ff"><i>GUITAR</i></button>
+          <button class="pad" data-k="h" data-v="62" style="--c:#2ad1b5"><i>HANDPAN</i></button>
+          <button class="pad" data-k="h" data-v="69" style="--c:#2ad1b5"><i>HANDPAN</i></button>
+          <button class="pad" data-k="h" data-v="74" style="--c:#2ad1b5"><i>HANDPAN</i></button>
         </div>
         <div class="go">
           <button id="enter-xr" class="power" type="button"><span class="led"></span>Enter mixed reality</button>
           <p class="xr-fail" role="alert" hidden>It didn't start. Say yes to Quest's prompts and try again.</p>
+        </div>
+        <div class="together" aria-label="Play together">
+          <span class="tlabel">PLAY TOGETHER</span>
+          <button type="button" id="band-start" class="power small">Start a band</button>
+          <input id="band-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="A friend's 4-letter code" />
+          <button type="button" id="band-join" class="power small">Join</button>
+          <p id="band-status" aria-live="polite"></p>
         </div>
         <div class="nohead" id="xr-unsupported" hidden>
           <p class="quest">It plays on a Meta Quest 3. In its browser, go to <span class="url">${LIVE_URL}</span></p>
@@ -46,9 +54,10 @@ export function mountLanding(world: World): void {
         </div>
       </section>
       <section class="manual">
-        <p>Sit at your desk with a Quest 3 on. Hit the desk and it's a kit. Hit your mug and it rings. Every thing in reach plays the first time you hit it, and you pick its sound.</p>
-        <p>Then build a track on your stuff, one part at a time, and play it live.</p>
-        <p class="note">Put the controllers down: it's hands only. Quest asks once for permission to see your desk; nothing leaves the headset.</p>
+        <p>Sit at a desk or a tray table with a Quest 3 on. Hit the desk and a drum kit comes up under your hands. The arrows on the little box swap it for a piano, a guitar or a handpan. Every note fits the others, so there's no wrong one.</p>
+        <p>Then build a track a part at a time, make the second bar of each part your own, and play the whole thing live. Switch instruments halfway through if you like.</p>
+        <p>With friends: one of you starts a band, the others type the code. Up to four headsets, wherever you all are.</p>
+        <p class="note">Put the controllers down: it's hands only. Quest asks once to see your desk. Nothing leaves the headset unless you play together, and then only the notes.</p>
         <p class="note">On your Quest, open the Browser and go to <span class="url">${LIVE_URL}</span></p>
         <details class="prep">
           <summary>Settings</summary>
@@ -91,26 +100,66 @@ export function mountLanding(world: World): void {
     el.querySelector<HTMLElement>('.go')!.hidden = true;
     el.querySelector<HTMLElement>('#xr-unsupported')!.hidden = false;
   }
-  // the pads on the page play the real sounds (the same clips the headset uses)
+  // the pads on the page play the real instruments (the same sounds the headset uses)
   const lcdMain = el.querySelector<HTMLElement>('.lcd-main')!;
   const lcdSub = el.querySelector<HTMLElement>('.lcd-sub')!;
+  const say: Record<string, string> = { d: 'DRUMS', p: 'PIANO', g: 'GUITAR', h: 'HANDPAN' };
   for (const pad of el.querySelectorAll<HTMLButtonElement>('.pad')) {
     pad.addEventListener('pointerdown', () => {
       audio.resume();
-      const snd = soundById(pad.dataset.s);
-      if (!snd) return;
-      if (snd.drum) audio.drum(snd.drum as Voice, 0.85, 0);
-      else if (snd.family) audio.modal(snd.family, snd.pitched ? 67 : 60, 0.85, 0, 0, 0.5, 'page');
+      const k = pad.dataset.k ?? '';
+      const v = pad.dataset.v ?? '';
+      if (k === 'd') audio.drum(v as Voice, 0.85, 0);
+      else if (k === 'p') audio.modal('keys', Number(v), 0.8, 0, 0, 0.5, 'page');
+      else if (k === 'h') audio.modal('tongue', Number(v), 0.8, 0, 0, 0.5, 'page');
+      else if (k === 'g') {
+        // a strum: C, A minor, F
+        const root = 48 + Number(v);
+        const notes = strumNotes(root, Number(v) === 9 ? [0, 3, 7] : [0, 4, 7]);
+        const t = audio.now();
+        notes.forEach((n, i) => audio.pluck(n, 0.75 - i * 0.04, 0, t + i * 0.012, 'nylon'));
+      }
       pad.classList.remove('hit');
       void pad.offsetWidth;
       pad.classList.add('hit');
-      lcdMain.textContent = `${pad.querySelector('i')!.textContent} · ${snd.name.toUpperCase()}`;
-      lcdSub.textContent = 'your real one plays this';
+      lcdMain.textContent = say[k] ?? '';
+      lcdSub.textContent = 'on your desk, under your hands';
     });
   }
 
-  // a friend's phone joins the headset's jam (shown where there's no headset)
-  mountPhoneJam(el.querySelector<HTMLElement>('#xr-unsupported')!);
+  // playing together: start a band (a code for friends) or join one, then everyone enters
+  const bandStart = el.querySelector<HTMLButtonElement>('#band-start')!;
+  const bandJoin = el.querySelector<HTMLButtonElement>('#band-join')!;
+  const bandCode = el.querySelector<HTMLInputElement>('#band-code')!;
+  const bandStatus = el.querySelector<HTMLElement>('#band-status')!;
+  const showBand = (st: CoopStatus) => {
+    if (st.role === 'caller') return;
+    const n = st.players ?? 1;
+    bandStatus.textContent =
+      st.state === 'hosting' ? (st.code ? `Your code: ${st.code}. Friends type it here, then everyone enters.` : (st.message ?? 'Connecting…'))
+      : st.state === 'joining' ? 'Connecting…'
+      : st.state === 'connected' ? `${n} in the band${st.role === 'host' && st.code ? ` (code ${st.code})` : ''}. Enter mixed reality.`
+      : st.state === 'error' || st.state === 'closed' ? (st.message ?? 'That didn\u2019t work')
+      : '';
+  };
+  window.addEventListener('thump:coop', (e) => showBand((e as CustomEvent<CoopStatus>).detail));
+  bandStart.addEventListener('click', () => {
+    audio.resume();
+    void coop.host();
+  });
+  const join = () => {
+    audio.resume();
+    const c = normaliseCode(bandCode.value);
+    if (!c) {
+      bandStatus.textContent = 'Four letters, from your friend\u2019s page';
+      return;
+    }
+    void coop.join(c, 'guest');
+  };
+  bandJoin.addEventListener('click', join);
+  bandCode.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') join();
+  });
   const copyBtn = el.querySelector<HTMLButtonElement>('#copy-link')!;
   copyBtn.addEventListener('click', () => {
     const url = location.origin + location.pathname;

@@ -1,6 +1,7 @@
 /**
- * The phone jam's link over WebRTC (PeerJS, loaded on demand). The only part of
- * Thump that talks to the network, and only after a player opens the jam. Signalling goes through PeerJS's public broker; game data
+ * Playing together over WebRTC (PeerJS, loaded on demand): one headset hosts a 4-letter code, up to three more join
+ * it, and the host passes each player's notes on to the others. The only part of Thump that talks to the network,
+ * and only after a player starts or joins. Signalling goes through PeerJS's public broker; game data
  * flows peer-to-peer (or via PeerJS's TURN relay if direct fails).
  * No accounts, no voice, no personal data: room codes are random.
  */
@@ -13,7 +14,12 @@ export interface CoopStatus {
   role?: CoopRole;
   code?: string;
   message?: string;
+  /** Headsets in the band, this one included. */
+  players?: number;
 }
+
+/** A band is at most this many headsets. */
+export const MAX_PLAYERS = 4;
 
 /** No vowels (no accidental words), no look-alikes (0/O, 1/I). */
 export const CODE_ALPHABET = 'CDFHJKMNPRTVWXY';
@@ -55,27 +61,39 @@ class CoopSession {
     return (id ? new Peer(id, { debug: 0 }) : new Peer({ debug: 0 })) as unknown as PeerLike;
   }
 
+  /** Everyone this headset talks to: the host's guests, or a guest's host. */
+  private conns: ConnLike[] = [];
+  private listeners: Array<(m: unknown) => void> = [];
+
   private attach(conn: ConnLike, role: CoopRole, code: string, gen: number): void {
     if (gen !== this.gen) return conn.close();
     this.conn = conn;
-    const listeners: Array<(m: unknown) => void> = [];
-    const live = () => this.gen === gen && this.conn === conn;
+    this.conns.push(conn);
+    const live = () => this.gen === gen && this.conns.includes(conn);
     conn.on('data', (d) => {
-      if (live()) listeners.forEach((cb) => cb(d));
+      if (!live()) return;
+      // the host passes a guest's notes on to the other guests
+      if (role === 'host') for (const c of this.conns) if (c !== conn && c.open) c.send(d);
+      this.listeners.forEach((cb) => cb(d));
     });
-    conn.on('close', () => {
-      if (live()) this.closed('Your friend left');
-    });
-    conn.on('error', () => {
-      if (live()) this.closed('Connection lost');
-    });
-    this.transport = {
-      send: (m) => {
-        if (conn.open) conn.send(m);
-      },
-      onMessage: (cb) => listeners.push(cb),
+    const gone = (why: string) => {
+      if (!live()) return;
+      this.conns = this.conns.filter((c) => c !== conn);
+      // a guest leaving the host's band: the others play on; the host leaving ends it for a guest
+      if (role === 'host' && this.conns.length) this.set({ state: 'connected', role, code, players: this.conns.length + 1, message: 'Someone left' });
+      else if (role === 'host') this.set({ state: 'hosting', role, code, players: 1, message: 'Waiting for friends' });
+      else this.closed(why);
     };
-    this.set({ state: 'connected', role, code });
+    conn.on('close', () => gone('Your friend left'));
+    conn.on('error', () => gone('Connection lost'));
+    if (!this.transport)
+      this.transport = {
+        send: (m) => {
+          for (const c of this.conns) if (c.open) c.send(m);
+        },
+        onMessage: (cb) => this.listeners.push(cb),
+      };
+    this.set({ state: 'connected', role, code, players: role === 'host' ? this.conns.length + 1 : 2 });
   }
 
   async host(tries = 3): Promise<void> {
@@ -102,7 +120,7 @@ class CoopSession {
       });
       peer.on('connection', (c) => {
         const conn = c as ConnLike;
-        if (this.conn || gen !== this.gen) return conn.close(); // one partner only
+        if (this.conns.length >= MAX_PLAYERS - 1 || gen !== this.gen) return conn.close(); // the band is full
         conn.on('open', () => this.attach(conn, 'host', code, gen));
       });
       peer.on('error', (e) => {
@@ -161,6 +179,9 @@ class CoopSession {
     this.conn?.close();
     this.conn = null;
     this.transport = null;
+    for (const c of this.conns) c.close();
+    this.conns = [];
+    this.listeners = [];
     this.peer?.destroy();
     this.peer = null;
     this.set({ state: 'error', message });
@@ -170,6 +191,9 @@ class CoopSession {
     this.gen++;
     this.conn = null;
     this.transport = null;
+    for (const c of this.conns) c.close();
+    this.conns = [];
+    this.listeners = [];
     this.peer?.destroy();
     this.peer = null;
     this.set({ state: 'closed', message });
@@ -180,6 +204,9 @@ class CoopSession {
     this.conn?.close();
     this.conn = null;
     this.transport = null;
+    for (const c of this.conns) c.close();
+    this.conns = [];
+    this.listeners = [];
     this.peer?.destroy();
     this.peer = null;
     if (!silent) this.set({ state: 'idle' });

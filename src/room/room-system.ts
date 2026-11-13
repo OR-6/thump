@@ -66,7 +66,8 @@ import { FAMILIES, NEIGHBOURS, nextSwap, orchestrate, type Family } from './clas
 import { retune, zoneAt, zoneForDegree, type Zone, setMinor } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
 import { PhoneLink } from './phone-link.js';
-import { coop } from '../net/coop.js';
+import { coop, type CoopStatus } from '../net/coop.js';
+import { BandLink } from '../net/band.js';
 
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
 const RESUME_WINDOW_S = 4;
@@ -107,6 +108,8 @@ export interface RoomDebug {
   errors: number;
   phone?: string;
   phoneNotes?: number;
+  /** Friends' notes heard (playing together). */
+  friendNotes?: number;
 }
 
 export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, meshes: { required: [XRMesh] } }) {
@@ -252,6 +255,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     window.addEventListener('thump:reset', onReset);
     this.cleanupFuncs.push(() => window.removeEventListener('thump:reset', onReset));
     this.cleanupFuncs.push(() => this.phone.dispose());
+    const onCoop = (e: Event) => this.onBand((e as CustomEvent<CoopStatus>).detail);
+    window.addEventListener('thump:coop', onCoop);
+    this.cleanupFuncs.push(() => {
+      window.removeEventListener('thump:coop', onCoop);
+      this.band.stop();
+    });
+    // (started or joined on the page before entering: pick it up)
+    if (coop.status.state !== 'idle') this.onBand(coop.status);
   }
 
   // ------------------------------------------------------------------ the game's view of the world
@@ -458,7 +469,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         });
       };
       if (event === 'claim') {
-        this.phone.open();
         o?.sweep();
         motif([0, 2, 4], 0.11, 0.5);
         if (!this.settings.noWords) {
@@ -481,6 +491,40 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     },
   };
+  /** Playing together: friends' headsets' sounds play here (to one side), and a light shows they're playing. */
+  private band = new BandLink(() => {
+    this.friendHits++;
+    this.debug.friendNotes = (this.debug.friendNotes ?? 0) + 1;
+  });
+  private friendHits = 0;
+  private friendFlashT = 0;
+  private bandSeen = '';
+  /** The band's state: start or stop the link, keep the code on the module, say who joined. */
+  private onBand(st: CoopStatus): void {
+    const playing = st.state === 'connected' && (st.role === 'host' || st.role === 'guest') && !!coop.transport;
+    if (playing) this.band.start(coop.transport!);
+    else this.band.stop();
+    this.game.code = (st.state === 'hosting' || st.state === 'connected') && st.role !== 'caller' && st.code ? st.code : '';
+    this.game.refreshDisplay();
+    const key = `${st.state}:${st.players ?? 0}`;
+    if (key === this.bandSeen || this.settings.noWords || this.placement.phase !== 'placed') return;
+    const before = this.bandSeen;
+    this.bandSeen = key;
+    this.tmp.set(0, 0.13, -0.22).applyMatrix4(this.kit.root.matrixWorld);
+    if (playing && st.role === 'host') this.tag.show(`${(st.players ?? 2) - 1} playing with you`, 0x2ad1b5, this.tmp, this.head, 3);
+    else if (playing) this.tag.show("You're in the band", 0x2ad1b5, this.tmp, this.head, 3);
+    else if (before.startsWith('connected') && (st.state === 'closed' || st.state === 'hosting')) this.tag.show(st.message ?? 'Band stopped', 0xfff2dc, this.tmp, this.head, 3);
+  }
+  /** A friend played: a little light at the module's right, now and then (not every note). */
+  private showFriends(): void {
+    if (!this.friendHits) return;
+    this.friendHits = 0;
+    if (this.clock.t - this.friendFlashT < 0.12 || this.placement.phase !== 'placed') return;
+    this.friendFlashT = this.clock.t;
+    this.tmp.set(0.2, 0.06, -0.22).applyMatrix4(this.kit.root.matrixWorld);
+    this.flash(this.tmp, 0x2ad1b5);
+  }
+
   /** The phone jam: a code on the module; a friend's phone becomes the bass. */
   private phone = new PhoneLink({
     game: () => this.game,
@@ -997,6 +1041,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.fadePads();
     this.watchClaps(dt);
     this.watchCovers(dt);
+    this.showFriends();
     if (this.labelTags.size) {
       this.labelFaceT -= dt;
       for (const [g, t] of this.labelTags) {
