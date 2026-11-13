@@ -23,11 +23,11 @@ export interface Target {
 
 /** Families each part prefers, in order. */
 const WANTS: Record<Exclude<Part, DrumPart>, Family[]> = {
-  melody: ['marimba', 'glock', 'tongue', 'bowl', 'bell'],
-  chime: ['glock', 'bell', 'bowl', 'marimba', 'tongue'],
-  bass: ['tongue', 'marimba', 'gong', 'stomp', 'bowl'],
-  shake: ['shaker', 'block'],
-  gong: ['gong', 'stomp'],
+  melody: ['marimba', 'xylophone', 'harp', 'glock', 'bowl', 'tongue', 'tubular', 'bell'],
+  chime: ['glock', 'bell', 'tubular', 'harp', 'bowl', 'xylophone', 'marimba', 'tongue'],
+  bass: ['timpani', 'tongue', 'marimba', 'bowl', 'harp', 'gong', 'stomp'],
+  shake: ['shaker', 'tambourine', 'congas', 'cajon', 'block', 'triangle', 'slit'],
+  gong: ['gong', 'timpani', 'frame', 'stomp', 'tubular'],
 };
 
 /** Where an unmatched part goes on the table. */

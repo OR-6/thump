@@ -53,7 +53,7 @@ import { SwapGesture } from './swaps.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
 import { Overlay, Sheen } from './overlay.js';
 import { Motes } from './motes.js';
-import { FAMILIES, nextSwap, type Family } from './classify.js';
+import { FAMILIES, NEIGHBOURS, nextSwap, orchestrate, type Family } from './classify.js';
 import { retune, zoneAt, zoneForDegree, type Zone } from './zones.js';
 import type { RoomInstrument } from '../songs/cast.js';
 import { PhoneLink } from './phone-link.js';
@@ -162,6 +162,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   init() {
     this.progress = loadProgress();
+    const desk = this.progress.desk as Family | undefined;
+    if (desk && (NEIGHBOURS.keys as string[]).includes(desk)) this.deskFamily = desk;
     // ?unlock=all (filming): JAM, the tom, swaps and loops without playing the songs first
     if (params.get('unlock') === 'all') {
       this.progress.introDone = true;
@@ -336,12 +338,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         return;
       } else if (r.kind === 'keys') {
         const q = this.kit.keyZones[r.zone];
-        if (q) audio.modal('keys', q.midi, vel, 0, when);
+        if (q) audio.modal(this.deskFamily, q.midi, vel, 0, when, 0.5, 'desk', 0);
       } else if (r.kind === 'zone' && r.surface?.voice) {
         const z = r.surface.zones[r.zone];
         if (z) {
           this.lastWorld.set(z.x, 0, -z.z).applyMatrix4(r.surface.world);
-          audio.modal(r.surface.voice.family, z.midi, vel, this.panOf(this.lastWorld), when, r.surface.voice.size, r.surface.id);
+          audio.modal(r.surface.voice.family, z.midi, vel, this.panOf(this.lastWorld), when, r.surface.voice.size, r.surface.id, r.zone);
         }
       }
       // its note lights where it plays, when it plays
@@ -386,10 +388,33 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
   private farTold = false;
 
+  /** Same-kind surfaces get different instruments (an orchestra, not five gongs); found ones keep theirs. */
+  private orchestrate(): void {
+    this.orchTaken.length = 0;
+    this.orchFree.length = 0;
+    for (const s of this.surfaces) {
+      if (s.source !== 'plane' && s.source !== 'volume') continue;
+      if (s.discovered && s.voice) this.orchTaken.push(s.voice.family);
+      else if (s.natural && !s.as) this.orchFree.push({ id: s.id, natural: s.natural, area: s.features?.area ?? 0, s });
+    }
+    if (!this.orchFree.length) return;
+    const plan = orchestrate(this.orchFree, this.orchTaken);
+    for (const f of this.orchFree) {
+      const want = plan.get(f.id) ?? f.natural;
+      const auto = want === f.natural ? null : want;
+      if (auto === f.s.auto) continue;
+      f.s.auto = auto;
+      f.s.setFeatures(f.s.features);
+      tuneStrike(f.s);
+    }
+  }
+  private orchTaken: Family[] = [];
+  private orchFree: { id: string; natural: Family; area: number; s: Surface }[] = [];
+
   /** The instrument carrying the melody in the song just played (for its stars), else the table keys. */
   private melodyFamily(): Family {
     const f = this.game.cast?.melody?.family as Family | undefined;
-    return f && f !== 'kit' && f !== 'shaker' && f !== 'stomp' && FAMILIES[f]?.melodic ? f : 'keys';
+    return f && f !== 'kit' && f !== 'keys' && FAMILIES[f]?.melodic ? f : this.deskFamily;
   }
 
   // ------------------------------------------------------------------ tuning (device sessions)
@@ -450,12 +475,21 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private watchSwaps(): void {
     const on = (this.progress.unlocks as string[]).includes('swaps') && (this.game.mode === 'discover' || this.game.mode === 'results') && this.game.looper.state === 'off';
     const s = this.swaps.update(this.bothHands, on, this.clock.t, this.swapTarget, this.swapStarted);
-    if (s) this.swap(s);
+    if (s === 'desk') this.swapDesk();
+    else if (s) this.swap(s);
   }
-  private swaps = new SwapGesture<Surface>();
+  private swaps = new SwapGesture<Surface | 'desk'>();
   private bothHands = [hands.left, hands.right];
   /** The found instrument a pinch here would change: the nearest within 6 cm. */
-  private swapTarget = (p: Vector3): Surface | null => {
+  private swapTarget = (p: Vector3): Surface | 'desk' | null => {
+    // the desk's bars (a seated player's melody: the airplane test)
+    if (this.kit.keys.group.visible) {
+      this.tmp.copy(p);
+      this.kit.root.worldToLocal(this.tmp);
+      for (const q of this.kit.keyZones) {
+        if (Math.abs(this.tmp.x - q.x) <= q.w / 2 + 0.02 && Math.abs(this.tmp.z + q.z) <= q.h / 2 + 0.02 && Math.abs(this.tmp.y) < SWAP_NEAR_M) return 'desk';
+      }
+    }
     let best: Surface | null = null;
     let bd = SWAP_NEAR_M;
     for (const s of this.surfaces) {
@@ -468,10 +502,40 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     return best;
   };
-  private swapStarted = (s: Surface): void => {
-    this.overlays.get(s)?.sweep();
+  private swapStarted = (s: Surface | 'desk'): void => {
+    if (s === 'desk') this.kit.keys.sweep();
+    else this.overlays.get(s)?.sweep();
     audio.tick();
   };
+
+  /** What the desk's bars play; pinch and hold them to change it (saved). */
+  private deskFamily: Family = 'keys';
+  private deskNamed = false;
+  private swapDesk(): void {
+    const order: Family[] = ['keys', ...NEIGHBOURS.keys];
+    this.deskFamily = order[(order.indexOf(this.deskFamily) + 1) % order.length];
+    if (this.deskFamily === 'keys') delete this.progress.desk;
+    else this.progress.desk = this.deskFamily;
+    saveProgress(this.progress);
+    this.kit.keys.recolor(FAMILIES[this.deskFamily].color);
+    this.kit.keys.reveal();
+    this.swapTold = true;
+    this.nameDesk();
+    // the new instrument introduces itself: its lowest bar, then a fifth up
+    const q = this.kit.keyZones[0];
+    if (q) {
+      audio.modal(this.deskFamily, q.midi, 0.6, 0, 0, 0.5, 'desk');
+      audio.modal(this.deskFamily, q.midi + 7, 0.45, 0, audio.now() + 0.22, 0.5, 'desk');
+    }
+  }
+  private nameDesk(): void {
+    this.deskNamed = true;
+    if (this.settings.noWords) return;
+    const q = this.kit.keyZones[3];
+    this.tmp.set(q ? q.x : 0, 0.07, q ? -q.z : -0.16);
+    this.kit.root.localToWorld(this.tmp);
+    this.tag.show(`Table · ${FAMILIES[this.deskFamily].name}`, FAMILIES[this.deskFamily].color, this.tmp, this.head);
+  }
 
   /** The surface plays the next instrument that suits it; the room map and the saved room follow. */
   private swap(s: Surface): void {
@@ -481,6 +545,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const to = nextSwap(s.natural, from);
     if (to === from) return;
     s.as = to === s.natural ? null : to;
+    s.auto = null;
     s.setFeatures(s.features);
     tuneStrike(s);
     this.hitAt.x = s.anchor.x;
@@ -501,12 +566,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** Once, when swaps unlock: say how, at a found instrument in reach. */
   private tellSwaps(): void {
     if (this.swapTold || this.settings.noWords) return;
-    const s = this.surfaces.filter((x) => x.discovered && swappable(x)).sort((a, b) => a.reach - b.reach)[0];
-    if (!s) return;
+    // the nearest found instrument within a seated reach, else the desk's bars (always there)
+    const s = this.surfaces.filter((x) => x.discovered && swappable(x) && x.reach <= SEATED_M).sort((a, b) => a.reach - b.reach)[0];
     this.swapTold = true;
-    this.tmp.set(s.anchor.x, 0.06, -s.anchor.z).applyMatrix4(s.world);
-    this.tmp.y = Math.min(this.tmp.y, this.head.y);
-    this.tag.show(`Pinch and hold the ${surfaceName(s).toLowerCase()} to change its sound`, FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
+    if (s) {
+      this.tmp.set(s.anchor.x, 0.06, -s.anchor.z).applyMatrix4(s.world);
+      this.tmp.y = Math.min(this.tmp.y, this.head.y);
+      this.tag.show(`${surfaceName(s)}: pinch and hold to swap`, FAMILIES[s.voice!.family].color, this.tmp, this.head, 6);
+      return;
+    }
+    if (!this.kit.keys.group.visible) return;
+    const q = this.kit.keyZones[3];
+    this.tmp.set(q ? q.x : 0, 0.07, q ? -q.z : -0.16).applyMatrix4(this.kit.root.matrixWorld);
+    this.tag.show('Bars: pinch and hold to swap', FAMILIES[this.deskFamily].color, this.tmp, this.head, 6);
+    this.kit.keys.sweep();
   }
 
   /** After the first song: if the room has instruments beyond a seated reach, say where. */
@@ -552,6 +625,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.debug.offsetMs = Math.round(s.offset * 1000);
     if (was.highContrast !== s.highContrast) {
       this.kit.setContrast(s.highContrast);
+      this.kit.keys.recolor(FAMILIES[this.deskFamily].color);
       for (const [surf, o] of this.overlays) o.build(surf.zones, s.highContrast);
     }
     if (was.oneHand !== s.oneHand || was.hand !== s.hand) this.layout();
@@ -580,8 +654,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (const s of this.surfaces) {
       s.discovered = false;
       // swaps are forgotten with everything else: each surface plays what it is again
-      if (s.as) {
+      if (s.as || s.auto) {
         s.as = null;
+        s.auto = null;
         s.setFeatures(s.features);
         tuneStrike(s);
       }
@@ -756,8 +831,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.kit.setHandShadow(i, 0, Infinity, 0);
         this.untracked[i] += delta;
       }
-      let best: Surface | null = null;
-      let bestStrike: Strike | null = null;
       this.sample.tracked = h.tracked;
       // a hand holding a pinch (to swap an instrument) is reaching, not hitting
       this.pinchHeld[i] = h.tracked && h.pinch.pinching ? this.pinchHeld[i] + delta : 0;
@@ -770,7 +843,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           // tracking lost: keep feeding the gap to the surfaces it was near (a late hit is still a hit), then let go
           if (s.near[i]) {
             s.detector.update(hand, NOT_TRACKED, t, delta);
-            if (this.untracked[i] > 0.2) {
+            if (this.untracked[i] > 0.3) {
               s.detector.forget(hand);
               s.near[i] = false;
             }
@@ -791,57 +864,84 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.fill(h, s);
         const strike = s.detector.update(hand, this.sample, t, delta);
         if (!strike) continue;
-        // the kit always wins a tie with a room surface over the same table
-        // the module's keys win over the table under them, the kit wins over a room surface over the same table
-        const rank = (x: Surface | null) => (x === this.moduleSurface ? 2 : x === this.kitSurface ? 1 : 0);
-        const better = !bestStrike || rank(s) > rank(best) || (rank(s) === rank(best) && Math.abs(strike.height) < Math.abs(bestStrike.height));
-        if (!better) continue;
-        best = s;
-        bestStrike = strike;
-        // where it landed: the middle of the points touching (palm and fingers within 1 cm of the lowest)
-        let sx = 0;
-        let sz = 0;
-        let n = 0;
-        const low = this.sample.points[strike.point];
-        const lowH = low.y - low.r;
-        for (const q of this.sample.points) {
-          if (q.y - q.r - lowH > 0.01) continue;
-          sx += q.x;
-          sz += q.z;
-          n++;
-        }
-        this.hitAt.x = sx / n;
-        this.hitAt.z = sz / n;
-        if (s === this.kitSurface) {
-          // which pad: kit-local points (zone z is −kit z)
-          for (let q = 0; q < this.sample.points.length; q++) {
-            const a = this.sample.points[q];
-            const b = this.padPts[q];
-            b.x = a.x;
-            b.y = a.y;
-            b.z = -a.z;
-            b.r = a.r;
+        this.cands.push(s);
+        this.candHits.push(strike);
+      }
+      // one slap is one hit, whichever surfaces it crossed: the same hand can't strike again for a latch.
+      // Candidates in order: the module's keys over the table, the kit over a room surface, then the closest contact.
+      if (this.cands.length && t - this.handLatch[i] >= (STRIKE_CFG.latchS ?? STRIKE.latchS)) {
+        for (let pass = 0; pass < this.cands.length; pass++) {
+          let bi = -1;
+          for (let c = 0; c < this.cands.length; c++) {
+            if (!this.cands[c]) continue;
+            if (bi < 0 || this.better(c, bi)) bi = c;
           }
-          const visible = this.visibleSpots();
-          const pi = pickPad(this.padPts, s.detector.surfaceY, strike.height, visible);
-          this.hitAt.pad = pi;
-          this.hitAt.lane = pi >= 0 ? visible[pi].lane : 'kick';
-        }
-      }
-      // one slap is one hit, whichever surfaces it crossed: the same hand can't strike again for a latch
-      if (best && bestStrike && t - this.handLatch[i] >= (STRIKE_CFG.latchS ?? STRIKE.latchS)) {
-        const target = this.preferInset(best);
-        // a hand passing through the wall's plane where a door or a window is set in (walking through a doorway,
-        // reaching for a handle) is not a hit on it: those only take a hand that stops
-        if (!(bestStrike.kind === 'cross' && target !== best && target.detector.stopOnly)) {
+          if (bi < 0) break;
+          const s = this.cands[bi]!;
+          const strike = this.candHits[bi];
+          this.cands[bi] = null;
+          this.aim(h, s, strike);
+          const target = this.preferInset(s);
+          // a hand passing through the wall's plane where a door or a window is set in (walking through a doorway,
+          // reaching for a handle) is not a hit on it: those only take a hand that stops
+          if (strike.kind === 'cross' && target !== s && target.detector.stopOnly) continue;
           this.handLatch[i] = t;
-          this.onHit(target, side, bestStrike);
+          this.onHit(target, side, strike);
           this.watchSink(i, target);
+          break;
         }
       }
+      this.cands.length = 0;
+      this.candHits.length = 0;
       this.trackSink(i, h);
     }
   }
+  private cands: (Surface | null)[] = [];
+  private candHits: Strike[] = [];
+  private rank(x: Surface): number {
+    return x === this.moduleSurface ? 2 : x === this.kitSurface ? 1 : 0;
+  }
+  private better(a: number, b: number): boolean {
+    const sa = this.cands[a]!;
+    const sb = this.cands[b]!;
+    const ra = this.rank(sa);
+    const rb = this.rank(sb);
+    return ra > rb || (ra === rb && Math.abs(this.candHits[a].height) < Math.abs(this.candHits[b].height));
+  }
+
+  /** Where a strike landed on a surface (zone coordinates, and the pad on the kit): the middle of the points touching. */
+  private aim(h: (typeof hands)['left'], s: Surface, strike: Strike): void {
+    this.fill(h, s);
+    let sx = 0;
+    let sz = 0;
+    let n = 0;
+    const low = this.sample.points[strike.point];
+    const lowH = low.y - low.r;
+    for (const q of this.sample.points) {
+      if (q.y - q.r - lowH > 0.01) continue;
+      sx += q.x;
+      sz += q.z;
+      n++;
+    }
+    this.hitAt.x = sx / n;
+    this.hitAt.z = sz / n;
+    if (s === this.kitSurface) {
+      // which pad: kit-local points (zone z is −kit z)
+      for (let q = 0; q < this.sample.points.length; q++) {
+        const a = this.sample.points[q];
+        const b = this.padPts[q];
+        b.x = a.x;
+        b.y = a.y;
+        b.z = -a.z;
+        b.r = a.r;
+      }
+      const visible = this.visibleSpots();
+      const pi = pickPad(this.padPts, s.detector.surfaceY, strike.height, visible);
+      this.hitAt.pad = pi;
+      this.hitAt.lane = pi >= 0 ? visible[pi].lane : 'kick';
+    }
+  }
+
   /**
    * A window or a door is set into its wall: the hand meets the wall's plane first, but a strike that
    * lands inside a smaller surface set into that one (nearly parallel, within 12 cm) belongs to it.
@@ -1002,7 +1102,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.lastWorld.set(zone.x, 0, -zone.z).applyMatrix4(s.world);
     // glass is for taps: a hard hit plays no louder than a gentle one
     const g0 = isGlass(s) ? Math.min(gain, 0.55) : gain;
-    audio.modal(s.voice.family, zone.midi, g0, this.panOf(this.lastWorld), 0, s.voice.size, s.id);
+    audio.modal(s.voice.family, zone.midi, g0, this.panOf(this.lastWorld), 0, s.voice.size, s.id, z);
     this.overlays.get(s)?.hit(z, gain);
     const grade = this.game.hit(`${s.id}:${z}`, t, gain);
     if (grade === 'perfect') {
@@ -1022,8 +1122,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (Math.abs(x - q.x) <= q.w / 2 + 0.012 && Math.abs(-kz - q.z) <= q.h / 2 + 0.014) {
           this.lastWorld.set(q.x, 0, -q.z);
           this.kit.root.localToWorld(this.lastWorld);
-          audio.modal('keys', q.midi, gain, this.panOf(this.lastWorld));
+          audio.modal(this.deskFamily, q.midi, gain, this.panOf(this.lastWorld), 0, 0.5, 'desk', i);
           this.kit.keys.hit(i, gain);
+          if (!this.deskNamed) this.nameDesk();
           const g = this.game.hit(`keys:${i}`, t, gain);
           if (g === 'perfect') {
             this.kit.keys.perfect(i);
@@ -1095,7 +1196,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const local = w.applyMatrix4(this.tmpM2.copy(a.group.matrixWorld).invert());
       // one entry per place: a surface found again as something else replaces its old entry
       const near = list.findIndex((x) => x.family !== 'kit' && Math.hypot(x.x - local.x, x.y - local.y, x.z - local.z) < 0.15);
-      const entry = { family: s.natural ?? s.voice.family, x: r4(local.x), y: r4(local.y), z: r4(local.z), ...(s.as ? { as: s.as } : {}) };
+      const plays = s.voice.family !== s.natural ? s.voice.family : null;
+      const entry = { family: s.natural ?? s.voice.family, x: r4(local.x), y: r4(local.y), z: r4(local.z), ...(plays ? { as: plays } : {}) };
       if (near >= 0) list[near] = entry;
       else list.push(entry);
     }
@@ -1147,6 +1249,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (s === this.kitSurface) {
       this.layout();
       this.kit.reveal(this.lanes());
+      this.kit.keys.recolor(FAMILIES[this.deskFamily].color);
       this.kitSheen?.group.removeFromParent();
       this.kitSheen = null;
     } else {
@@ -1272,6 +1375,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.surfaces.push(this.kitSurface, this.moduleSurface);
     for (const list of this.bySource.values()) for (const s of list) this.surfaces.push(s);
     for (const s of this.surfaces) if (!s.discovered && s.source !== 'module') this.restore(s);
+    this.orchestrate();
     this.updateReach();
     if (changed) this.rebuildSheens();
   }
@@ -1316,8 +1420,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.orphans.splice(k, 1);
       this.dropSurface(o);
       s.id = o.id;
-      if (o.as) {
-        s.as = o.as;
+      if (o.as || o.auto) {
+        s.as = o.as ?? o.auto;
         s.setFeatures(s.features);
         tuneStrike(s);
       }

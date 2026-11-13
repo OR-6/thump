@@ -53,6 +53,9 @@ function geos() {
   return { box: boxGeo!, ring: ringGeo!, disc: discGeo! };
 }
 
+/** Instruments drawn as bars, keys, strings or tubes (rectangles); the rest are drums and rings (discs). */
+const BARS = new Set<Family>(['marimba', 'xylophone', 'glock', 'harp', 'tubular', 'keys', 'slit']);
+
 export class Overlay {
   readonly group = new Group();
   private shapes: InstancedMesh;
@@ -80,8 +83,8 @@ export class Overlay {
     this.group.name = `Overlay-${family}`;
     // drawn in light on the real surface (adds to what you see; the real surface shows through)
     const solid = asLight(new MeshBasicMaterial({ transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false, side: DoubleSide }));
-    this.shapes = new InstancedMesh(family === 'marimba' || family === 'glock' || family === 'keys' ? g.box : g.ring, solid, max);
-    this.glow = new InstancedMesh(family === 'marimba' || family === 'glock' || family === 'keys' ? g.box : g.disc, asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })), max);
+    this.shapes = new InstancedMesh(BARS.has(family) ? g.box : g.ring, solid, max);
+    this.glow = new InstancedMesh(BARS.has(family) ? g.box : g.disc, asLight(new MeshBasicMaterial({ transparent: true, depthWrite: false, toneMapped: false, side: DoubleSide })), max);
     for (const m of [this.shapes, this.glow]) {
       m.frustumCulled = false;
       m.count = 0;
@@ -89,7 +92,7 @@ export class Overlay {
       this.group.add(m);
     }
     this.glow.renderOrder = 5;
-    const isBar = family === 'marimba' || family === 'glock' || family === 'keys';
+    const isBar = BARS.has(family);
     this.backing = new InstancedMesh(isBar ? g.box : g.disc, new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false, side: DoubleSide }), max);
     this.backing.renderOrder = 3;
     this.detail = new InstancedMesh(g.ring, new MeshBasicMaterial({ transparent: true, opacity: family === 'gong' ? 0.32 : 0.85, depthWrite: false, toneMapped: false, side: DoubleSide }), max * 4);
@@ -105,6 +108,11 @@ export class Overlay {
     this.flash = new Float32Array(max);
     this.shown = new Float32Array(max);
     this.base.setHex(FAMILIES[family].color);
+  }
+
+  /** Show it as another instrument's colour (the desk's bars after a swap). */
+  recolor(hex: number): void {
+    if (!this.hc) this.base.setHex(hex);
   }
 
   /** Lay the shapes out for `zones` (zone coordinates), hidden until revealed. */

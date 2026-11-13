@@ -121,6 +121,25 @@ for (const v of chosen.length ? chosen : vert.slice(0, 2)) {
     check('the swap is saved with the room', saved.some((x) => x.as === d?.family) || saved.length === 0, JSON.stringify(saved));
     check('the room map plays the new instrument', s.game.found.includes(d?.family), JSON.stringify(s.game.found));
     shot('room-03b-swap', target);
+    // seated (the airplane test): the desk's bars swap too
+    xr('set-transform', { device: 'headset', position: { x: 0, y: 1.2, z: 0 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });
+    const e3 = s.targets.edge3;
+    xr('set-transform', { device: HAND, position: { x: P[0], y: P[1], z: P[2] }, orientation: FLAT });
+    xr('set-select-value', { device: HAND, value: 1 });
+    await wait(400);
+    const pp2 = state().right.pinchPoint;
+    xr('set-select-value', { device: HAND, value: 0 });
+    await wait(300);
+    const o2 = [pp2[0] - P[0], pp2[1] - P[1], pp2[2] - P[2]];
+    xr('set-transform', { device: HAND, position: { x: e3[0] - o2[0], y: e3[1] + 0.02 - o2[1], z: e3[2] - o2[2] }, orientation: FLAT });
+    await wait(300);
+    xr('set-select-value', { device: HAND, value: 1 });
+    await wait(1300);
+    xr('set-select-value', { device: HAND, value: 0 });
+    await wait(300);
+    xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
+    s = state();
+    check('seated: pinch and hold the desk bars swaps them (saved)', !!s.progress.desk, `desk=${s.progress.desk} tag=${s.debug.tag}`);
   }
 }
 xr('set-transform', { device: 'headset', position: { x: 0, y: 1.2, z: 0 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });

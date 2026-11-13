@@ -37,6 +37,8 @@ export class Surface {
   natural: Family | null = null;
   /** The player swapped it to this instrument (null: it plays what it is). */
   as: Family | null = null;
+  /** The room gave it this instrument so that it doesn't repeat its neighbour's (null: what it is). */
+  auto: Family | null = null;
   zones: Zone[] = [];
   discovered = false;
   /** Where its zones are centred (zone coordinates); set by the first hit. */
@@ -98,7 +100,11 @@ export class Surface {
     this.natural = v?.family ?? null;
     // a swap holds while it still suits what the surface is (a re-measured surface may drop it)
     if (v && this.as && this.as !== v.family && swapsFor(v.family).includes(this.as)) this.voice = { ...v, family: this.as, why: `swapped from ${v.family}` };
-    else this.as = null;
+    else {
+      this.as = null;
+      if (v && this.auto && this.auto !== v.family && swapsFor(v.family).includes(this.auto)) this.voice = { ...v, family: this.auto, why: `${v.why}; another ${v.family} nearby` };
+      else this.auto = null;
+    }
   }
 
   /** Lay its zones out around `anchor` (zone coordinates), in key `keyPc`. */

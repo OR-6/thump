@@ -115,15 +115,15 @@ describe('swaps', () => {
     expect(seen.size).toBe(swapsFor('marimba').length);
   });
   it('the kit never swaps', () => expect(swapsFor('kit')).toEqual(['kit']));
-  it('a wall swapped to a tongue drum keeps it when re-measured, and drops a swap that no longer suits it', () => {
+  it('a wall swapped to a timpani keeps it when re-measured, and drops a swap that no longer suits it', () => {
     const s = new Surface('p1', 'plane', 'wall');
     s.setFeatures(f({ width: 1.2, length: 1.2 }));
     expect(s.natural).toBe('gong');
-    s.as = 'tongue';
+    s.as = 'timpani';
     s.setFeatures(s.features);
-    expect(s.voice?.family).toBe('tongue');
+    expect(s.voice?.family).toBe('timpani');
     expect(s.natural).toBe('gong');
-    // it turns out soft: a shaker can't be a tongue drum, so it plays what it is
+    // it turns out soft: a shaker can't be a timpani, so it plays what it is
     s.setFeatures({ ...s.features, soft: 0.9 });
     expect(s.voice?.family).toBe('shaker');
     expect(s.as).toBeNull();
@@ -150,5 +150,24 @@ describe('tuning in the headset', async () => {
     expect(log.readout(item('minSpeed'), 72, 0)).toContain('softest 0.50');
     expect(log.readout(item('minDecel'), 72, 0)).toContain('1 of 3 stops');
     expect(log.readout(item('offset'), 72, 20)).toBe('Learned +20 ms · 72 fps');
+  });
+});
+
+describe('the room orchestrates itself', async () => {
+  const { orchestrate } = await import('../src/room/classify.js');
+  it('three walls: a gong, a timpani, a frame drum (biggest first); two doors: a marimba and a xylophone', () => {
+    const m = orchestrate([
+      { id: 'w2', natural: 'gong', area: 6 },
+      { id: 'w1', natural: 'gong', area: 9 },
+      { id: 'w3', natural: 'gong', area: 4 },
+      { id: 'd1', natural: 'marimba', area: 1.8 },
+      { id: 'd2', natural: 'marimba', area: 1.6 },
+    ]);
+    expect([m.get('w1'), m.get('w2'), m.get('w3')]).toEqual(['gong', 'timpani', 'frame']);
+    expect([m.get('d1'), m.get('d2')]).toEqual(['marimba', 'xylophone']);
+  });
+  it('what you already found is taken into account', () => {
+    const m = orchestrate([{ id: 'w', natural: 'gong', area: 5 }], ['gong']);
+    expect(m.get('w')).toBe('timpani');
   });
 });

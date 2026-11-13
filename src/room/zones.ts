@@ -46,12 +46,20 @@ export function registerBase(family: Family, size: number): number {
       return 55 - Math.round(s * 7); // a big door goes down to G2..C3
     case 'glock':
       return 79 - Math.round(s * 5);
+    case 'xylophone':
+      return 72 - Math.round(s * 5);
+    case 'harp':
+      return 60 - Math.round(s * 7);
+    case 'tubular':
+      return 67 - Math.round(s * 7);
+    case 'timpani':
+      return 50 - Math.round(s * 7);
     case 'tongue':
       return 62 - Math.round(s * 7);
     case 'bowl':
       return 67 - Math.round(s * 10);
     case 'bell':
-      return 84 - Math.round(s * 12);
+      return 79 - Math.round(s * 9);
     case 'gong':
       return 43 - Math.round(s * 9);
     case 'keys':
@@ -80,6 +88,7 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
     z: clampSpan(cz, h, b.minZ, b.maxZ),
   });
   switch (family) {
+    case 'xylophone':
     case 'marimba': {
       // 8 bars stacked up the surface, low at the bottom; higher bars a little shorter, like a real marimba
       // bars at least a hand apart (palm to fingertip lands ~9 cm along a door)
@@ -92,6 +101,56 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
       for (let i = 0; i < n; i++) {
         const w = maxW * (1 - (i / (n - 1)) * 0.3);
         out.push({ i, shape: 'rect', x: c.x, z: c.z - room / 2 + step * (i + 0.5), w, h: barH, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
+      }
+      break;
+    }
+    case 'harp': {
+      // 8 strings across, low on the left, longer at the bass end; a string is drawn thin but plays a hand wide
+      const n = 8;
+      const room = Math.max(0.5, Math.min(0.66, b.maxX - b.minX - 0.04));
+      const step = room / n;
+      const maxH = Math.max(0.2, Math.min(0.42, b.maxZ - b.minZ - 0.04));
+      const c = fit(anchor.x, anchor.z, room, maxH);
+      for (let i = 0; i < n; i++) {
+        const h = maxH * (1 - (i / (n - 1)) * 0.45);
+        out.push({ i, shape: 'rect', x: c.x - room / 2 + step * (i + 0.5), z: c.z - (maxH - h) / 2, w: Math.min(0.014, step * 0.25), h, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
+      }
+      break;
+    }
+    case 'tubular': {
+      // 6 hanging tubes across, longer for the low ones, tops level
+      const n = 6;
+      const room = Math.max(0.42, Math.min(0.56, b.maxX - b.minX - 0.04));
+      const step = room / n;
+      const maxH = Math.max(0.24, Math.min(0.5, b.maxZ - b.minZ - 0.04));
+      const c = fit(anchor.x, anchor.z, room, maxH);
+      for (let i = 0; i < n; i++) {
+        const h = maxH * (1 - (i / (n - 1)) * 0.4);
+        out.push({ i, shape: 'rect', x: c.x - room / 2 + step * (i + 0.5), z: c.z + (maxH - h) / 2, w: Math.min(0.045, step * 0.55), h, degree: d0 + i, midi: degreeMidi(root, d0 + i) });
+      }
+      break;
+    }
+    case 'timpani': {
+      // two kettles side by side: the low one on the left, a fifth above on the right
+      const r = 0.11 + 0.05 * Math.min(1, Math.max(0, size));
+      const c = fit(anchor.x, anchor.z, r * 4.4, r * 2);
+      for (let i = 0; i < 2; i++) out.push({ i, shape: 'disc', x: c.x + (i ? 1.1 : -1.1) * r, z: c.z, w: i ? r * 0.88 : r, h: 0, degree: d0 + i * 3, midi: degreeMidi(root, d0 + i * 3) });
+      break;
+    }
+    case 'congas':
+    case 'frame':
+    case 'cajon':
+    case 'slit': {
+      // a set of drums: low to high, left to right (a cajón: its bass in the middle, its slap at the top edge)
+      const n = family === 'congas' ? 3 : 2;
+      const r = family === 'congas' ? 0.075 : family === 'frame' ? 0.11 : 0.085;
+      const c = fit(anchor.x, anchor.z, family === 'cajon' ? r * 2 : r * 2.2 * n, family === 'cajon' ? r * 4.4 : r * 2);
+      for (let i = 0; i < n; i++) {
+        const k = i - (n - 1) / 2;
+        const rr = r * (1 - i * 0.12);
+        if (family === 'slit') out.push({ i, shape: 'rect', x: c.x + k * r * 2.3, z: c.z, w: r * 1.6, h: r * 0.9, degree: -1, midi: degreeMidi(root, d0) });
+        else if (family === 'cajon') out.push({ i, shape: 'disc', x: c.x, z: c.z + k * r * 2.2, w: rr, h: 0, degree: -1, midi: degreeMidi(root, d0) });
+        else out.push({ i, shape: 'disc', x: c.x + k * r * 2.2, z: c.z, w: rr, h: 0, degree: -1, midi: degreeMidi(root, d0) });
       }
       break;
     }
@@ -111,11 +170,12 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
       break;
     }
     case 'tongue':
-    case 'bowl': {
-      // tongues (or notes round a bowl's rim) in a ring, low at the bottom going round clockwise
-      const n = family === 'tongue' ? 5 : 6;
-      const ring = family === 'tongue' ? 0.075 : 0.085;
-      const r = family === 'tongue' ? 0.033 : 0.03;
+    case 'bowl':
+    case 'bell': {
+      // tongues (or notes round a bowl's rim, or a cluster of chimes) in a ring, low at the bottom going round clockwise
+      const n = family === 'tongue' ? 5 : family === 'bell' ? 5 : 6;
+      const ring = family === 'tongue' ? 0.075 : family === 'bell' ? 0.065 : 0.085;
+      const r = family === 'tongue' ? 0.033 : family === 'bell' ? 0.026 : 0.03;
       const c = fit(anchor.x, anchor.z, (ring + r) * 2, (ring + r) * 2);
       for (let i = 0; i < n; i++) {
         const a = -Math.PI / 2 - (i / n) * Math.PI * 2;
@@ -133,16 +193,13 @@ export function zonesFor(family: Family, b: Bounds, anchor: { x: number; z: numb
       break;
     }
     case 'gong': {
-      const r = 0.12 + 0.12 * Math.min(1, Math.max(0, size));
+      const r = 0.2 + 0.16 * Math.min(1, Math.max(0, size));
       const c = fit(anchor.x, anchor.z, r * 2, r * 2);
       out.push({ i: 0, shape: 'disc', x: c.x, z: c.z, w: r, h: 0, degree: -1, midi: degreeMidi(root, d0) });
       break;
     }
-    case 'bell':
-      out.push({ i: 0, shape: 'disc', x: anchor.x, z: anchor.z, w: 0.05, h: 0, degree: d0, midi: degreeMidi(root, d0) });
-      break;
     default: {
-      const r = family === 'stomp' ? 0.22 : family === 'shaker' ? 0.14 : 0.08;
+      const r = family === 'stomp' ? 0.22 : family === 'shaker' || family === 'tambourine' ? 0.12 : family === 'triangle' ? 0.07 : 0.08;
       const c = fit(anchor.x, anchor.z, r * 2, r * 2);
       out.push({ i: 0, shape: 'disc', x: c.x, z: c.z, w: r, h: 0, degree: -1, midi: degreeMidi(root, d0) });
     }

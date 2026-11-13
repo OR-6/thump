@@ -385,6 +385,71 @@ export function icon(g: CanvasRenderingContext2D, f: Family | null, x: number, y
     case 'block':
       g.rect(-r, -r * 0.5, r * 2, r);
       break;
+    case 'timpani':
+      g.moveTo(-r, -r * 0.3);
+      g.quadraticCurveTo(-r * 0.9, r, 0, r);
+      g.quadraticCurveTo(r * 0.9, r, r, -r * 0.3);
+      g.closePath();
+      break;
+    case 'frame':
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      g.moveTo(r * 0.12, 0);
+      g.arc(0, 0, r * 0.12, 0, Math.PI * 2);
+      break;
+    case 'xylophone':
+      for (let i = 0; i < 5; i++) {
+        const w = r * (1 - i * 0.15);
+        g.moveTo(-w, r - i * r * 0.5);
+        g.lineTo(w, r - i * r * 0.5);
+      }
+      break;
+    case 'harp':
+      g.moveTo(-r * 0.8, r);
+      g.lineTo(-r * 0.8, -r);
+      g.quadraticCurveTo(r * 0.2, -r * 0.4, r * 0.8, -r * 0.9);
+      g.lineTo(-r * 0.8, r);
+      for (let i = 1; i < 4; i++) {
+        const x = -r * 0.8 + i * r * 0.4;
+        g.moveTo(x, -r * 0.7 + i * r * 0.05);
+        g.lineTo(x, r - i * r * 0.5);
+      }
+      break;
+    case 'tubular':
+      for (let i = 0; i < 4; i++) {
+        const x = -r * 0.75 + i * r * 0.5;
+        g.moveTo(x, -r);
+        g.lineTo(x, r - i * r * 0.3);
+      }
+      break;
+    case 'slit':
+      g.rect(-r, -r * 0.55, r * 2, r * 1.1);
+      g.moveTo(-r * 0.6, 0);
+      g.lineTo(r * 0.6, 0);
+      break;
+    case 'triangle':
+      g.moveTo(0, -r);
+      g.lineTo(r * 0.9, r * 0.75);
+      g.lineTo(-r * 0.9, r * 0.75);
+      g.closePath();
+      break;
+    case 'congas':
+      g.ellipse(-r * 0.45, 0, r * 0.4, r, 0, 0, Math.PI * 2);
+      g.moveTo(r * 0.85, 0);
+      g.ellipse(r * 0.45, r * 0.1, r * 0.4, r * 0.9, 0, 0, Math.PI * 2);
+      break;
+    case 'cajon':
+      g.rect(-r * 0.7, -r, r * 1.4, r * 2);
+      g.moveTo(r * 0.3, -r * 0.3);
+      g.arc(0, -r * 0.3, r * 0.3, 0, Math.PI * 2);
+      break;
+    case 'tambourine':
+      g.arc(0, 0, r, 0, Math.PI * 2);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        g.moveTo(Math.cos(a) * r * 0.75 + 3, Math.sin(a) * r * 0.75);
+        g.arc(Math.cos(a) * r * 0.75, Math.sin(a) * r * 0.75, 3, 0, Math.PI * 2);
+      }
+      break;
     case 'stomp':
       g.moveTo(-r, r);
       g.lineTo(r, r);

@@ -61,7 +61,7 @@ Melodic zones sit around the spot of the first hit (it was in reach), clamped in
 
 ### 3.4 Sounds (P0)
 
-A **modal voice** per family: decaying partials (ratios, amplitudes, decays) excited by a short filtered noise burst, brighter and louder with speed, lower and longer on bigger surfaces. Presets: marimba (wooden, 4 partials, 0.4 s), glockenspiel (bright, inharmonic, 1.5 s), gong (dense, beating, 3 s), tongue drum (hollow formant), bowl (beating pairs, 4 s), bell, block, shaker (filtered noise), stomp. The kit keeps synthesised drums with harmonics that carry on Quest's speakers. No compressor in the hit path; a soft-clip limiter. No AI-generated audio.
+**Recorded instruments** (CC0, Versilian Community Sample Library): twenty families, 172 clips, two or three loudness layers each, re-pitched to the note (the nearest recorded note is never more than a few semitones away), per-hit variation (±6 cents, ±1 dB) and a darker tone for softer hits. Same-kind surfaces are orchestrated (`orchestrate()`): the biggest wall a gong, the next timpani, then a frame drum, tubular bells, a bass drum. The modal synthesiser (decaying partials struck by a noise burst) plays while clips load. A 1.9 s room reverb; a soft limiter with 12 dB of headroom. No AI-generated audio.
 
 ### 3.5 Discover (P0)
 

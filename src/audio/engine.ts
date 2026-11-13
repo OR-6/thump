@@ -14,6 +14,7 @@ import type { Lane } from '../config.js';
 import type { BedEvent } from '../songs/chart.js';
 import type { Family } from '../room/classify.js';
 import { MODAL } from './modal.js';
+import { Sampler } from './sampler.js';
 
 export type Voice = Lane | 'knock' | 'rim' | 'clap' | 'block' | 'bell';
 
@@ -32,6 +33,8 @@ class Engine {
   bedOn = true;
   /** Hits played (debug/E2E): per voice, and the last one's gain. */
   readonly played: Record<string, number> = {};
+  /** Recorded instruments (CC0), used once loaded; the synthesised voices stand in until then. */
+  readonly sampler = new Sampler();
   lastGain = 0;
   lastVoice = '';
   /** Audio time of the last drum hit played (debug: hit-to-sound is this minus the frame's hit time). */
@@ -102,6 +105,7 @@ class Engine {
     this.send.gain.value = 0.16;
     this.send.connect(conv).connect(this.master);
     this.bedBus.connect(this.send);
+    this.sampler.load(ctx);
     const len = ctx.sampleRate;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -168,6 +172,22 @@ class Engine {
     this.lastVoice = voice;
     this.lastAt = t;
     const big = Math.max(1, size);
+    const key = `kit:${voice}`;
+    if (this.sampler.has(key)) {
+      // a big surface's drum (a wall) is a little lower and roomier
+      this.playSample(ctx, key, null, v, 0, Math.min(1, (big - 1) / 2) * 0.6 + 0.5, pan, voice === 'hat' ? 0.25 : 0.45, DRUM_LEVEL[voice] ?? 0.8, t, '');
+      // the cajon's bass tone gets a sub underneath: a kick you feel
+      if (voice !== 'kick') return;
+      const o = ctx.createOscillator();
+      o.frequency.setValueAtTime(90 / Math.sqrt(big), t);
+      o.frequency.exponentialRampToValueAtTime(45 / Math.sqrt(big), t + 0.08);
+      const g = this.out(ctx, this.drums, pan, 0, t, 1);
+      this.env(g.gain, t, 0.55 * v, 0.003, 0.22);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.35);
+      return;
+    }
     switch (voice) {
       case 'kick': {
         const o = ctx.createOscillator();
@@ -393,10 +413,23 @@ class Engine {
    * A tuned instrument from the room (DESIGN.md §3.4): `midi` its note, `vel` 0..1, `size` 0..1 the surface's
    * size within its family (bigger: lower partial decay, longer ring).
    */
-  modal(family: Family, midi: number, vel: number, pan = 0, when = 0, size = 0.5, owner = ''): void {
+  modal(family: Family, midi: number, vel: number, pan = 0, when = 0, size = 0.5, owner = '', tone = 0): void {
+    const sctx = this.ready();
+    if (sctx && this.sampler.has(family)) {
+      const t = Math.max(sctx.currentTime, when || sctx.currentTime);
+      const v = Math.max(0.05, Math.min(1, vel));
+      this.played[family] = (this.played[family] ?? 0) + 1;
+      this.lastGain = v;
+      this.lastVoice = family;
+      this.lastAt = t;
+      const pitched = !UNPITCHED.has(family);
+      const wet = MODAL[family]?.wet ?? MODAL[ALIAS[family] ?? 'marimba']?.wet ?? 1;
+      this.playSample(sctx, family, pitched ? midi : null, v, tone, size, pan, wet, FAMILY_LEVEL[family] ?? 0.7, t, owner || family);
+      return;
+    }
     if (family === 'stomp') return this.stomp(vel, pan, when);
-    if (family === 'shaker') return this.shake(vel, pan, when, size);
-    const pre = MODAL[family];
+    if (family === 'shaker' || family === 'tambourine') return this.shake(vel, pan, when, size);
+    const pre = MODAL[family] ?? MODAL[ALIAS[family] ?? 'marimba'];
     const ctx = this.ready();
     if (!pre || !ctx) return;
     const t = Math.max(ctx.currentTime, when || ctx.currentTime);
@@ -463,9 +496,28 @@ class Engine {
     this.claimVoice(owner || family, g, t, end, oscs);
   }
 
+  /** A recorded clip: on its note, louder and brighter with the hit (soft hits are darker), through the room. */
+  private playSample(ctx: AudioContext, key: string, midi: number | null, v: number, tone: number, size: number, pan: number, wet: number, level: number, t: number, owner: string): void {
+    const c = this.sampler.pick(key, { midi, vel: v, tone, size });
+    if (!c) return;
+    const src = ctx.createBufferSource();
+    src.buffer = c.buffer;
+    src.playbackRate.value = c.rate * Math.pow(2, ((Math.random() - 0.5) * 8) / 1200);
+    const g = this.out(ctx, this.drums, pan, wet, t, level * (0.12 + 0.88 * v));
+    // a soft hit is darker as well as quieter (the recordings have 2–3 layers; this fills between them)
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2500 + 15000 * v * v;
+    src.connect(lp).connect(g);
+    src.start(t);
+    const end = t + c.buffer.duration / c.rate;
+    src.stop(end + 0.02);
+    if (owner) this.claimVoice(owner, g, t, end, [src]);
+  }
+
   /** Ringing voices (gongs, bowls): at most 3 per surface and 24 in all; the oldest fades out to make room. */
-  private voices: { owner: string; g: GainNode; end: number; oscs: OscillatorNode[] | null }[] = [];
-  private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: OscillatorNode[] | null = null): void {
+  private voices: { owner: string; g: GainNode; end: number; oscs: AudioScheduledSourceNode[] | null }[] = [];
+  private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: AudioScheduledSourceNode[] | null = null): void {
     const ctx = this.ctx!;
     const now = ctx.currentTime;
     for (let i = this.voices.length - 1; i >= 0; i--) if (this.voices[i].end < now) this.voices.splice(i, 1);
@@ -794,6 +846,17 @@ class Engine {
     n.connect(bp).connect(g);
   }
 }
+
+/** Families whose clips aren't on a note (they shift with the surface's size instead). */
+const UNPITCHED = new Set<string>(['gong', 'shaker', 'stomp', 'block', 'congas', 'cajon', 'frame', 'slit', 'triangle', 'tambourine']);
+/** A synthesised stand-in for families without their own preset. */
+const ALIAS: Partial<Record<string, Family>> = { xylophone: 'marimba', harp: 'keys', tubular: 'bell', timpani: 'gong', frame: 'gong', congas: 'tongue', cajon: 'tongue', slit: 'tongue', triangle: 'glock', tambourine: 'shaker' };
+/** Recorded clips are peak-normalised: these set each family's place in the mix. */
+const FAMILY_LEVEL: Partial<Record<string, number>> = {
+  marimba: 0.75, keys: 0.7, xylophone: 0.6, glock: 0.42, harp: 0.7, tongue: 0.7, bowl: 0.55, bell: 0.5, tubular: 0.5,
+  gong: 0.8, timpani: 0.85, frame: 0.8, congas: 0.75, cajon: 0.8, slit: 0.75, block: 0.6, triangle: 0.4, tambourine: 0.55, shaker: 0.5, stomp: 0.9,
+};
+const DRUM_LEVEL: Partial<Record<string, number>> = { kick: 0.95, snare: 0.75, hat: 0.45, tom: 0.75, rim: 0.6 };
 
 /** The shaper's input −1..1 stands for −CLIP_RANGE..CLIP_RANGE. */
 const CLIP_RANGE = 4;
