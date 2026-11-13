@@ -53,6 +53,17 @@ export interface Display {
   keyLabels: string[] | null;
   /** Keys not unlocked yet (drawn dim). */
   locked: ModuleKey[];
+  /** The panel's screen: choosing (free play, songs), playing a song or building, the results, or a page. */
+  screen?: 'home' | 'song' | 'results' | 'page';
+  /** What each of the five buttons says ('' and it's off). */
+  keys?: string[];
+  /** The song card on the home screen. */
+  songCard?: { name: string; meta: string; pos: string; stars: number } | null;
+  /** The instrument that's out and its settings line. */
+  inst?: { id: string; name: string; detail: string } | null;
+  /** How far through the song (0..1), and the run of notes hit in a row. */
+  progress?: number;
+  combo?: number;
 }
 
 const INK = '#f2efe6';
@@ -354,7 +365,7 @@ function drawKey(c: HTMLCanvasElement, k: ModuleKey, label: string | null, locke
   }
 }
 
-function star(g: CanvasRenderingContext2D, x: number, y: number, r: number, filled: boolean, gold = false): void {
+export function star(g: CanvasRenderingContext2D, x: number, y: number, r: number, filled: boolean, gold = false): void {
   g.beginPath();
   for (let i = 0; i < 10; i++) {
     const a = -Math.PI / 2 + (i * Math.PI) / 5;

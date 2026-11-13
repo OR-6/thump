@@ -91,9 +91,7 @@ shot('room-02-kit', look);
   // ▶ on the module: the mug's next sound
   const next = s.targets['key-next'];
   const nx = [next[0], next[1], next[2]];
-  xr('set-transform', { device: HAND, position: { x: nx[0], y: nx[1] + 0.06, z: nx[2] }, orientation: FLAT });
-  await wait(300);
-  await slapAt(nx, [0, 1, 0], { speed: 0.6, from: 0.05 });
+  await slapAt(nx, s.targets.panelNormal, { speed: 0.5, from: 0.05 });
   s = state();
   pads = s.debug.surfaces.filter((x) => x.id.startsWith('t'));
   check('▶ changes the mug to the next sound in the bank', pads.length === 1 && pads[0]?.sound && !/^(bell|chime)$/.test(pads[0].sound), `${pads.map((p) => p.sound)} display=${s.game.display.line}`);
@@ -202,7 +200,7 @@ shot('room-04-module', look);
 
 // tap PLAY on the module: a song starts (Kick Start, as written), the band in, your part on the drums
 const play = s.targets['key-play'];
-await slapAt(play, [0, 1, 0], { speed: 0.6, from: 0.05 });
+await slapAt(play, s.targets.panelNormal, { speed: 0.5, from: 0.05 });
 s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 3000);
 check('PLAY on the module plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && /Kick Start/.test(s.game.display.line), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
 s = await until((x) => x.game.motes > 0, 8000);

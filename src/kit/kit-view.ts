@@ -6,7 +6,7 @@
 import { DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture } from '@iwsdk/core';
 import { LANES, PADS, type Lane } from '../config.js';
 import { PadView } from './pad-view.js';
-import { Module } from '../ui/module.js';
+import { Panel } from '../ui/panel.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
 import { BoxGeometry, MeshStandardMaterial as BarMaterial } from '@iwsdk/core';
@@ -38,7 +38,8 @@ export class KitView {
   readonly pads = new Map<Lane, PadView>();
   /** The pads together (put away while another instrument is on the desk). */
   private readonly padRoot = new Group();
-  readonly module = new Module();
+  /** The game's screen, floating over the back of the desk (it was a box on the desk). */
+  readonly module = new Panel();
   readonly keys = new Overlay('keys', 8);
   keyZones: Zone[] = [];
   /** The instrument on the desk, and the shelf's other instruments (each its own light on the table). */

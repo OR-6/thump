@@ -19,7 +19,7 @@ export const STAND = { x: 0.178, z: -0.215, tile: 0.03, gap: 0.004, cols: 3 } as
 type Draw = (g: CanvasRenderingContext2D, S: number) => void;
 
 /** Simple drawings, in ink, of each instrument. */
-const ICON: Record<string, Draw> = {
+export const ICON: Record<string, Draw> = {
   drums: (g, S) => {
     g.beginPath();
     g.ellipse(S * 0.5, S * 0.42, S * 0.3, S * 0.12, 0, 0, Math.PI * 2);

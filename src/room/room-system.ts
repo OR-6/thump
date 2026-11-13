@@ -41,7 +41,8 @@ import { speedToGain, type HandSample, type Point, type Strike } from '../kit/st
 import { kitLayout, pickPad, type PadSpot } from '../kit/layout.js';
 import { KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
 import { LED } from '../kit/pad-view.js';
-import { MODULE, Module, KEYS, type ModuleKey } from '../ui/module.js';
+import { KEYS, type ModuleKey } from '../ui/module.js';
+import { GEAR, PANEL, SPOTS, spotZone } from '../ui/panel.js';
 import { Tag, DebugBoard } from '../ui/tag.js';
 import { audio, type Voice } from '../audio/engine.js';
 import { loadProgress, saveProgress, freshProgress, type Progress, type SavedPad } from '../persistence/progress.js';
@@ -222,7 +223,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     // the kit's table and the module's keys are surfaces like any other
     this.kitSurface = new Surface('kit', 'kit', 'table', STRIKE_CFG);
-    this.moduleSurface = new Surface('module', 'module', 'module', STRIKE_CFG);
+    // the panel takes a poke: a fingertip moving into it at a gentle speed, passing through or stopping
+    this.moduleSurface = new Surface('module', 'module', 'module', { ...STRIKE_CFG, minSpeed: 0.16, minDecel: 6 });
     this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset, debug: DEBUG });
     this.debug = {
       phase: 'waiting', deskY: null, deskSource: null, kitOrigin: null, anchored: false, resumed: false, hits: 0, lastHit: null, surfaces: [],
@@ -628,12 +630,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private updateMallets(): void {
     const m = this.kit.module.root;
     m.updateMatrixWorld();
-    // crossed at rest on the back of the module, behind the display, clear of the keys
-    this.malletL.set(-0.01, MODULE.h + 0.006, -0.058);
-    this.malletR.set(0.01, MODULE.h + 0.012, -0.058);
-    m.localToWorld(this.malletL);
-    m.localToWorld(this.malletR);
-    this.malletDir.set(1, 0, 0).transformDirection(m.matrixWorld);
+    // crossed at rest on the desk under the panel, behind the instrument
+    const k = this.kit.root;
+    k.updateMatrixWorld();
+    void m;
+    this.malletL.set(-0.01, 0.006, -0.18);
+    this.malletR.set(0.01, 0.012, -0.18);
+    k.localToWorld(this.malletL);
+    k.localToWorld(this.malletR);
+    this.malletDir.set(1, 0, 0).transformDirection(k.matrixWorld);
     // only around a jam: a song or the settings page has the table to itself
     const mode = this.game.mode;
     if (mode === 'jam') this.malletsUntil = this.clock.t + 2.5;
@@ -979,7 +984,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.tag.update(dt);
     this.hint.update(dt);
     this.stand.update(dt);
-    if (!this.stand.root.visible && this.placement.phase === 'placed') this.refreshStand();
+    if (!this.standShown && this.placement.phase === 'placed') this.refreshStand();
     if (this.placement.phase !== 'placed') {
       if (!immersive) return;
       this.sessionTime += dt;
@@ -990,8 +995,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // the anchor may nudge the kit: its surfaces follow
     this.kitSurface.world.copy(this.kit.root.matrixWorld);
     this.kitSurface.inv.copy(this.kitSurface.world).invert();
-    this.kit.module.root.updateMatrixWorld();
-    this.moduleSurface.world.copy(this.kit.module.root.matrixWorld).multiply(this.modLift);
+    this.kit.module.frame.updateMatrixWorld(true);
+    this.moduleSurface.world.copy(this.kit.module.frame.matrixWorld);
     this.moduleSurface.inv.copy(this.moduleSurface.world).invert();
     // the room's surfaces come and go as Quest finds them
     this.surfT -= dt;
@@ -1368,7 +1373,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   private o = { x: 0, y: 0, z: 0 };
   private tmpM = new Matrix4();
-  private modLift = new Matrix4().makeTranslation(0, MODULE.h + 0.008, 0);
   private spotBuf: PadSpot[] = [];
 
   private visibleSpots(): PadSpot[] {
@@ -1412,12 +1416,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (this.hitTimes.length > 64) this.hitTimes.splice(0, 32);
     if (s === this.moduleSurface) {
       const k = zoneAt(s.zones, this.hitAt.x, this.hitAt.z);
-      if (k >= 0) {
-        this.kit.module.pressKey(k);
-        audio.tick();
-        this.game.key(KEYS[k]);
-        this.record(s, k, gain, st, null);
-      }
+      if (k >= 0) this.pressPanel(k);
+      if (k >= 0) this.record(s, k, gain, st, null);
       return;
     }
     if (!s.discovered) this.discover(s);
@@ -2048,20 +2048,38 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private pinchWas = [false, false];
   /** The stand shows what's on the shelf, lit for the one that's out. */
   private refreshStand(): void {
-    this.stand.set(SHELF.map((d) => ({ id: d.id, name: d.name, color: d.color })), this.kit.inst);
-    this.stand.root.visible = this.placement.phase === 'placed';
+    // (the instruments are tabs on the panel now; the rack stays put away)
+    this.kit.module.setTabs(SHELF.map((d) => ({ id: d.id, name: d.name, color: d.color })), this.kit.inst);
+    this.stand.root.visible = false;
+    this.standShown = this.placement.phase === 'placed';
   }
-  /** A pinch (world point): on a tile, that instrument comes out (the first one brings the kit out too). */
+  private standShown = false;
+  /** A pinch (world point) on the panel presses what it's on. */
   private pinchStand(at: Vector3): void {
     if (this.placement.phase !== 'placed') return;
-    this.kit.root.updateMatrixWorld(true);
-    const local = this.kit.root.worldToLocal(this.tmp3.copy(at));
-    const item = this.stand.pickAt(local);
-    if (!item) return;
+    this.moduleSurface.toZone(at, this.o);
+    if (Math.abs(this.o.y) > 0.035) return;
+    const k = zoneAt(this.moduleSurface.zones, this.o.x, this.o.z);
+    if (k >= 0) this.pressPanel(k);
+  }
+
+  /** A button (0–4), an instrument tab, or the gear on the panel. */
+  private pressPanel(k: number): void {
+    this.kit.module.pressKey(k);
     audio.tick();
+    if (k < KEYS.length) {
+      this.game.key(KEYS[k]);
+      return;
+    }
+    if (k === GEAR) {
+      this.game.openSettings();
+      return;
+    }
+    const id = this.kit.module.tabAt(k);
+    if (!id) return;
     const m = this.game.mode;
     if (m === 'play' || m === 'count') {
-      this.game.switchTo(item.id);
+      this.game.switchTo(id);
       return;
     }
     if (m !== 'discover') return;
@@ -2070,7 +2088,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.hitAt.z = 0;
       this.discover(this.kitSurface);
     }
-    this.putOut(item.id as InstId);
+    this.putOut(id as InstId);
     this.game.shelfPicked(this.shelfView());
   }
   private tmp3 = new Vector3();
@@ -2793,15 +2811,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kitSurface.inv.copy(root.matrixWorld).invert();
     this.kitSurface.detector.resetSurface(0);
     this.kitSurface.setFeatures({ facing: 'up', width: 0.8, length: 0.5, area: 0.6, elevation: root.position.y, hollow: 0, glass: 0, soft: 0, curved: 0, bump: false, label: 'table' }, true);
-    const mod = this.kit.module.root;
+    const mod = this.kit.module.frame;
     mod.updateMatrixWorld(true);
-    this.moduleSurface.world.copy(mod.matrixWorld).multiply(this.modLift);
+    this.moduleSurface.world.copy(mod.matrixWorld);
     this.moduleSurface.inv.copy(this.moduleSurface.world).invert();
-    this.moduleSurface.bounds = { minX: -MODULE.w / 2, maxX: MODULE.w / 2, minZ: -0.06, maxZ: 0.0 };
-    this.moduleSurface.features = { facing: 'up', width: MODULE.w, length: MODULE.d, area: 0.02, elevation: 0, hollow: 0, glass: 0, soft: 0, curved: 0, bump: false, label: 'module' };
-    this.moduleSurface.zones = KEYS.map((_, i) => {
-      const k = Module.keyAt(i);
-      return { i, shape: 'rect' as const, x: k.x, z: -k.z, w: MODULE.keyW, h: MODULE.keyD, degree: -1, midi: 0 } satisfies Zone;
+    this.moduleSurface.bounds = { minX: -PANEL.w / 2, maxX: PANEL.w / 2, minZ: -PANEL.h / 2, maxZ: PANEL.h / 2 };
+    this.moduleSurface.features = { facing: 'vertical', width: PANEL.w, length: PANEL.h, area: PANEL.w * PANEL.h, elevation: 0, hollow: 0, glass: 0, soft: 0, curved: 0, bump: false, label: 'module' };
+    this.moduleSurface.zones = SPOTS.map((_, i) => {
+      const k = spotZone(i);
+      return { i, shape: 'rect' as const, x: k.x, z: k.z, w: k.w, h: k.h, degree: -1, midi: 0 } satisfies Zone;
     });
     this.moduleSurface.discovered = true;
     this.moduleSurface.detector.resetSurface(0);
@@ -3153,9 +3171,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = root.localToWorld(this.tmp.set(z.x, 0, -z.z)).toArray().map(r4)));
     if (this.kit.inst === 'guitar') out.strum = root.localToWorld(this.tmp.set((STRUM.x0 + STRUM.x1) / 2, 0, -(STRUM.z0 + STRUM.z1) / 2)).toArray().map(r4);
     out.inst = [SHELF.findIndex((d) => d.id === this.kit.inst)];
-    for (const d of SHELF) {
-      const q = this.stand.tileAt(d.id);
-      if (q) out[`tile-${d.id}`] = root.localToWorld(this.tmp.copy(q)).toArray().map(r4);
+    SHELF.forEach((d, i) => {
+      const z = spotZone(5 + i);
+      out[`tile-${d.id}`] = this.tmp.set(z.x, 0, -z.z).applyMatrix4(this.moduleSurface.world).toArray().map(r4);
+    });
+    {
+      const z = spotZone(GEAR);
+      out.gear = this.tmp.set(z.x, 0, -z.z).applyMatrix4(this.moduleSurface.world).toArray().map(r4);
+      // which way the panel faces (pokes come in against it)
+      out.panelNormal = this.tmp.set(0, 1, 0).transformDirection(this.moduleSurface.world).toArray().map(r4);
     }
     for (const s of this.surfaces) {
       if (s.source !== 'plane' && s.source !== 'volume') continue;

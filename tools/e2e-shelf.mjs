@@ -33,11 +33,14 @@ async function slapAt(at, n = [0, 1, 0], { speed = 1.0, from = 0.08 } = {}) {
   xr('animate-to', { device: HAND, position: base(0.12), duration: 0.15 });
   await wait(250);
 }
-const key = async (k) => {
-  const p = state().targets[`key-${k}`];
-  await slapAt(p, [0, 1, 0], { speed: 0.6, from: 0.05 });
+// a poke on the panel: a button, or an instrument's tab
+const poke = async (name) => {
+  const st = state();
+  await slapAt(st.targets[name], st.targets.panelNormal, { speed: 0.5, from: 0.05 });
   await wait(250);
 };
+const key = (k) => poke(`key-${k}`);
+const tab = (id) => poke(`tile-${id}`);
 
 await goto('debug=1');
 let s = await placeKit();
@@ -47,10 +50,10 @@ check('the drums come out on the first slap', s.game.found.includes('kit') && s.
 await wait(5500);
 const look = [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05];
 
-await key('next');
+await tab('piano');
 s = state();
-check('> on the box puts a piano on the desk', s.targets.inst?.[0] === 1 && s.game.display.line === 'Piano', `${s.game.display.line} / ${s.game.display.sub} inst=${s.targets.inst}`);
-check('its last two keys say NOTES and SOUND', JSON.stringify(s.game.display.keyLabels) === JSON.stringify(['', '', '', 'NOTES', 'SOUND']), JSON.stringify(s.game.display.keyLabels));
+check('the piano tab puts a piano on the desk', s.targets.inst?.[0] === 1 && s.game.display.line === 'Piano', `${s.game.display.line} / ${s.game.display.sub} inst=${s.targets.inst}`);
+check('its last two buttons say NOTES and SOUND', JSON.stringify(s.game.display.keys) === JSON.stringify(['<', 'PLAY', '>', 'NOTES', 'SOUND']), JSON.stringify(s.game.display.keys));
 let before = s.debug.hits;
 await slapAt(s.targets.inst2);
 s = state();
@@ -58,9 +61,9 @@ check('a piano key plays its note', s.debug.hits > before && s.debug.lastHit?.fa
 shot('shelf-piano', look);
 await key('jam');
 s = state();
-check('NOTES changes the scale', /^Notes: (Sad|Bluesy|Dreamy|Happy)$/.test(s.game.display.sub), s.game.display.sub);
+check('NOTES changes the scale', /^Notes: (Sad|Bluesy|Dreamy|Happy)$/.test(s.game.display.inst?.detail ?? ''), s.game.display.inst?.detail);
 
-await key('next');
+await tab('marimba');
 s = state();
 check('then a marimba', s.targets.inst?.[0] === 2 && s.game.display.line === 'Marimba', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst0);
@@ -68,7 +71,7 @@ s = state();
 check('its low bar plays', s.debug.lastHit?.family === 'marimba' && s.debug.lastHit?.zone === 0, JSON.stringify(s.debug.lastHit));
 shot('shelf-marimba', look);
 
-await key('next');
+await tab('guitar');
 s = state();
 check('then a guitar', s.targets.inst?.[0] === 3 && s.game.display.line === 'Guitar', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst1);
@@ -79,7 +82,7 @@ s = state();
 check('the strum band strums it', s.debug.lastHit?.family === 'strum', JSON.stringify(s.debug.lastHit));
 shot('shelf-guitar', look);
 
-await key('next');
+await tab('handpan');
 s = state();
 check('then a handpan', s.targets.inst?.[0] === 4 && s.game.display.line === 'Handpan', `${s.game.display.line} inst=${s.targets.inst}`);
 await slapAt(s.targets.inst0);
@@ -110,17 +113,19 @@ shot('shelf-handpan', look);
     return st;
   };
   const tile = state().targets['tile-piano'];
-  check('the stand shows a tile per instrument', !!tile && !!state().targets['tile-guitar'], Object.keys(state().targets).filter((k) => k.startsWith('tile')).join(','));
+  check('the panel has a tab per instrument', !!tile && !!state().targets['tile-guitar'], Object.keys(state().targets).filter((k) => k.startsWith('tile')).join(','));
   if (tile) {
     const st = await pinchAt(tile);
     s = state();
-    check('a pinch on the piano tile puts the piano out', s.targets.inst?.[0] === 1 && s.game.display.line === 'Piano', `inst=${s.targets.inst} pinching=${st.right.pinching} line=${s.game.display.line}`);
+    check('a pinch on the piano tab puts the piano out', s.targets.inst?.[0] === 1 && s.game.display.line === 'Piano', `inst=${s.targets.inst} pinching=${st.right.pinching} line=${s.game.display.line}`);
   }
 }
 
-await key('next');
-await wait(500);
+// the gear: settings
+await poke('gear');
 s = state();
-check('and on to the marimba', s.targets.inst?.[0] === 2, `inst=${s.targets.inst}`);
+check('the gear opens the settings', s.game.display.screen === 'page' && s.game.display.line === 'Settings', `${s.game.display.screen} ${s.game.display.line}`);
+await key('play');
+s = state();
 check('no frame errors', s.debug.errors === 0, `errors=${s.debug.errors}`);
 done('E2E shelf');

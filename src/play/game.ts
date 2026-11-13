@@ -805,6 +805,7 @@ export class Game {
     const has = (i: string) => i === 'drums' || i === 'guitar' || m.parts.some((p) => PART_INST[p.def.name] === (i === 'marimba' ? 'piano' : i) && p.def.name !== 'BASS');
     if (!has(inst)) inst = 'drums';
     this.stage.useInstrument?.(inst);
+    this.combo = 0;
     const t = m.track;
     this.bld = null;
     // 16 bars with a fill in bars 7–8 and 15–16, then 4 bars of hold it (scored, never shown)
@@ -1169,15 +1170,8 @@ export class Game {
       return;
     }
     // (not while a pad's sound is up: then ◀ ◀ is stepping through sounds)
-    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam' && this.t >= this.pad.until && !(this.shelfShown && this.t < this.shelfUntil)) {
-      // tap ◀ twice: the settings page (and the first tap's step back is undone)
-      if (this.mode === 'discover') {
-        this.selected = (this.selected + 1) % this.available();
-        if (this.stage.shelf && this.shelfShown) {
-          this.stage.shelf(1);
-          this.shelfShown = null;
-        }
-      }
+    if (k === 'prev' && twice && this.mode !== 'play' && this.mode !== 'count' && this.mode !== 'jam' && this.mode !== 'discover' && this.t >= this.pad.until && !(this.shelfShown && this.t < this.shelfUntil)) {
+      // tap ◀ twice: the settings page (the gear on the panel opens it too)
       this.settingsOpen = true;
       this.lastTap[k] = -9;
       this.refreshDisplay();
@@ -1194,9 +1188,9 @@ export class Game {
     // free play: ◀ ▶ swap the instrument on the desk; with one out, the last two keys pick its scale and sound
     if (this.mode === 'discover' && this.stage.shelf) {
       if (k === 'prev' || k === 'next') {
-        this.shelfShown = this.stage.shelf(k === 'next' ? 1 : -1);
-        this.tried.add(this.shelfShown.id);
-        this.shelfUntil = this.t + 6;
+        const n = Math.min(TRACKS.length, this.nextSong() + 1);
+        this.songSel = (this.songSel + (k === 'next' ? 1 : n - 1)) % n;
+        this.shelfShown = null;
         this.refreshDisplay();
         return;
       }
@@ -1231,9 +1225,8 @@ export class Game {
       this.refreshDisplay();
       return;
     }
-    if (k === 'play' && this.mode === 'discover' && !this.offered) return;
     if (k === 'play' && this.mode === 'discover') {
-      this.playSong(this.nextSong());
+      this.playSong(this.songSel);
       this.lastTap.play = -9;
       return;
     }
@@ -1520,6 +1513,7 @@ export class Game {
       return 'extra';
     }
     this.graded[r.grade === 'perfect' ? 'perfect' : 'good']++;
+    this.combo++;
     this.offsets.push(r.offset);
     // what you played, kept for the encore (the beat as you played it, a little loose like a person)
     if (this.played.length < 400) this.played.push({ key, beat: this.clock.beatAt(t - this.opts.offset), gain });
@@ -1631,6 +1625,7 @@ export class Game {
   private leaveResults(): void {
     this.encoreAt = -1;
     this.lap = null;
+    this.songSel = this.nextSong();
     this.stage.useInstrument?.(null);
     this.mode = 'discover';
     this.song = null;
@@ -1669,6 +1664,7 @@ export class Game {
     });
   }
   private onMiss = (n: { lane: string }): void => {
+    this.combo = 0;
     this.energy = Math.max(0.15, this.energy - 0.05);
     this.stage.missed(n.lane);
   };
@@ -1750,7 +1746,53 @@ export class Game {
   }
 
   /** The module's display for the current state (≤ 6 words a line). */
+  /** Notes hit in a row (a miss starts it again). */
+  private combo = 0;
+  /** The song the panel's card shows (◀ ▶ browse; PLAY plays it). */
+  songSel = 0;
+  /** The gear on the panel: the settings page. */
+  openSettings(): void {
+    if (this.mode !== 'discover' && this.mode !== 'results') return;
+    if (this.mode === 'results') this.leaveResults();
+    this.settingsOpen = !this.settingsOpen;
+    this.refreshDisplay();
+  }
+
   refreshDisplay(): void {
+    this.fillDisplay();
+    this.panelFields();
+  }
+
+  /** What the panel needs beyond the lines: its screen, its buttons, the song card, what's on the desk, the song so far. */
+  private panelFields(): void {
+    const d = this.display;
+    const page = this.settingsOpen || this.tuneOpen;
+    d.screen = page ? 'page' : this.mode === 'discover' ? 'home' : this.mode === 'results' ? 'results' : 'song';
+    d.songCard = null;
+    d.inst = null;
+    d.progress = -1;
+    d.combo = 0;
+    if (d.screen === 'home') {
+      const v = this.stage.shelf?.(0);
+      const n = Math.min(TRACKS.length, this.nextSong() + 1);
+      this.songSel = Math.max(0, Math.min(this.songSel, n - 1));
+      const tr = TRACKS[this.songSel];
+      d.songCard = { name: tr.name, meta: `${tr.bpm} BPM${tr.minor ? ', minor' : ''}`, pos: `${this.songSel + 1}/${TRACKS.length}`, stars: this.progress.stars[tr.id] ?? 0 };
+      const pitched = !!v && v.id !== 'drums';
+      d.inst = v ? { id: v.id, name: v.name, detail: this.shelfWhat === 'scale' ? `Notes: ${v.scale}` : this.shelfWhat === 'sound' ? `Sound: ${v.sound}` : pitched ? `${v.scale} notes, ${v.sound}` : v.how } : null;
+      d.keys = ['<', 'PLAY', '>', pitched ? 'NOTES' : '', pitched ? 'SOUND' : ''];
+      d.keyLabels = null;
+      if (this.found.includes('kit')) d.pulse = this.offered ? 'play' : d.pulse;
+    } else if (d.screen === 'song') {
+      d.keys = this.mode === 'build' ? ['BACK', 'STOP', '', '', ''] : this.mode === 'jam' ? ['', 'STOP', '', '', ''] : ['', 'STOP', '', '', ''];
+      if (this.song && (this.mode === 'play' || this.mode === 'count')) d.progress = Math.max(0, this.clock.beatAt(this.t) / (this.song.bars * 4));
+      d.combo = this.combo;
+    } else if (d.screen === 'results') {
+      d.keys = ['', 'AGAIN', this.fromPerform ? (this.machine?.written ? 'MAKE IT\nYOURS' : 'NEXT\nSONG') : '', '', ''];
+    }
+  }
+
+  private fillDisplay(): void {
     const d = this.display;
     d.found = this.found.slice();
     d.total = Math.max(this.roomTotal, this.found.length);

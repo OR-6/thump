@@ -147,16 +147,14 @@ describe('the game', () => {
     expect(g.mode).toBe('discover');
   });
 
-  it('tap ◀ twice: the settings page; ◀ there switches slow mode (saved); ▶ closes it', () => {
+  it('the gear: the settings page; ◀ there switches slow mode (saved); ▶ closes it', () => {
     let saved = 0;
     const flips: string[] = [];
     const st = { ...stage([]), tempo: (t: number) => (saved = t), setting: (n: 'oneHand' | 'contrast' | 'words', f: boolean) => (f && flips.push(n), false) };
     const g = new Game(st, freshProgress(), room([]));
     g.start(0);
     g.tick(1);
-    g.key('prev');
-    g.tick(1.3);
-    g.key('prev');
+    g.openSettings();
     expect(g.settingsOpen).toBe(true);
     expect(g.display.keyLabels?.length).toBe(5);
     g.key('prev');
@@ -174,9 +172,7 @@ describe('the game', () => {
     const g = new Game(st as never, freshProgress(), room([]), { tempo: 1, offset: 0, debug: true });
     g.start(0);
     g.tick(1);
-    g.key('prev');
-    g.tick(1.3);
-    g.key('prev');
+    g.openSettings();
     expect(g.settingsOpen).toBe(true);
     g.tick(3);
     g.key('prev');
@@ -394,7 +390,7 @@ describe('the game', () => {
     expect(voiced.slice(from).some((k) => k.startsWith('t1:'))).toBe(true);
   });
 
-  it('free play: ◀ ▶ swap the instrument on the desk; NOTES and SOUND change it; a build brings the drums back', () => {
+  it('free play on the panel: a tab puts an instrument out; NOTES and SOUND change it; < > browse songs; a build brings the drums back', () => {
     const order = ['drums', 'piano', 'guitar', 'handpan'];
     let i = 0;
     let scale = 'Happy';
@@ -412,22 +408,27 @@ describe('the game', () => {
       },
       useInstrument: (id: string | null) => used.push(id),
     };
-    const g = new Game(st, freshProgress(), room([]));
+    const p = freshProgress();
+    p.stars['kick-start'] = 2;
+    const g = new Game(st, p, room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(1);
-    g.key('next');
-    expect(g.display.line).toBe('Piano');
-    expect(g.display.keyLabels).toEqual(['', '', '', 'NOTES', 'SOUND']);
+    // (the room puts the piano out when its tab is pressed, then tells the game)
+    i = 1;
+    g.shelfPicked(view());
+    expect(g.display.screen).toBe('home');
+    expect(g.display.inst?.name).toBe('Piano');
+    expect(g.display.keys).toEqual(['<', 'PLAY', '>', 'NOTES', 'SOUND']);
     g.tick(2);
     g.key('jam');
-    expect(g.display.sub).toBe('Notes: Sad');
-    g.tick(9);
-    // the module keeps naming what's on the desk, and how to get more
-    expect(g.display.line).toBe('Piano');
-    expect(g.display.sub).toBe('Pinch another on the stand');
-    // and its NOTES and SOUND keys stay labelled
-    expect(g.display.keyLabels).toEqual(['', '', '', 'NOTES', 'SOUND']);
+    expect(g.display.inst?.detail).toBe('Notes: Sad');
+    // the song card: < > browse what's open (Kick Start played, so Two Step is open too)
+    expect(g.display.songCard?.name).toBe('Kick Start');
+    g.key('next');
+    expect(g.display.songCard?.name).toBe('Two Step');
+    g.key('next');
+    expect(g.display.songCard?.name).toBe('Kick Start');
     g.tick(45);
     g.beginBuild(0);
     expect(g.mode).toBe('build');
@@ -675,7 +676,7 @@ describe('the game', () => {
     answeredWith = [];
   });
 
-  it('◀◀ opens settings without moving the song choice; the count-in counts 4 3 2 1', () => {
+  it('the gear opens settings without moving the song choice; the count-in counts 4 3 2 1', () => {
     const p = freshProgress();
     p.stars['porch-step'] = 2;
     p.stars['kitchen-clock'] = 2;
@@ -683,9 +684,7 @@ describe('the game', () => {
     g.start(0);
     g.selected = 1;
     g.tick(1);
-    g.key('prev');
-    g.tick(1.2);
-    g.key('prev');
+    g.openSettings();
     expect(g.settingsOpen).toBe(true);
     expect(g.selected).toBe(1);
     g.key('play');
