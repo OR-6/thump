@@ -137,6 +137,8 @@ export interface MoteView {
   grade: Grade | null;
   /** Beats since you hit it (−1: not hit yet). */
   since?: number;
+  /** In the no-lights bars: drawn faint (still there, so it doesn't look like the song stopped). */
+  faint?: boolean;
 }
 
 export interface GameOptions {
@@ -1903,12 +1905,12 @@ export class Game {
       if (d > TIMING.travelBeats + 0.01) break;
       if (d < -0.6 && !(n.grade === 'perfect' || n.grade === 'good')) continue;
       if (d < -1) continue;
-      // in the last bars the lights go dim (you keep it going) and nothing flies in
+      // in the last bars the lights go dim and the notes fall faint (you keep it going; it hasn't stopped)
       const dim = !!this.perf && n.beat >= this.perf.holdFrom;
       if (n.grade === null && d <= TIMING.glowBeats && d > -0.3) this.stage.light(n.lane, (1 - Math.max(0, d) / TIMING.glowBeats) * (dim ? 0.22 : 1));
-      if (dim) continue;
       if (k < MAX_MOTES) {
         const m = this.motes[k++];
+        m.faint = dim;
         m.key = n.lane;
         m.ahead = d;
         m.grade = n.grade;

@@ -79,6 +79,7 @@ export class Waterfall {
         _c.lerp(_white, n.grade === 'perfect' ? 0.85 : 0.4);
         landed = true;
       } else if (n.ahead < -0.2) k *= Math.max(0, 1 + (n.ahead + 0.2) / 0.4) * 0.4;
+      if (n.faint && !hit) k *= 0.25;
       if (k <= 0.01) continue;
       _c.multiplyScalar(k);
       const h = landed ? 0.004 : Math.max(0, n.ahead) * FALL_PER_BEAT + 0.004;
