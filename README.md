@@ -2,57 +2,88 @@
 
 [![CI](https://github.com/OR-6/thump/actions/workflows/ci.yml/badge.svg)](https://github.com/OR-6/thump/actions/workflows/ci.yml)
 
-A music game for Meta Quest 3, played sitting down. Hit your desk (or an airplane tray) and a drum kit comes up under your hands. The arrows on the little box swap it for a piano, a guitar or a handpan. Every note is in the scale, so there's no wrong one. Build a track a part at a time, then play it live, alone or with up to three friends in their own headsets. Hands only, in passthrough. Design notes: [docs/GAME-V3.md](docs/GAME-V3.md).
+A music game for Meta Quest 3, played sitting down. Tap your desk (or an airplane tray) and a drum kit comes up under your hands. A screen floating over the back of the desk lets you swap it for a piano, a marimba, a guitar or a handpan, pick a song and play your part while a band plays the rest, or make your own track a part at a time. Every note is in the scale, so there's no wrong one. Alone or with up to three friends in their own headsets. Hands only, in passthrough. Design notes: [docs/GAME-V3.md](docs/GAME-V3.md).
 
 **Play:** open **https://or-6.github.io/thump/** in the Quest browser, put the controllers down and press *Enter mixed reality*.
 
 ## At your desk
 
-1. Sit at a desk or a tray table. Rest a palm on it. The module turns up at the back: a small black box with a display and five keys (◀, a solid ▶ for play, a second arrow, then two more). It says *Tap the desk*.
-2. Tap the desk. The drums come up: three pads under your hands (a tom joins after your first performance) and a row of eight light bars behind them.
-3. The two arrows either side of the solid ▶ swap what's on the desk:
-   - Drums: hit the pads.
-   - Piano: six big keys for the right hand, a chord pad for the left.
-   - Guitar: three chord pads on the left, a strum band on the right. The strings are synthesised in the browser.
-   - Handpan: a low note in the middle, eight around it.
-4. On the piano, guitar and handpan the last two keys become NOTES and SOUND. NOTES picks the scale: Happy, Sad, Bluesy, Dreamy. SOUND picks the sound: Grand, Vibes, Marimba or Glock on the piano; Nylon, Steel or Harp on the guitar; Steel, Glass or Bells on the handpan. Whatever you left out is there next time.
-5. It's all sized for a tray. Piano keys are 5 cm wide and the piano is 44 cm end to end; the drums are a touch wider.
+Sit at a desk or a tray table. If nothing shows up, rest a palm flat on it. A panel appears just above the back of the desk, leaning back toward you. It says THUMP and "Or just tap the desk".
 
-## Build a track
+To press something on the panel, poke it with a fingertip or pinch it. An item lights up as your finger gets close, and it presses when your fingertip goes through the face. It clicks.
 
-When ▶ pulses (*Build a track?*), tap it. The module asks for one part at a time: BOOM, SMACK, TICK, EXTRA, TUNE, BASS. The instrument for each part comes out by itself. Bar 1 lights the pattern to copy; in bar 2 the lights go out and whatever you play is kept. It snaps to the beat and fills in softly what you missed. Chords play under the track while you build. When the last part is in, there's a silent bar with a riser, then everything drops in at once.
+Tap the desk and the drums come out: a kick and a snare under your hands, a hi-hat to the right, a row of light bars behind. A tom joins after your first song. Then your first note on anything brings in a soft backing band at 90 bpm. Stop for two bars and it drops out.
 
-Five tracks: Kick Start, Two Step, Boom Bap 88, Lowrider, Night Shift. Each opens once you've performed the one before.
+## The panel
 
-## Perform
+The main menu has four tiles and a button: FREE PLAY, SONGS, MAKE A TRACK, PLAY TOGETHER, and SETTINGS in the corner.
 
-*Perform?* ▶. The machine you built plays underneath and you play the live parts over it. Two *Go wild!* windows where anything you hit counts. The last bars the lights go dim (*Keep it going*). The arrows switch instrument mid-song: it takes over at the next loop and you get a bar to find it. Your parts wear tape labels in marker so you can see what's where.
+FREE PLAY opens the instruments, a card each: DRUMS, PIANO, MARIMBA, GUITAR, HANDPAN. Tap one and it unfolds onto the desk. Every instrument except the drums has a settings page:
 
-Results: notes played, stars, *On time %* when you were close (or which side of the beat you were on), a line about what carried it, then the machine plays you out twice.
+- Its notes: HAPPY, SAD, BLUESY, DREAMY.
+- Its sounds. Piano: Grand, Bowl, Marimba, Glock. Marimba: Marimba, Xylo, Glock. Guitar: Nylon, Steel, Harp. Handpan: Steel, Glass, Bells.
+- LOWER and HIGHER move it an octave.
+- PLAY IT takes you back to the desk.
+
+Whatever you leave out is there next time.
+
+## The instruments
+
+They're models of the real things and they move when you play them. All of it is sized for a tray.
+
+- Drums: coated heads, lacquered shells, chrome hoops, and a hi-hat of two bronze cymbals.
+- Piano: six ivory keys for the right hand that sink when you hit them, and a wide ebony chord key for the left. Keys are 5 cm wide and the whole piano is 44 cm.
+- Marimba: eight rosewood bars that bounce when hit. Pinch and a mallet appears in that hand; its head is what strikes. Your bare hand works too.
+- Guitar: lying flat on the desk. Three chord positions on the neck for the left hand; strum over the soundhole with the right, a hit or a brush down. The strings are synthesised in the browser.
+- Handpan: a low note in the middle, eight around it. Alternate hands round the rim and you walk up the scale.
+
+## Songs
+
+Five songs: Kick Start, Two Step, Boom Bap 88, Lowrider, Night Shift. Each row shows its tempo and your stars, and the next one opens once you've played the one before. Pick EASY or NORMAL, check what you'll play (it's whatever is out on the desk; tap it to change), then PLAY.
+
+The band plays the song as written and you play your part on what's out:
+
+- Drums: the beat. Normal adds the hat.
+- Piano or marimba: the tune. Normal adds the high tune.
+- Guitar: strums, and the chords follow the song.
+- Handpan: the extra percussion part.
+
+The notes fall onto the exact key, bar, field or drum that plays them and land on the beat. Hit one and it bursts. A song has two *Go wild!* stretches where anything you hit counts, and in the last bars the notes stop falling and the lights go dim (*Keep it going*).
+
+In a song the panel shows its name, a progress bar, how many notes in a row, a card for each instrument you can switch to, and STOP. Tap a card to switch mid-song: it says "Piano next", takes over at the next loop, and gives you a bar to find it ("Find it, then join in").
+
+At the end you get your stars, how many notes you played out of the total, and *On time* as a percentage when you were close (or which side of the beat you were on). Then the band plays two more loops at full. AGAIN plays it again. After one of the five songs there's MAKE IT YOURS; after your own track, NEXT SONG. MENU goes back.
+
+## Make a track
+
+MAKE A TRACK builds the song one part at a time: BOOM, SMACK, TICK, EXTRA, TUNE, BASS. Each part's instrument comes out by itself. Bar 1 lights the pattern to copy ("Hit when it glows"). In bar 2 the lights go out ("Your turn: play anything") and whatever you play is kept. It snaps to the beat and quietly fills in what you missed. When the last part is in, there's a silent bar with a riser and then everything drops in at once. Then you play it, like a song.
 
 ## Play together
 
-On the 2D page, one of you taps *Start a band* and gets a 4-letter code. Friends type it and tap *Join*. Then everyone enters mixed reality. Up to four headsets, wherever you all are. You hear every note the others play, a little to one side.
+On the 2D page or on the panel (PLAY TOGETHER, START A BAND), one of you starts a band and gets a 4-letter code. Friends type it on the Thump page and tap *Join* before they enter mixed reality. Up to four headsets, wherever you all are. Then PICK A SONG and it starts for everyone on the same beat.
 
-Signalling goes through the PeerJS public broker; after that it's peer-to-peer. Only note messages are sent, and each one is checked: a friend's headset can only ask for sounds the game already makes, at most 80 a second. No accounts, no voice.
+The host's clock is the band's clock; the other headsets work out how far off theirs is by pinging it. Each headset's band leaves out the parts your friends are playing live, so you hear them, a little to one side, instead. In a real two-page test the song started within a thousandth of a beat on both. LEAVE leaves the band.
+
+Signalling goes through the PeerJS public broker; after that it's peer-to-peer. Only the notes you play are sent, and each one is checked: a friend's headset can only ask for sounds the game already makes, at most 80 a second. No accounts, no voice. There's no phone mode.
 
 ## Settings
 
-In the headset, tap ◀ twice on the module: Slow, One hand, Contrast, Words. On the 2D page under Settings there's also lead hand, less movement, piano and bass under tracks, and *Start over*.
+In the headset, SETTINGS on the main menu: SLOWER SONGS, ONE HAND, HIGH CONTRAST, WORDS, BACKING BAND (piano and bass under songs). On the 2D page under Settings there's also lead hand, speed, less movement and *Start over*.
 
 ## How it works
 
-- Hits are read from raw hand-joint poses in each surface's own frame (`src/kit/strike.ts`, unit-tested on synthetic hand paths). A hit is the hand's lowest point passing through fast (0.35 m/s or more), or stopping sharply within 1.8 cm of it, since tracking loses the last centimetre. It survives dropouts and frame hitches; rebounds, resting and reaching don't play.
-- `src/kit/shelf.ts` has the four instruments, their layouts in centimetres, the scales and the three chords that fit each scale.
-- `src/play/build.ts` has the tracks and how a take is snapped to the beat; `src/play/game.ts` runs building, performing, switching and scoring.
+- Hits are read from raw hand-joint poses in each surface's own frame (`src/kit/strike.ts`, unit-tested on synthetic hand paths). A hit is the hand's lowest point passing through fast (0.35 m/s or more), or stopping sharply within 1.8 cm of it, since tracking loses the last centimetre. It survives dropouts and frame hitches; rebounds, resting and reaching don't play. The panel takes a gentler poke.
+- `src/kit/shelf.ts` has the five instruments, their layouts in centimetres, the scales and the three chords that fit each scale. The models are in `src/scene-assets/lib/instruments.ts` and `src/scene-assets/lib/drums.ts`.
+- `src/ui/menu.ts` has every page on the panel as plain data; `src/ui/panel.ts` draws it and lights what your finger is near.
+- `src/play/build.ts` has the songs and how a take is snapped to the beat; `src/play/game.ts` runs songs, building, switching and scoring. `src/room/waterfall.ts` drops the notes onto the instrument.
 - The sound (`src/audio/`) is 204 short clips from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL) (CC0), picked by how hard you hit and re-pitched to the note, through a room reverb and a soft limiter. The guitar is a plucked-string synth.
-- Playing together is `src/net/coop.ts` (the code and the connections) and `src/net/band.ts` (the note messages, the checks and the rate limit).
+- Playing together is `src/net/coop.ts` (the code and the connections) and `src/net/band.ts` (the shared clock, the note messages, the checks and the rate limit).
 
 There's an older idea still in the code: tap a mug or a book and it becomes an instrument too. It's a side extra now.
 
 ## Status
 
-Verified in the IWER emulator (IWSDK's browser-based XR emulator), by unit tests, and with a real two-page PeerJS test where each page hears the other. Not yet tried on a Quest 3. Frame rate and hit-to-sound latency go here once measured on the headset with `?debug=1`.
+Verified in the IWER emulator (IWSDK's browser-based XR emulator), by unit tests, and with a real two-page PeerJS test where each page hears the other and a song starts on the same beat. Not yet tried on a Quest 3; that happens 14–17 Nov. Frame rate and hit-to-sound latency go here once measured on the headset with `?debug=1`.
 
 ## Develop
 

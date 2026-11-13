@@ -12,7 +12,7 @@ import { xr, run, state, wait, check, done, shot, goto, placeKit, until, HAND, D
 
 const SONG = process.argv.includes('--song');
 const FLAT = { pitch: 0, yaw: 0, roll: 0 };
-await goto('debug=1');
+await goto('debug=1&objects=1');
 let s = await placeKit();
 check('kit placed by a resting palm', s.debug.phase === 'placed', `${s.debug.deskSource} y=${s.debug.deskY}`);
 s = await until((x) => x.debug.surfaces.length > 0, 5000);

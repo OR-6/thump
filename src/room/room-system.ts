@@ -79,6 +79,8 @@ const RESUME_WINDOW_S = 4;
 const FOVEATION = [0.5, 0.75, 1];
 const SIDES = ['left', 'right'] as const;
 const HOLD_DOTS = 20;
+/** Finding things on the desk by touch (cups, books): off unless the address asks for it. */
+const FIND_OBJECTS = typeof location !== 'undefined' && new URLSearchParams(location.search).has('objects');
 /** What a thing found by touch is, in a word a person would use (only where its position says it plainly). */
 const THING_WORD: Record<string, string> = { cup: 'cup', tall: 'bottle', knee: 'knee', lid: 'laptop', arm: 'armrest' };
 
@@ -1354,7 +1356,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.cands.length = 0;
       this.candHits.length = 0;
       // nothing known was hit: maybe something unknown was (a cup, a book, your knee)
-      const free = this.game.mode === 'discover' || this.game.mode === 'results' || this.game.mode === 'build';
+      // (finding things by touch is retired: the instruments are on the shelf; ?objects=1 turns it back on)
+      const free = FIND_OBJECTS && (this.game.mode === 'discover' || this.game.mode === 'results' || this.game.mode === 'build');
       // (a hand that just hit something known is still landing on it for a few frames: not a new thing)
       const touch = this.touchFinder.update(hand, h.tracked && !this.sample.pinching && !struck && t - this.handLatch[i] > 0.25 ? h.indexTip : null, t);
       if (touch && free) this.onTouch(touch, side);
