@@ -129,3 +129,26 @@ describe('swaps', () => {
     expect(s.as).toBeNull();
   });
 });
+
+describe('tuning in the headset', async () => {
+  const { TUNE_ITEMS, stepValue, fmt, HitLog } = await import('../src/room/tuning.js');
+  const item = (k: string) => TUNE_ITEMS.find((i) => i.key === k)!;
+  it('steps in shown units, clamped, and shows units', () => {
+    expect(stepValue(item('minSpeed'), 0.35, 1)).toBeCloseTo(0.4);
+    expect(stepValue(item('latchS'), 0.12, -1)).toBeCloseTo(0.11);
+    expect(stepValue(item('nearM'), 0.04, 1)).toBeCloseTo(0.04);
+    expect(fmt(item('latchS'), 0.12)).toBe('120 ms');
+    expect(fmt(item('minSpeed'), 0.35)).toBe('0.35 m/s');
+    expect(fmt(item('offset'), 0.02)).toBe('+20 ms');
+  });
+  it('the readouts: the softest hit, stops, and doubles on one surface by one hand', () => {
+    const log = new HitLog();
+    log.add({ t: 0, speed: 0.9, kind: 'cross', heightMm: 3, surface: 'kit', side: 'right' });
+    log.add({ t: 0.1, speed: 0.5, kind: 'stop', heightMm: 12, surface: 'kit', side: 'right' });
+    log.add({ t: 0.15, speed: 0.6, kind: 'cross', heightMm: 2, surface: 'kit', side: 'left' });
+    expect(log.doubles).toBe(1);
+    expect(log.readout(item('minSpeed'), 72, 0)).toContain('softest 0.50');
+    expect(log.readout(item('minDecel'), 72, 0)).toContain('1 of 3 stops');
+    expect(log.readout(item('offset'), 72, 20)).toBe('Learned +20 ms · 72 fps');
+  });
+});

@@ -16,6 +16,7 @@ function stage(log: string[]): GameStage {
     tempo: () => {},
     missed: () => {},
     setting: () => false,
+    tune: () => ({ line: 'Speed', sub: '', labels: [] }),
     bandmate: (e, s) => log.push(`bandmate ${e} ${s}`),
   };
 }
@@ -140,6 +141,42 @@ describe('the game', () => {
     expect(flips).toEqual(['contrast']);
     g.key('play');
     expect(g.settingsOpen).toBe(false);
+  });
+
+  it('in Settings, tap ◀ twice: the tuning page (slow mode unchanged); its keys go to the stage; ▶ closes it', () => {
+    const keys: (string | null)[] = [];
+    const st = { ...stage([]), tune: (k: string | null) => (keys.push(k), { line: 'Speed 0.35 m/s', sub: 'x', labels: ['◀', 'Done', '▶', '−', '+'] }) };
+    const g = new Game(st as never, freshProgress(), room([]));
+    g.start(0);
+    g.tick(1);
+    g.key('prev');
+    g.tick(1.3);
+    g.key('prev');
+    expect(g.settingsOpen).toBe(true);
+    g.tick(3);
+    g.key('prev');
+    g.tick(3.3);
+    g.key('prev');
+    expect(g.tuneOpen).toBe(true);
+    expect(g.settingsOpen).toBe(false);
+    expect(g.opts.tempo).toBe(1);
+    expect(g.display.line).toBe('Speed 0.35 m/s');
+    g.key('loop');
+    g.key('next');
+    expect(keys).toContain('loop');
+    expect(keys).toContain('next');
+    g.key('play');
+    expect(g.tuneOpen).toBe(false);
+  });
+
+  it('a song finished before its unlock existed still grants it (swaps after Kitchen Clock)', () => {
+    const p = freshProgress();
+    p.introDone = true;
+    p.stars['porch-step'] = 3;
+    p.stars['kitchen-clock'] = 2;
+    p.unlocks = ['tom', 'jam'];
+    new Game(stage([]), p, room([]));
+    expect(p.unlocks).toContain('swaps');
   });
 
   it('learns a steady lateness', () => {

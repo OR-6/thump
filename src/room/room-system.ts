@@ -38,7 +38,7 @@ import type { HandSample, Point, Strike } from '../kit/strike.js';
 import { kitLayout, pickPad, type PadSpot } from '../kit/layout.js';
 import { KitView, KIT_ZONE } from '../kit/kit-view.js';
 import { LED } from '../kit/pad-view.js';
-import { MODULE, Module, KEYS } from '../ui/module.js';
+import { MODULE, Module, KEYS, type ModuleKey } from '../ui/module.js';
 import { Tag, DebugBoard } from '../ui/tag.js';
 import { audio } from '../audio/engine.js';
 import { loadProgress, saveProgress, freshProgress, type Progress } from '../persistence/progress.js';
@@ -48,8 +48,9 @@ import { Game, type GameStage, type Room, type Unlock } from '../play/game.js';
 import { Surface, surfaceName, swappable } from './surface.js';
 import { SurfaceBuilder, insidePolygon, tuneStrike } from './surface-builder.js';
 import { GameClock } from './game-clock.js';
-import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M } from './params.js';
+import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M, URL_STRIKE } from './params.js';
 import { SwapGesture } from './swaps.js';
+import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
 import { Overlay, Sheen } from './overlay.js';
 import { Motes } from './motes.js';
 import { FAMILIES, nextSwap, type Family } from './classify.js';
@@ -161,7 +162,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   init() {
     this.progress = loadProgress();
+    // ?unlock=all (filming): JAM, the tom, swaps and loops without playing the songs first
+    if (params.get('unlock') === 'all') {
+      this.progress.introDone = true;
+      for (const u of ['tom', 'jam', 'swaps', 'loops'] as Unlock[]) if (!(this.progress.unlocks as string[]).includes(u)) (this.progress.unlocks as string[]).push(u);
+    }
     this.settings = loadSettings();
+    // thresholds tuned in the headset last time (the address's overrides win)
+    for (const [k, v] of Object.entries(this.settings.tune) as [keyof StrikeTune, number][]) if (!(k in URL_STRIKE)) STRIKE_CFG[k] = v;
     motion.calm = this.settings.calmMotion ?? prefersReducedMotion();
     audio.setBed(this.settings.band);
     this.kit = new KitView();
@@ -193,7 +201,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // the kit's table and the module's keys are surfaces like any other
     this.kitSurface = new Surface('kit', 'kit', 'table', STRIKE_CFG);
     this.moduleSurface = new Surface('module', 'module', 'module', STRIKE_CFG);
-    this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset });
+    this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset, debug: DEBUG });
     this.debug = {
       phase: 'waiting', deskY: null, deskSource: null, kitOrigin: null, anchored: false, resumed: false, hits: 0, lastHit: null, surfaces: [],
       planes: 0, meshes: 0, mode: 'discover', found: [], audio: false, offsetMs: Math.round(this.settings.offset * 1000), degrade: 0, fps: 0, fpsMin: 0, tag: '', errors: 0,
@@ -278,6 +286,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.settings = { ...this.settings, tempo: t };
       saveSettings(this.settings);
     },
+    tune: (k) => this.tunePage(k),
     setting: (name, flip) => {
       const s = this.settings;
       const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : !s.noWords;
@@ -372,11 +381,62 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
   private farTold = false;
 
+  // ------------------------------------------------------------------ tuning (device sessions)
+
+  private tuneAt = 0;
+  readonly hitLog = new HitLog();
+  private lastSide: Side = 'right';
+
+  /** The tuning page: ◀ ▶▶ choose a threshold, − + change it (applied at once, saved), with readouts from the last hits. */
+  private tunePage(k: ModuleKey | null): { line: string; sub: string; labels: string[] } {
+    const n = TUNE_ITEMS.length;
+    if (k === 'prev' || k === 'next') this.tuneAt = (this.tuneAt + (k === 'next' ? 1 : n - 1)) % n;
+    const item = TUNE_ITEMS[this.tuneAt];
+    if (k === 'jam' || k === 'loop') {
+      const dir = k === 'loop' ? 1 : -1;
+      const tune = { ...this.settings.tune };
+      if (item.key === 'defaults') {
+        if (dir > 0) {
+          for (const key of Object.keys(tune) as (keyof StrikeTune)[]) delete tune[key];
+          this.setStrike(tune, 0);
+          this.hitLog.reset();
+        }
+      } else if (item.key === 'offset') {
+        this.setStrike(tune, stepValue(item, this.game.opts.offset, dir));
+      } else {
+        tune[item.key] = stepValue(item, current(STRIKE_CFG, item.key), dir);
+        this.setStrike(tune, this.game.opts.offset);
+      }
+      audio.tick();
+    }
+    const value = item.key === 'defaults' ? '' : item.key === 'offset' ? fmt(item, this.game.opts.offset) : fmt(item, current(STRIKE_CFG, item.key));
+    return {
+      line: `${item.name}${value ? ' ' + value : ''}`,
+      sub: this.hitLog.readout(item, this.debug.fps, Math.round(this.game.opts.offset * 1000)),
+      labels: ['◀', 'Done', '▶', '−', '+'],
+    };
+  }
+
+  /** Apply strike tuning (the address's overrides still win) and a timing offset, to every surface at once, and save. */
+  private setStrike(tune: StrikeTune, offset: number): void {
+    for (const key of ['minSpeed', 'minDecel', 'nearM', 'latchS', 'rearmM'] as const) {
+      if (key in URL_STRIKE) continue;
+      if (tune[key] === undefined) delete STRIKE_CFG[key];
+      else STRIKE_CFG[key] = tune[key];
+    }
+    for (const s of [this.kitSurface, this.moduleSurface]) Object.assign(s.detector.cfg, STRIKE, STRIKE_CFG);
+    for (const list of this.bySource.values()) for (const s of list) tuneStrike(s);
+    this.game.opts.offset = offset;
+    this.settings = { ...this.settings, tune, offset };
+    saveSettings(this.settings);
+    this.debug.offsetMs = Math.round(offset * 1000);
+  }
+
   // ------------------------------------------------------------------ swaps
 
   /** Pinch and hold an instrument (after Kitchen Clock): it changes to the next that suits it. Off during songs and jams. */
   private watchSwaps(): void {
-    const on = (this.progress.unlocks as string[]).includes('swaps') && (this.game.mode === 'discover' || this.game.mode === 'results');
+    const on = (this.progress.unlocks as string[]).includes('swaps') && (this.game.mode === 'discover' || this.game.mode === 'results') && this.game.looper.state === 'off';
     const s = this.swaps.update(this.bothHands, on, this.clock.t, this.swapTarget, this.swapStarted);
     if (s) this.swap(s);
   }
@@ -404,7 +464,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** The surface plays the next instrument that suits it; the room map and the saved room follow. */
   private swap(s: Surface): void {
     const from = s.voice?.family;
-    if (!from || !s.natural) return;
+    // the surface may have been replaced while the pinch was held (Quest re-reported its plane)
+    if (!from || !s.natural || !this.surfaces.includes(s)) return;
     const to = nextSwap(s.natural, from);
     if (to === from) return;
     s.as = to === s.natural ? null : to;
@@ -412,6 +473,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     tuneStrike(s);
     this.hitAt.x = s.anchor.x;
     this.hitAt.z = s.anchor.z;
+    // a shaker's brushed sound stops with it
+    audio.stopSustain(s.id);
+    this.brushPrev.delete(s);
     s.discovered = false;
     this.dropOverlay(s);
     this.keyRefs.clear();
@@ -489,7 +553,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     saveProgress(this.progress);
     this.game.endJam();
     this.game.looper.clear();
-    this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset });
+    this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset, debug: DEBUG });
     this.game.code = coop.status.state === 'hosting' && coop.status.code ? coop.status.code : '';
     audio.stopSustain();
     this.brushPrev.clear();
@@ -501,7 +565,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (const o of this.orphans) this.dropSurface(o.s);
     this.orphans.length = 0;
     for (const o of this.overlays.values()) o.dispose();
-    for (const s of this.surfaces) s.discovered = false;
+    for (const s of this.surfaces) {
+      s.discovered = false;
+      // swaps are forgotten with everything else: each surface plays what it is again
+      if (s.as) {
+        s.as = null;
+        s.setFeatures(s.features);
+        tuneStrike(s);
+      }
+    }
+    this.swapTold = false;
     for (const g of this.holders.values()) g.removeFromParent();
     this.overlays.clear();
     this.holders.clear();
@@ -838,6 +911,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.prevFamily = s.voice.family;
       const f = { ...s.features, soft: Math.min(1, s.sink / 0.04) };
       s.setFeatures(f);
+      // still the same instrument (a floor stays a stomp; a swap holds): nothing to redraw
+      if (s.voice?.family === this.prevFamily) return;
+      tuneStrike(s);
       if (DEBUG) console.log(`[thump] ${s.id} is soft (sinks ${Math.round(s.sink * 1000)} mm): now ${s.voice?.family}`);
       if (s.discovered) {
         // re-draw it as what it really is; the room map swaps its old instrument for the new one
@@ -882,6 +958,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** A strike on a surface: discover it (the first time), sound it, show it, judge it. */
   private onHit(s: Surface, side: Side, st: Strike): void {
+    this.lastSide = side;
     const t = st.t;
     const gain = st.gain;
     this.debug.hits++;
@@ -965,6 +1042,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   private record(s: Surface, zone: number, gain: number, st: Strike, grade: string | null, what = ''): void {
     const f = s.features;
+    this.hitLog.add({ t: st.t, speed: st.speed, kind: st.kind, heightMm: st.height * 1000, surface: s.id, side: this.lastSide });
     this.debug.lastHit = { surface: s.id, family: what || (s.voice?.family ?? 'module'), zone, gain: r3(gain), speed: r3(st.speed), kind: st.kind, grade };
     if (DEBUG && f) {
       console.log(`[thump] hit ${s.id} '${s.label}' ${s.voice?.family ?? '-'} zone ${zone} · ${st.kind} ${st.speed.toFixed(2)} m/s gain ${gain.toFixed(2)} · area ${f.area.toFixed(2)} hollow ${f.hollow} glass ${f.glass} soft ${f.soft} · out ${Math.round(audio.outputLatency() * 1000)} ms`);
@@ -1480,7 +1558,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // the first words, at hand height over the table (the module says it too)
       if (!this.settings.noWords && !this.kitSurface.discovered) {
         this.tmp.set(0, 0.12, 0.02).applyMatrix4(root.matrixWorld);
-        this.tag.show('Hit the table, the wall…', 0xff5a3c, this.tmp, this.head, 6);
+        this.tag.show('Hit the table. Then anything that glows.', 0xff5a3c, this.tmp, this.head, 6);
       }
     }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();

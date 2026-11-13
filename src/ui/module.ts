@@ -46,8 +46,10 @@ export interface Display {
   gold: boolean;
   /** A phone-jam code to show, or ''. */
   code: string;
-  /** Labels over each key (the settings page), or null. */
+  /** Labels printed on each key (the settings and tuning pages), or null for the keys' own glyphs. */
   keyLabels: string[] | null;
+  /** Keys not unlocked yet (drawn dim). */
+  locked: ModuleKey[];
 }
 
 const INK = '#f2efe6';
@@ -61,9 +63,11 @@ export class Module {
   private tex: CanvasTexture;
   private keyMeshes: Mesh[] = [];
   private keyMats: MeshStandardMaterial[] = [];
+  private keyCanvases: HTMLCanvasElement[] = [];
+  private keyTex: CanvasTexture[] = [];
   private press = new Float32Array(5);
   private pulseT = 0;
-  shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null };
+  shown: Display = { line: '', sub: '', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
 
   constructor() {
     this.root.name = 'Module';
@@ -86,7 +90,17 @@ export class Module {
     this.root.add(bezel, face);
     // four rubber keys along the front, each with a printed glyph
     KEYS.forEach((k, i) => {
-      const mat = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, emissive: new Color(0), map: keyTexture(k) });
+      const kc = document.createElement('canvas');
+      kc.width = 160;
+      kc.height = 110;
+      const kt = new CanvasTexture(kc);
+      kt.colorSpace = SRGBColorSpace;
+      kt.anisotropy = 4;
+      drawKey(kc, k, null, false);
+      kt.needsUpdate = true;
+      this.keyCanvases.push(kc);
+      this.keyTex.push(kt);
+      const mat = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, emissive: new Color(0), map: kt });
       const key = new Mesh(new BoxGeometry(MODULE.keyW, 0.008, MODULE.keyD), [mat, mat, mat, mat, mat, mat]);
       key.position.set(KEY_X[i], MODULE.h + 0.004, MODULE.keyZ);
       this.keyMeshes.push(key);
@@ -114,7 +128,7 @@ export class Module {
   set(d: Display): void {
     this.shown = d;
     const meter = Math.round(d.meter * 24);
-    const labels = d.keyLabels ? d.keyLabels.join('|') : '';
+    const labels = (d.keyLabels ? d.keyLabels.join('|') : '') + '#' + d.locked.join(',');
     const same =
       d.line === this.lastStr[0] && d.sub === this.lastStr[1] && d.code === this.lastStr[2] && labels === this.lastStr[3] &&
       d.total === this.lastNum[0] && d.stars === this.lastNum[1] && d.count === this.lastNum[2] && d.day === this.lastNum[3] && (d.gold ? 1 : 0) === this.lastNum[4] &&
@@ -123,6 +137,7 @@ export class Module {
     this.lastStr[0] = d.line;
     this.lastStr[1] = d.sub;
     this.lastStr[2] = d.code;
+    if (labels !== this.lastStr[3]) this.drawKeys(d);
     this.lastStr[3] = labels;
     this.lastNum[0] = d.total;
     this.lastNum[1] = d.stars;
@@ -132,6 +147,13 @@ export class Module {
     this.lastMeter = meter;
     this.lastFound = d.found.length;
     this.draw(d);
+  }
+
+  private drawKeys(d: Display): void {
+    KEYS.forEach((k, i) => {
+      drawKey(this.keyCanvases[i], k, d.keyLabels?.[i] ?? null, d.locked.includes(k));
+      this.keyTex[i].needsUpdate = true;
+    });
   }
 
   private draw(d: Display): void {
@@ -150,21 +172,29 @@ export class Module {
       g.fillStyle = INK;
       g.font = `700 190px ${FONT}`;
       const txt = String(d.count);
-      g.fillText(txt, (W - g.measureText(txt).width) / 2, 210);
+      g.fillText(txt, (W - g.measureText(txt).width) / 2, d.sub && /again/.test(d.sub) ? 180 : 210);
+      if (d.sub && /again/.test(d.sub)) {
+        g.font = `550 44px ${FONT}`;
+        g.fillText(d.sub, (W - g.measureText(d.sub).width) / 2, 262);
+      }
       this.tex.needsUpdate = true;
       return;
     }
     if (d.keyLabels) {
-      // the settings page: a title, and each key's setting written over it
+      // the settings and tuning pages: a title and a line; what each key does is printed on it
       g.fillStyle = INK;
-      g.font = `650 64px ${FONT}`;
-      g.fillText(d.line, 28, 80);
-      g.font = `600 34px ${FONT}`;
-      d.keyLabels.forEach((l, i) => {
-        const x = W / 2 + (KEY_X[i] / 0.28) * W;
-        const lines = l.split('\n');
-        lines.forEach((t, k) => g.fillText(t, x - g.measureText(t).width / 2, 170 + k * 42));
-      });
+      let tp = 84;
+      g.font = `650 ${tp}px ${FONT}`;
+      while (g.measureText(d.line).width > W - 56 && tp > 44) g.font = `650 ${--tp}px ${FONT}`;
+      g.fillText(d.line, 28, 100);
+      let sp2 = 56;
+      g.font = `550 ${sp2}px ${FONT}`;
+      while (g.measureText(d.sub).width > W - 56 && sp2 > 36) g.font = `550 ${--sp2}px ${FONT}`;
+      g.fillStyle = '#d6d2c8';
+      g.fillText(d.sub, 28, 190);
+      g.fillStyle = '#8f8b82';
+      g.font = `500 34px ${FONT}`;
+      g.fillText('Each key says what it does', 28, 258);
       this.tex.needsUpdate = true;
       return;
     }
@@ -222,50 +252,59 @@ export class Module {
   }
 }
 
-function keyTexture(k: ModuleKey): CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
+/** A key's top: its glyph (JAM and REC spelled out), or a page's label for it; dim while locked. */
+function drawKey(c: HTMLCanvasElement, k: ModuleKey, label: string | null, locked: boolean): void {
   const g = c.getContext('2d')!;
+  const W = c.width;
+  const H = c.height;
   g.fillStyle = '#2a2a2d';
-  g.fillRect(0, 0, 128, 128);
-  g.fillStyle = '#ffffff';
-  g.strokeStyle = '#ffffff';
-  g.lineWidth = 11;
+  g.fillRect(0, 0, W, H);
+  const ink = locked ? '#6a6a6e' : '#ffffff';
+  g.fillStyle = ink;
+  g.strokeStyle = ink;
+  g.textBaseline = 'middle';
+  if (label !== null) {
+    // a page's label: one or two short lines, as big as fits
+    const lines = label.split('\n');
+    let px = lines.length > 1 ? 34 : 46;
+    g.font = `700 ${px}px ${FONT}`;
+    while (lines.some((t) => g.measureText(t).width > W - 12) && px > 18) g.font = `700 ${--px}px ${FONT}`;
+    lines.forEach((t, i) => g.fillText(t, (W - g.measureText(t).width) / 2, H / 2 + (i - (lines.length - 1) / 2) * px * 1.1));
+    return;
+  }
+  const cx = W / 2;
+  const cy = H / 2;
+  g.lineWidth = 10;
   g.lineJoin = 'round';
   g.beginPath();
   if (k === 'prev') {
-    g.moveTo(80, 36);
-    g.lineTo(44, 64);
-    g.lineTo(80, 92);
+    g.moveTo(cx + 16, cy - 26);
+    g.lineTo(cx - 18, cy);
+    g.lineTo(cx + 16, cy + 26);
     g.stroke();
   } else if (k === 'next') {
-    g.moveTo(48, 36);
-    g.lineTo(84, 64);
-    g.lineTo(48, 92);
+    g.moveTo(cx - 16, cy - 26);
+    g.lineTo(cx + 18, cy);
+    g.lineTo(cx - 16, cy + 26);
     g.stroke();
   } else if (k === 'play') {
-    g.moveTo(48, 34);
-    g.lineTo(90, 64);
-    g.lineTo(48, 94);
+    g.moveTo(cx - 16, cy - 28);
+    g.lineTo(cx + 24, cy);
+    g.lineTo(cx - 16, cy + 28);
     g.closePath();
     g.fill();
   } else if (k === 'loop') {
-    // rec: a red dot
-    g.fillStyle = '#ff4a3a';
-    g.arc(64, 64, 26, 0, Math.PI * 2);
+    // REC: a red dot and the word
+    g.fillStyle = locked ? '#6a3a36' : '#ff4a3a';
+    g.arc(36, cy, 17, 0, Math.PI * 2);
     g.fill();
+    g.fillStyle = ink;
+    g.font = `800 40px ${FONT}`;
+    g.fillText('REC', 60, cy + 2);
   } else {
-    // jam: two little notes
-    g.arc(46, 82, 11, 0, Math.PI * 2);
-    g.arc(84, 74, 11, 0, Math.PI * 2);
-    g.fill();
-    g.fillRect(53, 36, 7, 46);
-    g.fillRect(91, 28, 7, 46);
-    g.fillRect(53, 30, 45, 9);
+    g.font = `800 44px ${FONT}`;
+    g.fillText('JAM', (W - g.measureText('JAM').width) / 2, cy + 2);
   }
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  return t;
 }
 
 function star(g: CanvasRenderingContext2D, x: number, y: number, r: number, filled: boolean, gold = false): void {

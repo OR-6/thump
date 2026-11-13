@@ -38,4 +38,7 @@ function strikeOverrides(): Partial<Record<keyof typeof STRIKE, number>> {
   if (re !== null) o.rearmM = re / 1000;
   return o;
 }
-export const STRIKE_CFG = strikeOverrides();
+/** What the address set (these win over tuning in the headset). */
+export const URL_STRIKE: Readonly<Partial<Record<keyof typeof STRIKE, number>>> = Object.freeze(strikeOverrides());
+/** The strike thresholds in force beyond the defaults: the address's, else what was tuned in the headset. */
+export const STRIKE_CFG: Partial<Record<keyof typeof STRIKE, number>> = { ...URL_STRIKE };

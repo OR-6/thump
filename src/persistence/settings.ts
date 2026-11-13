@@ -1,5 +1,6 @@
 /** Accessibility, comfort and timing settings (the 2D page and the felt tag by the kit), persisted. */
 import { load, save } from './storage.js';
+import { TUNE_ITEMS, type StrikeTune } from '../room/tuning.js';
 
 export type HandPref = 'auto' | 'left' | 'right';
 
@@ -27,6 +28,8 @@ export interface Settings {
   calibrateNext: boolean;
   /** Find the table afresh on the next entry (instead of the kit coming back where it was). */
   placeFresh: boolean;
+  /** Strike thresholds tuned in the headset (device sessions); unset: the defaults. */
+  tune: StrikeTune;
 }
 
 const KEY = 'settings.v1';
@@ -48,7 +51,20 @@ export function loadSettings(): Settings {
     offset: num(s.offset, -0.25, 0.25, 0),
     calibrateNext: s.calibrateNext === true,
     placeFresh: s.placeFresh === true,
+    tune: readTune(s.tune),
   };
+}
+
+/** Saved strike tuning, each value kept inside the page's range. */
+function readTune(v: unknown): StrikeTune {
+  const out: StrikeTune = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const item of TUNE_ITEMS) {
+    if (item.key === 'offset' || item.key === 'defaults') continue;
+    const n = (v as Record<string, unknown>)[item.key];
+    if (typeof n === 'number' && Number.isFinite(n)) out[item.key] = Math.min(item.max / item.scale, Math.max(item.min / item.scale, n));
+  }
+  return out;
 }
 
 export function saveSettings(s: Settings): void {

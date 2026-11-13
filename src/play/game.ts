@@ -7,7 +7,7 @@
  * through `GameStage` and `Room`, so unit tests drive it with fakes and a bot.
  */
 import { TIMING } from '../config.js';
-import { secPerBeat, type BedEvent, type Song } from '../songs/chart.js';
+import { oneHanded, secPerBeat, type BedEvent, type Song } from '../songs/chart.js';
 import { EventCursor, SongClock } from '../songs/sequencer.js';
 import { NoteJudge, windows, type Grade, type JudgeNote, type Summary } from '../songs/judge.js';
 import { SONGS, dailySong } from '../songs/songs.js';
@@ -52,6 +52,8 @@ export interface GameStage {
   setting(name: 'oneHand' | 'contrast' | 'words', flip: boolean): boolean;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
   bandmate(event: 'claim' | 'happy' | 'simpler' | 'leave', surface?: string): void;
+  /** The tuning page: act on a key (null: just read), and what the page shows. */
+  tune(k: ModuleKey | null): { line: string; sub: string; labels: string[] };
 }
 
 /** The room as the game sees it. */
@@ -76,6 +78,8 @@ export interface MoteView {
 }
 
 export interface GameOptions {
+  /** Device sessions (?debug=1): the settings page says how to reach tuning. */
+  debug?: boolean;
   tempo: number;
   offset: number;
 }
@@ -101,9 +105,12 @@ export class Game {
   readonly graded = { perfect: 0, good: 0, extra: 0 };
   readonly offsets: number[] = [];
   /** What the module shows now. */
-  readonly display: Display = { line: 'Hit anything', sub: 'Your room is an orchestra', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null };
+  readonly display: Display = { line: 'Hit anything', sub: 'Your room is an orchestra', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   /** The settings page is up on the module (tap ◀ twice; ▶ closes it). */
   settingsOpen = false;
+  /** The tuning page is up (in Settings, tap ◀ twice; ▶ closes it). */
+  tuneOpen = false;
+  private tuneShownAt = 0;
   /** The songs to choose from: the four, and today's. */
   readonly list: Song[] = [...SONGS, dailySong(dayKey())];
   /** A phone-jam code to show on the display ('' for none). */
@@ -142,6 +149,8 @@ export class Game {
     private room: Room,
     public opts: GameOptions = { tempo: 1, offset: 0 },
   ) {
+    // songs finished before an unlock was added to them still grant it
+    for (const [id, us] of Object.entries(UNLOCK_AFTER)) if (id in progress.stars) for (const u of us) if (!(progress.unlocks as string[]).includes(u)) (progress.unlocks as string[]).push(u);
     this.selected = Math.min(this.available() - 1, Math.max(0, progress.next));
   }
 
@@ -188,12 +197,28 @@ export class Game {
     const twice = this.t - (this.lastTap[k] ?? -9) < 0.9;
     this.lastTap[k] = this.t;
     if (this.mode === 'results') this.leaveResults();
+    if (this.tuneOpen) {
+      // ◀ ▶▶ choose, − + change, ▶ closes
+      if (k === 'play') this.tuneOpen = false;
+      else this.stage.tune(k);
+      this.lastTap[k] = -9;
+      this.refreshDisplay();
+      return;
+    }
     if (this.settingsOpen) {
-      // each key switches the setting written over it; ▶ closes the page
+      // each key switches the setting written over it; ▶ closes the page; ◀ twice opens tuning
       if (k === 'play') this.settingsOpen = false;
       else if (k === 'prev') {
         this.opts.tempo = this.opts.tempo < 0.95 ? 1 : 0.75;
         this.stage.tempo(this.opts.tempo);
+        if (twice) {
+          // the second tap undid the first; open the tuning page
+          this.settingsOpen = false;
+          this.tuneOpen = true;
+          this.lastTap[k] = -9;
+        }
+        this.refreshDisplay();
+        return;
       } else if (k === 'next') this.stage.setting('oneHand', true);
       else if (k === 'jam') this.stage.setting('contrast', true);
       else this.stage.setting('words', true);
@@ -251,7 +276,8 @@ export class Game {
     }
     if (k === 'jam') {
       if (this.mode === 'jam') this.endJam();
-      else if ((this.progress.unlocks as string[]).includes('jam') && this.mode !== 'play' && this.mode !== 'count') this.beginJam();
+      else if (!(this.progress.unlocks as string[]).includes('jam')) this.display.sub = 'JAM unlocks after Porch Step';
+      else if (this.mode !== 'play' && this.mode !== 'count') this.beginJam();
     }
   }
 
@@ -422,7 +448,8 @@ export class Game {
     this.cast = cast(song.parts, this.room.instruments());
     this.stage.casting(this.cast);
     this.stage.retune(song.key);
-    const notes: JudgeNote[] = song.notes.map((n) => ({ beat: n.beat, lane: noteKey(n, this.cast, (s, d) => this.room.zoneFor(s, d)), vel: n.vel }));
+    const chart = this.stage.setting('oneHand', false) ? oneHanded(song.notes) : song.notes;
+    const notes: JudgeNote[] = chart.map((n) => ({ beat: n.beat, lane: noteKey(n, this.cast, (s, d) => this.room.zoneFor(s, d)), vel: n.vel }));
     const spb = secPerBeat(song.bpm, this.opts.tempo);
     this.tempoAtStart = this.opts.tempo;
     this.clock.set(this.t + 0.4 + 4 * spb, spb);
@@ -450,7 +477,7 @@ export class Game {
 
   /** The player hit target `key` at game time `t`. */
   hit(key: string, t: number, gain: number): Grade | 'extra' | null {
-    if (this.mode === 'results' && t - this.modeT > 1.5) this.leaveResults();
+    if (this.mode === 'results' && t - this.modeT > 4) this.leaveResults();
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
@@ -468,6 +495,8 @@ export class Game {
 
   tick(t: number): void {
     this.t = t;
+    // the tuning page's readouts follow the hits
+    if (this.tuneOpen && t - this.tuneShownAt > 0.25) this.refreshDisplay();
     if (this.recPending > 0 && t - this.recPending > 0.9) {
       this.recPending = -1;
       if (this.mode === 'discover') this.startTake();
@@ -602,10 +631,21 @@ export class Game {
     d.gold = !!this.progress.gold[sel.id];
     d.code = this.code;
     d.keyLabels = null;
+    const un = this.progress.unlocks as string[];
+    d.locked = un.includes('jam') ? (un.includes('loops') ? NO_KEYS : LOOP_LOCKED) : un.includes('loops') ? JAM_LOCKED : BOTH_LOCKED;
+    if (this.tuneOpen) {
+      const p = this.stage.tune(null);
+      d.line = p.line;
+      d.sub = p.sub;
+      d.keyLabels = p.labels;
+      d.pulse = 'play';
+      this.tuneShownAt = this.t;
+      return;
+    }
     if (this.settingsOpen) {
       const on = (b: boolean) => (b ? 'on' : 'off');
       d.line = 'Settings';
-      d.sub = '';
+      d.sub = this.opts.debug ? 'Tune hits: tap ◀ twice' : '';
       d.keyLabels = [`Slow\n${on(this.opts.tempo < 0.95)}`, 'Done', `One hand\n${on(this.stage.setting('oneHand', false))}`, `Contrast\n${on(this.stage.setting('contrast', false))}`, `Words\n${on(this.stage.setting('words', false))}`];
       d.pulse = 'play';
       return;
@@ -615,7 +655,7 @@ export class Game {
       const b = this.loopClock.beatAt(this.t);
       d.line = 'Loop';
       if (l.state === 'count') d.count = Math.max(1, Math.min(4, Math.ceil(l.recStart - b)));
-      d.sub = l.recording ? `Recording layer ${l.layers.length + 1}` : `${l.layers.length} layer${l.layers.length === 1 ? '' : 's'} · REC adds one`;
+      d.sub = l.recording ? `Recording layer ${l.layers.length + 1}` : `${l.layers.length} layer${l.layers.length === 1 ? '' : 's'} · REC adds · twice clears`;
       d.pulse = 'loop';
       return;
     }
@@ -628,24 +668,35 @@ export class Game {
           d.line = sel.name;
           const need = wants(sel.parts);
           const have = this.found.filter((f) => f !== 'kit').length;
-          d.sub = this.lastFound && this.found.length < 2 ? found(this.lastFound) : this.weakRuns >= 2 && this.opts.tempo > 0.95 ? 'Slower? Settings: tap ◀ twice' : have < need ? 'Tap play · more found, more parts' : 'Tap play';
-          d.pulse = (this.progress.unlocks as string[]).includes('jam') && !this.jammed ? 'jam' : 'play';
+          const jamNew = un.includes('jam') && !this.jammed;
+          d.sub = this.lastFound && this.found.length < 2
+            ? found(this.lastFound)
+            : jamNew
+              ? 'New: tap JAM to jam'
+              : this.weakRuns >= 2 && this.opts.tempo > 0.95
+                ? 'Slower? Settings: tap ◀ twice'
+                : !(sel.id in this.progress.stars) && !Object.keys(this.progress.stars).length
+                  ? 'Tap ▶ · ◀ twice: settings'
+                  : have < need
+                    ? 'Tap ▶ · more found, more parts'
+                    : 'Tap ▶ to play';
+          d.pulse = jamNew ? 'jam' : 'play';
           d.stars = this.progress.stars[sel.id] ?? 0;
         }
         break;
       case 'count':
         d.line = this.song!.name;
-        d.sub = `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
+        d.sub = this.song!.id in this.progress.stars ? `${Math.round(this.song!.bpm * this.opts.tempo)} bpm` : 'Hit what lights up';
         d.count = Math.max(1, Math.min(4, Math.ceil(-this.clock.beatAt(this.t))));
         break;
       case 'play':
         d.line = this.song!.name;
-        d.sub = `${Math.round(this.song!.bpm * this.opts.tempo)} bpm`;
+        d.sub = this.song!.id in this.progress.stars ? `${Math.round(this.song!.bpm * this.opts.tempo)} bpm` : 'Hit what lights up';
         d.meter = this.energy;
         break;
       case 'jam':
         d.line = 'Jam';
-        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? 'Bandmate · listen' : 'Listen';
+        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? (this.code ? 'Phone? or-6.github.io/thump' : 'Bandmate · listen') : 'Listen';
         d.pulse = 'jam';
         d.meter = this.jamShares.length ? this.jamShares[this.jamShares.length - 1] : -1;
         break;
@@ -654,7 +705,7 @@ export class Game {
         d.line = s.stars === 3 ? 'Brilliant' : s.stars === 2 ? 'Lovely' : 'One star · again?';
         d.stars = s.stars;
         const next = this.selected < this.available() ? this.songAt(this.selected) : null;
-        d.sub = this.newUnlocks.length > 1 ? 'New: a tom, and JAM' : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
+        d.sub = this.newUnlocks.length > 1 ? (this.newUnlocks.includes('jam') ? 'New: a tom, and JAM' : unlockLine(this.newUnlocks[this.newUnlocks.length - 1])) : this.newUnlocks.length ? unlockLine(this.newUnlocks[0]) : next && next !== this.song ? `Next: ${next.name}` : `${s.perfect + s.good} of ${s.total} notes`;
         break;
       }
     }
@@ -704,6 +755,11 @@ function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+const NO_KEYS: ModuleKey[] = [];
+const LOOP_LOCKED: ModuleKey[] = ['loop'];
+const JAM_LOCKED: ModuleKey[] = ['jam'];
+const BOTH_LOCKED: ModuleKey[] = ['jam', 'loop'];
+
 function unlockLine(u: Unlock): string {
-  return u === 'tom' ? 'New: a tom on your table' : u === 'loops' ? 'New: REC loops on the module' : 'New: JAM with a bandmate';
+  return u === 'tom' ? 'New: a tom on your table' : u === 'loops' ? 'New: REC loops on the module' : u === 'swaps' ? 'New: pinch and hold a sound to swap it' : 'New: JAM with a bandmate';
 }

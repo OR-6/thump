@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bed, grid, secPerBeat } from '../src/songs/chart.js';
+import { bed, grid, oneHanded, secPerBeat } from '../src/songs/chart.js';
 import { SONGS } from '../src/songs/songs.js';
 import { NoteJudge, copyNeeds, estimateOffset, starsFor, windows } from '../src/songs/judge.js';
 import { EventCursor, SongClock } from '../src/songs/sequencer.js';
@@ -20,6 +20,18 @@ describe('notation', () => {
     const b = bed({ roots: [60], bass: 'x.......', chord: 'hold', shaker: false }, 2);
     expect(b[0].beat).toBe(-4);
     expect(b.filter((e) => e.voice === 'bass').map((e) => e.beat)).toEqual([0, 4]);
+  });
+});
+
+describe('one hand', () => {
+  it('never two notes at once; a pitched note wins over a drum', () => {
+    const n = grid({ kick: 'x...x...', melody: '0...2.4.' });
+    const o = oneHanded(n);
+    expect(o.map((x) => `${x.part}@${x.beat}`)).toEqual(['melody@0', 'melody@2', 'melody@3']);
+    SONGS.forEach((s) => {
+      const f = oneHanded(s.notes);
+      for (let k = 1; k < f.length; k++) expect(f[k].beat).toBeGreaterThan(f[k - 1].beat);
+    });
   });
 });
 

@@ -134,3 +134,18 @@ export function bed(style: BedStyle, bars: number): BedEvent[] {
 export function secPerBeat(bpm: number, tempo = 1): number {
   return 60 / (bpm * tempo);
 }
+
+/** One hand: where two notes fall together, keep one (a pitched note over a drum, else the louder). */
+export function oneHanded(notes: readonly Note[]): Note[] {
+  const out: Note[] = [];
+  for (const n of [...notes].sort((a, b) => a.beat - b.beat)) {
+    const prev = out[out.length - 1];
+    if (prev && Math.abs(prev.beat - n.beat) < 1e-6) {
+      const better = (n.degree >= 0 ? 1 : 0) - (prev.degree >= 0 ? 1 : 0) || n.vel - prev.vel;
+      if (better > 0) out[out.length - 1] = n;
+      continue;
+    }
+    out.push(n);
+  }
+  return out;
+}

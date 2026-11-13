@@ -16,9 +16,10 @@ export class Tag {
   /** Seconds a tag stays up. */
   hold = 2.2;
 
-  constructor(readonly widthM = 0.2, readonly heightM = 0.034) {
-    this.canvas.width = 768;
-    this.canvas.height = Math.round((768 * heightM) / widthM);
+  /** `widthM` is the room a tag has: text keeps its size and only shrinks past it (it's drawn centred, the rest clear). */
+  constructor(readonly widthM = 0.4, readonly heightM = 0.034) {
+    this.canvas.width = Math.round((768 * widthM) / 0.2);
+    this.canvas.height = Math.round((768 * heightM) / 0.2);
     this.tex = new CanvasTexture(this.canvas);
     this.tex.colorSpace = SRGBColorSpace;
     this.mat = new MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, depthTest: false, toneMapped: false, opacity: 0 });
@@ -38,6 +39,8 @@ export class Tag {
     if (text !== this.text) this.draw(text, accent);
     if (at) this.mesh.position.copy(at);
     if (head) this.mesh.lookAt(head);
+    // as legible across the room as at the desk: it grows with distance past 60 cm
+    if (at && head) this.mesh.scale.setScalar(Math.min(4, Math.max(1, at.distanceTo(head) / 0.6)));
     this.life = hold;
     this.mesh.visible = true;
   }
