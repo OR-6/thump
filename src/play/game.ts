@@ -1320,7 +1320,8 @@ export class Game {
     this.moteCount = 0;
     this.judge = null;
     this.refreshDisplay();
-    this.display.stars = 0;
+    // (your replay first: no stars until it's done, from the very first frame)
+    this.display.stars = this.replaying ? -1 : 0;
   }
   /** Tight %, last performance. */
   lastTight = -1;
