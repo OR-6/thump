@@ -1,8 +1,9 @@
 /**
- * The 2D page shown outside the headset: Thump's site, built from the icon (docs/SITE-DESIGN.md). The hero with the
- * button that starts mixed reality (off a Quest it copies the link), the band as a list you choose from, a drawing of
- * the desk that plays the headset's own sounds, the setlist from the game's own data, scoring, playing together
- * (start a band or type a friend's code), three steps to start, the specs and the settings.
+ * The 2D page shown outside the headset: Thump's site (docs/SITE-DESIGN.md). The hero (the kit at the moment of a
+ * Perfect, the hit's rings spreading from the drum, and the button that starts mixed reality; off a Quest it copies
+ * the link), the band (one list of the six that drives a capture and a drawing of the desk that plays the headset's
+ * own sounds), the setlist from the game's own data, scoring, playing together (start a band or type a friend's
+ * code), three steps to start, the specs and the settings.
  */
 import { VisibilityState, type World } from '@iwsdk/core';
 import { audio, type Voice } from '../audio/engine.js';
@@ -11,47 +12,60 @@ import { loadProgress, saveProgress, freshProgress } from '../persistence/progre
 import { coop, normaliseCode, type CoopStatus } from '../net/coop.js';
 import { asPlayer } from '../net/band.js';
 import { PADS } from '../config.js';
-import { CONGA, SHELF, handpanZones, marimbaZones, percVoice, pianoBlacks, pianoZones, strumNotes, type InstId } from '../kit/shelf.js';
+import { CONGA, handpanZones, marimbaZones, percVoice, pianoBlacks, pianoZones, strumNotes, type InstId } from '../kit/shelf.js';
 import { LESSONS, TUNES } from '../songs/tunes.js';
+import { scoreOf } from '../songs/score.js';
 import { ringMarkSvg, wordmarkSvg } from './brand.js';
 import { PAGE_ROOT, PAGE_SCALE, VIEW, centreOnTray, deskSvg, viewFor } from './landing-drawing.js';
 
 const LIVE_URL = 'or-6.github.io/thump';
 const REPO_URL = 'https://github.com/OR-6/thump';
 
-/** The band, in the page's order: what it's called here, how you play it, and its capture from the game. */
+/** The band, in the page's order: its name, a few words on it, how you play it, and its capture from the game. */
 const BAND: { id: InstId; label: string; what: string; line: string; alt: string }[] = [
-  { id: 'drums', what: 'Seven pieces', label: 'Drums', line: 'Hit the heads in the air over the desk with your palms. Pinch, and there’s a stick in your hand.', alt: 'The drums mid-song: rings closing onto the snare and the kick, Perfect on both heads, the score panel behind.' },
-  { id: 'piano', what: 'Piano', label: 'Keys', line: 'A piano keyboard with real-size keys. Press them with your fingertips; the square on the left plays a chord.', alt: 'The keyboard in Für Elise: a note landing on a key, the Spotlight meter filling over the score.' },
-  { id: 'marimba', what: 'Eight bars', label: 'Marimba', line: 'Make a fist and there’s a mallet in it. The long rosewood bars on the left are the low ones.', alt: 'The marimba in Canon in D, one bar lit gold as it is hit.' },
-  { id: 'congas', what: 'A pair', label: 'Congas', line: 'Palm in the middle of a head for an open tone, fingers on the edge for a slap.', alt: 'Two congas in Can-can, a ring closing onto the right-hand drum.' },
-  { id: 'handpan', what: 'Nine notes', label: 'Handpan', line: 'Fingertips on the notes. The deep one is in the middle; go round the rim and you walk up the scale.', alt: 'The handpan in Amazing Grace, the score panel behind it.' },
-  { id: 'guitar', what: 'Acoustic', label: 'Guitar', line: 'Hold it across your lap. Every string sounds as your fingertip crosses it.', alt: 'The acoustic guitar held at the edge of the desk, chord names on the neck, the score panel behind.' },
+  { id: 'drums', label: 'Drums', what: 'Seven pieces', line: 'Hit the heads in the air over the desk with your palms. Pinch, and there’s a stick in your hand.', alt: 'The drum kit on the desk from the player’s seat, rings closing onto the heads.' },
+  { id: 'piano', label: 'Piano', what: 'Real-size keys', line: 'A piano keyboard with real-size keys. Press them with your fingertips; the square on the left plays a chord.', alt: 'The piano keyboard on the desk mid-song, a note landing on a key.' },
+  { id: 'marimba', label: 'Marimba', what: 'Eight bars', line: 'Make a fist and there’s a mallet in it. The long rosewood bars on the left are the low ones.', alt: 'The rosewood marimba on the desk mid-song, a bar lit as it is hit.' },
+  { id: 'congas', label: 'Congas', what: 'A pair', line: 'Palm in the middle of a head for an open tone, fingers on the edge for a slap.', alt: 'Two congas on the desk mid-song, a ring closing onto one head.' },
+  { id: 'handpan', label: 'Handpan', what: 'Nine notes', line: 'Fingertips on the notes. The deep one is in the middle; go round the rim and you walk up the scale.', alt: 'The handpan on the desk mid-song, a note lit as it is played.' },
+  { id: 'guitar', label: 'Guitar', what: 'On your lap', line: 'Hold it across your lap. Every string sounds as your fingertip crosses it.', alt: 'The acoustic guitar held across the lap, chord names on the neck.' },
 ];
 const labelOf = (id: InstId) => BAND.find((b) => b.id === id)?.label ?? id;
 
 /** What the drawing of each instrument does, under it. */
 const ABOUT: Record<InstId, string> = {
   drums: 'The whole kit from above: hi-hat, snare, rack tom, floor tom, the kick lying flat, crash and ride.',
-  piano: 'Two octaves of real-size piano keys. A black key plays the two notes either side of it; the red button plays a chord.',
+  piano: 'Two octaves of real-size piano keys. A black key plays the two notes either side of it; the round button plays a chord.',
   marimba: 'Eight bars, long and low on the left.',
   guitar: 'In the headset you hold it. Here, pick a chord on the neck, then tap the strings.',
-  congas: 'The low drum on the left. The middle of a head is an open tone, the edge a slap.',
+  congas: 'The low drum on the left. Inside the dashed line is an open tone, outside it a slap.',
   handpan: 'A low note in the middle and eight around it.',
 };
 
+/** The hero capture, and where in it the struck drum sits (its rings spread from there). */
+const HERO = { src: './site/hero.webp', w: 716, h: 290, fx: 0.63, fy: 0.52, alt: 'The drum kit on the desk mid-song, seen from the player’s seat: Perfect on the bass drum, its rim lit red and gold.' };
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const two = (n: number) => String(n).padStart(2, '0');
-const kicker = (id: string, text: string, tag = 'h2') => `<${tag} class="kicker" id="${id}">${ringMarkSvg({ simple: true })}<span>${text}</span></${tag}>`;
-/** One huge broken ring, cropped off an edge of its section: texture. */
-const arc = (cls: string) => `<svg class="bg-arc ${cls}" viewBox="-500 -500 1000 1000" aria-hidden="true" focusable="false"><circle r="480" fill="none" stroke-dasharray="1300 260 700 760"/></svg>`;
+/** A song's length at full speed, from its score: its passes and solos to the last note. */
+const lengthOf = (t: (typeof TUNES)[number]) => {
+  const s = Math.round(((scoreOf(t).end + 1) * 60) / t.bpm);
+  return `${Math.floor(s / 60)}:${two(s % 60)}`;
+};
+
+/** The hit's rings, as on the icon (each broken and turned its own way), round the struck drum; one more goes out now and then. */
+const heroRings = () => `<svg class="rings" viewBox="-100 -100 200 200" aria-hidden="true" focusable="false">
+  <g class="ring ring-1"><circle r="44" stroke-width="5.5" pathLength="100" stroke-dasharray="78 22" transform="rotate(-20)"/></g>
+  <g class="ring ring-2"><circle r="68" stroke-width="3.4" pathLength="100" stroke-dasharray="31 9 15 18" transform="rotate(40)"/></g>
+  <g class="ring ring-3"><circle r="94" stroke-width="1.9" pathLength="100" stroke-dasharray="12 9 20 21" transform="rotate(10)"/></g>
+  <circle class="pulse" r="94"/></svg>`;
 
 export function mountLanding(world: World): void {
   const classics = TUNES.filter((t) => !t.original);
   const originals = TUNES.filter((t) => t.original);
   let n = 0;
   const songRow = (t: (typeof TUNES)[number]) =>
-    `<li class="song"><span class="no" aria-hidden="true"><span>${two(++n)}</span>${ringMarkSvg({ simple: true })}</span><span class="name">${esc(t.name)}</span><span class="by">${esc(t.original ? 'Original' : t.by)}</span><span class="bpm">${t.bpm} bpm</span><span class="lv"><i class="e">Easy</i><i class="n">Normal</i><i class="h">Hard</i></span></li>`;
+    `<li class="song"><span class="no" aria-hidden="true">${two(++n)}</span><span class="name">${esc(t.name)}</span><span class="by">${esc(t.original ? 'Original' : t.by)}</span><span class="bpm">${t.bpm} bpm</span><span class="len"><span class="vh">Length </span>${lengthOf(t)}</span></li>`;
 
   const el = document.createElement('div');
   el.id = 'landing';
@@ -69,162 +83,144 @@ export function mountLanding(world: World): void {
 
     <main id="main" tabindex="-1">
       <section class="hero" id="top" aria-labelledby="hero-h">
-        <div class="hero-top">
-        ${ringMarkSvg({ className: 'hero-mark' })}
         <div class="wrap hero-in">
-          <div class="hero-word">${wordmarkSvg('currentColor', 'Thump')}</div>
-          <h1 id="hero-h">A band on <span class="nb">your desk.</span></h1>
+          <h1 id="hero-h">${wordmarkSvg('currentColor', 'Thump')}</h1>
+          <p class="tag">A band on your desk.</p>
           <p class="lede">Drums, keys, guitar and more, on the table in front of you, played with your bare hands. Mixed reality on Meta Quest, straight from the browser.</p>
           <div class="cta">
             <button id="enter-xr" class="btn btn-1" type="button">Enter mixed reality</button>
-            <a class="btn btn-2" href="#hear">Hear it first <span aria-hidden="true">↓</span></a>
+            <a class="btn btn-2" href="#band">Hear it first <span aria-hidden="true">↓</span></a>
           </div>
-          <p class="go-note" id="go-note" aria-live="polite">On Quest, open this page in the browser. On a laptop, the button copies the link.</p>
+          <p class="go-note" id="go-note" aria-live="polite"></p>
           <p class="xr-fail" role="alert" hidden>It didn’t start. Say yes to the Quest’s prompts and try again.</p>
         </div>
-        </div>
-        <div class="wrap">
-          <div class="strip">
-            <figure class="cap" style="--ar:1.333"><img src="./site/drums.webp" width="720" height="540" fetchpriority="high" alt="The drum kit on the desk mid-song, Perfect on the snare and the kick." /><figcaption>The kit</figcaption></figure>
-            <figure class="cap" style="--ar:1.778"><img src="./site/held.webp" width="640" height="360" alt="The acoustic guitar held across the lap, chord names on the neck, Perfect on the strings." /><figcaption>The guitar, held</figcaption></figure>
-            <figure class="cap" style="--ar:1.778"><img src="./site/hud-live.webp" width="640" height="360" alt="The score panel during Canon in D: a 76-note streak at times four and Hands up for the Spotlight." /><figcaption>The panel, mid-song</figcaption></figure>
-          </div>
-        </div>
+        <figure class="hero-art" style="--fx:${HERO.fx * 100}%;--fy:${HERO.fy * 100}%">
+          <img class="feather" src="${HERO.src}" width="${HERO.w}" height="${HERO.h}" fetchpriority="high" alt="${esc(HERO.alt)}" />
+          ${heroRings()}
+        </figure>
       </section>
 
       <section class="sec band" id="band" aria-labelledby="band-h">
-        ${arc('arc-band')}
-        <div class="wrap band-in">
-          <div class="band-list">
-            ${kicker('band-h', 'The band')}
-            <ul class="inst-list">
-              ${BAND.map((b) => `<li><button type="button" class="member" data-band="${b.id}" aria-pressed="false" aria-controls="band-shot">${ringMarkSvg({ simple: true })}<span>${b.label}</span><small>${b.what}</small></button></li>`).join('')}
-            </ul>
-          </div>
-          <figure class="band-shot" id="band-shot">
-            <img src="./site/drums.webp" width="720" height="540" loading="lazy" alt="" />
-            <figcaption><span class="cap-src">In the WebXR emulator</span><span class="how" aria-live="polite"></span>
-              <button type="button" class="link" id="band-hear">Play it on the desk below</button></figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section class="sec hear" id="hear" aria-labelledby="hear-h">
-        <div class="wrap hear-in">
-          <div class="hear-words">
-            ${kicker('hear-h', 'Hear them now')}
-            <p>The headset’s own sounds. Pick one, then tap or click the drawing; hold the mouse down and drag for a run.</p>
-            <div class="picker" role="group" aria-label="Instrument on the desk">
-              ${BAND.map((b) => `<button type="button" class="pick" data-inst="${b.id}" aria-pressed="false">${b.label}</button>`).join('')}
-            </div>
-          </div>
-          <figure class="desk">
-            <div class="frame"><div class="stage"></div></div>
-            <div class="desk-foot" aria-hidden="true">
-              <span>Your side of the desk</span>
-              <span class="scale"><span class="scale-bar" style="width:${((10 / VIEW.w) * 100).toFixed(2)}%"></span>10 cm</span>
-            </div>
-            <figcaption class="about" aria-live="polite"></figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section class="sec setlist" id="setlist" aria-labelledby="setlist-h">
-        ${arc('arc-set')}
         <div class="wrap">
-          ${kicker('setlist-k', 'Setlist', 'p')}
-          <h2 class="title" id="setlist-h"><span>${TUNES.length} songs.</span> <span>3 ways to play each.</span></h2>
+          <div class="band-head">
+            <h2 class="title" id="band-h">The band</h2>
+            <p>Six instruments, and these are the headset’s own sounds. Pick one, then tap or click its drawing; hold the mouse down and drag for a run.</p>
+          </div>
+          <div class="band-in">
+            <ul class="picker" role="group" aria-label="Instrument">
+              ${BAND.map((b) => `<li><button type="button" class="pick" data-inst="${b.id}" aria-pressed="false"><span>${b.label}</span><small>${b.what}</small></button></li>`).join('')}
+            </ul>
+            <div class="band-main">
+              <figure class="desk">
+                <div class="frame"><div class="stage"></div></div>
+                <div class="desk-foot" aria-hidden="true">
+                  <span>Your side of the desk, from above</span>
+                  <span class="scale"><span class="scale-bar" style="width:${((10 / VIEW.w) * 100).toFixed(2)}%"></span>10 cm</span>
+                </div>
+                <figcaption class="about" aria-live="polite"></figcaption>
+              </figure>
+              <figure class="band-shot">
+                <img class="feather" src="./site/drums.webp" width="620" height="296" loading="lazy" alt="" />
+                <figcaption><span class="label">In the headset</span><span class="how" aria-live="polite"></span></figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="setlist" id="setlist" aria-labelledby="setlist-h">
+        <div class="wrap">
+          <span class="label">Setlist</span>
+          <div class="set-head">
+            <h2 class="title" id="setlist-h">${TUNES.length} songs</h2>
+            <p class="set-note">Every one on Easy, Normal and Hard. Lengths are at full speed.</p>
+          </div>
           <h3 class="group">Classics <span>${classics.length}</span></h3>
           <ol class="songs">${classics.map(songRow).join('')}</ol>
           <h3 class="group">Originals <span>${originals.length}</span></h3>
           <ol class="songs" start="${classics.length + 1}">${originals.map(songRow).join('')}</ol>
-          <p class="lessons"><strong>And a lesson for every instrument.</strong> A slow tune that teaches it one move at a time: ${LESSONS.map((l) => esc(l.name.replace(/^Learn /, ''))).join(', ').replace(/, ([^,]+)$/, ' and $1')}.</p>
+          <p class="lessons"><strong>And a lesson for every instrument</strong> (${LESSONS.map((l) => esc(l.name.replace(/^Learn /, ''))).join(', ').replace(/, ([^,]+)$/, ' and $1')}): a slow tune that teaches it one move at a time.</p>
         </div>
       </section>
 
       <section class="sec score" id="score" aria-labelledby="score-h">
         <div class="wrap">
-          ${kicker('score-k', 'Scoring', 'p')}
-          <h2 class="title" id="score-h">Go for the S</h2>
-        </div>
-        <div class="wrap score-in">
-          <div class="score-words">
-            <ol class="rules">
-              <li><strong>Streak</strong> Ten notes in a row doubles your points, up to ×4.</li>
-              <li><strong>Spotlight</strong> Play the gold bars clean, then raise both hands for ×2.</li>
-              <li><strong>Your ghost</strong> Your best run, raced bar by bar.</li>
-              <li><strong>Full combo</strong> Every note, no misses.</li>
-            </ol>
-            <figure class="shot shot-b"><img src="./site/results.webp" width="620" height="465" loading="lazy" alt="The results for Ode to Joy on Normal: grade S with three stars, 95,100 points, 252 perfect and no misses, All perfect." /><figcaption>The results: an S, every note perfect</figcaption></figure>
+          <div class="score-in">
+            <figure class="score-shot"><img src="./site/results.webp" width="420" height="256" loading="lazy" alt="The results for Canon in D: grade S with three stars, All perfect, 74,300 points, 200 perfect and no misses." /></figure>
+            <div class="score-words">
+              <span class="label">Scoring</span>
+              <h2 class="title" id="score-h">Go for the <span class="hot">S</span></h2>
+              <p>Every song ends on a grade, S down to C.</p>
+            </div>
           </div>
-          <div class="shots">
-            <figure class="shot shot-a"><img src="./site/hud.webp" width="620" height="465" loading="lazy" alt="The panel during Ode to Joy: a 110-note streak at times four, 100 percent accuracy, 60 points behind your best run, and Hands up for the Spotlight." /><figcaption>Mid-song: the streak, your ghost, the Spotlight</figcaption></figure>
-            
-          </div>
+          <ol class="rules">
+            <li><strong>Streak</strong>Ten in a row doubles your points, up to ×4.</li>
+            <li><strong>Spotlight</strong>Play the gold bars clean, then raise both hands for ×2.</li>
+            <li><strong>Your ghost</strong>Race your own best run, bar by bar.</li>
+            <li><strong>Full combo</strong>Every note. No misses.</li>
+          </ol>
         </div>
       </section>
 
-      <section class="sec together" id="together" aria-labelledby="together-h">
-        <div class="wrap together-in">
-          <div class="together-words">
-            ${kicker('together-h', 'Play together')}
-            <p class="big">Up to four of you, one song, one beat. Or just jam.</p>
-            <p>One of you starts a band and gets a four-letter code. The others type it here and join, then everyone enters mixed reality, wherever they are.</p>
-            <div class="band-ctl">
-              <button type="button" id="band-start" class="btn btn-2">Start a band</button>
-              <span class="or">or</span>
-              <span class="join">
-                <input id="band-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="A friend’s 4-letter code" />
-                <button type="button" id="band-join" class="btn btn-2">Join</button>
-              </span>
+      <section class="together" id="together" aria-labelledby="together-h">
+        <div class="wrap">
+          <div class="together-in">
+            <div class="together-words">
+              <h2 class="title" id="together-h">Play together</h2>
+              <p class="big">Up to four of you, one song, one beat. Or just jam.</p>
+              <p>One of you starts a band and gets a four-letter code. The others type it here and join, then everyone enters mixed reality, wherever they are.</p>
             </div>
-            <p id="band-status" aria-live="polite"></p>
+            <p class="eg"><span class="eg-code">PKRW</span><span class="eg-cap">An example. Yours comes when you start a band.</span></p>
           </div>
-          <svg class="seats" viewBox="0 0 400 420" role="img" aria-label="Four seats round the desk, one taken: yours">
-            <rect class="desk-top" x="110" y="130" width="180" height="140"/>
-            <g class="seat seat-1 on" transform="translate(200 330)"><circle r="46"/><g transform="scale(0.1)">${ringMarkSvg({ className: 'seat-mark' }).replace(/^<svg[^>]*>|<\/svg>$/g, '')}</g></g>
-            <g class="seat seat-2" transform="translate(200 70)"><circle r="46"/></g>
-            <g class="seat seat-3" transform="translate(50 200)"><circle r="46"/></g>
-            <g class="seat seat-4" transform="translate(350 200)"><circle r="46"/></g>
-            <text x="200" y="414" text-anchor="middle">You</text>
-          </svg>
+          <div class="band-ctl">
+            <div>
+              <h3>Start a band</h3>
+              <p class="hint">You get a code to send to your friends.</p>
+              <button type="button" id="band-start" class="btn btn-1">Get a code</button>
+            </div>
+            <div>
+              <div class="join">
+                <div class="field">
+                  <label for="band-code">Join with a code</label>
+                  <input id="band-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+                </div>
+                <button type="button" id="band-join" class="btn btn-2">Join</button>
+              </div>
+            </div>
+          </div>
+          <p id="band-status" aria-live="polite"></p>
         </div>
       </section>
 
       <section class="sec start" id="start" aria-labelledby="start-h">
         <div class="wrap">
-          ${kicker('start-h', 'How to start')}
+          <h2 class="title" id="start-h">How to start</h2>
           <ol class="steps">
             ${[
-              ['Open the link on your Quest', `In the Quest browser, go to <strong>${LIVE_URL}</strong> and press Enter mixed reality. Nothing to install.`, -30],
-              ['Sit at a desk, put the controllers down', 'It’s hands only. A tray table on a train or a plane works too.', 120],
-              ['Tap the desk and play', 'The drums come up under your hands. Poke the panel at the back of the desk for a song or another instrument.', 230],
+              ['Open the link on your Quest', `In the Quest browser, go to <strong>${LIVE_URL}</strong> and press Enter mixed reality. Nothing to install.`],
+              ['Sit at a desk, put the controllers down', 'It’s hands only. A tray table on a train or a plane works too.'],
+              ['Tap the desk and play', 'The drums come up under your hands. Poke the panel at the back of the desk for a song or another instrument.'],
             ]
-              .map(
-                ([h, p, rot], i) => `<li><span class="num" aria-hidden="true"><svg viewBox="-60 -60 120 120"><circle r="52" transform="rotate(${rot})"/></svg><span>${i + 1}</span></span><div><h3>${h}</h3><p>${p}</p></div></li>`,
-              )
+              .map(([h, p], i) => `<li><span class="num" aria-hidden="true">${i + 1}</span><div><h3>${h}</h3><p>${p}</p></div></li>`)
               .join('')}
           </ol>
         </div>
       </section>
 
       <section class="sec specs" id="specs" aria-labelledby="specs-h">
-        <div class="wrap specs-in">
-          <div>
-            ${kicker('specs-h', 'Specs')}
-            <dl class="spec">
-              <div><dt>Headset</dt><dd>Meta Quest 3, Quest browser (WebXR)</dd></div>
-              <div><dt>Where</dt><dd>Seated at a desk or tray table, passthrough</dd></div>
-              <div><dt>Input</dt><dd>Hand tracking, hands only</dd></div>
-              <div><dt>Players</dt><dd>1–4 online with a code</dd></div>
-              <div><dt>Songs</dt><dd>${TUNES.length} (${classics.length} classics, ${originals.length} originals) on Easy, Normal and Hard, plus ${LESSONS.length} lessons</dd></div>
-              <div><dt>Price</dt><dd>Free, nothing to install</dd></div>
-              <div><dt>Status</dt><dd>Built and checked in the WebXR emulator; Quest 3 testing next</dd></div>
-            </dl>
-          </div>
+        <div class="wrap">
+          <h2 class="title" id="specs-h">Specs</h2>
+          <dl class="spec">
+            <div><dt>Headset</dt><dd>Meta Quest 3, Quest browser (WebXR)</dd></div>
+            <div><dt>Where</dt><dd>Seated at a desk or tray table, passthrough</dd></div>
+            <div><dt>Input</dt><dd>Hand tracking, hands only</dd></div>
+            <div><dt>Players</dt><dd>1–4 online with a code</dd></div>
+            <div><dt>Songs</dt><dd>${TUNES.length} (${classics.length} classics, ${originals.length} originals) on Easy, Normal and Hard, plus ${LESSONS.length} lessons</dd></div>
+            <div><dt>Price</dt><dd>Free, nothing to install</dd></div>
+            <div><dt>Status</dt><dd>Built and checked in the WebXR emulator; Quest 3 playtests next</dd></div>
+          </dl>
           <details class="prep">
-            <summary>Settings</summary>
-            <p class="small-print">Change these in the Quest’s browser before you enter. They’re saved there.</p>
+            <summary>Settings <small>For the Quest’s browser, before you enter. They’re saved there.</small><span class="pm" aria-hidden="true"></span></summary>
             <div class="opts">
               <label class="sel">Lead hand
                 <select data-k="hand"><option value="auto">Whichever you rest first</option><option value="right">Right</option><option value="left">Left</option></select>
@@ -256,17 +252,30 @@ export function mountLanding(world: World): void {
   // (index.html paints the top of the page while the game loads; this replaces it)
   document.getElementById('landing-boot')?.remove();
 
-  // the bar gets its rule once the page has scrolled
+  // the bar is clear over the hero; it takes the plum and its rule once the page has scrolled
   const bar = el.querySelector<HTMLElement>('.bar')!;
   el.addEventListener('scroll', () => bar.classList.toggle('scrolled', el.scrollTop > 8), { passive: true });
 
-  // Enter mixed reality: on a Quest it starts; a browser that can't enter copies the link instead
+  // Enter mixed reality: on a Quest it starts; a browser that can't enter says so on the button and copies the link
   const btn = el.querySelector<HTMLButtonElement>('#enter-xr')!;
+  const barBtn = el.querySelector<HTMLButtonElement>('#bar-enter')!;
   const xrFail = el.querySelector<HTMLElement>('.xr-fail')!;
   const note = el.querySelector<HTMLElement>('#go-note')!;
   const xrApi = (navigator as Navigator & { xr?: { isSessionSupported(mode: string): Promise<boolean> } }).xr;
   let canEnter = world.xrEnabled && !!xrApi && !new URLSearchParams(location.search).has('jam');
-  if (canEnter) void xrApi!.isSessionSupported('immersive-ar').then((ok) => (canEnter = ok), () => (canEnter = false));
+  const label = () => {
+    btn.textContent = canEnter ? 'Enter mixed reality' : 'Copy the Quest link';
+    barBtn.textContent = canEnter ? 'Enter' : 'Copy link';
+    note.textContent = canEnter
+      ? 'Sit at a desk or a tray table and put the controllers down: it’s hands only.'
+      : `Thump runs in the Quest browser. This copies ${LIVE_URL} to open there.`;
+  };
+  label();
+  if (canEnter)
+    void xrApi!.isSessionSupported('immersive-ar').then(
+      (ok) => ((canEnter = ok), label()),
+      () => ((canEnter = false), label()),
+    );
   const copyLink = () => {
     const url = location.origin + location.pathname;
     const say = (copied: boolean) => (note.textContent = `${copied ? 'Link copied. ' : ''}Open ${LIVE_URL} in the Quest browser.`);
@@ -288,7 +297,7 @@ export function mountLanding(world: World): void {
       }
     }, 250);
   });
-  el.querySelector<HTMLButtonElement>('#bar-enter')!.addEventListener('click', () => {
+  barBtn.addEventListener('click', () => {
     btn.click();
     if (!canEnter) {
       el.scrollTo({ top: 0, behavior: smooth() });
@@ -307,34 +316,14 @@ export function mountLanding(world: World): void {
     if (target.id === 'main') target.focus({ preventScroll: true });
   });
 
-  const desk = mountDesk(el);
-
-  // the band: choosing a name (click, hover or focus) swaps the capture and says how it's played
+  // the band: one list; the chosen name swaps the capture, the line on how it's played, and the drawing
   const shot = el.querySelector<HTMLImageElement>('.band-shot img')!;
   const how = el.querySelector<HTMLElement>('.band-shot .how')!;
-  const hearBtn = el.querySelector<HTMLButtonElement>('#band-hear')!;
-  const instBtns = [...el.querySelectorAll<HTMLButtonElement>('.member')];
-  let chosen: InstId = 'drums';
-  const choose = (id: InstId) => {
+  mountDesk(el, (id) => {
     const b = BAND.find((x) => x.id === id)!;
-    chosen = id;
     shot.src = `./site/${id}.webp`;
     shot.alt = b.alt;
     how.textContent = b.line;
-    hearBtn.textContent = `Play the ${b.label.toLowerCase()} on the desk below`;
-    for (const x of instBtns) x.setAttribute('aria-pressed', String(x.dataset.band === id));
-  };
-  for (const b of instBtns) {
-    const id = b.dataset.band as InstId;
-    b.addEventListener('click', () => choose(id));
-    b.addEventListener('focus', () => choose(id));
-    b.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && choose(id));
-  }
-  choose('drums');
-  hearBtn.addEventListener('click', () => {
-    desk.pick(chosen);
-    el.querySelector('#hear')!.scrollIntoView({ behavior: smooth(), block: 'start' });
-    el.querySelector<HTMLButtonElement>(`.pick[data-inst="${chosen}"]`)?.focus({ preventScroll: true });
   });
 
   // playing together: start a band (a code for friends) or join one, then everyone enters
@@ -342,11 +331,6 @@ export function mountLanding(world: World): void {
   const bandJoin = el.querySelector<HTMLButtonElement>('#band-join')!;
   const bandCode = el.querySelector<HTMLInputElement>('#band-code')!;
   const bandStatus = el.querySelector<HTMLElement>('#band-status')!;
-  const seats = el.querySelector<SVGSVGElement>('.seats')!;
-  const fillSeats = (n: number) => {
-    seats.querySelectorAll('.seat').forEach((s, i) => s.classList.toggle('on', i < n));
-    seats.setAttribute('aria-label', n <= 1 ? 'Four seats round the desk, one taken: yours' : `Four seats round the desk, ${n} taken`);
-  };
   const showBand = (st: CoopStatus) => {
     if (st.role === 'caller') return;
     const n = st.players ?? 1;
@@ -356,7 +340,6 @@ export function mountLanding(world: World): void {
       : st.state === 'connected' ? `${n} in the band${st.role === 'host' && st.code ? ` (code ${st.code})` : ''}. Enter mixed reality.`
       : st.state === 'error' || st.state === 'closed' ? (st.message ?? 'That didn’t work')
       : '';
-    fillSeats(st.state === 'connected' ? n : 1);
   };
   window.addEventListener('thump:coop', (e) => showBand((e as CustomEvent<CoopStatus>).detail));
   bandStart.addEventListener('click', () => {
@@ -423,8 +406,8 @@ export function mountLanding(world: World): void {
 /** Smooth scrolling, unless the reader asked for less movement. */
 const smooth = (): ScrollBehavior => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
-/** The drawing of the desk: pick an instrument, tap its parts, hear the headset's sounds. */
-function mountDesk(el: HTMLElement): { pick(id: InstId): void } {
+/** The drawing of the desk: pick an instrument from the band's list, tap its parts, hear the headset's sounds. */
+function mountDesk(el: HTMLElement, chose: (id: InstId) => void): void {
   const stage = el.querySelector<HTMLElement>('.stage')!;
   const about = el.querySelector<HTMLElement>('.about')!;
   const picks = [...el.querySelectorAll<HTMLButtonElement>('.pick')];
@@ -467,14 +450,15 @@ function mountDesk(el: HTMLElement): { pick(id: InstId): void } {
     } else if (id === 'strum') strum(0.3);
   };
 
-  /** The one flourish: a hot broken ring goes out from the point that was hit. */
+  /** The drawing's one flourish: the hit's broken rings go out, in hot, from the point that was hit. */
   const ring = (x: number, y: number) => {
     const r = stage.getBoundingClientRect();
     const span = document.createElement('span');
     span.className = 'hit-ring';
     span.style.left = `${x - r.left}px`;
     span.style.top = `${y - r.top}px`;
-    span.innerHTML = '<svg viewBox="-50 -50 100 100" aria-hidden="true"><circle r="44" transform="rotate(-30)"/></svg>';
+    span.innerHTML =
+      '<svg viewBox="-50 -50 100 100" aria-hidden="true"><circle r="24" stroke-width="7" pathLength="100" stroke-dasharray="78 22" transform="rotate(-20)"/><circle r="44" stroke-width="4" pathLength="100" stroke-dasharray="31 9 15 18" transform="rotate(40)"/></svg>';
     span.addEventListener('animationend', () => span.remove());
     stage.appendChild(span);
     window.setTimeout(() => span.remove(), 1000);
@@ -495,16 +479,16 @@ function mountDesk(el: HTMLElement): { pick(id: InstId): void } {
 
   const show = (id: InstId, animate: boolean) => {
     inst = id;
-    const d = SHELF.find((x) => x.id === id)!;
     stage.querySelectorAll('svg.desk-svg').forEach((s) => s.remove());
     stage.insertAdjacentHTML('afterbegin', deskSvg(id, labelOf(id)));
     centreOnTray(stage.querySelector('svg.desk-svg')!);
     // (the scale bar follows: the drums are drawn on a desk, the rest on a tray)
     const bar = el.querySelector<HTMLElement>('.scale-bar');
     if (bar) bar.style.width = `${((10 / viewFor(id).w) * 100).toFixed(2)}%`;
-    about.textContent = `${d.name}. ${ABOUT[id]}`;
+    about.textContent = ABOUT[id];
     for (const b of picks) b.setAttribute('aria-pressed', String(b.dataset.inst === id));
     if (id === 'guitar') stage.querySelector(`.part[data-part="g${chord}"]`)?.classList.add('on');
+    chose(id);
     if (animate) {
       stage.classList.remove('unfold');
       requestAnimationFrame(() => stage.classList.add('unfold'));
@@ -538,5 +522,4 @@ function mountDesk(el: HTMLElement): { pick(id: InstId): void } {
   stage.addEventListener('animationend', (e) => (e.target as Element).closest('.part')?.classList.remove('lit'));
 
   show(inst, false);
-  return { pick: (id) => id !== inst && show(id, true) };
 }
