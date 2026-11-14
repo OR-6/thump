@@ -21,7 +21,9 @@ const base = (page: PageId): MenuInput => ({
 describe('the panel pages', () => {
   it('the main menu: free play, songs, make a track, play together, settings', () => {
     const p = buildPage(base('main'));
-    expect(p.items.map((i) => i.id)).toEqual(['nav:instruments', 'nav:songs', 'nav:build', 'nav:band', 'nav:settings']);
+    // (the songs first and largest)
+    expect(p.items.map((i) => i.id)).toEqual(['nav:songs', 'nav:instruments', 'nav:build', 'nav:band', 'nav:settings']);
+    expect(p.items[0].w).toBeGreaterThan(p.items[1].w);
   });
   it('instruments: a card each, the one out lit; its settings; play it', () => {
     const p = buildPage(base('instruments'));
@@ -41,29 +43,30 @@ describe('the panel pages', () => {
     const p = buildPage(base('songs'));
     expect(p.items.find((i) => i.id === 'song:1')?.off).toBe(true);
     expect(p.items.find((i) => i.id === 'song:0')?.stars).toBe(2);
-    expect(p.items.find((i) => i.id === 'level')?.label).toBe('Easy');
+    expect(p.items.find((i) => i.id.startsWith('level:') && i.on)?.label).toBe('EASY');
     expect(p.items.some((i) => i.id === 'play')).toBe(true);
   });
-  it('songs: six to a page; with more, the corner turns the page, and nothing overlaps', () => {
-    const songs = Array.from({ length: 9 }, (_, i) => ({ name: `Song ${i}`, meta: 'Traditional', stars: 0, locked: i > 1 }));
+  it('songs: four to a page beside the chosen one\'s card; More turns the page; filters as pills; nothing overlaps', () => {
+    const songs = Array.from({ length: 6 }, (_, i) => ({ name: `Song ${i}`, meta: 'Traditional', stars: 0, locked: i > 1 }));
     const first = buildPage({ ...base('songs'), songs });
-    expect(first.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:0', 'song:1', 'song:2', 'song:3', 'song:4', 'song:5']);
-    expect(first.items.find((i) => i.id === 'songs:more')?.label).toBe('More, 1 of 2');
+    expect(first.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:0', 'song:1', 'song:2', 'song:3']);
+    expect(first.items.find((i) => i.id === 'songs:more')?.sub).toBe('1 of 2');
+    expect(first.card?.name).toBe('Song 0');
     const second = buildPage({ ...base('songs'), songs, songPage: 1 });
-    expect(second.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:6', 'song:7', 'song:8']);
-    expect(second.items.find((i) => i.id === 'songs:more')?.label).toBe('More, 2 of 2');
-    // a filter: only the songs it lets through, paged the same way
-    const some = buildPage({ ...base('songs'), songs, songShown: [1, 4, 7], songFilter: 'originals' });
-    expect(some.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:1', 'song:4', 'song:7']);
-    expect(some.items.find((i) => i.id === 'songs:filter')?.label).toBe('Originals');
-    expect(some.items.some((i) => i.id === 'songs:more')).toBe(false);
+    expect(second.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:4', 'song:5']);
+    expect(second.items.find((i) => i.id === 'songs:more')?.sub).toBe('2 of 2');
+    // a filter: only the songs it lets through, paged the same way; its pill lit
+    const some = buildPage({ ...base('songs'), songs, songShown: [1, 4], songFilter: 'originals' });
+    expect(some.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:1', 'song:4']);
+    expect(some.items.find((i) => i.id.startsWith('songs:filter:') && i.on)?.label).toBe('Originals');
+    expect(some.items.find((i) => i.id === 'songs:more')?.off).toBe(true);
     for (const p of [first, second])
       for (const a of p.items) {
         expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);
         for (const b of p.items) if (a !== b) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
       }
-    // (six or fewer: no corner button)
-    expect(buildPage(base('songs')).items.some((i) => i.id === 'songs:more')).toBe(false);
+    // (four or fewer: More can't be pressed)
+    expect(buildPage(base('songs')).items.find((i) => i.id === 'songs:more')?.off).toBe(true);
   });
   it('in a song: switch instrument, or stop', () => {
     const p = buildPage({ ...base('song'), line: 'Kick Start' });

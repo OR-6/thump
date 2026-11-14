@@ -23,7 +23,9 @@ export interface Item {
   /** A song's best grade at this level (S–D). */
   grade?: string;
   /** big: a main-menu tile; card: an instrument; row: a list row; chip: a small choice; button: a plain one. */
-  kind: 'big' | 'card' | 'row' | 'chip' | 'button' | 'play' | 'ghost';
+  kind: 'big' | 'card' | 'row' | 'chip' | 'button' | 'play' | 'ghost' | 'hero' | 'tile' | 'text' | 'label' | 'toggle';
+  /** A red dot before the label (record). */
+  dot?: boolean;
   x: number;
   y: number;
   w: number;
@@ -36,7 +38,12 @@ export interface Page {
   line: string;
   items: Item[];
   /** What the middle shows besides items: a song's progress and count, results' stars, or how to play. */
-  body?: 'song' | 'results' | 'how';
+  body?: 'song' | 'results' | 'how' | 'songs' | 'pause' | 'band';
+  /** Songs: the chosen song's card. */
+  card?: { name: string; meta: string; stars: number; grade: string; best: number };
+  /** Play together: the code, and how many are in.
+   */
+  band?: { code: string; players: number };
   /** The how-to line for a 'how' body. */
   how?: string;
   /** The colour of the instrument that's out: the page's accent. */
@@ -48,7 +55,7 @@ export interface MenuInput {
   line: string;
   sub: string;
   inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full'; frets?: 'easy' | 'real' };
-  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string }[];
+  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string; best?: number }[];
   songSel: number;
   /** Which six songs show (more than six: a button in the corner turns the page). */
   songPage?: number;
@@ -78,9 +85,9 @@ export interface MenuInput {
 }
 
 const W = 1360;
-const back = (): Item => ({ id: 'back', label: 'Back', kind: 'button', x: 24, y: 24, w: 190, h: 96 });
+const back = (): Item => ({ id: 'back', label: 'Back', kind: 'button', x: 32, y: 28, w: 96, h: 96 });
 /** The top-right corner button (beside the title). */
-const corner = (id: string, label: string): Item => ({ id, label, kind: 'button', x: W - 250, y: 24, w: 226, h: 96 });
+const corner = (id: string, label: string): Item => ({ id, label, kind: 'button', x: 1104, y: 28, w: 224, h: 96 });
 /** The bottom row: where every screen keeps what you do next. */
 const BOT = { y: 680, h: 200 };
 
@@ -97,154 +104,175 @@ export function buildPage(m: MenuInput): Page {
 }
 
 function buildPageFor(m: MenuInput): Page {
+  // the grid: a 32 margin, a 16 gutter; the header to 152, the body 176 to 656, the action row 680 to 880
+  const C4 = 421.3;
+  const C6 = 640;
+  const C8 = 858.7;
+  const X2 = 32 + C4 + 16;
+  const X3 = 32 + 2 * (C4 + 16);
   switch (m.page) {
     case 'main': {
-      const c = row(2, 24, W - 24, 24);
+      // the songs, large: what most people came for; the instrument that's out beside them; the rest below
+      const n = m.songs.length;
       const items: Item[] = [
-        { id: 'nav:instruments', label: 'Instruments', sub: 'Swap it', icon: m.inst.id, kind: 'big', x: c[0].x, y: 170, w: c[0].w, h: 340 },
-        { id: 'nav:songs', label: 'Songs', sub: 'Play along', icon: 'menu:songs', kind: 'big', x: c[1].x, y: 170, w: c[1].w, h: 340 },
-        { id: 'nav:build', label: 'Make a track', sub: 'Part by part', icon: 'menu:build', kind: 'big', x: c[0].x, y: 534, w: c[0].w, h: 340 },
-        { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', icon: 'menu:band', kind: 'big', x: c[1].x, y: 534, w: c[1].w, h: 340 },
+        { id: 'nav:songs', label: 'Songs', sub: `Play along · ${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
+        { id: 'nav:instruments', label: 'Instruments', sub: m.inst.name, icon: m.inst.id, kind: 'tile', x: X3, y: 176, w: C4, h: 480 },
+        { id: 'nav:build', label: 'Make a track', sub: 'Part by part', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h },
+        { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', kind: 'button', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h },
         corner('nav:settings', 'Settings'),
       ];
       return { id: 'main', title: 'Thump', line: m.line || 'Pick something to play', items };
     }
     case 'instruments': {
-      // two rows of three, a picture and a name each
-      const c = row(3, 24, W - 24, 18);
-      const items: Item[] = SHELF.map((d, i) => ({ id: `inst:${d.id}`, label: d.name, icon: d.id, color: d.color, on: d.id === m.inst.id, kind: 'card' as const, x: c[i % 3].x, y: 170 + Math.floor(i / 3) * 252, w: c[i % 3].w, h: 236 }));
+      // two rows of three: a miniature and a name each; the one on the desk ringed
+      const xs = [32, X2, X3];
+      const items: Item[] = SHELF.map((d, i) => ({ id: `inst:${d.id}`, label: d.name, sub: d.id === m.inst.id ? 'On the desk' : undefined, icon: d.id, color: d.color, on: d.id === m.inst.id, kind: 'card' as const, x: xs[i % 3], y: 176 + Math.floor(i / 3) * 248, w: C4, h: 232 }));
       items.push(back());
-      const h = row(2, 24, W - 24, 24);
-      items.push({ id: 'nav:inst', label: m.inst.id === 'drums' ? 'Kit' : 'Settings', sub: m.inst.name, kind: 'button', x: h[0].x, y: BOT.y, w: h[0].w, h: BOT.h });
-      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: h[1].x, y: BOT.y, w: h[1].w, h: BOT.h });
+      const detail = m.inst.id === 'drums' ? m.inst.sound : m.inst.scale ? `${m.inst.sound} · ${m.inst.scale} in ${m.inst.key || 'C'}` : m.inst.sound;
+      items.push({ id: 'nav:inst', label: m.inst.id === 'drums' ? 'Kit' : 'Settings', sub: detail, kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h });
+      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h });
       return { id: 'instruments', title: 'Instruments', line: 'Tap one to put it on the desk', items };
     }
     case 'inst': {
       const d = instDef(m.inst.id as never);
       const items: Item[] = [back()];
-      // each row named on the left (not pressable), its choices across
-      const label = (text: string, y: number): Item => ({ id: `label:${text}`, label: text, kind: 'chip', off: true, x: 24, y, w: 216, h: 116 });
+      // each row named on the left in quiet type, its choices across as pills (a key or a pitch steps ‹ ›)
+      const label = (text: string, y: number): Item => ({ id: `label:${text}`, label: text, kind: 'label', x: 32, y, w: 200, h: 96 });
       const across = (ids: { id: string; label: string; on: boolean; off?: boolean }[], y: number) => {
-        const r = row(ids.length, 256, W - 24, 12);
-        ids.forEach((c, i) => items.push({ id: c.id, label: c.label, on: c.on, off: c.off, kind: 'chip', x: r[i].x, y, w: r[i].w, h: 116 }));
+        const r = row(ids.length, 248, W - 32, 12);
+        ids.forEach((c, i) => items.push({ id: c.id, label: c.label, on: c.on, off: c.off, kind: 'chip', x: r[i].x, y, w: r[i].w, h: 96 }));
       };
+      const stepper = (minus: string, plus: string, value: string, y: number, offMinus = false, offPlus = false) => {
+        items.push({ id: minus, label: '‹', kind: 'chip', off: offMinus, x: 248, y, w: 96, h: 96 });
+        items.push({ id: `value:${minus}`, label: value, kind: 'text', x: 352, y, w: 240, h: 96 });
+        items.push({ id: plus, label: '›', kind: 'chip', off: offPlus, x: 600, y, w: 96, h: 96 });
+      };
+      const ys = [176, 296, 416, 536];
       if (d.id === 'drums') {
         // a drum kit: its kind, and how much of it is out
-        items.push(label('Kit', 170), label('Pieces', 302));
-        across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), 170);
-        across([{ id: 'pieces:full', label: 'Full kit', on: m.inst.pieces !== 'small' }, { id: 'pieces:small', label: 'Small kit', on: m.inst.pieces === 'small' }], 302);
+        items.push(label('Kit', ys[0]), label('Pieces', ys[1]));
+        across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), ys[0]);
+        across([{ id: 'pieces:full', label: 'Full kit', on: m.inst.pieces !== 'small' }, { id: 'pieces:small', label: 'Small kit', on: m.inst.pieces === 'small' }], ys[1]);
       } else {
         // (a drum has no notes to pick and no pitch: just its sound)
         const pitched = d.scales !== false;
-        let y = 170;
+        let k = 0;
         if (pitched) {
-          items.push(label('Notes', y));
-          across(SCALES.map((s) => ({ id: `scale:${s.id}`, label: s.name, on: s.name === m.inst.scale })), y);
-          y += 130;
-          items.push(label('Key', y));
-          across(KEYS.map((k) => ({ id: `key:${k.pc}`, label: k.name, on: k.name === (m.inst.key || 'C') })), y);
-          y += 130;
+          items.push(label('Notes', ys[k]));
+          across(SCALES.map((s) => ({ id: `scale:${s.id}`, label: s.name, on: s.name === m.inst.scale })), ys[k++]);
+          items.push(label('Key', ys[k]));
+          const pc = KEYS.find((x) => x.name === (m.inst.key || 'C'))?.pc ?? 0;
+          stepper(`key:${(pc + 11) % 12}`, `key:${(pc + 1) % 12}`, m.inst.key || 'C', ys[k++]);
         }
-        items.push(label('Sound', y));
-        across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), y);
-        y += 130;
+        items.push(label('Sound', ys[k]));
+        across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), ys[k++]);
         if (d.id === 'guitar') {
           // (chords that always fit, or each fingertip stopping its own string, for people who play)
-          items.push(label('Frets', y));
-          across([{ id: 'frets:easy', label: 'Chords', on: m.inst.frets !== 'real' }, { id: 'frets:real', label: 'Real frets', on: m.inst.frets === 'real' }], y);
+          items.push(label('Frets', ys[k]));
+          across([{ id: 'frets:easy', label: 'Chords', on: m.inst.frets !== 'real' }, { id: 'frets:real', label: 'Real frets', on: m.inst.frets === 'real' }], ys[k]);
         } else if (pitched) {
-          items.push(label('Pitch', y));
-          across([{ id: 'oct:-1', label: 'Lower', on: false, off: m.inst.oct <= -1 }, { id: 'oct:+1', label: 'Higher', on: false, off: m.inst.oct >= 1 }], y);
+          items.push(label('Pitch', ys[k]));
+          stepper('oct:-1', 'oct:+1', m.inst.oct < 0 ? 'Lower' : m.inst.oct > 0 ? 'Higher' : 'Middle', ys[k], m.inst.oct <= -1, m.inst.oct >= 1);
         }
       }
       // (learn it: its lesson, a short song that teaches it one move at a time)
-      items.push({ id: 'learn', label: 'Learn it', sub: 'A short lesson', kind: 'button', x: 24, y: 700, w: (W - 64) / 2, h: 180 });
-      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: 40 + (W - 64) / 2, y: 700, w: (W - 64) / 2, h: 180 });
-      return { id: 'inst', title: `${m.inst.name}`, line: '', items };
+      items.push({ id: 'learn', label: 'Learn it', sub: 'A short lesson', kind: 'button', x: 32, y: BOT.y, w: C4, h: BOT.h });
+      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: X2, y: BOT.y, w: W - 32 - X2, h: BOT.h });
+      const line = d.id === 'drums' ? m.inst.sound : m.inst.scale ? `${m.inst.scale} in ${m.inst.key || 'C'} · ${m.inst.sound}` : m.inst.sound;
+      return { id: 'inst', title: `${m.inst.name}`, line, items };
     }
     case 'songs': {
-      // the songs as tiles, two across; what you'll play down the right
+      // a list of four with the chosen song's card beside it; filters as pills up top; the level as a stepper
       const items: Item[] = [back()];
-      const tw = (956 - 24 - 24 - 16) / 2;
-      // six to a page; more than six and the corner turns the page (saying which page this is); beside it, which
-      // songs show: all of them, the classics or the originals
       const shown = m.songShown ?? m.songs.map((_, i) => i);
-      const pages = Math.max(1, Math.ceil(shown.length / 6));
+      const per = 4;
+      const pages = Math.max(1, Math.ceil(shown.length / per));
       const pg = Math.max(0, Math.min(pages - 1, m.songPage ?? 0));
-      if (pages > 1) items.push({ id: 'songs:more', label: `More, ${pg + 1} of ${pages}`, kind: 'button', x: 956, y: 24, w: 380, h: 96 });
-      if (m.songFilter) items.push({ id: 'songs:filter', label: m.songFilter === 'all' ? 'All songs' : m.songFilter === 'classics' ? 'Classics' : m.songFilter === 'lessons' ? 'Lessons' : 'Originals', kind: 'button', x: 600, y: 24, w: 340, h: 96 });
-      shown.slice(pg * 6, pg * 6 + 6).forEach((i, k) => {
+      if (m.songFilter) {
+        const pills: [string, string, number][] = [['all', 'All', 140], ['classics', 'Classics', 250], ['originals', 'Originals', 280], ['lessons', 'Lessons', 240]];
+        let x = W - 32 - pills.reduce((a, p) => a + p[2], 0) - 8 * (pills.length - 1);
+        for (const [id, label, w] of pills) {
+          items.push({ id: `songs:filter:${id}`, label, on: m.songFilter === id, kind: 'chip', x, y: 36, w, h: 80 });
+          x += w + 8;
+        }
+      }
+      shown.slice(pg * per, pg * per + per).forEach((i, k) => {
         const s = m.songs[i];
-        items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', x: 24 + (k % 2) * (tw + 16), y: 170 + Math.floor(k / 2) * 236, w: tw, h: 220 });
+        items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', x: 32, y: 176 + k * 122, w: C8, h: 112 });
       });
       const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';
-      items.push({ id: 'level', label: lv, sub: m.level === 'hard' ? 'Tap for easy' : 'Tap for harder', kind: 'button', x: 956, y: 170, w: 380, h: 150 });
-      items.push({ id: 'nav:instruments', label: m.inst.name, sub: 'Tap to change', kind: 'button', x: 956, y: 336, w: 380, h: 150 });
-      items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 956, y: 502, w: 380, h: 120 });
-      items.push({ id: 'play', label: 'Play', kind: 'play', x: 956, y: 638, w: 380, h: 242 });
-      return { id: 'songs', title: 'Songs', line: m.sub, items };
+      // the level as three tabs, each lit in its own colour
+      void lv;
+      (['easy', 'normal', 'hard'] as const).forEach((l, k) => items.push({ id: `level:${l}`, label: l.toUpperCase(), on: m.level === l, kind: 'chip', x: X3, y: 448 + k * 72, w: C4, h: 64 }));
+      items.push({ id: 'songs:more', label: 'More', sub: `${pg + 1} of ${pages}`, off: pages < 2, kind: 'button', x: 32, y: BOT.y, w: 260, h: BOT.h });
+      items.push({ id: 'nav:instruments', label: m.inst.name, sub: 'Change', kind: 'button', x: 308, y: BOT.y, w: 312, h: BOT.h });
+      items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 636, y: BOT.y, w: 312, h: BOT.h });
+      items.push({ id: 'play', label: 'Play', kind: 'play', x: 964, y: BOT.y, w: W - 32 - 964, h: BOT.h });
+      const sel = m.songs[m.songSel];
+      return { id: 'songs', title: 'Songs', line: m.sub, items, body: 'songs', card: sel ? { name: sel.name, meta: sel.meta, stars: sel.stars, grade: sel.grade ?? '', best: sel.best ?? -1 } : undefined };
     }
     case 'band': {
+      const on = m.band.state === 'hosting' || m.band.state === 'connected';
       const items: Item[] = [back()];
-      const on = m.band.state === 'connected' || m.band.state === 'hosting';
-      if (!on) items.push({ id: 'band:start', label: 'Start a band', sub: 'Friends type its code on the Thump page', kind: 'big', x: 24, y: 170, w: W - 48, h: 340 });
+      if (!on) items.push({ id: 'band:start', label: 'Start a band', sub: 'Friends type its code on the Thump page', kind: 'play', x: 32, y: BOT.y, w: W - 64, h: BOT.h });
       else {
-        items.push({ id: 'nav:songs', label: 'Pick a song', sub: 'Everyone plays it, on one beat', kind: 'big', x: 24, y: 534, w: 644, h: 340 });
-        items.push({ id: 'band:leave', label: 'Leave', kind: 'button', x: 692, y: 534, w: 644, h: 340 });
+        items.push({ id: 'band:leave', label: 'Leave', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h });
+        items.push({ id: 'nav:songs', label: 'Pick a song', sub: 'Everyone plays it, on one beat', kind: 'play', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h });
       }
       // (the code only once the connection service has it; a failure says what went wrong)
       const msg = m.band.message ?? '';
       const line =
         m.band.state === 'connected'
-          ? `${m.band.players} in the band, code ${m.band.code}`
+          ? `${m.band.players} in the band`
           : m.band.state === 'hosting'
-            ? msg.startsWith('Connecting') ? 'Connecting…' : `Code ${m.band.code}: friends type it on the Thump page`
+            ? msg.startsWith('Connecting') ? 'Connecting…' : 'Waiting for friends'
             : m.band.state === 'joining'
               ? 'Connecting…'
               : (m.band.state === 'error' || m.band.state === 'closed') && msg
                 ? msg
                 : 'Play with friends, wherever they are';
-      return { id: 'band', title: 'Play together', line, items };
+      return { id: 'band', title: 'Play together', line, items, body: 'band', band: { code: on && !msg.startsWith('Connecting') ? m.band.code : '', players: m.band.players } };
     }
     case 'settings': {
+      // two columns of switches; putting the panel back is an action, beside Done
       const items: Item[] = [back()];
-      const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, sub: on ? 'On' : 'Off', on, kind: 'chip', x: 24 + (i % 3) * 444, y: 170 + Math.floor(i / 3) * 236, w: 424, h: 216 });
-      items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in\nthe room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when\nyou play', m.settings.light !== false, 5));
-      items.push({ id: 'set:panel', label: 'Panel back\nin place', kind: 'chip', x: 24, y: 170 + 2 * 236, w: 424, h: 216 });
+      const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, on, kind: 'toggle', x: i % 2 ? 32 + C6 + 16 : 32, y: 176 + Math.floor(i / 2) * 116, w: C6, h: 104 });
+      items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in the room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when you play', m.settings.light !== false, 5));
+      items.push({ id: 'set:panel', label: 'Panel back in place', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h });
+      // (the back tile and Done both close it)
+      items.push({ id: 'back', label: 'Done', kind: 'play', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h });
       return { id: 'settings', title: 'Settings', line: '', items };
     }
     case 'tune': {
       const labels = m.tune ?? ['', '', '', '', ''];
-      const c = row(5, 24, W - 24, 18);
+      const c = row(5, 32, W - 32, 16);
       return { id: 'tune', title: m.line, line: m.sub, items: labels.map((l, i) => ({ id: `key:${['prev', 'play', 'next', 'jam', 'loop'][i]}`, label: l, kind: 'button' as const, off: !l, x: c[i].x, y: 590, w: c[i].w, h: 180 })) };
     }
     case 'free': {
-      // its settings: the kit's kind and pieces, or an instrument's notes, key and sound
+      // how to play it, large; the looper as a row of three; then where to go, all quiet (free play is the point)
       const drums = m.inst.id === 'drums';
-      const c = row(3, 24, W - 24, 18);
-      const items: Item[] = [{ id: 'nav:instruments', label: 'Instruments', kind: 'button', x: c[0].x, y: BOT.y, w: c[0].w, h: BOT.h }];
-      items.push({ id: 'nav:inst', label: drums ? 'Kit' : 'Settings', sub: drums ? m.inst.sound : m.inst.scale ? `${m.inst.scale} in ${m.inst.key || 'C'}` : m.inst.sound, kind: 'button', x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h });
-      items.push({ id: 'nav:songs', label: 'Songs', kind: 'play', x: c[2].x, y: BOT.y, w: c[2].w, h: BOT.h });
+      const items: Item[] = [{ id: 'nav:instruments', label: 'Instruments', kind: 'button', x: 32, y: BOT.y, w: C4, h: BOT.h }];
+      items.push({ id: 'nav:inst', label: drums ? 'Kit' : 'Settings', sub: drums ? m.inst.sound : m.inst.scale ? `${m.inst.scale} in ${m.inst.key || 'C'}` : m.inst.sound, kind: 'button', x: X2, y: BOT.y, w: C4, h: BOT.h });
+      items.push({ id: 'nav:songs', label: 'Songs', sub: 'Play along', kind: 'button', x: X3, y: BOT.y, w: C4, h: BOT.h });
       items.push(corner('nav:main', 'Menu'));
       // recording: a take of four bars that loops, layers on top, the loop stopped or played, cleared
       const lp = m.loop ?? { state: 'off', layers: 0, recording: false };
       const busy = lp.state === 'count' || lp.recording;
-      const lr = row(3, 24, W - 24, 18);
-      items.push({ id: 'loop:rec', label: busy ? 'Recording' : lp.layers ? 'Add a layer' : 'Record', sub: busy ? 'Four bars' : lp.layers >= 3 ? 'Replaces the first' : 'Four bars, loops', on: busy, kind: 'button', x: lr[0].x, y: 430, w: lr[0].w, h: 210 });
-      items.push({ id: lp.state === 'play' || busy ? 'loop:stop' : 'loop:play', label: lp.state === 'play' || busy ? 'Stop loop' : 'Play loop', off: !lp.layers && !busy, kind: 'button', x: lr[1].x, y: 430, w: lr[1].w, h: 210 });
-      items.push({ id: 'loop:clear', label: 'Clear', sub: lp.layers ? `${lp.layers} layer${lp.layers === 1 ? '' : 's'}` : undefined, off: !lp.layers, kind: 'button', x: lr[2].x, y: 430, w: lr[2].w, h: 210 });
-      // how to play it, large, in the body (or what the game has to say)
+      items.push({ id: 'loop:rec', label: busy ? 'Recording' : lp.layers ? 'Add a layer' : 'Record', sub: busy ? 'Four bars' : lp.layers >= 3 ? 'Replaces the first' : 'Four bars, loops', on: busy, kind: 'button', x: 32, y: 340, w: C4, h: 200, dot: true });
+      items.push({ id: lp.state === 'play' || busy ? 'loop:stop' : 'loop:play', label: lp.state === 'play' || busy ? 'Stop loop' : 'Play loop', off: !lp.layers && !busy, kind: 'button', x: X2, y: 340, w: C4, h: 200 });
+      items.push({ id: 'loop:clear', label: 'Clear', sub: lp.layers ? `${lp.layers} layer${lp.layers === 1 ? '' : 's'}` : undefined, off: !lp.layers, kind: 'button', x: X3, y: 340, w: C4, h: 200 });
       return { id: 'free', title: m.inst.name, line: m.line || (m.inst.id === 'drums' || m.inst.id === 'congas' ? 'Hit anything. It all sounds right.' : 'Play anything. Every note fits.'), items, body: 'how', how: m.inst.how ?? '' };
     }
     case 'build': {
       const items: Item[] = m.perform
         ? [
-            { id: 'key:play', label: 'Perform it', kind: 'play', x: 24, y: BOT.y, w: 860, h: BOT.h },
-            { id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'button', x: 908, y: BOT.y, w: 428, h: BOT.h },
+            { id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h },
+            { id: 'key:prev', label: 'Back a part', kind: 'button', x: 360, y: BOT.y, w: 420, h: BOT.h },
+            { id: 'key:play', label: 'Perform it', kind: 'play', x: 796, y: BOT.y, w: W - 32 - 796, h: BOT.h },
           ]
         : [
-            { id: 'key:prev', label: 'Back a part', kind: 'button', x: 24, y: BOT.y, w: 644, h: BOT.h },
-            { id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'button', x: 692, y: BOT.y, w: 644, h: BOT.h },
+            { id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h },
+            { id: 'key:prev', label: 'Back a part', kind: 'button', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h },
           ];
       return { id: 'build', title: m.line, line: m.sub, items, body: 'song' };
     }
@@ -257,14 +285,13 @@ function buildPageFor(m: MenuInput): Page {
       return { id: 'song', title: m.line, line: m.sub, items, body: 'song' };
     }
     case 'pause': {
-      // everything stopped where it was; resume counts you back in
-      const c = row(3, 24, W - 24, 18);
+      // the song where it stopped, your score so far; quit is quiet, resume is the one to press
       const items: Item[] = [
-        { id: 'pause:songs', label: 'Songs', kind: 'button', x: c[0].x, y: BOT.y, w: c[0].w, h: BOT.h },
-        { id: 'pause:restart', label: 'Restart', kind: 'button', x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h },
-        { id: 'resume', label: 'Resume', kind: 'play', x: c[2].x, y: BOT.y, w: c[2].w, h: BOT.h },
+        { id: 'pause:songs', label: 'Quit song', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h },
+        { id: 'pause:restart', label: 'Restart', kind: 'button', x: 360, y: BOT.y, w: 420, h: BOT.h },
+        { id: 'resume', label: 'Resume', sub: 'Counts you in', kind: 'play', x: 796, y: BOT.y, w: W - 32 - 796, h: BOT.h },
       ];
-      return { id: 'pause', title: 'Paused', line: m.line, items, body: 'how', how: 'Resume counts you back in' };
+      return { id: 'pause', title: 'Paused', line: m.line, items, body: 'pause' };
     }
     case 'results': {
       // menu on the left, the song's way on in the middle, the one thing to press on the right

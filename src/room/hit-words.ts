@@ -7,27 +7,38 @@
 import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
 import { FONT, whenFonts } from '../ui/fonts.js';
 
-const WORDS = ['Perfect', 'Good', 'Early', 'Late'] as const;
+const WORDS = ['PERFECT', 'GOOD', 'EARLY', 'LATE'] as const;
+/** Each word's own neon (a cyan Perfect, a green Good, an orange Early, a violet Late). */
+const INK: Record<string, [string, string]> = { PERFECT: ['#ffffff', '#33e1ff'], GOOD: ['#e6fff4', '#3cf0a0'], EARLY: ['#fff0dd', '#ff9a3c'], LATE: ['#efe6ff', '#8a5cff'] };
 const POOL = 6;
 
 function wordTexture(word: string): CanvasTexture {
   const c = document.createElement('canvas');
-  c.width = 256;
-  c.height = 80;
+  c.width = 320;
+  c.height = 100;
   const tex = new CanvasTexture(c);
   tex.colorSpace = SRGBColorSpace;
   const draw = () => {
     const g = c.getContext('2d')!;
-    g.clearRect(0, 0, 256, 80);
-    g.font = `700 52px ${FONT}`;
+    g.clearRect(0, 0, 320, 100);
+    g.font = `italic 900 58px ${FONT}`;
     g.textBaseline = 'middle';
-    // (a dark halo so it reads over a bright desk too)
-    g.lineWidth = 8;
-    g.strokeStyle = 'rgba(0,0,0,0.55)';
+    const [a, b] = INK[word] ?? ['#ffffff', '#ffffff'];
     const w = g.measureText(word).width;
-    g.strokeText(word, (256 - w) / 2, 42);
-    g.fillStyle = '#ffffff';
-    g.fillText(word, (256 - w) / 2, 42);
+    const x = (320 - w) / 2;
+    // (a dark outline so it reads over a bright desk, a glow in its colour, a light-to-colour fill)
+    g.lineJoin = 'round';
+    g.lineWidth = 10;
+    g.strokeStyle = 'rgba(20,8,40,0.85)';
+    g.strokeText(word, x, 52);
+    g.shadowColor = b;
+    g.shadowBlur = 16;
+    const gr = g.createLinearGradient(0, 24, 0, 80);
+    gr.addColorStop(0, a);
+    gr.addColorStop(1, b);
+    g.fillStyle = gr;
+    g.fillText(word, x, 52);
+    g.shadowBlur = 0;
     tex.needsUpdate = true;
   };
   draw();
@@ -45,7 +56,7 @@ export class HitWords {
   constructor(parent: Object3D) {
     if (typeof document === 'undefined') return;
     this.tex = WORDS.map((w) => wordTexture(w));
-    const geo = new PlaneGeometry(0.06, 0.019);
+    const geo = new PlaneGeometry(0.07, 0.022);
     for (let i = 0; i < POOL; i++) {
       const m = new Mesh(geo, new MeshBasicMaterial({ map: this.tex[0], transparent: true, depthWrite: false, toneMapped: false, opacity: 0 }));
       m.name = 'HitWord';
@@ -66,7 +77,9 @@ export class HitWords {
     const m = this.meshes[i];
     const mat = m.material as MeshBasicMaterial;
     mat.map = this.tex[w];
-    mat.color.setHex(w === 0 ? 0xffffff : w === 1 ? color : 0x9a9a9e);
+    // (each word carries its own colour now)
+    void color;
+    mat.color.setHex(0xffffff);
     this.base[i].copy(at);
     this.base[i].y += 0.03;
     m.position.copy(this.base[i]);

@@ -2505,9 +2505,11 @@ export class Game {
       this.refreshDisplay();
       return;
     }
-    if (id === 'songs:filter') {
-      // all of them, the classics, the originals
-      this.songFilter = this.songFilter === 'all' ? 'classics' : this.songFilter === 'classics' ? 'originals' : this.songFilter === 'originals' ? 'lessons' : 'all';
+    if (id === 'songs:filter' || id.startsWith('songs:filter:')) {
+      // all of them, the classics, the originals, the lessons (a pill for each; the bare id steps through them)
+      const f = id.slice('songs:filter:'.length);
+      if (f === 'all' || f === 'classics' || f === 'originals' || f === 'lessons') this.songFilter = f;
+      else this.songFilter = this.songFilter === 'all' ? 'classics' : this.songFilter === 'classics' ? 'originals' : this.songFilter === 'originals' ? 'lessons' : 'all';
       this.songPage = 0;
       this.refreshDisplay();
       return;
@@ -2569,7 +2571,9 @@ export class Game {
     }
     if (id === 'level' || id.startsWith('level:')) {
       // (the songs page has one button that steps through them)
+      const L = ['easy', 'normal', 'hard'] as const;
       if (id === 'level') this.level = this.level === 'easy' ? 'normal' : this.level === 'normal' ? 'hard' : 'easy';
+      else if (id === 'level:-' || id === 'level:+') this.level = L[Math.max(0, Math.min(2, L.indexOf(this.level) + (id === 'level:+' ? 1 : -1)))];
       else this.level = id === 'level:normal' ? 'normal' : id === 'level:hard' ? 'hard' : 'easy';
       this.stage.saveLevel?.(this.level);
       this.refreshDisplay();
@@ -2638,7 +2642,7 @@ export class Game {
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
       // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
-      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson · done' : 'Lesson · start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false, grade: this.progress.top?.[`${t.id}:${this.level}`]?.letter })),
+      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson · done' : 'Lesson · start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false, grade: this.progress.top?.[`${t.id}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.level}`]?.score })),
       songSel: this.songSel,
       songShown: this.shownSongs(),
       songPage: this.shownPage(),
@@ -2973,7 +2977,7 @@ function lift(key: string, by: number): string {
 }
 /** Which instruments a song can be switched to mid-song, in order, and whether one plays a written part. */
 /** Songs on a page of the panel (two across, three down). */
-const SONGS_A_PAGE = 6;
+const SONGS_A_PAGE = 4;
 const SWITCH_ORDER = ['drums', 'piano', 'marimba', 'handpan', 'congas', 'guitar'];
 const plays = (inst: string, part: string): boolean => (inst === 'congas' ? part.startsWith('PERC') : PART_INST[part] === (inst === 'marimba' ? 'piano' : inst));
 

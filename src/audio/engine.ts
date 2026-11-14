@@ -16,6 +16,9 @@ import { MODAL } from './modal.js';
 import { Sampler } from './sampler.js';
 
 export type Voice = Lane | 'knock' | 'rim' | 'clap' | 'block' | 'bell';
+/** The game's own sounds, and how loud each sits in the mix. */
+const UI_LEVEL = { hover: 0.25, press: 0.5, open: 0.35, back: 0.35, toggle: 0.45, tick: 0.35, stamp: 0.9, 'stamp-soft': 0.6, drop: 0.45, record: 0.8, fullcombo: 0.8, spotlight: 0.85, milestone: 0.6, multup: 0.5 } as const;
+export type UiSound = keyof typeof UI_LEVEL;
 
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
@@ -1096,6 +1099,45 @@ class Engine {
       n.connect(bp).connect(g);
     }
     if (big) this.chime([72, 76, 79, 84], 0.12);
+  }
+
+  /**
+   * The game's own sounds (recorded, Kenney's CC0 packs, public/sounds/ui): a hover, a press, a page opening or
+   * closing, a switch, the results' tick and stamp, a run lost, a new record, a full combo, the spotlight. Loaded on
+   * first use; `rate` pitches it (the count-up's ticks climb).
+   */
+  ui(name: UiSound, level = 1, rate = 1, pan = 0): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const buf = this.uiBufs.get(name);
+    if (!buf) {
+      this.loadUi(ctx, name);
+      return;
+    }
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    const g = this.out(ctx, this.master, pan, name === 'record' || name === 'fullcombo' || name === 'spotlight' ? 0.35 : 0.12, t, UI_LEVEL[name] * level);
+    src.connect(g);
+    src.start(t);
+    src.stop(t + buf.duration / rate + 0.05);
+  }
+  private uiBufs = new Map<UiSound, AudioBuffer>();
+  private uiLoading = new Set<UiSound>();
+  private loadUi(ctx: AudioContext, name: UiSound): void {
+    if (this.uiLoading.has(name)) return;
+    this.uiLoading.add(name);
+    fetch(`${import.meta.env.BASE_URL}sounds/ui/${name}.mp3`)
+      .then((r) => r.arrayBuffer())
+      .then((b) => ctx.decodeAudioData(b))
+      .then((buf) => this.uiBufs.set(name, buf))
+      .catch(() => this.uiLoading.delete(name));
+  }
+  /** Fetch every one of the game's own sounds now (after the first touch), so none is late the first time. */
+  preloadUi(): void {
+    const ctx = this.ready();
+    if (ctx) for (const n of Object.keys(UI_LEVEL) as UiSound[]) this.loadUi(ctx, n);
   }
 
   /** A little rising chime (stars, an unlock). */

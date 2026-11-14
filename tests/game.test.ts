@@ -688,12 +688,12 @@ describe('the game', () => {
     // (All songs: the drums' lesson first, then every song; the other lessons on their own page)
     const songs = g.tracks.map((t, i) => (t.score?.tune.lesson ? -1 : i)).filter((i) => i >= 0);
     const all = [0, ...songs];
-    const pages = Math.ceil(all.length / 6);
-    expect(tiles().map((i) => i.label)).toEqual(all.slice(0, 6).map((i) => SONG_TRACKS[i].name));
+    const pages = Math.ceil(all.length / 4);
+    expect(tiles().map((i) => i.label)).toEqual(all.slice(0, 4).map((i) => SONG_TRACKS[i].name));
     expect(tiles()[0].sub).toBe('Lesson · start here');
     expect(tiles()[1].sub).toMatch(/^(Easy|Medium|Hard) · /);
     expect(tiles().some((i) => i.off)).toBe(false);
-    expect(items().find((i) => i.id === 'songs:more')?.label).toBe(`More, 1 of ${pages}`);
+    expect(items().find((i) => i.id === 'songs:more')?.sub).toBe(`1 of ${pages}`);
     // every page in turn, then back to the first; every song on one of them, the last one today's
     const seen: string[] = [];
     for (let p = 0; p < pages; p++) {
@@ -706,16 +706,17 @@ describe('the game', () => {
     g.act(`song:${n - 2}`);
     expect(g.songSel).toBe(n - 2);
     // the originals alone, then the classics alone
+    const lit = () => items().find((i) => i.id.startsWith('songs:filter:') && i.on)?.label;
     g.act('songs:filter');
-    expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('Classics');
-    g.act('songs:filter');
-    expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('Originals');
+    expect(lit()).toBe('Classics');
+    g.act('songs:filter:originals');
+    expect(lit()).toBe('Originals');
     expect(tiles().map((i) => g.tracks[Number(i.id.slice(5))].score?.tune.original)).toEqual(tiles().map(() => true));
     g.act('songs:filter');
-    expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('Lessons');
-    expect(tiles().length).toBe(6);
-    g.act('songs:filter');
-    expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('All songs');
+    expect(lit()).toBe('Lessons');
+    expect(tiles().length).toBe(4);
+    g.act('songs:filter:all');
+    expect(lit()).toBe('All');
   });
 
   it('listen first: the song plays itself (your part too), nothing scored, then straight into your turn', () => {

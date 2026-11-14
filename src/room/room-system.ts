@@ -269,6 +269,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
             sess.addEventListener('squeezestart', () => audio.resume());
           }
           audio.resume();
+          // (the game's own sounds fetched now, so none is late the first time it plays)
+          audio.preloadUi();
           if (sess?.updateTargetFrameRate && sess.supportedFrameRates?.includes(72)) sess.updateTargetFrameRate(72).catch(() => {});
         }
         if (s === VisibilityState.NonImmersive) this.endSession();
@@ -382,22 +384,25 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // the game's moments, said over the panel and in the room (soft: success louder than failure)
     multUp: (m) => {
       this.kit.module.say(`×${m}`, m >= 4 ? 'gold' : 'white');
-      audio.chime(m >= 4 ? [72, 76, 79, 84] : m === 3 ? [72, 76, 79] : [72, 76], 0.06, 0.55);
+      audio.ui('multup', 1, 0.9 + 0.1 * m);
+      this.kit.module.burst('mult', 200, 300);
       this.dimmer.hit(m >= 4 ? 0xffd36a : 0xffffff, 0.6);
     },
     milestone: (run) => {
-      this.kit.module.say(`${run} in a row`, run >= 100 ? 'gold' : 'white');
+      this.kit.module.say(`${run} combo`, run >= 100 ? 'gold' : 'white');
+      audio.ui('milestone');
       audio.cheer(Math.min(1, 0.4 + run / 200), run >= 100);
+      this.kit.module.burst('milestone', 200, 300);
       this.dimmer.hit(0xffd36a, 0.8);
     },
     comboBroke: (run) => {
-      this.kit.module.say(`Run of ${run} ended`, 'grey');
-      audio.chime([60, 55], 0.09, 0.25);
+      this.kit.module.say(`Combo ${run} lost`, 'grey');
+      audio.ui('drop', 0.8);
     },
     gradeStamp: (letter, fullCombo) => {
       this.kit.module.stamp();
       const high = letter === 'S' || letter === 'A';
-      audio.drum('floor', high ? 0.8 : 0.5, 0, 0, 1.2);
+      audio.ui(letter === 'D' ? 'stamp-soft' : 'stamp', high ? 1 : 0.75);
       if (high) {
         audio.crash(0.55);
         audio.cheer(letter === 'S' ? 1 : 0.7, letter === 'S');
@@ -405,22 +410,32 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       void fullCombo;
     },
-    countTick: () => audio.tick(0.07),
-    newBest: () => audio.chime([76, 83], 0.09, 0.5),
-    fullCombo: (all) => this.kit.module.say(all ? 'All perfect' : 'Full combo', 'gold'),
+    // (the count-up's ticks climb as the score does)
+    countTick: () => audio.ui('tick', 0.8, 1 + Math.min(0.5, (this.game.display.result?.t ?? 0) * 0.4)),
+    newBest: () => {
+      audio.ui('record');
+      this.kit.module.burst('record', 700, 210);
+    },
+    fullCombo: (all) => {
+      this.kit.module.say(all ? 'All perfect!!' : 'Full combo!', 'gold');
+      audio.ui('fullcombo');
+      this.kit.module.burst('fullcombo');
+    },
     spotGain: (m) => {
       if (m >= 0.5 && !this.spotSaid) {
         this.spotSaid = true;
         this.kit.module.say('Hands up: Spotlight', 'gold');
       } else this.kit.module.say('Spotlight +25%', 'gold');
-      audio.chime([79, 84], 0.07, 0.4);
+      audio.ui('milestone', 0.7, 1.12);
+      this.kit.module.burst('spotlight', 500, 552);
     },
     spotFire: () => {
       this.spotSaid = false;
       this.kit.module.say('Spotlight!', 'gold');
-      audio.riser(0.5);
-      audio.crash(0.7);
+      audio.ui('spotlight');
+      audio.crash(0.6);
       audio.cheer(1, true);
+      this.kit.module.burst('spotlight', 500, 552);
       this.dimmer.hit(0xffd36a, 1);
     },
     spotEnd: () => {
@@ -428,11 +443,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     overtake: () => {
       this.kit.module.say('Ahead of your best', 'gold');
-      audio.chime([72, 79, 84], 0.06, 0.45);
+      audio.ui('milestone', 0.8, 1.06);
     },
     lessonStep: (title) => {
       this.kit.module.say(title);
-      audio.chime([76, 79], 0.08, 0.35);
+      audio.ui('open', 0.7);
     },
     starLanded: (i, of) => {
       // each star lands as a note of the song's own chord on its melody instrument (tonic, third, fifth; the ninth
@@ -2922,7 +2937,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (best !== this.lastHoverItem && (best < 0 || bk > 0.4)) {
       const mode = this.game.mode;
       if (best >= 0 && this.clock.t - this.hoverTickT > 0.15 && mode !== 'play' && mode !== 'count') {
-        audio.tick(0.12);
+        audio.ui('hover');
         this.hoverTickT = this.clock.t;
       }
       this.lastHoverItem = best;
@@ -3074,7 +3089,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.panelPressT = this.clock.t;
     this.panelPressK = k;
     this.kit.module.pressKey(k);
-    audio.tick();
+    audio.ui(it.id === 'back' || it.id === 'nav:main' ? 'back' : it.id.startsWith('set:') ? 'toggle' : 'press');
+    if (it.id.startsWith('nav:') || it.id === 'play' || it.id === 'learn') this.later(this.clock.t + 0.05, () => audio.ui('open', 0.8));
     // a press that changes the page flashes on what you pressed for a moment first
     const moves = it.id.startsWith('nav:') || it.id === 'back' || it.id === 'play' || it.id === 'again' || it.id === 'next' || it.id === 'make' || it.id.startsWith('inst:') || it.id === 'key:play';
     if (moves) this.later(this.clock.t + 0.09, () => this.panelAction(it.id));
