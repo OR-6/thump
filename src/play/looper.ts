@@ -33,6 +33,20 @@ export class Looper {
   recStart = 0;
   recording = false;
 
+  /** Stop the loop playing (its layers kept). */
+  stop(): void {
+    this.state = 'off';
+    this.recording = false;
+    this.take = [];
+  }
+  /** Play the kept layers again from the next beat. */
+  play(nowBeat: number): void {
+    if (!this.layers.length) return;
+    this.origin = Math.ceil(nowBeat);
+    this.scheduledTo = this.origin;
+    this.state = 'play';
+  }
+
   clear(): void {
     this.state = 'off';
     this.layers = [];

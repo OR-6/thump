@@ -52,7 +52,9 @@ export interface MenuInput {
   songPage?: number;
   level: 'easy' | 'normal' | 'hard';
   band: { state: string; code: string; players: number; message?: string };
-  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean };
+  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean };
+  /** Free play's looper: off, counting in, recording or playing; how many layers it holds. */
+  loop?: { state: string; layers: number; recording: boolean };
   /** Results: the next song's button ('' none), and whether MAKE IT YOURS is offered. */
   next: string;
   make?: boolean;
@@ -191,9 +193,9 @@ function buildPageFor(m: MenuInput): Page {
     }
     case 'settings': {
       const items: Item[] = [back()];
-      const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, sub: on ? 'On' : 'Off', on, kind: 'chip', x: 24 + (i % 3) * 444, y: 170 + Math.floor(i / 3) * 260, w: 424, h: 240 });
-      items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in\nthe room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4));
-      items.push({ id: 'set:panel', label: 'Panel back\nin place', kind: 'chip', x: 24 + 2 * 444, y: 170 + 260, w: 424, h: 240 });
+      const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, sub: on ? 'On' : 'Off', on, kind: 'chip', x: 24 + (i % 3) * 444, y: 170 + Math.floor(i / 3) * 236, w: 424, h: 216 });
+      items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in\nthe room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when\nyou play', m.settings.light !== false, 5));
+      items.push({ id: 'set:panel', label: 'Panel back\nin place', kind: 'chip', x: 24, y: 170 + 2 * 236, w: 424, h: 216 });
       return { id: 'settings', title: 'Settings', line: '', items };
     }
     case 'tune': {
@@ -209,6 +211,13 @@ function buildPageFor(m: MenuInput): Page {
       items.push({ id: 'nav:inst', label: drums ? 'Kit' : 'Settings', sub: drums ? m.inst.sound : m.inst.scale ? `${m.inst.scale} in ${m.inst.key || 'C'}` : m.inst.sound, kind: 'button', x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h });
       items.push({ id: 'nav:songs', label: 'Songs', kind: 'play', x: c[2].x, y: BOT.y, w: c[2].w, h: BOT.h });
       items.push(corner('nav:main', 'Menu'));
+      // recording: a take of four bars that loops, layers on top, the loop stopped or played, cleared
+      const lp = m.loop ?? { state: 'off', layers: 0, recording: false };
+      const busy = lp.state === 'count' || lp.recording;
+      const lr = row(3, 24, W - 24, 18);
+      items.push({ id: 'loop:rec', label: busy ? 'Recording' : lp.layers ? 'Add a layer' : 'Record', sub: busy ? 'Four bars' : lp.layers >= 3 ? 'Replaces the first' : 'Four bars, loops', on: busy, kind: 'button', x: lr[0].x, y: 430, w: lr[0].w, h: 210 });
+      items.push({ id: lp.state === 'play' || busy ? 'loop:stop' : 'loop:play', label: lp.state === 'play' || busy ? 'Stop loop' : 'Play loop', off: !lp.layers && !busy, kind: 'button', x: lr[1].x, y: 430, w: lr[1].w, h: 210 });
+      items.push({ id: 'loop:clear', label: 'Clear', sub: lp.layers ? `${lp.layers} layer${lp.layers === 1 ? '' : 's'}` : undefined, off: !lp.layers, kind: 'button', x: lr[2].x, y: 430, w: lr[2].w, h: 210 });
       // how to play it, large, in the body (or what the game has to say)
       return { id: 'free', title: m.inst.name, line: m.line || (m.inst.id === 'drums' || m.inst.id === 'congas' ? 'Hit anything. It all sounds right.' : 'Play anything. Every note fits.'), items, body: 'how', how: m.inst.how ?? '' };
     }

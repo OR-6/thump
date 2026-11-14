@@ -61,7 +61,7 @@ export interface GameStage {
   /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
   tempo(t: number): void;
   /** In-headset settings: read and switch (saved by the stage). */
-  setting(name: 'oneHand' | 'contrast' | 'words' | 'band', flip: boolean): boolean;
+  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light', flip: boolean): boolean;
   /** Playing together: the link's state and how many are in the band. */
   bandState?(): { state: string; players: number; message?: string };
   /** Easy or Normal changed (saved). */
@@ -1835,6 +1835,16 @@ export class Game {
   }
 
   /** Stop the song now (no stars). */
+  /** What free play's recorder is doing, for the panel's line ('' when it's off). */
+  private loopLine(): string {
+    const l = this.looper;
+    const n = l.layers.length;
+    if (l.state === 'count') return 'Four bars, after the count';
+    if (l.recording) return `Recording layer ${n + 1}`;
+    if (l.state === 'play') return `Looping ${n} layer${n === 1 ? '' : 's'}`;
+    return '';
+  }
+
   /** You paused the song (the panel's Pause): the panel shows Resume, Restart and Songs. */
   paused = false;
   /** The song now, from its start again. */
@@ -2305,10 +2315,23 @@ export class Game {
       this.refreshDisplay();
       return;
     }
+    if (id.startsWith('loop:')) {
+      // free play's recorder (no unlock needed)
+      if (this.mode !== 'discover') return;
+      if (id === 'loop:rec') {
+        if (this.looper.state === 'count' || this.looper.recording) return;
+        this.startTake();
+      } else if (id === 'loop:stop') this.looper.stop();
+      else if (id === 'loop:play') this.looper.play(this.loopClock.beatAt(this.t));
+      else if (id === 'loop:clear') this.looper.clear();
+      this.refreshDisplay();
+      return;
+    }
     if (id.startsWith('set:')) {
       const k: Record<string, ModuleKey> = { 'set:slow': 'prev', 'set:onehand': 'next', 'set:contrast': 'jam', 'set:words': 'loop' };
       if (k[id]) this.key(k[id]);
       else if (id === 'set:backing') this.stage.setting('band', true);
+      else if (id === 'set:light') this.stage.setting('light', true);
       this.refreshDisplay();
     }
   }
@@ -2348,7 +2371,7 @@ export class Game {
     const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
       page: pageId,
-      line: pageId === 'free' ? (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try Songs' : '') : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Tap the desk to start') : d.line,
+      line: pageId === 'free' ? (this.loopLine() || (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try Songs' : '')) : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Tap the desk to start') : d.line,
       // (the songs page's line: your turn after a listen, or the band being asked)
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full' },
@@ -2358,7 +2381,8 @@ export class Game {
       songPage: this.songPage >= 0 ? this.songPage : Math.floor(this.songSel / SONGS_A_PAGE),
       level: this.level,
       band: { state: band.state, code: this.code, players: band.players, message: band.message },
-      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false) },
+      loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
+      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) },
       next: this.fromPerform ? 'Next\nsong' : '',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,
       harder: this.mode === 'results' && this.fromPerform && this.lastBest.wasEasy3 && this.level !== 'hard' ? (this.level === 'easy' ? 'NORMAL' : 'HARD') : '',

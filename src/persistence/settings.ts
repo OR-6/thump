@@ -32,6 +32,8 @@ export interface Settings {
   lookToPlay: boolean;
   /** The backing band in songs (the drums always play). */
   band: boolean;
+  /** Free play: light sent off what you play (rings spreading, bars rising). */
+  freeLight: boolean;
   /** A visual metronome (a felt pendulum) in songs. */
   pendulum: boolean;
   /** Seconds your hits arrive late by (tap-along calibration, then learned as you play). */
@@ -67,6 +69,7 @@ export function loadSettings(): Settings {
     noWords: s.noWords !== false,
     lookToPlay: s.lookToPlay === true,
     band: s.band !== false,
+    freeLight: s.freeLight !== false,
     pendulum: s.pendulum === true,
     offset: num(s.offset, -0.25, 0.25, 0),
     calibrateNext: s.calibrateNext === true,

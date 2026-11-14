@@ -76,6 +76,7 @@ import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R, MALLET_LEN, STICK_LEN } from './hand-mallet.js';
 import { KICK_DEPTH } from '../kit/pad-view.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
+import { formOf } from './waterfall-fx.js';
 import { Dimmer } from './dimmer.js';
 import { FriendSeat } from './friend-seat.js';
 import { HitWords } from './hit-words.js';
@@ -460,12 +461,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     setting: (name, flip) => {
       const s = this.settings;
-      const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : name === 'band' ? s.band : !s.noWords;
+      const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : name === 'band' ? s.band : name === 'light' ? s.freeLight : !s.noWords;
       if (!flip) return cur;
       const next = { ...s };
       if (name === 'oneHand') next.oneHand = !cur;
       else if (name === 'contrast') next.highContrast = !cur;
       else if (name === 'band') next.band = !cur;
+      else if (name === 'light') next.freeLight = !cur;
       else next.noWords = cur;
       saveSettings(next);
       this.applySettings(next);
@@ -2367,11 +2369,22 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   /** A drum sounds and moves, and the song hears it (from the desk or from the air). */
+  /** Free play (no song): what you play sends light away from it (the songs' notes, turned around). */
+  private fxAt = new Vector3();
+  private fxCol = new Color();
+  private fxT: NoteTarget = { w: 0, d: 0, round: false };
+  private freeFx(key: string, gain: number): void {
+    if (this.game.mode !== 'discover' || !this.settings.freeLight) return;
+    if (!this.resolveNote(key, this.fxAt, this.fxCol, this.fxT)) return;
+    this.waterfall.emit(this.fxAt, this.fxCol, this.fxT, formOf(key, this.fxT.round), gain);
+  }
+
   private playLane(lane: Lane | 'rim', gain: number, x: number, t: number, st: Strike): void {
     const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
     audio.drum(lane, gain, pan, 0, 1);
     this.dimmer.hit(LED[lane === 'rim' ? 'snare' : lane], gain);
     if (lane !== 'rim') this.kit.pad(lane)?.hit(gain);
+    if (lane !== 'rim') this.freeFx(`kit:${lane}`, gain);
     const g = this.game.hit(`kit:${lane === 'rim' ? 'snare' : lane}`, t, gain);
     if (g === 'perfect' && lane !== 'rim') {
       this.kit.pad(lane)?.perfect();
@@ -3266,6 +3279,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private playZone(id: InstId, best: number, side: Side, gain: number, pan: number, t: number, st: Strike): void {
     const o = this.kit.instOverlay();
     if (this.flam(id, best, side, t)) return;
+    this.freeFx(`${id}:${best}`, gain);
     // the chord pad: the next chord only after a pause (pumping it on the beat stays on one chord)
     if (id === 'piano' && best === PIANO_CHORD && this.clock.t - this.chordPadT > 1.2 && this.chordPadT > 0) this.pianoChord++;
     if (id === 'piano' && best === PIANO_CHORD) this.chordPadT = this.clock.t;
@@ -3311,6 +3325,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** A chord position on the guitar's neck: that chord, and a soft strum of it so the hand that picks is heard. */
   private playChordPad(best: number, side: Side, gain: number, pan: number, t: number, st: Strike): void {
     const o = this.kit.instOverlay();
+    this.freeFx(`guitar:${best}`, gain);
     this.guitarChord = best;
     if (!this.game.harmony()?.song) this.chordPickedT = this.clock.t;
     if (this.flam('guitar', best, side, t)) return;
@@ -3326,6 +3341,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const o = this.kit.instOverlay();
     if (this.flam('guitar', 9, side, t)) return;
     this.strum(this.guitarChord, gain, pan, 0);
+    this.freeFx('guitar:9', gain);
     this.dimmer.hit(instDef('guitar').color, gain);
     for (let s = 3; s < 9; s++) o?.hit(s, gain * (1 - (s - 3) * 0.08));
     this.kit.instStruck(3, gain);
@@ -3349,6 +3365,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     o?.hit(k.a, gain * 0.6);
     o?.hit(k.b, gain * 0.6);
     this.kit.blackStruck(j, gain);
+    this.freeFx(`piano:${k.a}`, gain);
     const g = this.game.hit(`piano:${k.a}`, t, gain);
     this.wordAt.set(k.x, KEYBOARD.blackTop, -k.z);
     this.hitWords?.show(g, this.kit.root.localToWorld(this.wordAt), this.head, instDef('piano').color);
