@@ -50,6 +50,9 @@ export interface MenuInput {
   songSel: number;
   /** Which six songs show (more than six: a button in the corner turns the page). */
   songPage?: number;
+  /** The songs the filter lets through (indices into `songs`; all of them when not given), and the filter. */
+  songShown?: number[];
+  songFilter?: 'all' | 'classics' | 'originals';
   level: 'easy' | 'normal' | 'hard';
   band: { state: string; code: string; players: number; message?: string };
   settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean };
@@ -153,13 +156,15 @@ function buildPageFor(m: MenuInput): Page {
       // the songs as tiles, two across; what you'll play down the right
       const items: Item[] = [back()];
       const tw = (956 - 24 - 24 - 16) / 2;
-      // six to a page; more than six and the corner turns the page
-      const pages = Math.ceil(m.songs.length / 6);
+      // six to a page; more than six and the corner turns the page (saying which page this is); beside it, which
+      // songs show: all of them, the classics or the originals
+      const shown = m.songShown ?? m.songs.map((_, i) => i);
+      const pages = Math.max(1, Math.ceil(shown.length / 6));
       const pg = Math.max(0, Math.min(pages - 1, m.songPage ?? 0));
-      if (pages > 1) items.push(corner('songs:more', pg < pages - 1 ? 'More songs' : 'First songs'));
-      m.songs.forEach((s, i) => {
-        const k = i - pg * 6;
-        if (k < 0 || k >= 6) return;
+      if (pages > 1) items.push({ id: 'songs:more', label: `More, ${pg + 1} of ${pages}`, kind: 'button', x: 956, y: 24, w: 380, h: 96 });
+      if (m.songFilter) items.push({ id: 'songs:filter', label: m.songFilter === 'all' ? 'All songs' : m.songFilter === 'classics' ? 'Classics' : 'Originals', kind: 'button', x: 600, y: 24, w: 340, h: 96 });
+      shown.slice(pg * 6, pg * 6 + 6).forEach((i, k) => {
+        const s = m.songs[i];
         items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24 + (k % 2) * (tw + 16), y: 170 + Math.floor(k / 2) * 236, w: tw, h: 220 });
       });
       const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';

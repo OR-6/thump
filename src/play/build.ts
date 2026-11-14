@@ -144,20 +144,20 @@ export const TRACKS: readonly TrackDef[] = [
 ];
 
 /**
- * The songs to play: familiar tunes, written out bar by bar (src/songs/tunes.ts), in their order (each opens after the
- * one before). The loop tracks above are what Make a track builds.
+ * The songs to play: classics and originals written out bar by bar (src/songs/tunes.ts), easiest first. The loop
+ * tracks above are what Make a track builds.
  */
 export const SONG_TRACKS: readonly TrackDef[] = SCORES.map((s) => ({
   id: s.tune.id,
   name: s.tune.name,
   bpm: s.tune.bpm,
-  key: s.tune.key,
+  key: s.keyPc,
   parts: [],
   needs: 0,
   // (the home chord: the band's held five at the end, and where your last hit lands)
-  chords: [chordMidi(s.home, s.tune.key)],
+  chords: [chordMidi(s.home, s.keyPc)],
   minorChords: s.home.minor ? [0] : [],
-  minor: s.tune.scale === 'minor',
+  minor: s.scale === 'minor',
   score: s,
 }));
 
