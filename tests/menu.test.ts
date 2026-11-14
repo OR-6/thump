@@ -48,10 +48,15 @@ describe('the panel pages', () => {
     const songs = Array.from({ length: 9 }, (_, i) => ({ name: `Song ${i}`, meta: 'Traditional', stars: 0, locked: i > 1 }));
     const first = buildPage({ ...base('songs'), songs });
     expect(first.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:0', 'song:1', 'song:2', 'song:3', 'song:4', 'song:5']);
-    expect(first.items.find((i) => i.id === 'songs:more')?.label).toBe('More songs');
+    expect(first.items.find((i) => i.id === 'songs:more')?.label).toBe('More, 1 of 2');
     const second = buildPage({ ...base('songs'), songs, songPage: 1 });
     expect(second.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:6', 'song:7', 'song:8']);
-    expect(second.items.find((i) => i.id === 'songs:more')?.label).toBe('First songs');
+    expect(second.items.find((i) => i.id === 'songs:more')?.label).toBe('More, 2 of 2');
+    // a filter: only the songs it lets through, paged the same way
+    const some = buildPage({ ...base('songs'), songs, songShown: [1, 4, 7], songFilter: 'originals' });
+    expect(some.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:1', 'song:4', 'song:7']);
+    expect(some.items.find((i) => i.id === 'songs:filter')?.label).toBe('Originals');
+    expect(some.items.some((i) => i.id === 'songs:more')).toBe(false);
     for (const p of [first, second])
       for (const a of p.items) {
         expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);

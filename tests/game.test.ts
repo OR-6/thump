@@ -424,7 +424,7 @@ describe('the game', () => {
       useInstrument: (id: string | null) => used.push(id),
     };
     const p = freshProgress();
-    p.stars.mary = 2;
+    p.stars[SONG_TRACKS[0].id] = 2;
     const g = new Game(st, p, room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
@@ -438,12 +438,12 @@ describe('the game', () => {
     g.tick(2);
     g.key('jam');
     expect(g.display.inst?.detail).toBe('Notes: Sad');
-    // the song card: < > browse what's open (Mary's Lamb played, so Twinkle Twinkle is open too)
-    expect(g.display.songCard?.name).toBe("Mary's Lamb");
+    // the song card: < > browse the songs
+    expect(g.display.songCard?.name).toBe(SONG_TRACKS[0].name);
     g.key('next');
-    expect(g.display.songCard?.name).toBe('Twinkle Twinkle');
+    expect(g.display.songCard?.name).toBe(SONG_TRACKS[1].name);
     g.key('prev');
-    expect(g.display.songCard?.name).toBe("Mary's Lamb");
+    expect(g.display.songCard?.name).toBe(SONG_TRACKS[0].name);
     g.tick(45);
     g.beginBuild(0);
     expect(g.mode).toBe('build');
@@ -594,7 +594,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    expect(g.display.sub).toBe("Mary's Lamb: tap ▶");
+    expect(g.display.sub).toBe(`${SONG_TRACKS[0].name}: tap ▶`);
     g.key('play');
     expect(g.mode).toBe('count');
     let t = 45;
@@ -611,11 +611,11 @@ describe('the game', () => {
     expect(due.every((k) => k.startsWith('kit:'))).toBe(true);
     expect(g.last!.stars).toBe(3);
     g.tick((t += 8));
-    // the results: again, the next song, or the menu (a familiar tune has no loop of its own to build)
+    // the results: again, the next song, or the menu (a written-out song has no loop of its own to build)
     expect(g.display.page?.items.map((i) => i.id)).toEqual(['again', 'next', 'nav:main']);
     g.act('next');
     expect(g.mode).toBe('count');
-    expect(g.song?.name).toBe('Twinkle Twinkle');
+    expect(g.song?.name).toBe(SONG_TRACKS[1].name);
     // Make a track still builds the loop tracks, the first first
     g.stop();
     g.act('nav:build');
@@ -630,6 +630,7 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.act('nav:songs');
+    g.act(`song:${SONG_TRACKS.findIndex((x) => x.id === 'ode-to-joy')}`);
     g.act('play');
     // the instruments play the song's own scale, the full major
     expect(g.harmony()?.scale).toBe('major');
@@ -647,7 +648,7 @@ describe('the game', () => {
     expect(g.mode).toBe('results');
     expect(due.length).toBeGreaterThan(30);
     expect(due.every((d) => d.key.startsWith('piano:'))).toBe(true);
-    // (Mary's Lamb: E D C D; you play the E and the C, the band plucks the D's)
+    // (Ode to Joy: F# F# G A; you play the first F# and the G, the band plucks the others)
     const lead = band.filter((e) => e.voice === 'pluck' && e.beat < 4).map((e) => e.beat);
     expect(lead).toEqual([1, 3]);
     expect(band.some((e) => e.voice === 'bass' && e.beat === 0)).toBe(true);
@@ -656,41 +657,51 @@ describe('the game', () => {
   it('a song puts its instrument out in its own key and scale (Ode to Joy: D major)', () => {
     const seen: string[] = [];
     const p = freshProgress();
-    p.stars.mary = 1;
-    p.stars.twinkle = 1;
     let g: Game;
     const st = { ...stage([]), useInstrument: (id: string | null) => seen.push(`${id} ${g.keyPc} ${g.harmony()?.scale}`), shelf: () => ({ id: 'marimba', name: 'Marimba', how: '', scale: 'Major', sound: 'Marimba' }) };
     g = new Game(st, p, room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.act('nav:songs');
-    g.act('song:2');
+    g.act(`song:${SONG_TRACKS.findIndex((x) => x.id === 'ode-to-joy')}`);
     g.act('play');
     expect(g.song?.name).toBe('Ode to Joy');
     expect(seen[seen.length - 1]).toBe('marimba 2 major');
   });
 
-  it('the songs page: six to a page, the corner turns it; the first says start here, the next what opens it', () => {
+  it('the songs page: a library, every song open, six to a page; how hard each is; all, the classics or the originals', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.act('nav:songs');
-    const tiles = () => (g.display.page?.items ?? []).filter((i) => i.id.startsWith('song:'));
+    const items = () => g.display.page?.items ?? [];
+    const tiles = () => items().filter((i) => i.id.startsWith('song:'));
+    const n = g.tracks.length;
+    const pages = Math.ceil(n / 6);
     expect(tiles().map((i) => i.label)).toEqual(SONG_TRACKS.slice(0, 6).map((t) => t.name));
     expect(tiles()[0].sub).toBe('Start here');
-    expect(tiles()[1].sub).toBe("After Mary's Lamb");
-    expect(tiles()[1].off).toBe(true);
-    g.act('songs:more');
-    expect(tiles().map((i) => i.id)).toEqual(['song:6', 'song:7', 'song:8']);
-    // today's song is always open
-    expect(tiles()[2].off).toBe(false);
-    expect(tiles()[2].sub).toBe('New every day');
-    g.act('song:8');
-    expect(g.songSel).toBe(8);
-    g.act('song:7');
-    expect(g.songSel).toBe(8);
-    g.act('songs:more');
+    expect(tiles()[1].sub).toMatch(/^(Easy|Medium|Hard) · /);
+    expect(tiles().some((i) => i.off)).toBe(false);
+    expect(items().find((i) => i.id === 'songs:more')?.label).toBe(`More, 1 of ${pages}`);
+    // every page in turn, then back to the first; every song on one of them, the last one today's
+    const seen: string[] = [];
+    for (let p = 0; p < pages; p++) {
+      seen.push(...tiles().map((i) => i.id));
+      g.act('songs:more');
+    }
+    expect(seen).toEqual(Array.from({ length: n }, (_, i) => `song:${i}`));
     expect(tiles()[0].id).toBe('song:0');
+    // any song can be picked, the hardest too
+    g.act(`song:${n - 2}`);
+    expect(g.songSel).toBe(n - 2);
+    // the originals alone, then the classics alone
+    g.act('songs:filter');
+    expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('Classics');
+    g.act('songs:filter');
+    expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('Originals');
+    expect(tiles().map((i) => g.tracks[Number(i.id.slice(5))].score?.tune.original)).toEqual(tiles().map(() => true));
+    g.act('songs:filter');
+    expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('All songs');
   });
 
   it('listen first: the song plays itself (your part too), nothing scored, then straight into your turn', () => {
@@ -755,7 +766,9 @@ describe('the game', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
+    const i = SONG_TRACKS.findIndex((x) => x.id === 'ode-to-joy');
     g.act('nav:songs');
+    g.act(`song:${i}`);
     g.act('play');
     let t = 0;
     const chordAt: number[] = [];
@@ -764,8 +777,9 @@ describe('the game', () => {
       const b = Math.floor(g.clock.beatAt(t) / 4);
       if (b >= 0 && chordAt[b] === undefined && g.mode === 'play') chordAt[b] = g.harmony()!.chord;
     }
-    // Mary's Lamb in C: C C G C C C G C, then the solo bar on G
-    expect(chordAt.slice(0, 9)).toEqual([60, 60, 67, 60, 60, 60, 67, 60, 67]);
+    // Ode to Joy in D: D A D A D A D (A, D), then the second part from A; the solo bar after sixteen, on A
+    expect(chordAt.slice(0, 9)).toEqual([62, 69, 62, 69, 62, 69, 62, 69, 69]);
+    expect(chordAt[16]).toBe(69);
   });
 
   it("today's song (a loop track): its second half changes chords (IV–ii in major, VI–VII in minor) and comes home", () => {
@@ -773,10 +787,11 @@ describe('the game', () => {
     const g = new Game({ ...stage([]), band: (e: { voice: string; midi: number; beat: number }) => band.push(e) }, freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
+    const daily = g.tracks.length - 1;
     g.act('nav:songs');
-    g.act('song:8');
+    g.act(`song:${daily}`);
     g.act('play');
-    const tr = g.tracks[8];
+    const tr = g.tracks[daily];
     const up = tr.minor ? [8, 10] : [5, 2];
     let t = 0;
     const chordAt: number[] = [];

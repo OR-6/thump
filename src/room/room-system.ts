@@ -59,7 +59,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { CONGA, GUITAR, HANDPAN, KEYBOARD, KEYS as KEY_NAMES, MARIMBA, NECK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, congaNormal, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, KEYS as KEY_NAMES, MARIMBA, NECK, PIANO_BLACK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, congaNormal, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -350,7 +350,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (!key.startsWith(this.kit.instKey)) return;
         // (the guitar's strum lights its six strings)
         if (this.kit.inst === 'guitar' && r.zone >= 9) for (let s = 3; s < 9; s++) this.kit.instOverlay()?.light(s, k);
-        else this.kit.instLight(r.zone % PIANO_LOW, k);
+        else if (r.zone < PIANO_BLACK) this.kit.instLight(r.zone % PIANO_LOW, k);
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     shelf: (dir) => this.shelfStep(dir),
@@ -422,7 +422,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (r.kind === 'pad') this.kit.pad(r.lane)?.miss();
       else if (r.kind === 'keys') this.kit.keys.miss(r.zone);
       else if (r.kind === 'inst') {
-        if (key.startsWith(this.kit.instKey)) this.kit.instOverlay()?.miss(r.zone % PIANO_LOW);
+        if (key.startsWith(this.kit.instKey) && r.zone < PIANO_BLACK) this.kit.instOverlay()?.miss(r.zone % PIANO_LOW);
       }
       else if (r.surface) this.overlays.get(r.surface)?.miss(r.zone);
     },
@@ -1411,6 +1411,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         t.w = STRUM.x1 - STRUM.x0;
         t.d = 0.04;
         t.round = false;
+        return true;
+      }
+      // (a song's note on a black key lands on that key)
+      const bk = this.kit.inst === 'piano' && r.zone >= PIANO_BLACK ? this.blacksNow[r.zone - PIANO_BLACK] : null;
+      if (bk) {
+        out.set(bk.x, KEYBOARD.blackTop + 0.001, -bk.z);
+        root.localToWorld(out);
+        col.setHex(instDef('piano').color);
+        t.round = false;
+        t.w = bk.w;
+        t.d = bk.h;
         return true;
       }
       const z = this.kit.instZones[r.zone % PIANO_LOW];
@@ -2412,7 +2423,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private airP = new Vector3();
   private airStrike: Strike = { kind: 'stop', speed: 0, gain: 0, point: 0, height: 0, t: 0 };
   /**
-   * The piano's keys as surfaces (kit-local, z toward you): the black keys first (outside a song; a finger on one
+   * The piano's keys as surfaces (kit-local, z toward you): the black keys first (a finger on one
    * plays it, not the white key under it), then the white key tops, then the chord button. Returns how many.
    */
   private blacksFor: Zone[] | null = null;
@@ -2438,11 +2449,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.blacksFor = this.kit.instZones;
       this.blacksNow = pianoBlacks(this.kit.instZones);
     }
-    if (!this.game.harmony()?.song)
-      for (let j = 0; j < this.blacksNow.length; j++) {
-        const b = this.blacksNow[j];
-        set(30 + j, b.x, K.blackTop, -b.z, b.w + 0.002, b.h);
-      }
+    for (let j = 0; j < this.blacksNow.length; j++) {
+      const b = this.blacksNow[j];
+      set(30 + j, b.x, K.blackTop, -b.z, b.w + 0.002, b.h);
+    }
     for (const q of this.kit.instZones) {
       if (q.i < PIANO_CHORD) set(q.i, q.x, K.top, -q.z, q.w + 0.001, q.h);
       else if (q.i === PIANO_CHORD) {
@@ -3095,6 +3105,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (const n of [0, 7, 12 + (ch[1] - ch[0])]) audio.modal(snd.family ?? 'keys', base + ch[0] + n, vel * 0.7, pan, when, 0.5, `piano-chord`, n);
       return;
     }
+    // (a black key in a song: a semitone over the white key left of it)
+    if (id === 'piano' && zone >= PIANO_BLACK) {
+      const bk = (this.kit.inst === 'piano' ? this.blacksNow : pianoBlacks(instZones('piano', root, scale)))[zone - PIANO_BLACK];
+      const a = bk ? (this.kit.inst === 'piano' ? this.kit.instZones : instZones('piano', root, scale))[bk.a] : null;
+      if (a) audio.modal(snd.family ?? 'keys', a.midi + 1 + (snd.oct ?? 0) * 12, vel, pan, when, 0.5, 'piano', zone);
+      return;
+    }
     // (zone + PIANO_LOW on the piano: the same key two octaves down, for a bass line)
     const low = id === 'piano' && zone >= PIANO_LOW;
     const zi = low ? zone - PIANO_LOW : zone;
@@ -3238,18 +3255,22 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.record(this.kitSurface, 9, gain, st, gs, 'strum');
   }
 
-  /** A black key: the white keys either side of it together (outside a song). */
+  /** A black key: in a song its own note (a semitone over the white key left of it); outside one, the white keys either side of it together. */
   private playBlack(j: number, side: Side, gain: number, pan: number, t: number, st: Strike): void {
     const k = pianoBlacks(this.kit.instZones)[j];
     if (!k || this.flam('piano', 30 + j, side, t)) return;
     const o = this.kit.instOverlay();
-    this.playInst('piano', k.a, gain * 0.85, pan, 0);
-    this.playInst('piano', k.b, gain * 0.8, pan, audio.now() + 0.012);
+    const song = !!this.game.harmony()?.song;
+    if (song) this.playInst('piano', PIANO_BLACK + j, gain * 0.9, pan, 0);
+    else {
+      this.playInst('piano', k.a, gain * 0.85, pan, 0);
+      this.playInst('piano', k.b, gain * 0.8, pan, audio.now() + 0.012);
+      o?.hit(k.a, gain * 0.6);
+      o?.hit(k.b, gain * 0.6);
+    }
     this.dimmer.hit(instDef('piano').color, gain);
-    o?.hit(k.a, gain * 0.6);
-    o?.hit(k.b, gain * 0.6);
     this.kit.blackStruck(j, gain);
-    const g = this.game.hit(`piano:${k.a}`, t, gain);
+    const g = this.game.hit(`piano:${song ? PIANO_BLACK + j : k.a}`, t, gain);
     this.wordAt.set(k.x, KEYBOARD.blackTop, -k.z);
     this.hitWords?.show(g, this.kit.root.localToWorld(this.wordAt), this.head, instDef('piano').color);
     this.record(this.kitSurface, 30 + j, gain, st, g, 'piano-black');
@@ -4050,6 +4071,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (r.kind === 'inst') {
       const id = key.slice(0, key.indexOf(':')) as InstId;
+      if (id === 'piano' && this.kit.inst === 'piano' && r.zone >= PIANO_BLACK) {
+        const st = fakeStrike(t);
+        this.playBlack(r.zone - PIANO_BLACK, 'left', st.gain, 0, t, st);
+        return;
+      }
       const q = this.kit.inst === id ? this.kit.instZones[r.zone % PIANO_LOW] : null;
       // (the piano's keys are pressed in the air: as a finger would)
       if (q && id === 'guitar') {

@@ -176,7 +176,7 @@ shot('room-04-module', look);
   s = state();
 }
 
-// tap PLAY on the module: the first song starts (Mary's Lamb), the band in, your part on the drums
+// tap PLAY on the module: the first song starts (the easiest), the band in, your part on the drums
 // SONGS on the panel, then PLAY
 if (!s.targets['ui:nav:songs']) {
   await slapAt(s.targets['ui:nav:main'], s.targets.panelNormal, { speed: 0.5, from: 0.05 });
@@ -186,7 +186,7 @@ await slapAt(s.targets['ui:nav:songs'], s.targets.panelNormal, { speed: 0.5, fro
 s = state();
 await slapAt(s.targets['ui:play'], s.targets.panelNormal, { speed: 0.5, from: 0.05 });
 s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 3000);
-check('SONGS, then PLAY, plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && /Mary's Lamb/.test(s.game.display.line), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
+check('SONGS, then PLAY, plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && !!s.game.song, `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
 s = await until((x) => x.game.motes > 0, 8000);
 check("the song's notes fly to the drums", s.game.motes > 0, `motes=${s.game.motes} ${s.game.display.line} / ${s.game.display.sub}`);
 shot('room-05-song', look);

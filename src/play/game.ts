@@ -338,7 +338,7 @@ export class Game {
       const l = this.lap;
       const b = !this.perf && l ? l.base + ((((beat - l.from) % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS) : beat;
       const c = chordAt(track.score, b);
-      return { minor: !!track.minor, chord: chordMidi(c, track.key), chordMinor: c.minor, song: true, scale: track.score.tune.scale };
+      return { minor: !!track.minor, chord: chordMidi(c, track.key), chordMinor: c.minor, song: true, scale: track.score.scale };
     }
     const c = songChord(track, Math.max(0, Math.floor(beat / 4)), !!this.perf);
     return { minor: !!track.minor, chord: c.root, chordMinor: c.minor, song: true };
@@ -982,9 +982,22 @@ export class Game {
     return Math.max(0, this.nextTrack());
   }
 
-  /** A song opens once you've played the one before it (today's is always open). */
-  songLocked(i: number): boolean {
-    return i > 0 && i < SONG_TRACKS.length && !this.performed(SONG_TRACKS[i - 1].id);
+  /** The songs the page shows (by the filter: all, the classics, or the originals), as indices into `tracks`. */
+  private shownSongs(): number[] {
+    const f = this.songFilter;
+    const out: number[] = [];
+    this.tracks.forEach((t, i) => {
+      const orig = !!t.score?.tune.original;
+      if (f === 'all' || (t.score && (f === 'originals') === orig)) out.push(i);
+    });
+    return out;
+  }
+  /** The page of songs showing now (six to a page): the one asked for, else the one with the song picked. */
+  private shownPage(): number {
+    const shown = this.shownSongs();
+    const pages = Math.max(1, Math.ceil(shown.length / SONGS_A_PAGE));
+    const at = this.songPage >= 0 ? this.songPage : Math.max(0, Math.floor(shown.indexOf(this.songSel) / SONGS_A_PAGE));
+    return Math.min(pages - 1, at);
   }
 
   /** The next song to play: the first you haven't played, else the last. */
@@ -2195,6 +2208,8 @@ export class Game {
   songSel = 0;
   /** The page of songs on the panel (six to a page), or −1: the page with the one picked. */
   private songPage = -1;
+  /** Which songs the page shows. */
+  songFilter: 'all' | 'classics' | 'originals' = 'all';
   /** The gear on the panel: the settings page. */
   openSettings(): void {
     if (this.mode !== 'discover' && this.mode !== 'results') return;
@@ -2244,15 +2259,22 @@ export class Game {
     }
     if (id === 'songs:more') {
       // the songs page shows six at a time: the next six, or back to the first
-      const pages = Math.ceil(this.tracks.length / SONGS_A_PAGE);
-      const at = this.songPage >= 0 ? this.songPage : Math.floor(this.songSel / SONGS_A_PAGE);
-      this.songPage = (at + 1) % pages;
+      const pages = Math.max(1, Math.ceil(this.shownSongs().length / SONGS_A_PAGE));
+      this.songPage = (this.shownPage() + 1) % pages;
+      this.refreshDisplay();
+      return;
+    }
+    if (id === 'songs:filter') {
+      // all of them, the classics, the originals
+      this.songFilter = this.songFilter === 'all' ? 'classics' : this.songFilter === 'classics' ? 'originals' : 'all';
+      this.songPage = 0;
       this.refreshDisplay();
       return;
     }
     if (id.startsWith('song:')) {
+      // (every song is open: it's a library, not a ladder)
       const i = Number(id.slice(5));
-      if (i >= 0 && i < this.tracks.length && !this.songLocked(i)) this.songSel = i;
+      if (i >= 0 && i < this.tracks.length) this.songSel = i;
       this.refreshDisplay();
       return;
     }
@@ -2342,10 +2364,12 @@ export class Game {
       // (the songs page's line: your turn after a listen, or the band being asked)
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full' },
-      // (each tile: its name, and who wrote it or where it's from; the first says start here, a locked one what opens it)
-      songs: this.tracks.map((t, i) => ({ name: t.name, meta: this.songLocked(i) ? `After ${this.tracks[i - 1].score?.tune.short ?? this.tracks[i - 1].name}` : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? t.score.tune.by : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: this.songLocked(i) })),
+      // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
+      songs: this.tracks.map((t, i) => ({ name: t.name, meta: i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false })),
       songSel: this.songSel,
-      songPage: this.songPage >= 0 ? this.songPage : Math.floor(this.songSel / SONGS_A_PAGE),
+      songShown: this.shownSongs(),
+      songPage: this.shownPage(),
+      songFilter: this.songFilter,
       level: this.level,
       band: { state: band.state, code: this.code, players: band.players, message: band.message },
       settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false) },

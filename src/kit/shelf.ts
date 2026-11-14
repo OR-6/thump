@@ -153,6 +153,8 @@ export const KEYBOARD = { whites: 15, pitch: 0.0235, gap: 0.0014, len: 0.15, bla
 export const PIANO_CHORD = 15;
 /** A piano note's zone plus this is the same key two octaves down (the bass line). */
 export const PIANO_LOW = 20;
+/** In a song the piano's black keys are notes of their own: black key j (pianoBlacks' order) is zone PIANO_BLACK + j. */
+export const PIANO_BLACK = 50;
 /** Where the song's tune starts on the keyboard (its first scale note is the sixth white key). */
 const TUNE_AT = 5;
 /** The keyboard's left edge (kit-local x): centred, a little right to leave room for the chord button. */
