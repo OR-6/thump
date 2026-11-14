@@ -900,6 +900,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private later(at: number, fn: () => void): void {
     this.timed.push({ at, fn });
   }
+  /** The panel's clock (real time, never paused) and what's waiting on it. */
+  private uiT = 0;
+  private uiTimed: { at: number; fn: () => void }[] = [];
+  private uiLater(dt: number, fn: () => void): void {
+    this.uiTimed.push({ at: this.uiT + dt, fn });
+  }
   private farTold = false;
 
   /** Same-kind surfaces get different instruments (an orchestra, not five gongs); found ones keep theirs. */
@@ -1350,6 +1356,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.watchFrames(delta);
     // (paused by you: the song's clock holds still; you can still use the panel)
     if (!this.userPaused) this.clock.tick(Math.min(dt, 0.05), audio.running, audio.now());
+    else this.clock.hold();
+    // the panel's own time: it runs while the song is paused (the song's clock stands still then, and a press timed on
+    // it would never count)
+    this.uiT += dt;
+    for (let i = this.uiTimed.length - 1; i >= 0; i--)
+      if (this.uiTimed[i].at <= this.uiT) {
+        const f = this.uiTimed[i].fn;
+        this.uiTimed.splice(i, 1);
+        f();
+      }
     this.debug.audio = audio.running;
     if (this.resumePending && audio.running) {
       this.resumePending = false;
@@ -2602,7 +2618,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       set(30 + j, b.x, K.blackTop, -b.z, b.w + 0.002, b.h);
     }
     for (const q of this.kit.instZones) {
-      if (q.i < PIANO_CHORD) set(q.i, q.x, K.top, -q.z, q.w + 0.001, q.h);
+      // (a white key reaches 2.5 cm past its front edge: a finger pressing the front of a key, or the slip in front of
+      // it, comes in at an angle and tracking puts its tip a little nearer you than the pad that touches; and it
+      // takes a slanting press, as fingers press a key's front)
+      if (q.i < PIANO_CHORD) {
+        const s = set(q.i, q.x, K.top, -q.z + 0.0125, q.w + 0.001, q.h + 0.025);
+        s.along = 0.45;
+      }
       else if (q.i === PIANO_CHORD) {
         const s = set(q.i, q.x, K.top + 0.002, -q.z, 0, 0);
         s.r = q.w + 0.006;
@@ -2989,7 +3011,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const k = this.panelItemAt(this.o.x, this.o.z);
         if (k < 0) continue;
         // (mid-song, a hand that just hit the instrument is playing, not pressing: a wild fill can't switch you)
-        const playing = (this.game.mode === 'play' || this.game.mode === 'count') && this.clock.t - this.handHitT[i] < 0.35;
+        const playing = (this.game.mode === 'play' || this.game.mode === 'count') && !this.userPaused && this.clock.t - this.handHitT[i] < 0.35;
         if (fire && !playing) this.pressPanel(k);
         const near = 1 - Math.max(0, off) / 0.05;
         if (near > bk) {
@@ -3004,9 +3026,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // hover range; not more than one every 150 ms; never while a song's playing under the panel)
     if (best !== this.lastHoverItem && (best < 0 || bk > 0.4)) {
       const mode = this.game.mode;
-      if (best >= 0 && this.clock.t - this.hoverTickT > 0.15 && mode !== 'play' && mode !== 'count') {
+      if (best >= 0 && this.uiT - this.hoverTickT > 0.15 && mode !== 'play' && mode !== 'count') {
         audio.ui('hover');
-        this.hoverTickT = this.clock.t;
+        this.hoverTickT = this.uiT;
       }
       this.lastHoverItem = best;
     }
@@ -3038,7 +3060,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private panelZones(): void {
     const p = this.kit.module;
     this.zonesFor = p.version;
-    this.pageT = this.clock.t;
+    this.pageT = this.uiT;
     this.moduleSurface.zones = (p.page?.items ?? []).map((it, i) => {
       const k = itemZone(it);
       return { i, shape: 'rect' as const, x: k.x, z: k.z, w: k.w, h: k.h, degree: -1, midi: 0 } satisfies Zone;
@@ -3145,23 +3167,23 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (!it) return;
     // (a dimmed control answers too, quietly: it's there, it just can't be used yet)
     if (it.off) {
-      if (!it.id.startsWith('label:') && this.clock.t - this.panelPressT > 0.15) {
-        this.panelPressT = this.clock.t;
+      if (!it.id.startsWith('label:') && this.uiT - this.panelPressT > 0.15) {
+        this.panelPressT = this.uiT;
         audio.tick(0.08);
       }
       return;
     }
     // one press per poke (the touch and the strike can both see it), and none just after the page changed (the
     // finger that pressed is still there, over something new)
-    if ((k === this.panelPressK && this.clock.t - this.panelPressT < 0.15) || this.clock.t - this.panelPressT < 0.08 || this.clock.t - this.pageT < 0.45) return;
-    this.panelPressT = this.clock.t;
+    if ((k === this.panelPressK && this.uiT - this.panelPressT < 0.15) || this.uiT - this.panelPressT < 0.08 || this.uiT - this.pageT < 0.45) return;
+    this.panelPressT = this.uiT;
     this.panelPressK = k;
     this.kit.module.pressKey(k);
     audio.ui(it.id === 'back' || it.id === 'nav:main' ? 'back' : it.id.startsWith('set:') ? 'toggle' : 'press');
-    if (it.id.startsWith('nav:') || it.id === 'play' || it.id === 'learn') this.later(this.clock.t + 0.05, () => audio.ui('open', 0.8));
+    if (it.id.startsWith('nav:') || it.id === 'play' || it.id === 'learn') this.uiLater(0.05, () => audio.ui('open', 0.8));
     // a press that changes the page flashes on what you pressed for a moment first
     const moves = it.id.startsWith('nav:') || it.id === 'back' || it.id === 'play' || it.id === 'again' || it.id === 'next' || it.id === 'make' || it.id.startsWith('inst:') || it.id === 'key:play';
-    if (moves) this.later(this.clock.t + 0.09, () => this.panelAction(it.id));
+    if (moves) this.uiLater(0.09, () => this.panelAction(it.id));
     else this.panelAction(it.id);
   }
   private panelPressK = -1;
@@ -4584,7 +4606,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (p && !playing) return;
     this.userPaused = p;
     this.game.paused = p;
-    audio.setPaused(p || this.paused);
+    // (the song's clock holds; the sound keeps running so the panel still clicks; what was ringing stops)
+    this.clock.hold();
+    if (p) audio.stopSustain();
     if (!p) this.resumePending = true;
     // (the panel comes back if you'd hidden it: it's how you resume)
     if (p) this.kit.module.setHidden(false);
@@ -4594,7 +4618,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private setPaused(p: boolean): void {
     if (p === this.paused) return;
     this.paused = p;
-    audio.setPaused(p || this.userPaused);
+    audio.setPaused(p);
     // the count-in waits until the audio is really running again
     if (!p) this.resumePending = true;
   }

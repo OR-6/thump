@@ -319,13 +319,10 @@ describe('the game', () => {
     }
     expect(g.mode).toBe('results');
     expect(Math.max(...at.values())).toBeLessThanOrEqual(2);
-    // your best bars play back first, the panel saying only that; then the results name what carried it
+    // straight to the results (no replay of your bars first): they name the song; the score, grade and accuracy are on the medal
     g.tick((t += 1 / 30));
-    expect(g.display.line).toBe('That was you');
-    expect(g.display.stars).toBe(-1);
-    for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
-    // (the results name the song; the score, grade and accuracy are on the medal)
     expect(g.display.line).not.toBe('That was you');
+    expect(g.display.stars).not.toBe(-1);
     expect(g.display.result).toBeTruthy();
     g.tick((t += 6.6));
     expect(g.display.sub).toBe('The tick never missed');
@@ -333,7 +330,7 @@ describe('the game', () => {
     expect(g.mode).toBe('count');
   });
 
-  it('the finished machine goes quiet for a bar, then drops in; after a performance it plays twice through', () => {
+  it('the finished machine goes quiet for a bar, then drops in; after a performance it goes straight to the results', () => {
     const log: string[] = [];
     const voiced: number[] = [];
     let now = 0;
@@ -373,10 +370,10 @@ describe('the game', () => {
       g.tick(t);
       subs.push(g.display.line);
     }
-    expect(log.filter((x) => x === 'drop').length).toBeGreaterThanOrEqual(2);
-    expect(voiced.filter((x) => x > end).length).toBeGreaterThan(20);
-    // and it was your playing that came back
-    expect(subs).toContain('That was you');
+    // (the song ends on the results: nothing of yours is played back)
+    expect(log.filter((x) => x === 'drop').length).toBeGreaterThanOrEqual(1);
+    expect(subs).not.toContain('That was you');
+    void end;
   });
 
   it('a hand resting on a thing silences its part in the machine; lifting it brings it back', () => {

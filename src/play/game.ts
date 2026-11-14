@@ -1289,31 +1289,8 @@ export class Game {
     this.stage.save(pr);
     this.stage.celebrate(stars);
     for (const u of this.newUnlocks) this.stage.unlock(u);
-    // the machine plays two loops through at full, from the next downbeat (your bow)
-    const now = this.clock.beatAt(this.t);
-    const from = Math.ceil((now + 0.5) / LOOP_BEATS) * LOOP_BEATS;
-    // your best two bars (the most notes you hit), played back in your part's place
-    let bestW = 0;
-    let bestN = -1;
-    for (let w = 0; w + LOOP_BEATS <= (this.song?.bars ?? 20) * 4; w += LOOP_BEATS) {
-      let n = 0;
-      for (const h of this.played) if (h.beat >= w - 0.25 && h.beat < w + LOOP_BEATS - 0.25) n++;
-      if (n > bestN) {
-        bestN = n;
-        bestW = w;
-      }
-    }
-    // (an early downbeat stays a downbeat, a hair early; each hit pulled halfway to its sixteenth, as a band would)
-    let loud = 0.3;
-    for (const h of this.played) loud = Math.max(loud, h.gain);
-    const mine = this.played
-      .filter((h) => h.beat >= bestW - 0.25 && h.beat < bestW + LOOP_BEATS - 0.25)
-      .map((h) => {
-        const b = h.beat - bestW;
-        return { key: h.key, beat: (b + Math.round(b * 4) / 4) / 2, gain: 0.55 + (0.45 * h.gain) / loud };
-      });
-    // (a written-out song plays those same two bars of itself under them; a loop is the same every two bars)
-    this.lap = { from, sched: from - 0.3, dropped: false, mine, live: mine.length >= 3 ? new Set(p.live) : new Set<string>(), cover: mine.length >= 3 ? p.cover : null, base: p.track.score ? bestW : 0 };
+    // (no replay of your best bars: straight to the results)
+    this.lap = null;
     this.perf = null;
     this.mode = 'results';
     this.modeT = this.t;

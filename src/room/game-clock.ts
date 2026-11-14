@@ -10,6 +10,10 @@ export class GameClock {
     } else this.t += dt;
     this.wasRunning = running;
   }
+  /** Held still (a pause, the audio still running): it carries on from where it stood, not from the audio's time. */
+  hold(): void {
+    this.wasRunning = false;
+  }
   toAudio(t: number): number {
     return this.wasRunning ? t - this.base : 0;
   }
