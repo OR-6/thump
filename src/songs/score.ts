@@ -272,7 +272,8 @@ export interface BandPart {
 
 /**
  * The band's parts through the whole song: the drummer's groove (Hard's), the congas (Normal's), the melody (a
- * plucked lead an octave as written: the bed's pluck sounds an octave up) and the bass on each chord.
+ * plucked lead, its MIDI an octave under where it sounds: the bed's pluck plays an octave up) and the bass on each
+ * chord.
  */
 export function scoreParts(s: Score): BandPart[] {
   const t = s.tune;
