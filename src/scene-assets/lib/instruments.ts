@@ -6,9 +6,9 @@
  * when strummed. A handpan: a nitrided steel shell with its tone fields and raised ding. A marimba: rosewood bars
  * that bounce, on a frame. Deterministic: the same in the app and the editor.
  */
-import { BoxGeometry, CircleGeometry, DoubleSide, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
+import { BoxGeometry, CircleGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
-import { KEYBOARD, PIANO_CHORD } from '../../kit/shelf.js';
+import { CONGA, KEYBOARD, PIANO_CHORD } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
 import { fineNormal, woodGrain } from './surfaces.js';
 
@@ -413,11 +413,19 @@ export class CongaModel implements DeskModel {
   private marks: Mesh[] = [];
   private spring = new Springs(4);
   private glow = [0, 0, 0, 0];
-  private readonly wood = mat('Wood', 0x8a4a22, 0.38, 0.05);
-  private readonly stripe = mat('Stripe', 0x3a1c0c, 0.4, 0.05);
+  // staves of lacquered wood, alternating a shade (grain running down the barrel), a dark stripe
+  private readonly wood = (() => {
+    const map = woodGrain(57).clone();
+    map.needsUpdate = true;
+    map.rotation = Math.PI / 2;
+    map.repeat.set(1, 6);
+    return new MeshPhysicalMaterial({ name: 'Wood', color: 0x7a3f1c, map, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.1 });
+  })();
+  private readonly stripe = mat('Stripe', 0x2a140a, 0.4, 0.05);
   private readonly crown = mat('Crown', 0x1d1d20, 0.35, 0.8);
   private readonly lug = mat('Lug', 0xcfd3d8, 0.2, 1);
-  static readonly H = 0.02;
+  /** The heads' height: a conga's barrel, cut down to a desk, still a barrel (12 cm). */
+  static readonly H = CONGA.top;
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -429,41 +437,42 @@ export class CongaModel implements DeskModel {
       const R = zones[d * 2 + 1].w;
       const drum = named(new Group(), d === 0 ? 'Tumba' : 'Quinto');
       drum.position.set(inner.x, 0, -inner.z);
-      // the shell: the top of a conga's barrel, flaring out to the desk (a ring of wood you see round the head from
-      // above, so it reads as a conga cut down, not a frame drum), staves as fine dark lines, a stripe round it
-      const FLARE = 1.18;
+      // the shell: a conga's barrel, narrow at the foot, swelling to its belly two fifths up, in to the head
+      const rAt = (y: number) => {
+        const t = Math.max(0, Math.min(1, y / (H - 0.004)));
+        return R * (0.86 + 0.17 * Math.sin(Math.PI * Math.pow(t, 0.75)) + 0.1 * t);
+      };
       const pts: Vector2[] = [];
-      for (let k = 0; k <= 10; k++) {
-        const t = k / 10;
-        pts.push(new Vector2(R * (FLARE - (FLARE - 0.99) * Math.pow(t, 0.6)), t * (H - 0.004)));
-      }
+      for (let k = 0; k <= 16; k++) pts.push(new Vector2(rAt((k / 16) * (H - 0.004)), (k / 16) * (H - 0.004)));
       const shell = named(new Mesh(new LatheGeometry(pts, 48), this.wood), 'Shell');
-      const rAt = (y: number) => R * (FLARE - (FLARE - 0.99) * Math.pow(Math.max(0, y / (H - 0.004)), 0.6));
-      const band = named(new Mesh(new CylinderGeometry(rAt(H * 0.36) + 0.0006, rAt(H * 0.28) + 0.0006, 0.0035, 48, 1, true), this.stripe), 'Stripe');
-      band.position.y = H * 0.32;
-      // staves: dark seams down the flare, leaning out with it
+      const band = named(new Mesh(new CylinderGeometry(rAt(H * 0.62) + 0.0008, rAt(H * 0.56) + 0.0008, 0.006, 48, 1, true), this.stripe), 'Stripe');
+      band.position.y = H * 0.59;
+      // staves: twelve seams following the barrel's curve, each a short segment hugging it
       const staves = named(new Group(), 'Staves');
-      const sg = new BoxGeometry(0.0008, 1, 0.0006);
-      const lean = Math.atan2(rAt(0) - rAt(H - 0.004), H - 0.004);
-      const len = (H - 0.005) / Math.cos(lean);
-      for (let i = 0; i < 16; i++) {
-        const a = (i / 16) * Math.PI * 2;
-        const s = new Mesh(sg, this.stripe);
-        const mid = (H - 0.005) / 2;
-        const r = rAt(mid) + 0.0004;
-        s.scale.y = len;
-        s.position.set(Math.cos(a) * r, mid, Math.sin(a) * r);
-        s.rotation.set(0, -a, 0);
-        s.rotateZ(lean);
-        staves.add(s);
+      const sg = new BoxGeometry(0.0012, 1, 0.0008);
+      const segs = 8;
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        for (let k = 0; k < segs; k++) {
+          const y0 = (k / segs) * (H - 0.006);
+          const y1 = ((k + 1) / segs) * (H - 0.006);
+          const r0 = rAt(y0) + 0.0005;
+          const r1 = rAt(y1) + 0.0005;
+          const s = new Mesh(sg, this.stripe);
+          s.scale.y = Math.hypot(y1 - y0, r1 - r0);
+          s.position.set(Math.cos(a) * (r0 + r1) / 2, (y0 + y1) / 2, Math.sin(a) * (r0 + r1) / 2);
+          s.rotation.set(0, -a, 0);
+          s.rotateZ(-Math.atan2(r1 - r0, y1 - y0));
+          staves.add(s);
+        }
       }
       // the head: rawhide, the low drum a shade darker, its own material so it can glow
       const hide = new MeshStandardMaterial({ name: 'Rawhide', color: d === 0 ? 0xe2c79a : 0xe8d0a6, roughness: 0.82 });
       const head = named(new Mesh(new CylinderGeometry(R * 0.985, R * 0.985, 0.002, 48), hide), 'Head');
       head.position.y = H - 0.002;
-      // the slap ring: where the edge begins (a faint darker line on the hide)
-      const ringMat = new MeshStandardMaterial({ name: 'Edge', color: 0xa8875a, roughness: 0.85 });
-      const ring = named(new Mesh(new RingGeometry(inner.w - 0.0015, inner.w + 0.0015, 48), ringMat), 'EdgeLine');
+      // the slap zone: nothing painted on the hide; a ring of light that shows only when the edge is played
+      const ringMat = new MeshBasicMaterial({ name: 'Edge', color: 0xfff0c0, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
+      const ring = named(new Mesh(new RingGeometry(inner.w, R * 0.96, 48), ringMat), 'EdgeLight');
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = H - 0.0008;
       // the crown hoop: a black rolled rim over the head's edge
@@ -472,15 +481,15 @@ export class CongaModel implements DeskModel {
       crown.position.y = H - 0.0005;
       // side plates and lugs: four on the low drum, four on the high, each a plate on the shell with a rod to the rim
       const lugs = named(new Group(), 'Lugs');
-      const plate = new BoxGeometry(0.004, 0.006, 0.0012);
-      const rod = new CylinderGeometry(0.0008, 0.0008, 0.008, 8);
-      for (let i = 0; i < 4; i++) {
-        const a = ((i + 0.5) / 4) * Math.PI * 2;
+      const plate = new BoxGeometry(0.006, 0.01, 0.0016);
+      const rod = new CylinderGeometry(0.001, 0.001, H * 0.16, 8);
+      for (let i = 0; i < 6; i++) {
+        const a = ((i + 0.5) / 6) * Math.PI * 2;
         const l = named(new Group(), `Lug${i}`);
         const p = new Mesh(plate, this.lug);
-        p.position.set(rAt(H * 0.55) + 0.001, H * 0.55, 0);
+        p.position.set(rAt(H * 0.78) + 0.0012, H * 0.78, 0);
         const r = new Mesh(rod, this.lug);
-        r.position.set(rAt(H * 0.55) + 0.001, H * 0.55 + 0.004, 0);
+        r.position.set(rAt(H * 0.9) + 0.0014, H * 0.9, 0);
         l.add(p, r);
         l.rotation.y = a;
         lugs.add(l);
@@ -506,7 +515,7 @@ export class CongaModel implements DeskModel {
       const open = (this.glow[d * 2] = Math.max(0, this.glow[d * 2] - dt * 6));
       const slap = (this.glow[d * 2 + 1] = Math.max(0, this.glow[d * 2 + 1] - dt * 8));
       (h.material as MeshStandardMaterial).emissive.setHex(0xffb060).multiplyScalar(open * 0.5);
-      (this.marks[d].material as MeshStandardMaterial).emissive.setHex(0xfff0c0).multiplyScalar(slap * 1.2);
+      (this.marks[d].material as MeshBasicMaterial).opacity = Math.min(0.7, slap * 0.8);
     });
   }
 }

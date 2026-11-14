@@ -118,7 +118,8 @@ shot('shelf-handpan', look);
 await tab('congas');
 s = state();
 check('then congas', s.targets.inst?.[0] === 4 && s.game.display.page?.title === 'Congas', `${s.game.display.page?.title} inst=${s.targets.inst}`);
-await slapAt(s.targets.inst2);
+// (the congas stand 12 cm tall: a hand down through the high drum's head, in its middle)
+await slapAt(s.targets.inst2.map((v, i) => v - (i === 1 ? 0.015 : 0)), [0, 1, 0], { from: 0.08 });
 s = state();
 check('the high drum plays an open tone in its middle', s.debug.lastHit?.family === 'congas' && s.debug.lastHit?.zone === 2, JSON.stringify(s.debug.lastHit));
 shot('shelf-congas', look);

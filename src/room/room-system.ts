@@ -58,7 +58,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { KEYBOARD, PIANO_CHORD, PIANO_LOW, SCALES, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { CONGA, KEYBOARD, PIANO_CHORD, PIANO_LOW, SCALES, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -1380,7 +1380,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       const z = this.kit.instZones[r.zone % PIANO_LOW];
       if (!z) return false;
-      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : this.kit.inst === 'handpan' ? 0.02 : this.kit.inst === 'guitar' ? 0.024 : this.kit.inst === 'congas' ? 0.022 : this.kit.inst === 'piano' ? KEYBOARD.top + 0.001 : 0.013, -z.z);
+      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : this.kit.inst === 'handpan' ? 0.02 : this.kit.inst === 'guitar' ? 0.024 : this.kit.inst === 'congas' ? CONGA.top + 0.002 : this.kit.inst === 'piano' ? KEYBOARD.top + 0.001 : 0.013, -z.z);
       root.localToWorld(out);
       col.setHex(instDef(this.kit.inst).color);
       t.round = z.shape === 'disc';
@@ -2388,9 +2388,24 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const out = this.kitOutT >= 0 && this.placement.phase === 'placed';
     const drums = out && this.kit.inst === 'drums';
     const piano = out && this.kit.inst === 'piano';
+    const congas = out && this.kit.inst === 'congas';
     // the heads, where the pads stand now
     let n = 0;
     if (piano) n = this.pianoSurfaces();
+    if (congas)
+      // (each drum's middle before its edge: a hand in the middle plays the open tone)
+      for (const pass of [0, 1])
+        for (const q of this.kit.instZones) {
+          if (q.i % 2 !== pass) continue;
+          const s = this.airSurf[n++];
+          s.id = q.i;
+          s.face = 'up';
+          s.x = q.x;
+          s.y = CONGA.top;
+          s.z = -q.z;
+          s.r = q.w + (pass ? 0.006 : 0);
+          s.w = undefined;
+        }
     if (drums)
       for (const lane of AIR_LANES) {
         const p = this.kit.pad(lane);
@@ -2442,12 +2457,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
         this.stickTip[i].copy(h.palm).addScaledVector(this.stickDir[i], STICK_LEN);
       }
-      if (!drums && !piano) continue;
+      if (!drums && !piano && !congas) continue;
       // the points that can strike: three fingertips and the palm (an open hand), or the stick's tip (a fist); the
       // piano's keys only by fingertips (a flat hand resting on them plays nothing)
       const pts = this.fist[i] ? 1 : 4;
       for (let k = 0; k < 5; k++) {
-        const use = piano ? k < 3 : this.fist[i] ? k === 4 : k < 4;
+        const use = piano ? k < 3 : congas ? k < 4 : this.fist[i] ? k === 4 : k < 4;
         if (!use) continue;
         const w = k === 0 ? h.indexTip : k === 1 ? h.middleTip : k === 2 ? h.ringTip : k === 3 ? this.airP.copy(h.palm).setY(h.palm.y - h.palmRadius) : this.stickTip[i];
         this.airP.copy(w).applyMatrix4(inv);
@@ -2459,6 +2474,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           this.airStrike.speed = hit.speed;
           this.airStrike.gain = hit.gain;
           const pan = Math.max(-0.8, Math.min(0.8, this.airP.x / 0.4));
+          if (congas) {
+            this.playZone('congas', hit.surface, side, hit.gain, pan, this.clock.t, this.airStrike);
+            this.debug.hits++;
+            continue;
+          }
           if (piano) {
             if (hit.surface >= 30) this.playBlack(hit.surface - 30, side, hit.gain, pan, this.clock.t, this.airStrike);
             else this.playZone('piano', hit.surface, side, hit.gain, pan, this.clock.t, this.airStrike);
@@ -2821,7 +2841,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const pan = Math.max(-0.8, Math.min(0.8, x / 0.4));
     // (the piano's keys are up in its case: fingertips press them there, src/input/air-hits.ts; the desk under it
     // plays nothing)
-    if (id === 'piano') return;
+    if (id === 'piano' || id === 'congas') return;
     // the nearest zone the hand is on (with a little give round each)
     let best = -1;
     let bd = Infinity;
@@ -3692,9 +3712,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const id = key.slice(0, key.indexOf(':')) as InstId;
       const q = this.kit.inst === id ? this.kit.instZones[r.zone % PIANO_LOW] : null;
       // (the piano's keys are pressed in the air: as a finger would)
-      if (q && id === 'piano') {
+      if (q && (id === 'piano' || id === 'congas')) {
         const st = fakeStrike(t);
-        this.playZone('piano', q.i, 'left', st.gain, 0, t, st);
+        this.playZone(id, q.i, 'left', st.gain, 0, t, st);
       } else if (q) {
         this.hitAt.x = q.x;
         this.hitAt.z = q.z;
@@ -3835,7 +3855,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.keyZones.forEach((z, i) => (out[`edge${i}`] = root.localToWorld(this.tmp.set(z.x, 0, -z.z)).toArray().map(r4)));
     // the instrument on the desk: each of its notes (and the guitar's strum band)
     // (each where it's struck: the piano's keys are up in its case)
-    const top = this.kit.inst === 'piano' ? KEYBOARD.top : 0;
+    const top = this.kit.inst === 'piano' ? KEYBOARD.top : this.kit.inst === 'congas' ? CONGA.top : 0;
     this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = root.localToWorld(this.tmp.set(z.x, top, -z.z)).toArray().map(r4)));
     if (this.kit.inst === 'guitar') out.strum = root.localToWorld(this.tmp.set((STRUM.x0 + STRUM.x1) / 2, 0, -(STRUM.z0 + STRUM.z1) / 2)).toArray().map(r4);
     out.inst = [SHELF.findIndex((d) => d.id === this.kit.inst)];
