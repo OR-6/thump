@@ -1,0 +1,8 @@
+The acoustic guitar in this folder (steel-01..15.mp3) is a 2017 Martin HD-28 Vintage Series steel-string,
+recorded by Jeff Learman for the Discord SFZ GM Bank ("026-Acoustic Guitar (steel)", the MartinGM2 samples, E2 to B5
+in minor thirds). License: Creative Commons Zero (CC0).
+https://github.com/sfzinstruments/Discord-SFZ-GM-Bank
+http://creativecommons.org/publicdomain/zero/1.0/
+
+Changed for Thump: lead-in trimmed, the sustain loop dropped, each note shortened (about 3 s on the low E, under a
+second at the top) with a fade, levelled, and encoded as mono 96 kbps mp3.

@@ -41,8 +41,8 @@ export class Sampler {
   load(ctx: BaseAudioContext): void {
     if (this.loading) return;
     this.loading = true;
-    // what you hear first loads first: the kit, the desk's bars, the band, then the rest of the room
-    const first = ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:crash', 'ride', 'kit:rim', 'keys', 'band:piano'];
+    // what you hear first loads first: the kit, the desk's bars, the band, the guitar, then the rest of the room
+    const first = ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:crash', 'ride', 'kit:rim', 'keys', 'band:piano', 'guitar'];
     const keys = [...first.filter((k) => SAMPLES[k]), ...Object.keys(SAMPLES).filter((k) => !first.includes(k))];
     const files: string[] = [];
     for (const k of keys)

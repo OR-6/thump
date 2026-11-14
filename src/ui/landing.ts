@@ -423,7 +423,7 @@ function mountDesk(el: HTMLElement, chose: (id: InstId) => void): void {
   const strum = (pan: number) => {
     const notes = strumNotes(PAGE_ROOT.guitar, PAGE_SCALE.chords[chord]);
     const t = audio.now();
-    notes.forEach((n, i) => audio.pluck(n, 0.75 - i * 0.04, pan, t + i * 0.012, 'nylon'));
+    notes.forEach((n, i) => audio.pluck(n, 0.75 - i * 0.04, pan, t + i * 0.012, 'steel'));
   };
   const panOf = (xm: number) => Math.max(-0.8, Math.min(0.8, xm / 0.4));
 

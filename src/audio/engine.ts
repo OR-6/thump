@@ -581,7 +581,10 @@ class Engine {
     if (owner) this.claimVoice(owner, g, t, end, [src]);
   }
 
-  /** Plucked strings (the guitar on the shelf), made once per note and kind: a burst of noise in a tuned loop. */
+  /**
+   * Plucked strings, made once per note and kind: a burst of noise in a tuned loop. The nylon guitar's own voice, and
+   * the acoustic's stand-in until its recordings (a real steel-string, CC0) have loaded.
+   */
   private strings = new Map<string, AudioBuffer>();
   private stringBuffer(ctx: AudioContext, midi: number, kind: 'nylon' | 'steel'): AudioBuffer {
     const id = `${kind}:${midi}`;
@@ -589,31 +592,32 @@ class Engine {
     if (b) return b;
     const sr = ctx.sampleRate;
     const f = 440 * Math.pow(2, (midi - 69) / 12);
-    // (the two-tap average delays the loop by 1 − w samples: take it off, or the top strings ring flat. Steel keeps
-    // more of its highs each pass than nylon: w above a half)
-    const w = kind === 'steel' ? 0.6 : 0.5;
+    const steel = kind === 'steel';
+    // (the two-tap average delays the loop by 1 − w samples: take it off, or the top strings ring flat. A plain
+    // average, w a half, loses the highs fastest: an acoustic's brightness is gone in a moment, an electric's stays)
+    const w = 0.5;
     const n = Math.max(2, sr / f - (1 - w));
     const N = Math.floor(n);
     const frac = n - N;
-    const len = Math.floor(sr * (kind === 'steel' ? 3 : 1.9));
+    // the string: each pass averages neighbours (losing highs first) and loses a little, tuned by a fractional tap; an
+    // acoustic's low E is down 60 dB in under three seconds, its top strings in under one (nylon a little longer up top)
+    const t60 = steel ? Math.max(0.8, Math.min(3, 2.8 * Math.pow(82 / f, 0.7))) : Math.max(1, Math.min(4, 3.2 * Math.pow(82 / f, 0.5)));
+    const len = Math.floor(sr * (steel ? Math.min(3, t60 + 0.4) : 1.9));
     b = ctx.createBuffer(1, len, sr);
     const y = b.getChannelData(0);
-    // the pluck: noise, softened for nylon (a fingertip), brighter for steel (a pick)
+    // the pluck: noise, softened (a fingertip on nylon; a soft pick on steel, no brighter)
     let lp = 0;
-    const soft = kind === 'nylon' ? 0.45 : 0.8;
+    const soft = steel ? 0.35 : 0.45;
     for (let i = 0; i < N + 1 && i < len; i++) {
       lp += soft * (Math.random() * 2 - 1 - lp);
       y[i] = lp;
     }
-    // (where it's picked, an eighth of the way from the bridge: the harmonics with a node there go quiet, as on a real
-    // string; it is what makes a pick near the soundhole sound like a guitar, not a harp)
-    const P = Math.max(1, Math.round(N * (kind === 'steel' ? 0.13 : 0.18)));
+    // (where it's picked, a fifth of the way from the bridge, over the soundhole: the harmonics with a node there go
+    // quiet, as on a real string; it is what makes it a guitar, not a harp)
+    const P = Math.max(1, Math.round(N * (steel ? 0.2 : 0.18)));
     const e = y.slice(0, N + 1);
-    // (the comb can nearly double a peak: scaled back to the old level, so six strings at once don't clip)
-    for (let i = 0; i <= N && i < len; i++) y[i] = 0.62 * (e[i] - 0.9 * e[(i - P + N + 1) % (N + 1)]);
-    // the string: each pass averages neighbours (losing highs first) and loses a little, tuned by a fractional tap; a
-    // steel string's low E rings about five seconds, its high E about two (nylon dies sooner)
-    const t60 = kind === 'steel' ? Math.max(1.6, Math.min(6, 5.5 * Math.pow(82 / f, 0.45))) : Math.max(1, Math.min(4, 3.2 * Math.pow(82 / f, 0.5)));
+    // (the comb can nearly double a peak: scaled back, so six strings at once don't clip)
+    for (let i = 0; i <= N && i < len; i++) y[i] = (steel ? 0.9 : 0.62) * (e[i] - 0.9 * e[(i - P + N + 1) % (N + 1)]);
     const loss = Math.pow(0.001, 1 / (t60 * f));
     for (let i = N + 1; i < len; i++) {
       const a0 = y[i - N];
@@ -622,6 +626,14 @@ class Engine {
       const d2 = i - N - 2 >= 0 ? y[i - N - 1] + (y[i - N - 2] - y[i - N - 1]) * frac : d;
       y[i] = loss * (w * d + (1 - w) * d2);
     }
+    // the box answers every pluck: a short knock of its air (about 100 Hz), its top (about 200) and the boxy ring
+    // round 470 Hz, gone in a tenth of a second
+    if (steel)
+      for (let i = 0, end = Math.min(len, Math.floor(sr * 0.5)); i < end; i++) {
+        const t = i / sr;
+        const on = Math.min(1, t / 0.0015);
+        y[i] += on * (0.16 * Math.exp(-t / 0.09) * Math.sin(2 * Math.PI * 102 * t) + 0.12 * Math.exp(-t / 0.05) * Math.sin(2 * Math.PI * 204 * t) + 0.07 * Math.exp(-t / 0.022) * Math.sin(2 * Math.PI * 470 * t));
+      }
     if (this.strings.size > 64) this.strings.delete(this.strings.keys().next().value as string);
     this.strings.set(id, b);
     return b;
@@ -632,6 +644,8 @@ class Engine {
    * of a chord doesn't stop the frame to build them.
    */
   prepareStrings(kind: 'nylon' | 'steel'): void {
+    // (the acoustic plays its recordings once they're in)
+    if (kind === 'steel' && this.sampler.has('guitar')) return;
     for (let m = 40; m <= 81; m++) if (!this.strings.has(`${kind}:${m}`)) this.stringQueue.push(m, kind === 'steel' ? 1 : 0);
   }
   private stringQueue: number[] = [];
@@ -651,11 +665,14 @@ class Engine {
   pluck(midi: number, vel: number, pan = 0, when = 0, kind: 'nylon' | 'steel' = 'nylon', owner = ''): void {
     const ctx = this.ready();
     if (!ctx) return;
+    if (kind === 'steel' && this.pluckRecorded(ctx, midi, vel, pan, when, owner)) return;
     const buf = this.stringBuffer(ctx, midi, kind);
     // (the time read after the string is made: a fresh one takes a moment, and it mustn't land in the past)
     const t = Math.max(ctx.currentTime, when || ctx.currentTime);
     const src = ctx.createBufferSource();
     src.buffer = buf;
+    // (a few cents apart string to string: no two strings of a strum agree exactly)
+    src.playbackRate.value = Math.pow(2, ((Math.random() - 0.5) * 6) / 1200);
     const v = Math.max(0.05, Math.min(1, vel));
     const level = 0.9 * (0.15 + 0.85 * v);
     const g = this.out(ctx, this.drums, pan, 0.5, t, level);
@@ -663,8 +680,8 @@ class Engine {
     // let it fade out rather than stop dead at the end of the buffer
     g.gain.setValueAtTime(level, t + dur - 0.3);
     g.gain.linearRampToValueAtTime(0.0001, t + dur);
-    // the body: a nylon guitar's warm box; a steel-string dreadnought's air (about 100 Hz) and top (about 210) that
-    // give it its boom, and the bright presence of a pick (about 3 kHz)
+    // the body: a nylon guitar's warm box; a steel-string dreadnought's air (about 100 Hz) and top (about 205) that
+    // give it its boom, and the boxiness round 500 Hz (no presence lift: that brightness is what read as electric)
     const peak = (hz: number, db: number, q: number) => {
       const f = ctx.createBiquadFilter();
       f.type = 'peaking';
@@ -679,14 +696,45 @@ class Engine {
     // a soft pluck is darker as well as quieter
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = kind === 'steel' ? 2600 + 9000 * v : 1500 + 7000 * v;
-    if (kind === 'steel') src.connect(hp).connect(peak(100, 5, 1.8)).connect(peak(210, 3, 1.2)).connect(peak(3000, 3, 0.9)).connect(lp).connect(g);
+    lp.frequency.value = kind === 'steel' ? 1000 + 3500 * v : 1500 + 7000 * v;
+    if (kind === 'steel') src.connect(hp).connect(peak(100, 4, 1.4)).connect(peak(205, 3, 1.4)).connect(peak(500, 2.5, 1.1)).connect(lp).connect(g);
     else src.connect(hp).connect(peak(180, 5, 1)).connect(lp).connect(g);
     src.start(t);
     src.stop(t + dur);
     if (owner) this.claimVoice(owner, g, t, t + dur, [src], 1);
     this.lastGain = v;
     this.lastAt = t;
+  }
+
+  /**
+   * The acoustic from its recordings (a Martin steel-string, CC0: src/audio/sample-map.ts), the nearest of fifteen notes
+   * re-pitched the rest of the way. False until they've loaded (the synthesised string plays instead).
+   */
+  private pluckRecorded(ctx: AudioContext, midi: number, vel: number, pan: number, when: number, owner: string): boolean {
+    const v = Math.max(0.05, Math.min(1, vel));
+    const c = this.sampler.pick('guitar', { midi, vel: v, tone: 0, size: 0.5 });
+    if (!c) return false;
+    const t = Math.max(ctx.currentTime, when || ctx.currentTime);
+    const src = ctx.createBufferSource();
+    src.buffer = c.buffer;
+    // (a few cents apart string to string: no two strings of a strum agree exactly)
+    src.playbackRate.value = c.rate * Math.pow(2, ((Math.random() - 0.5) * 6) / 1200);
+    // (a touch louder than the synthesised string: it is darker, and would otherwise sound quieter beside it)
+    const level = 0.15 + 0.85 * v;
+    const g = this.out(ctx, this.drums, pan, 0.4, t, level);
+    // a soft pluck is darker as well as quieter (the thumb, not the pick)
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1400 + 12000 * v * v;
+    lp.Q.value = -3;
+    src.connect(lp).connect(g);
+    const end = t + c.buffer.duration / c.rate;
+    src.start(t);
+    src.stop(end + 0.02);
+    if (owner) this.claimVoice(owner, g, t, end, [src], 1);
+    this.lastGain = v;
+    this.lastAt = t;
+    return true;
   }
 
   /** The band's piano: chords voiced close and led smoothly from the last one, and the bass with a soft sub under it. */

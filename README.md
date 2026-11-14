@@ -80,7 +80,7 @@ In the headset, Settings on the main menu: Slower songs, One hand, High contrast
 - `src/kit/shelf.ts` has the five instruments, their layouts in centimetres, the scales and the three chords that fit each scale. The models are in `src/scene-assets/lib/instruments.ts` and `src/scene-assets/lib/drums.ts`.
 - `src/ui/menu.ts` has every page on the panel as plain data; `src/ui/panel.ts` draws it and lights what your finger is near.
 - `src/play/build.ts` has the songs and how a take is snapped to the beat; `src/play/game.ts` runs songs, building, switching and scoring. `src/room/waterfall.ts` drops the notes onto the instrument.
-- The sound (`src/audio/`) is 204 short clips from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL) (CC0), picked by how hard you hit and re-pitched to the note, through a room reverb and a soft limiter. The guitar is a plucked-string synth.
+- The sound (`src/audio/`) is 206 short clips from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL) (CC0), picked by how hard you hit and re-pitched to the note, through a room reverb and a soft limiter. The acoustic guitar is 15 notes of a real steel-string (CC0, below); the nylon guitar is a plucked-string synth, which also stands in for the acoustic until its notes have loaded.
 - Playing together is `src/net/coop.ts` (the code and the connections) and `src/net/band.ts` (the shared clock, the note messages, the checks and the rate limit).
 
 There's an older idea still in the code: tap a mug or a book and it becomes an instrument too. It's a side extra now.
@@ -104,7 +104,7 @@ node tools/e2e-all.mjs
 
 Code: MIT (see LICENSE).
 
-Sounds: recordings from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL) by Samuel Gossner and contributors, CC0 1.0 (trimmed and converted; see `src/audio/sample-map.ts`).
+Sounds: recordings from the [Versilian Community Sample Library](https://github.com/sgossner/VCSL) by Samuel Gossner and contributors, CC0 1.0 (trimmed and converted; see `src/audio/sample-map.ts`). The acoustic guitar: a Martin HD-28 recorded by Jeff Learman for the [Discord SFZ GM Bank](https://github.com/sfzinstruments/Discord-SFZ-GM-Bank), CC0 (`public/sounds/guitar/CREDITS.txt`).
 
 Type: the system's sans-serif in the headset. [Barlow Condensed](https://github.com/jpt/barlow) by Jeremy Tribby, SIL Open Font License 1.1 (`public/fonts/OFL.txt`), is bundled.
 
