@@ -3,6 +3,7 @@
  * toward the player): the drum pads, the table keys (a slim row of light bars that plays any melody
  * your room has no instrument for), the module at the back, and your hands' shadows on the table.
  */
+import { disposeMerged, mergeStatic } from '../scene-assets/lib/merge.js';
 import { BoxGeometry, DirectionalLight, MeshStandardMaterial, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture, SRGBColorSpace } from '@iwsdk/core';
 import { FONT } from '../ui/fonts.js';
 import { castShadows, contactShadow, shadowCatcher } from '../art/lighting.js';
@@ -184,8 +185,16 @@ export class KitView {
     // the instrument itself (the light on it is the song's notes, quiet at rest)
     for (const [k, m] of this.models) m.root.visible = k === id;
     const model = this.models.get(id);
+    if (model) disposeMerged(model.root);
     model?.layout(this.instZones);
     if (model) castShadows(model.root);
+    // (fewer draws: what never moves on its own becomes one mesh per material)
+    if (model) {
+      const live = new Set(model.live?.() ?? []);
+      mergeStatic(model.root, (o) => live.has(o));
+      // (a key moves as one: its own parts merged too; the pads each light alone)
+      for (const o of live) if (o && !(o as Mesh).isMesh && o.name !== 'Pads') mergeStatic(o);
+    }
     // its shadow: a soft ellipse a little past its footprint
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     for (const q of this.instZones) {

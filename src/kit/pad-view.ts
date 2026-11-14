@@ -6,6 +6,7 @@
  *
  * Pad-local: origin on the table at the pad's centre, +Y up.
  */
+import { mergeStatic } from '../scene-assets/lib/merge.js';
 import {
   CanvasTexture,
   Color,
@@ -232,6 +233,15 @@ export class PadView {
     // the drum itself (the hat: a hi-hat), its head the part a hit dents
     const model = buildLane(lane, size, style);
     this.model = model;
+    // (fewer draws: each drum's fixed hardware becomes one mesh per material; the parts a hit moves or lights stay)
+    const LIVE = new Set(['Head', 'Top', 'Hoop', 'Clutch', 'Glow']);
+    const GROUPS = new Set(['Drum', 'Stand', 'Cymbals']);
+    const groups: import('@iwsdk/core').Object3D[] = [];
+    model.traverse((o) => {
+      if (GROUPS.has(o.name)) groups.push(o);
+    });
+    for (const o of groups) mergeStatic(o, (c) => LIVE.has(c.name) || GROUPS.has(c.name));
+    mergeStatic(model, (c) => LIVE.has(c.name) || GROUPS.has(c.name));
     this.depth = style === 'electronic' ? (EPAD_DEPTH[lane] ?? 0.035) : (DEPTH[lane] ?? 0.05);
     const cym = lane === 'hat' || lane === 'crash' || lane === 'ride';
     const headMesh = model.getObjectByName(cym ? 'Top' : 'Head') as Mesh | undefined;

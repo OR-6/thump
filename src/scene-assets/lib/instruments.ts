@@ -6,7 +6,7 @@
  * when strummed. A handpan: a nitrided steel shell with its tone fields and raised ding. A marimba: rosewood bars
  * that bounce, on a frame. Deterministic: the same in the app and the editor.
  */
-import { BoxGeometry, CircleGeometry, PlaneGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2, Vector3 } from '@iwsdk/core';
+import { BoxGeometry, CircleGeometry, PlaneGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, Shape, TorusGeometry, Vector2, Vector3 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
 import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, PIANO_CHORD, congaNormal, handpanShape, handpanY } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
@@ -26,6 +26,8 @@ export interface DeskModel {
   /** Light part i at k (0..1) when a song asks for it, if it lights itself (else the overlay does). */
   light?(i: number, k: number): void;
   update(dt: number): void;
+  /** The parts that move or light on their own. */
+  live?(): (Object3D | null | undefined)[];
 }
 
 /** A spring that kicks on a hit and settles (key dips, bar bounces). */
@@ -130,6 +132,10 @@ export class PianoModel implements DeskModel {
   }
 
   /** Key i (the white keys; 15 the chord button; 30 and up the black keys) goes down. */
+  /** The parts that move or light on their own (the rest is merged into a few meshes). */
+  live(): (Object3D | null | undefined)[] {
+    return [...this.keys, ...this.blacks, this.button, this.root.getObjectByName('Pads'), this.root.getObjectByName('Power')];
+  }
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.35 + 0.3 * gain);
     if (i === PIANO_CHORD) this.padGlow = 0.6 + 0.6 * gain;
@@ -394,6 +400,10 @@ export class GuitarModel implements DeskModel {
   /** The chord positions: a fingertip-sized press on the fretboard that dips and lights. */
   private pads: Mesh[] = [];
   private padK = [0, 0, 0];
+  /** The parts that move or light on their own (the rest is merged into a few meshes). */
+  live(): (Object3D | null | undefined)[] {
+    return [...this.strings, ...this.pads];
+  }
   struck(i: number, gain: number): void {
     if (i >= 3) this.shake = Math.max(this.shake, 0.5 + 0.5 * gain);
     else this.padK[i] = 0.6 + 0.4 * gain;
@@ -511,6 +521,10 @@ export class HandpanModel implements DeskModel {
     });
   }
 
+  /** The parts that move or light on their own (the rest is merged into a few meshes). */
+  live(): (Object3D | null | undefined)[] {
+    return [...this.fields];
+  }
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.1 + 0.2 * gain);
     this.glow[i] = 0.6 + 0.6 * gain;
@@ -687,6 +701,10 @@ export class MarimbaModel implements DeskModel {
     }
   }
 
+  /** The parts that move or light on their own (the rest is merged into a few meshes). */
+  live(): (Object3D | null | undefined)[] {
+    return [...this.bars];
+  }
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.1 + 0.2 * gain);
   }
@@ -859,6 +877,10 @@ export class CongaModel implements DeskModel {
     }
   }
 
+  /** The parts that move or light on their own (the rest is merged into a few meshes). */
+  live(): (Object3D | null | undefined)[] {
+    return [...this.heads, ...this.marks];
+  }
   struck(i: number, gain: number): void {
     const d = i >> 1;
     this.spring.kick(d, 0.12 + 0.2 * gain);
