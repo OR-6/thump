@@ -5,7 +5,7 @@
  * named `Key:<midi>` pivoting at its back, so pressing it is one rotation. Deterministic and parentless.
  * Keyboard-local: origin on the desk at the keyboard's centre, +Y up, −Z away from the player; metres.
  */
-import { BoxGeometry, CylinderGeometry, ExtrudeGeometry, Group, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, Shape } from '@iwsdk/core';
+import { BoxGeometry, CylinderGeometry, ExtrudeGeometry, Group, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, Shape } from '@iwsdk/core';
 import { woodGrain } from './surfaces.js';
 
 export const KEY = {
@@ -19,8 +19,8 @@ export const KEY = {
   blackW: 0.011,
   blackL: 0.095,
   blackH: 0.0105,
-  /** Height of the white key tops above the desk. */
-  top: 0.06,
+  /** Height of the white key tops above the desk (a slim compact keyboard's). */
+  top: 0.042,
   /** Full press: how far the front dips (radians about the back pivot). */
   press: 0.055,
 } as const;
@@ -52,7 +52,7 @@ function named<T extends Object3D>(o: T, name: string): T {
   return o;
 }
 
-const ivory = () => new MeshPhysicalMaterial({ name: 'Ivory', color: 0xf3efe4, roughness: 0.38, clearcoat: 0.45, clearcoatRoughness: 0.25 });
+const ivory = () => new MeshPhysicalMaterial({ name: 'Ivory', color: 0xf4eedf, roughness: 0.32, clearcoat: 0.6, clearcoatRoughness: 0.18 });
 const ebony = () => new MeshPhysicalMaterial({ name: 'Ebony', color: 0x131315, roughness: 0.5, clearcoat: 0.35, clearcoatRoughness: 0.3 });
 const lacquer = () => new MeshPhysicalMaterial({ name: 'Lacquer', color: 0x0c0c0e, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 });
 const felt = () => new MeshStandardMaterial({ name: 'Felt', color: 0x8e1e26, roughness: 1 });
@@ -150,90 +150,121 @@ export function buildPiano(opts: PianoOptions = {}): PianoParts {
     keys.set(midi, g);
   }
 
-  // the case: a satin black body (a key bed under the keys, a key slip in front), walnut end cheeks, a gloss
-  // fallboard strip with the felt along it, and behind the keys a brushed-aluminium control panel (knobs, faders, a
-  // small display, a power light). Every block's edges rounded, so the lacquer and metal catch the light.
-  const cheekW = 0.024;
-  const depth = 0.27;
-  const satin = new MeshStandardMaterial({ name: 'Satin', color: 0x111113, roughness: 0.55 });
-  const walnut = new MeshPhysicalMaterial({ name: 'Walnut', color: 0x5a3a24, map: woodGrain(71), roughness: 0.45, clearcoat: 0.6, clearcoatRoughness: 0.35 });
-  const gloss = lacquer();
-  const brushed = new MeshStandardMaterial({ name: 'Brushed', color: 0xb8bcc2, metalness: 1, roughness: 0.3 });
-  const caseH = KEY.top - KEY.thick - 0.004; // the key bed's top, just under the keys
-  const block = (name: string, m: MeshStandardMaterial, w: number, h: number, d: number, x: number, y: number, z: number) => {
-    const o = named(new Mesh(rounded(w, h, d, 0.003), m), name);
+  // the body, as a compact keyboard is made: slim and low, the keys running right to its front edge, a flat top
+  // panel behind them with the controls (a small screen, knobs, eight rubber pads that light, a row of round buttons,
+  // a speaker grille), rounded red end caps, rubber feet. No brand, no logo.
+  const L = opts.left ?? 0;
+  const capW = 0.018;
+  const panelD = 0.1;
+  const depth = KEY.length + 0.006 + panelD;
+  const bodyW = width + L;
+  const bx = -L / 2;
+  const topY = KEY.top + 0.004;
+  const graphite = new MeshPhysicalMaterial({ name: 'Body', color: 0x232428, roughness: 0.55, metalness: 0.1, clearcoat: 0.25, clearcoatRoughness: 0.45 });
+  const red = new MeshPhysicalMaterial({ name: 'EndCap', color: 0xc2271c, roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.2 });
+  const plate = new MeshStandardMaterial({ name: 'TopPlate', color: 0x17181b, roughness: 0.62 });
+  const block = (name: string, m: MeshStandardMaterial, w: number, h: number, d: number, x: number, y: number, z: number, r = 0.003) => {
+    const o = named(new Mesh(rounded(w, h, d, r), m), name);
     o.position.set(x, y, z);
     o.castShadow = true;
     o.receiveShadow = true;
     root.add(o);
     return o;
   };
-  // (an end panel to the left widens the case: everything spans it, the left cheek outside it)
-  const L = opts.left ?? 0;
-  const cw = width + L;
-  const ccx = -L / 2;
-  block('Bed', satin, cw + 2 * cheekW, caseH, depth, ccx, caseH / 2, -depth / 2 + 0.012);
-  if (L > 0) block('EndPanel', satin, L, KEY.top - 0.004, depth - 0.012, -width / 2 - L / 2, (KEY.top - 0.004) / 2, -depth / 2 + 0.018);
-  // the cheeks: walnut, as tall as the keys at the front, rising to the panel at the back
-  const backH = 0.095;
+  // the tub under the keys (its front lip just under them) and the raised top panel behind them
+  const bedH = KEY.top - KEY.thick - 0.002;
+  block('Bed', graphite, bodyW, bedH, KEY.length + 0.01, bx, bedH / 2, -KEY.length / 2 + 0.002);
+  const panZ = -KEY.length - 0.006 - panelD / 2;
+  block('TopPanel', graphite, bodyW, topY, panelD + 0.004, bx, topY / 2, panZ);
+  const face = block('Plate', plate, bodyW - 0.012, 0.0016, panelD - 0.012, bx, topY + 0.0004, panZ, 0.0008);
+  void face;
+  // a thin gloss strip where the keys run in under the panel, with the felt along it
+  block('Fallboard', lacquer(), bodyW, 0.012, 0.008, bx, KEY.top + 0.002, -KEY.length - 0.003, 0.0015);
+  const strip = named(new Mesh(new BoxGeometry(width, 0.003, 0.003), felt()), 'Felt');
+  strip.position.set(0, KEY.top + 0.0008, -KEY.length + 0.0005);
+  root.add(strip);
+  // the end panel to the left of the keys (the chord pad and wheels sit on it): level with the keys' front
+  if (L > 0) block('EndPanel', graphite, L, KEY.top - 0.003, KEY.length + 0.01, -width / 2 - L / 2, (KEY.top - 0.003) / 2, -KEY.length / 2 + 0.002);
+  // the end caps: rounded red cheeks the full depth, a little taller than the top panel
   for (const side of [-1, 1]) {
     const sh = new Shape();
-    const front = KEY.top + 0.008;
+    const h = topY + 0.004;
     sh.moveTo(0, 0);
     sh.lineTo(depth, 0);
-    sh.lineTo(depth, backH);
-    sh.lineTo(depth * 0.42, backH);
-    sh.quadraticCurveTo(depth * 0.3, front, depth * 0.12, front);
-    sh.lineTo(0, front);
+    sh.lineTo(depth, h - 0.006);
+    sh.quadraticCurveTo(depth, h, depth - 0.006, h);
+    sh.lineTo(0.008, h);
+    sh.quadraticCurveTo(0, h, 0, h - 0.008);
     sh.lineTo(0, 0);
-    const g = new ExtrudeGeometry(sh, { depth: cheekW, bevelEnabled: true, bevelSize: 0.002, bevelThickness: 0.002, bevelSegments: 3, curveSegments: 10 });
-    g.translate(0, 0, -cheekW / 2);
+    const g = new ExtrudeGeometry(sh, { depth: capW, bevelEnabled: true, bevelSize: 0.0025, bevelThickness: 0.0025, bevelSegments: 3, curveSegments: 8 });
+    g.translate(0, 0, -capW / 2);
     g.rotateY(Math.PI / 2);
-    const cheek = named(new Mesh(g, walnut), side < 0 ? 'CheekL' : 'CheekR');
-    cheek.position.set(side < 0 ? -width / 2 - L - cheekW / 2 : width / 2 + cheekW / 2, 0, 0.012);
-    cheek.castShadow = true;
-    cheek.receiveShadow = true;
-    root.add(cheek);
+    const cap = named(new Mesh(g, red), side < 0 ? 'CapL' : 'CapR');
+    cap.position.set(side < 0 ? -width / 2 - L - capW / 2 : width / 2 + capW / 2, 0, 0.004);
+    cap.castShadow = true;
+    cap.receiveShadow = true;
+    root.add(cap);
   }
-  block('KeySlip', satin, width, KEY.top - 0.016, 0.012, 0, (KEY.top - 0.016) / 2, 0.006);
-  // the fallboard: a gloss strip just behind the keys, the felt along its front, a shadow line under it
-  const fallD = 0.03;
-  const fallZ = -(KEY.length + 0.002) - fallD / 2;
-  block('Fallboard', gloss, cw, KEY.top + 0.012, fallD, ccx, (KEY.top + 0.012) / 2, fallZ);
-  const strip = named(new Mesh(new BoxGeometry(width, 0.004, 0.003), felt()), 'Felt');
-  strip.position.set(0, KEY.top + 0.001, -KEY.length - 0.002);
-  root.add(strip);
-  // the control panel: brushed aluminium on a sloped satin back, rising to the cheeks' height
-  const panD = depth - KEY.length - 0.014 - fallD;
-  const panZ = fallZ - fallD / 2 - panD / 2;
-  block('Back', satin, cw, backH - 0.004, panD, ccx, (backH - 0.004) / 2, panZ);
-  const face = block('ControlPanel', brushed, cw - 0.01, 0.003, panD - 0.012, ccx, backH - 0.002, panZ);
-  void face;
-  const knob = new CylinderGeometry(0.006, 0.0065, 0.01, 24);
-  const knobMat = new MeshStandardMaterial({ name: 'Knob', color: 0x1a1a1c, roughness: 0.4 });
-  const dot = new BoxGeometry(0.001, 0.0006, 0.004);
-  const white = new MeshStandardMaterial({ name: 'Mark', color: 0xe8e8e8, roughness: 0.5 });
-  for (let k = 0; k < 6; k++) {
-    const kx = -width / 2 + 0.08 + k * 0.026;
+  // on the top panel, left to right: the screen, four knobs, the eight pads, the speaker grille; buttons along the front
+  const px0 = bx - bodyW / 2 + 0.02;
+  const lcd = named(new Mesh(new BoxGeometry(0.06, 0.0012, 0.022), new MeshStandardMaterial({ name: 'Display', color: 0x0b1416, emissive: 0x123a4a, emissiveIntensity: 0.6, roughness: 0.15 })), 'Display');
+  lcd.position.set(px0 + 0.035, topY + 0.0012, panZ - 0.012);
+  root.add(lcd);
+  const knob = new CylinderGeometry(0.0065, 0.007, 0.011, 24);
+  const knobMat = new MeshStandardMaterial({ name: 'Knob', color: 0x111113, roughness: 0.42 });
+  const markMat = new MeshStandardMaterial({ name: 'Mark', color: 0xf0f0f0, roughness: 0.5 });
+  const ringMat = new MeshStandardMaterial({ name: 'KnobRing', color: 0x2a1a08, emissive: 0xffa040, emissiveIntensity: 0.4 });
+  for (let k = 0; k < 4; k++) {
+    const kx = px0 + 0.085 + k * 0.022;
     const kn = new Mesh(knob, knobMat);
-    kn.position.set(kx, backH + 0.005, panZ);
-    const mk = new Mesh(dot, white);
-    mk.position.set(kx, backH + 0.0103, panZ + 0.003);
-    mk.rotation.y = (k * 0.7) % 1.6 - 0.8;
-    root.add(kn, mk);
+    kn.position.set(kx, topY + 0.0055, panZ - 0.014);
+    const mk = new Mesh(new BoxGeometry(0.0012, 0.0006, 0.005), markMat);
+    mk.position.set(kx, topY + 0.0113, panZ - 0.0155);
+    mk.rotation.y = (k * 0.9) % 1.8 - 0.9;
+    const ring = new Mesh(new CylinderGeometry(0.0085, 0.0085, 0.0008, 24, 1, true), ringMat);
+    ring.position.set(kx, topY + 0.0006, panZ - 0.014);
+    root.add(kn, mk, ring);
   }
-  for (let k = 0; k < 2; k++) {
-    const slot = new Mesh(new BoxGeometry(0.004, 0.001, 0.03), new MeshStandardMaterial({ color: 0x050506, roughness: 0.8 }));
-    slot.position.set(width / 2 - 0.12 + k * 0.022, backH + 0.0005, panZ);
-    const cap = new Mesh(new BoxGeometry(0.012, 0.006, 0.006), knobMat);
-    cap.position.set(slot.position.x, backH + 0.0035, panZ - 0.006 + k * 0.01);
-    root.add(slot, cap);
+  // the pads: soft rubber squares, backlit (named Pad0..7: they light in colour as you play)
+  const padGeo = rounded(0.017, 0.004, 0.017, 0.002);
+  const pads = named(new Group(), 'Pads');
+  for (let k = 0; k < 8; k++) {
+    const pad = named(new Mesh(padGeo, new MeshStandardMaterial({ name: `Pad${k}`, color: 0x2c2d31, roughness: 0.85, emissive: 0x000000 })), `Pad${k}`);
+    pad.position.set(px0 + 0.185 + (k % 4) * 0.021, topY + 0.002, panZ - 0.022 + Math.floor(k / 4) * 0.021);
+    pads.add(pad);
   }
-  const lcd = named(new Mesh(new BoxGeometry(0.06, 0.0012, 0.014), new MeshStandardMaterial({ name: 'Display', color: 0x0d1a14, emissive: 0x1a3a2a, roughness: 0.2 })), 'Display');
-  lcd.position.set(width / 2 - 0.05, backH + 0.0007, panZ);
+  root.add(pads);
+  // the speaker grille: a field of slots at the right end
+  const slot = new BoxGeometry(0.03, 0.0008, 0.0022);
+  const slotMat = new MeshStandardMaterial({ name: 'Grille', color: 0x050506, roughness: 0.9 });
+  const gx = bx + bodyW / 2 - 0.035;
+  for (let k = 0; k < 11; k++) {
+    for (const dx of [-0.017, 0.017]) {
+      const sl = new Mesh(slot, slotMat);
+      sl.position.set(gx + dx, topY + 0.0004, panZ - panelD / 2 + 0.014 + k * 0.0065);
+      root.add(sl);
+    }
+  }
+  // a row of round buttons along the panel's front edge, two of them coloured
+  const btnGeo = new CylinderGeometry(0.0042, 0.0042, 0.003, 18);
+  const btnMats = [new MeshStandardMaterial({ name: 'Button', color: 0x3a3b40, roughness: 0.5 }), new MeshStandardMaterial({ name: 'ButtonBlue', color: 0x4aa0e0, roughness: 0.45 }), new MeshStandardMaterial({ name: 'ButtonAmber', color: 0xf0a030, roughness: 0.45 })];
+  for (let k = 0; k < 9; k++) {
+    const b = new Mesh(btnGeo, btnMats[k === 6 ? 1 : k === 7 ? 2 : 0]);
+    b.position.set(px0 + 0.085 + k * 0.0125, topY + 0.0015, panZ + panelD / 2 - 0.016);
+    root.add(b);
+  }
   const power = named(new Mesh(new CylinderGeometry(0.0018, 0.0018, 0.0012, 12), new MeshStandardMaterial({ name: 'Power', color: 0x30ff80, emissive: 0x30ff80, emissiveIntensity: 0.8 })), 'Power');
-  power.position.set(-width / 2 + 0.035, backH + 0.0007, panZ);
-  root.add(lcd, power);
+  power.position.set(px0 + 0.006, topY + 0.0012, panZ + panelD / 2 - 0.016);
+  root.add(power);
+  // four rubber feet
+  const footGeo = new CylinderGeometry(0.008, 0.009, 0.004, 16);
+  const footMat = new MeshStandardMaterial({ name: 'Rubber', color: 0x0e0e10, roughness: 0.9 });
+  for (const fx of [bx - bodyW / 2 + 0.02, bx + bodyW / 2 - 0.02])
+    for (const fz of [-0.01, -depth + 0.02]) {
+      const f = new Mesh(footGeo, footMat);
+      f.position.set(fx, -0.0015, fz);
+      root.add(f);
+    }
 
   return { root, keys, width };
 }

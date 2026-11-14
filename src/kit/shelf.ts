@@ -148,7 +148,7 @@ export function scaleMidi(root: number, scale: Scale, d: number): number {
  * The keyboard at real key size (src/scene-assets/lib/piano.ts): two octaves and a top C, fifteen white keys 23.5 mm
  * apart and 150 mm long, black keys 11 by 95 mm, the key tops 6 cm up in a deep case.
  */
-export const KEYBOARD = { whites: 15, pitch: 0.0235, gap: 0.001, len: 0.15, blackW: 0.011, blackLen: 0.095, front: -0.03, top: 0.06, blackTop: 0.0705, shift: 0.025 } as const;
+export const KEYBOARD = { whites: 15, pitch: 0.0235, gap: 0.001, len: 0.15, blackW: 0.011, blackLen: 0.095, front: -0.03, top: 0.042, blackTop: 0.0525, shift: 0.025 } as const;
 /** Index of the piano's chord button (after its fifteen keys). */
 export const PIANO_CHORD = 15;
 /** A piano note's zone plus this is the same key two octaves down (the bass line). */

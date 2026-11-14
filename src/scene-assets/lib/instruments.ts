@@ -29,6 +29,9 @@ export interface DeskModel {
 }
 
 /** A spring that kicks on a hit and settles (key dips, bar bounces). */
+/** The keyboard's pads light in these as you play. */
+const PAD_COLOURS = [0x40c8ff, 0x7a6cff, 0xff5a8a, 0xffa030, 0x40ff90, 0xffe040];
+
 class Springs {
   x: Float32Array;
   v: Float32Array;
@@ -67,7 +70,7 @@ export class PianoModel implements DeskModel {
   private readonly lacquer = new MeshPhysicalMaterial({ name: 'Lacquer', color: 0x0c0c0e, roughness: 0.32, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.08 });
   private readonly satin = new MeshStandardMaterial({ name: 'Satin', color: 0x111113, roughness: 0.55 });
   private readonly wheelMat = new MeshStandardMaterial({ name: 'Wheel', color: 0x1c1c1f, roughness: 0.6 });
-  private readonly padMat = new MeshStandardMaterial({ name: 'ChordPad', color: 0x2a2a2e, roughness: 0.5, emissive: 0xffe6b8, emissiveIntensity: 0 });
+  private readonly padMat = new MeshStandardMaterial({ name: 'ChordPad', color: 0x55575e, roughness: 0.8, emissive: 0xffe6b8, emissiveIntensity: 0 });
   private padGlow = 0;
 
   layout(zones: readonly Zone[]): void {
@@ -85,6 +88,11 @@ export class PianoModel implements DeskModel {
     const parts = buildPiano({ low: 48, octaves: 2, left });
     parts.root.position.set(cx, 0, -KEYBOARD.front);
     this.root.add(parts.root);
+    // its meter and power light, for the life in update
+    this.pads = [];
+    parts.root.getObjectByName('Pads')?.children.forEach((c) => this.pads.push((c as Mesh).material as MeshStandardMaterial));
+    this.padK = this.pads.map(() => 0);
+    this.power = ((parts.root.getObjectByName('Power') as Mesh | undefined)?.material as MeshStandardMaterial | undefined) ?? null;
     const mids = [...parts.keys.keys()].sort((a, b) => a - b);
     for (const m of mids) (isBlack(m) ? this.blacks : this.keys).push(parts.keys.get(m)!);
     // on the end panel, as on a stage keyboard: pitch and mod wheels at the back, and in front of them the chord
@@ -110,7 +118,17 @@ export class PianoModel implements DeskModel {
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.35 + 0.3 * gain);
     if (i === PIANO_CHORD) this.padGlow = 0.6 + 0.6 * gain;
+    // (a key lights one of the panel's pads in its own colour, the way a controller echoes what you play)
+    const k = this.pads.length ? i % this.pads.length : -1;
+    if (k >= 0) {
+      this.pads[k].emissive.setHex(PAD_COLOURS[i % PAD_COLOURS.length]);
+      this.padK[k] = 0.5 + 0.8 * gain;
+    }
   }
+  private pads: MeshStandardMaterial[] = [];
+  private padK: number[] = [];
+  private power: MeshStandardMaterial | null = null;
+  private life = 0;
 
   update(dt: number): void {
     // down 4 to 8 mm in about 40 ms, back over about 170 (critically damped, no bounce)
@@ -119,6 +137,14 @@ export class PianoModel implements DeskModel {
     for (let i = 0; i < this.keys.length; i++) press(this.keys[i], this.spring.x[i]);
     for (let j = 0; j < this.blacks.length; j++) press(this.blacks[j], this.spring.x[30 + j]);
     if (this.button) this.button.position.y = this.buttonY + Math.max(-0.004, Math.min(0, this.spring.x[PIANO_CHORD]));
+    // the meter jumps with what you play and falls back; the power light breathes, slowly
+    for (let k = 0; k < this.pads.length; k++) {
+      if (this.padK[k] <= 0) continue;
+      this.padK[k] = Math.max(0, this.padK[k] - dt * 2.5);
+      this.pads[k].emissiveIntensity = this.padK[k];
+    }
+    this.life += dt;
+    if (this.power) this.power.emissiveIntensity = 0.45 + 0.35 * Math.sin(this.life * 1.3);
     // (it lights as it plays, 80 ms in, out over a quarter second)
     if (this.padGlow > 0) {
       this.padGlow = Math.max(0, this.padGlow - dt * 4);
@@ -441,10 +467,16 @@ export class MarimbaModel implements DeskModel {
     // (the bars' uvs are in metres: one stretch of grain along each bar, not a quilt of tiles)
     map.repeat.set(7, 7);
     map.rotation = Math.PI / 2;
-    return new MeshPhysicalMaterial({ name: 'Rosewood', color: 0x5e2a1a, map, roughness: 0.38, clearcoat: 0.5, clearcoatRoughness: 0.22 });
+    return new MeshPhysicalMaterial({ name: 'Rosewood', color: 0x7a3322, map, roughness: 0.36, clearcoat: 0.55, clearcoatRoughness: 0.2 });
   })();
-  private readonly frame = new MeshPhysicalMaterial({ name: 'Frame', color: 0x6b4a2e, map: woodGrain(43), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.3 });
-  private readonly yarn = new MeshStandardMaterial({ name: 'Yarn', color: 0x2c3a5c, normalMap: fineNormal(9, 30), roughness: 0.95 });
+  private readonly maple = (() => {
+    const map = woodGrain(43).clone();
+    map.needsUpdate = true;
+    map.repeat.set(6, 2);
+    return new MeshPhysicalMaterial({ name: 'Maple', color: 0xe8cfa0, map, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.3 });
+  })();
+  private readonly rubber = mat('Rubber', 0x26262a, 0.9);
+  private readonly yarn = new MeshStandardMaterial({ name: 'Yarn', color: 0x2f5fc4, normalMap: fineNormal(9, 30), roughness: 0.95 });
   private readonly birch = mat('Birch', 0xd9b98a, 0.5);
   private readonly cord = mat('Cord', 0x26211c, 0.9);
   private readonly brass = mat('Brass', 0xc8a050, 0.3, 1);
@@ -454,62 +486,81 @@ export class MarimbaModel implements DeskModel {
     this.root.clear();
     this.bars = [];
     if (!zones.length) return;
-    const box = new BoxGeometry(1, 1, 1);
     const first = zones[0];
     const last = zones[zones.length - 1];
-    const x0 = first.x - first.w / 2 - 0.014;
-    const x1 = last.x + last.w / 2 + 0.014;
-    const zc = first.z;
-    // the bars rest on cords through their nodes (22% in from each end): the rails follow that line, closing in
-    // toward the short high bars, as on a real frame
-    const node = (h: number) => h * 0.28;
-    for (const s of [-1, 1]) {
-      const a = { x: x0, z: zc + s * node(first.h) };
-      const b = { x: x1, z: zc + s * node(last.h) };
-      const len = Math.hypot(b.x - a.x, b.z - a.z);
-      const ang = Math.atan2(b.z - a.z, b.x - a.x);
-      // (the frame stands the bars up off the desk: the rails just under them)
-      const RY = MARIMBA.top - 0.024;
-      const rail = named(new Mesh(box, this.frame), 'Rail');
-      rail.scale.set(len, 0.01, 0.014);
-      rail.position.set((a.x + b.x) / 2, RY, -(a.z + b.z) / 2);
-      rail.rotation.y = ang;
-      const c = named(new Mesh(new CylinderGeometry(0.0011, 0.0011, len, 8), this.cord), 'Cord');
-      c.rotation.set(0, ang, Math.PI / 2);
-      c.position.set((a.x + b.x) / 2, RY + 0.006, -(a.z + b.z) / 2);
-      this.root.add(rail, c);
-      // brass posts between the bars, holding the cord
-      for (let k = 0; k <= zones.length; k++) {
-        const px = k === 0 ? first.x - first.w / 2 - 0.004 : k === zones.length ? last.x + last.w / 2 + 0.004 : (zones[k - 1].x + zones[k].x) / 2;
-        const t = (px - a.x) / (b.x - a.x);
-        const post = named(new Mesh(new CylinderGeometry(0.0013, 0.0013, 0.014, 8), this.brass), 'Post');
-        post.position.set(px, RY + 0.01, -(a.z + (b.z - a.z) * t));
-        this.root.add(post);
-      }
-    }
-    // the end frames: a trapezoid each, from the desk up to the rails, wider at the foot
-    for (const [sx, h] of [[x0 - 0.009, first.h], [x1 + 0.009, last.h]] as const) {
-      const wTop = node(h) * 2 + 0.03;
-      const H = MARIMBA.top - 0.018;
-      const tr = new Shape();
-      tr.moveTo(-wTop / 2 - 0.02, 0);
-      tr.lineTo(wTop / 2 + 0.02, 0);
-      tr.lineTo(wTop / 2, H);
-      tr.lineTo(-wTop / 2, H);
-      tr.lineTo(-wTop / 2 - 0.02, 0);
-      const g = new ExtrudeGeometry(tr, { depth: 0.01, bevelEnabled: true, bevelSize: 0.0015, bevelThickness: 0.0015, bevelSegments: 2 });
-      g.translate(0, 0, -0.005);
-      const end = named(new Mesh(g, this.frame), 'End');
-      end.rotation.y = Math.PI / 2;
-      end.position.set(sx, 0, -zc);
+    const zc = -first.z;
+    // the box: light maple, a resonator in itself, wider front to back under the long bass bars than under the short
+    // treble ones (a trapezoid seen from above), its long sides cut away underneath into two feet
+    const x0 = first.x - first.w / 2 - 0.022;
+    const x1 = last.x + last.w / 2 + 0.022;
+    const dL = first.h * 0.62 + 0.03;
+    const dR = last.h * 0.62 + 0.03;
+    const H = MARIMBA.top - 0.019;
+    const T = 0.009;
+    const side = (s: number) => {
+      // a long side: from the bass end to the treble end, its top edge level, its bottom cut away between two feet
+      const sh = new Shape();
+      const len = Math.hypot(x1 - x0, (dR - dL) / 2);
+      sh.moveTo(0, 0);
+      sh.lineTo(0.035, 0);
+      sh.quadraticCurveTo(0.045, H * 0.42, 0.075, H * 0.42);
+      sh.lineTo(len - 0.075, H * 0.42);
+      sh.quadraticCurveTo(len - 0.045, H * 0.42, len - 0.035, 0);
+      sh.lineTo(len, 0);
+      sh.lineTo(len, H);
+      sh.lineTo(0, H);
+      sh.lineTo(0, 0);
+      const g = new ExtrudeGeometry(sh, { depth: T, bevelEnabled: true, bevelSize: 0.0015, bevelThickness: 0.0015, bevelSegments: 2, curveSegments: 8 });
+      g.translate(0, 0, -T / 2);
+      const m = named(new Mesh(g, this.maple), s < 0 ? 'SideFront' : 'SideBack');
+      const za = zc + s * (dL / 2);
+      const zb = zc + s * (dR / 2);
+      m.position.set(x0, 0, za);
+      m.rotation.y = -Math.atan2(zb - za, x1 - x0);
+      this.root.add(m);
+    };
+    side(1);
+    side(-1);
+    for (const [x, d] of [[x0, dL], [x1, dR]] as const) {
+      const end = named(new Mesh(new BoxGeometry(T * 1.4, H + 0.004, d + T * 1.6), this.maple), 'End');
+      end.position.set(x, (H + 0.004) / 2, zc);
       this.root.add(end);
     }
+    // the floor of the box, just inside, and a dark inside seen between the bars
+    const floor = named(new Mesh(new BoxGeometry(x1 - x0, 0.004, (dL + dR) / 2), mat('Inside', 0x2a1c12, 0.9)), 'Inside');
+    floor.position.set((x0 + x1) / 2, H * 0.45, zc);
+    this.root.add(floor);
+    // the bars rest on rubber strips along the top of the long sides, held apart by pins
+    const node = (q: Zone) => q.h * 0.28;
+    for (const s of [-1, 1]) {
+      const za = zc + s * node(first);
+      const zb = zc + s * node(last);
+      const len = Math.hypot(x1 - x0, zb - za);
+      const strip = named(new Mesh(new BoxGeometry(len - 0.02, 0.003, 0.008), this.rubber), 'Strip');
+      strip.position.set((x0 + x1) / 2, H + 0.0015, (za + zb) / 2);
+      strip.rotation.y = -Math.atan2(zb - za, x1 - x0);
+      // the rail under the strip (where the bars' nodes sit)
+      const rail = named(new Mesh(new BoxGeometry(len - 0.01, 0.006, 0.012), this.maple), 'Rail');
+      rail.position.set((x0 + x1) / 2, H - 0.002, (za + zb) / 2);
+      rail.rotation.y = strip.rotation.y;
+      this.root.add(rail, strip);
+      for (let k = 0; k <= zones.length; k++) {
+        const px = k === 0 ? first.x - first.w / 2 - 0.006 : k === zones.length ? last.x + last.w / 2 + 0.006 : (zones[k - 1].x + zones[k].x) / 2;
+        const t = (px - x0) / (x1 - x0);
+        const pin = named(new Mesh(new CylinderGeometry(0.0011, 0.0011, 0.012, 8), this.chrome), 'Pin');
+        pin.position.set(px, H + 0.006, za + (zb - za) * t);
+        const sleeve = new Mesh(new CylinderGeometry(0.0019, 0.0019, 0.005, 10), this.rubber);
+        sleeve.position.set(px, H + 0.0055, za + (zb - za) * t);
+        this.root.add(pin, sleeve);
+      }
+    }
     zones.forEach((q, i) => {
-      // a rosewood bar: rounded corners, a soft edge, the grain along its length
-      const r = Math.min(0.008, q.w * 0.3);
-      const shape = new Shape();
-      const w = q.w / 2;
+      // a rosewood bar: rounded ends, softened edges, the grain along it, a little thicker in the bass
+      const k0 = i / Math.max(1, zones.length - 1);
+      const w = q.w * 0.5 - 0.002;
       const h = q.h / 2;
+      const r = Math.min(0.006, w * 0.35);
+      const shape = new Shape();
       shape.moveTo(-w + r, -h);
       shape.lineTo(w - r, -h);
       shape.quadraticCurveTo(w, -h, w, -h + r);
@@ -519,26 +570,23 @@ export class MarimbaModel implements DeskModel {
       shape.quadraticCurveTo(-w, h, -w, h - r);
       shape.lineTo(-w, -h + r);
       shape.quadraticCurveTo(-w, -h, -w + r, -h);
-      const g = new ExtrudeGeometry(shape, { depth: 0.013, bevelEnabled: true, bevelThickness: 0.0015, bevelSize: 0.0015, bevelSegments: 2, curveSegments: 4 });
+      const th = 0.015 - 0.003 * k0;
+      const g = new ExtrudeGeometry(shape, { depth: th, bevelEnabled: true, bevelThickness: 0.0015, bevelSize: 0.0015, bevelSegments: 3, curveSegments: 5 });
       g.rotateX(-Math.PI / 2);
-      g.translate(0, -0.0065, 0);
+      g.translate(0, -th + 0.0065, 0);
       const bar = named(new Mesh(g, this.wood), `Bar${i}`);
       bar.position.set(q.x, this.barY, -q.z);
       this.bars.push(bar);
-      // its resonator hangs under it, chrome: from just under the rails down to a centimetre off the desk under the
-      // low bars, shorter and narrower under the high ones
-      const k = i / Math.max(1, zones.length - 1);
-      const top = MARIMBA.top - 0.025;
-      const tl = top - 0.01 - 0.012 * k;
-      const tr = 0.016 - 0.004 * k;
-      const tube = named(new Mesh(new CylinderGeometry(tr, tr, tl, 24, 1, true), this.chrome), `Resonator${i}`);
-      tube.position.set(q.x, top - tl / 2, -q.z);
-      const cap = named(new Mesh(new CylinderGeometry(tr, tr, 0.0015, 24), this.chrome), 'Cap');
-      cap.position.set(q.x, top - tl, -q.z);
-      this.root.add(bar, tube, cap);
+      // the cord holes at the nodes: two small dark dots on the bar's top
+      for (const s of [-1, 1]) {
+        const hole = new Mesh(new CylinderGeometry(0.0013, 0.0013, 0.0006, 10), mat('Hole', 0x120806, 0.9));
+        hole.position.set(0, 0.0068, s * node(q));
+        bar.add(hole);
+      }
+      this.root.add(bar);
     });
-    // its two mallets, lying beside it: birch handles, wound yarn heads
-    for (const dx of [0.02, 0.038]) {
+    // its two mallets, lying beside it: birch handles, wound blue yarn heads
+    for (const dx of [0.022, 0.04]) {
       const m = named(new Group(), 'Mallet');
       const handle = new Mesh(new CylinderGeometry(0.0028, 0.0028, 0.2, 10), this.birch);
       handle.rotation.x = Math.PI / 2;
@@ -546,7 +594,7 @@ export class MarimbaModel implements DeskModel {
       head.scale.set(1, 0.92, 1.08);
       head.position.z = -0.105;
       m.add(handle, head);
-      m.position.set(x1 + dx, 0.0125, -zc + 0.01);
+      m.position.set(x1 + dx, 0.0125, zc + 0.01);
       m.rotation.y = dx > 0.03 ? -0.06 : 0.04;
       this.root.add(m);
     }

@@ -3136,6 +3136,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.dimmer.hit(instDef(id).color, gain);
     o?.hit(best, gain);
     this.kit.instStruck(best, gain);
+    // the piano's screen: its sound and the note you just played
+    if (id === 'piano') {
+      const q = this.kit.instZones[best % PIANO_LOW];
+      const snd = instDef('piano').sounds.find((x) => x.id === this.shelfCfg('piano').sound)?.name ?? '';
+      if (q && q.midi > 0) this.kit.pianoScreen(`${snd}  ${NOTE_NAMES[q.midi % 12]}${Math.floor(q.midi / 12) - 1}`);
+    }
     const g = this.game.hit(`${id}:${best}`, t, gain);
     if (g === 'perfect') o?.perfect(best);
     this.wordFor(g, best, id);
@@ -4253,6 +4259,7 @@ class OneEuro3 {
   }
 }
 /** The drums struck in the air, in their surfaces' order. */
+const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
 const AIR_LANES: Lane[] = ['kick', 'snare', 'hat', 'tom', 'floor', 'crash', 'ride'];
 
 const NOT_TRACKED: HandSample = { tracked: false, pinching: false, points: [] };
