@@ -10,7 +10,7 @@ import { BoxGeometry, CircleGeometry, PlaneGeometry, ShapeGeometry, Path, Sphere
 import type { Zone } from '../../room/zones.js';
 import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
-import { fineNormal, hammered, rawhide, tortoiseShell, woodGrain } from './surfaces.js';
+import { fineNormal, hammered, rawhide, straightGrain, tortoiseShell, woodGrain } from './surfaces.js';
 
 const mat = (name: string, color: number, roughness: number, metalness = 0) => new MeshStandardMaterial({ name, color, roughness, metalness });
 const named = <T extends { name: string }>(o: T, n: string): T => {
@@ -412,11 +412,13 @@ export class HandpanModel implements DeskModel {
   private readonly steel = (() => {
     const n = hammered().clone();
     n.needsUpdate = true;
-    n.repeat.set(9, 9);
-    return new MeshStandardMaterial({ name: 'Steel', color: 0x8a6a4c, roughness: 0.28, metalness: 1, normalMap: n, side: DoubleSide });
+    n.repeat.set(14, 14);
+    return new MeshStandardMaterial({ name: 'Steel', color: 0x6b5640, roughness: 0.42, metalness: 1, normalMap: n, side: DoubleSide });
   })();
-  private readonly rim = new MeshStandardMaterial({ name: 'Rim', color: 0x8a6a4c, roughness: 0.2, metalness: 1 });
-  private readonly fieldMat = new MeshStandardMaterial({ name: 'Field', color: 0x4a3828, roughness: 0.45, metalness: 1 });
+  private readonly rim = new MeshStandardMaterial({ name: 'Rim', color: 0x6b5640, roughness: 0.32, metalness: 1 });
+  // (the tone fields are the shell itself, a touch smoother; a fine groove outlines each)
+  private readonly fieldMat = new MeshStandardMaterial({ name: 'Field', color: 0x6b5640, roughness: 0.35, metalness: 1 });
+  private readonly groove = new MeshStandardMaterial({ name: 'Groove', color: 0x4e3b2a, roughness: 0.6, metalness: 0.6 });
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -463,9 +465,13 @@ export class HandpanModel implements DeskModel {
       oval.rotation.x = -Math.PI / 2;
       oval.scale.set(1, i === 0 ? 1 : 1.3, 1);
       oval.position.y = 0.0006;
+      const ring = new Mesh(new RingGeometry(q.w * 0.92, q.w * 0.92 + 0.0015, 48), this.groove);
+      ring.rotation.x = -Math.PI / 2;
+      ring.scale.copy(oval.scale);
+      ring.position.y = 0.0008;
       const dome = new Mesh(new SphereGeometry(q.w * (i === 0 ? 0.62 : 0.42), 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
-      dome.scale.y = i === 0 ? 0.32 : 0.16;
-      g.add(oval, dome);
+      dome.scale.y = i === 0 ? 0.32 : 0.25;
+      g.add(oval, ring, dome);
       this.fields.push(oval);
       this.root.add(g);
     });
@@ -504,12 +510,10 @@ export class MarimbaModel implements DeskModel {
   private barY = MARIMBA.top - 0.008;
   private spring = new Springs(8);
   private readonly wood = (() => {
-    const map = woodGrain(41).clone();
+    // (each bar's uvs run 0 to 1 along it: one stretch of straight grain per bar)
+    const map = straightGrain(41).clone();
     map.needsUpdate = true;
-    // (the bars' uvs are in metres: one stretch of grain along each bar, not a quilt of tiles)
-    map.repeat.set(7, 7);
-    map.rotation = Math.PI / 2;
-    return new MeshPhysicalMaterial({ name: 'Rosewood', color: 0x7a3322, map, roughness: 0.36, clearcoat: 0.55, clearcoatRoughness: 0.2 });
+    return new MeshPhysicalMaterial({ name: 'Rosewood', color: 0x5a2416, map, roughness: 0.5, clearcoat: 0.2, clearcoatRoughness: 0.45 });
   })();
   private readonly maple = (() => {
     const map = woodGrain(43).clone();
@@ -518,6 +522,8 @@ export class MarimbaModel implements DeskModel {
     return new MeshPhysicalMaterial({ name: 'Maple', color: 0xe8cfa0, map, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.3 });
   })();
   private readonly rubber = mat('Rubber', 0x26262a, 0.9);
+  private readonly pinMetal = mat('Pin', 0xc8ccd2, 0.25, 1);
+  private readonly sleeve = mat('Sleeve', 0x1c1c1e, 0.85);
   private readonly yarn = new MeshStandardMaterial({ name: 'Yarn', color: 0x2f5fc4, normalMap: fineNormal(9, 30), roughness: 0.95 });
   private readonly birch = mat('Birch', 0xd9b98a, 0.5);
   private readonly cord = mat('Cord', 0x26211c, 0.9);
@@ -535,8 +541,8 @@ export class MarimbaModel implements DeskModel {
     // treble ones (a trapezoid seen from above), its long sides cut away underneath into two feet
     const x0 = first.x - first.w / 2 - 0.022;
     const x1 = last.x + last.w / 2 + 0.022;
-    const dL = first.h * 0.62 + 0.03;
-    const dR = last.h * 0.62 + 0.03;
+    const dL = first.h * 0.8 + 0.025;
+    const dR = last.h * 0.8 + 0.02;
     const H = MARIMBA.top - 0.019;
     const T = 0.009;
     const side = (s: number) => {
@@ -545,9 +551,9 @@ export class MarimbaModel implements DeskModel {
       const len = Math.hypot(x1 - x0, (dR - dL) / 2);
       sh.moveTo(0, 0);
       sh.lineTo(0.035, 0);
-      sh.quadraticCurveTo(0.045, H * 0.42, 0.075, H * 0.42);
-      sh.lineTo(len - 0.075, H * 0.42);
-      sh.quadraticCurveTo(len - 0.045, H * 0.42, len - 0.035, 0);
+      sh.quadraticCurveTo(0.042, 0.012, 0.06, 0.012);
+      sh.lineTo(len - 0.06, 0.012);
+      sh.quadraticCurveTo(len - 0.042, 0.012, len - 0.035, 0);
       sh.lineTo(len, 0);
       sh.lineTo(len, H);
       sh.lineTo(0, H);
@@ -589,17 +595,17 @@ export class MarimbaModel implements DeskModel {
       for (let k = 0; k <= zones.length; k++) {
         const px = k === 0 ? first.x - first.w / 2 - 0.006 : k === zones.length ? last.x + last.w / 2 + 0.006 : (zones[k - 1].x + zones[k].x) / 2;
         const t = (px - x0) / (x1 - x0);
-        const pin = named(new Mesh(new CylinderGeometry(0.0011, 0.0011, 0.012, 8), this.chrome), 'Pin');
-        pin.position.set(px, H + 0.006, za + (zb - za) * t);
-        const sleeve = new Mesh(new CylinderGeometry(0.0019, 0.0019, 0.005, 10), this.rubber);
-        sleeve.position.set(px, H + 0.0055, za + (zb - za) * t);
+        const pin = named(new Mesh(new CylinderGeometry(0.002, 0.002, 0.016, 10), this.pinMetal), 'Pin');
+        pin.position.set(px, H + 0.008, za + (zb - za) * t);
+        const sleeve = new Mesh(new CylinderGeometry(0.0035, 0.0035, 0.008, 12), this.sleeve);
+        sleeve.position.set(px, H + 0.007, za + (zb - za) * t);
         this.root.add(pin, sleeve);
       }
     }
     zones.forEach((q, i) => {
       // a rosewood bar: rounded ends, softened edges, the grain along it, a little thicker in the bass
       const k0 = i / Math.max(1, zones.length - 1);
-      const w = q.w * 0.5 - 0.002;
+      const w = 0.021;
       const h = q.h / 2;
       const r = Math.min(0.006, w * 0.35);
       const shape = new Shape();
@@ -612,8 +618,13 @@ export class MarimbaModel implements DeskModel {
       shape.quadraticCurveTo(-w, h, -w, h - r);
       shape.lineTo(-w, -h + r);
       shape.quadraticCurveTo(-w, -h, -w + r, -h);
-      const th = 0.015 - 0.003 * k0;
-      const g = new ExtrudeGeometry(shape, { depth: th, bevelEnabled: true, bevelThickness: 0.0015, bevelSize: 0.0015, bevelSegments: 3, curveSegments: 5 });
+      const th = 0.013 - 0.002 * k0;
+      const g = new ExtrudeGeometry(shape, { depth: th, bevelEnabled: true, bevelThickness: 0.001, bevelSize: 0.001, bevelSegments: 3, curveSegments: 5 });
+      // (uvs: along the bar 0 to 1, across it a narrow band, each bar its own stretch of the grain)
+      const pos = g.attributes.position;
+      const uv = g.attributes.uv;
+      for (let v = 0; v < pos.count; v++) uv.setXY(v, (pos.getY(v) + h) / (2 * h), ((pos.getX(v) + w) / (2 * w)) * 0.22 + i * 0.11);
+      uv.needsUpdate = true;
       g.rotateX(-Math.PI / 2);
       g.translate(0, -th + 0.0065, 0);
       const bar = named(new Mesh(g, this.wood), `Bar${i}`);

@@ -128,7 +128,7 @@ export function hammered(): DataTexture {
             }
           }
       const k = Math.sqrt(best) / 9;
-      const s = Math.min(1, k) * 10;
+      const s = Math.min(1, k) * 4;
       const len = Math.sqrt(best) || 1;
       return [128 + (dx / len) * s, 128 + (dy / len) * s, 245];
     }, false);
@@ -183,4 +183,23 @@ export function tortoiseShell(): DataTexture {
       return [58 + k * 120, 24 + k * 60, 10 + k * 22];
     }, true),
   );
+}
+
+/** Straight-grained wood (greyscale): long, nearly straight lines along u, with fine dark pores (3 %). */
+export function straightGrain(seed = 9): DataTexture {
+  return once(`straight${seed}`, () => {
+    const r = rng(seed);
+    const lines = Array.from({ length: 28 }, () => ({ y: r() * 64, a: 0.15 + r() * 0.45, f: 0.01 + r() * 0.02, p: r() * 6 }));
+    return tex(512, 64, (x, y) => {
+      let v = 0;
+      for (const l of lines) {
+        const yy = l.y + Math.sin(x * l.f + l.p) * l.a * 2;
+        const d = Math.abs(((y - yy + 96) % 64) - 32);
+        v += Math.exp(-d * d * 0.4) * 0.32;
+      }
+      let g = 210 - Math.min(1, v) * 62 + (r() - 0.5) * 8;
+      if (r() < 0.03) g -= 60;
+      return [g, g, g];
+    }, true);
+  });
 }

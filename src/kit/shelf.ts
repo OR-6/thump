@@ -204,7 +204,8 @@ export function pianoBlacks(zones: readonly Zone[]): { a: number; b: number; x: 
 /** The marimba: eight wooden bars across the tray, low and long on the left, 4.8 cm wide, every one in the scale. */
 export function marimbaZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [];
-  for (let i = 0; i < 8; i++) out.push({ i, shape: 'rect', x: (i - 3.5) * 0.054, z: 0.03, w: 0.048, h: 0.14 - i * 0.008, degree: i, midi: scaleMidi(root, scale, i) });
+  // (real Orff proportions: 22 cm down to 15, the hit zone a little wider than the 4.2 cm bar)
+  for (let i = 0; i < 8; i++) out.push({ i, shape: 'rect', x: (i - 3.5) * 0.054, z: 0.03, w: 0.048, h: 0.22 - i * 0.01, degree: i, midi: scaleMidi(root, scale, i) });
   return out;
 }
 
@@ -221,7 +222,7 @@ export function congaZones(): Zone[] {
 }
 
 /** The handpan's lens: its rim this high off the desk, its top shell rising this much more to the ding. */
-export const HANDPAN = { rim: 0.026, dome: 0.05 } as const;
+export const HANDPAN = { rim: 0.04, dome: 0.065 } as const;
 /** The handpan's centre and outer radius (from its zones: the ding first, the fields round it). */
 export function handpanShape(zones: readonly Zone[]): { x: number; z: number; R: number } {
   const ding = zones[0];
@@ -238,13 +239,13 @@ export function handpanY(d: number, R: number): number {
 
 /** The handpan: a low ding in the middle (9 cm), eight notes round it (6 cm), climbing in a zig-zag left and right. */
 export function handpanZones(root: number, scale: Scale): Zone[] {
-  const out: Zone[] = [{ i: 0, shape: 'disc', x: 0, z: 0.02, w: 0.045, h: 0, degree: 0, midi: scaleMidi(root, scale, 0) }];
+  const out: Zone[] = [{ i: 0, shape: 'disc', x: 0, z: 0.02, w: 0.051, h: 0, degree: 0, midi: scaleMidi(root, scale, 0) }];
   // around the rim, alternating sides as the notes climb (alternate hands and you walk up the scale)
   const order = [0, 7, 1, 6, 2, 5, 3, 4];
   const fifth = Math.max(0, scale.steps.indexOf(7));
   for (let k = 0; k < 8; k++) {
     const a = -Math.PI / 2 + ((order[k] + 0.5) / 8) * Math.PI * 2;
-    out.push({ i: k + 1, shape: 'disc', x: Math.cos(a) * 0.11, z: 0.02 - Math.sin(a) * 0.09, w: 0.03, h: 0, degree: k + fifth, midi: scaleMidi(root, scale, k + fifth) });
+    out.push({ i: k + 1, shape: 'disc', x: Math.cos(a) * 0.124, z: 0.02 - Math.sin(a) * 0.102, w: 0.034, h: 0, degree: k + fifth, midi: scaleMidi(root, scale, k + fifth) });
   }
   return out;
 }
@@ -252,7 +253,7 @@ export function handpanZones(root: number, scale: Scale): Zone[] {
 /** Where the guitar's strum band is (x from, x to, z from, z to): over the soundhole, hit or brush down to strum. */
 export const STRUM = { x0: -0.03, x1: 0.2, z0: -0.04, z1: 0.11 } as const;
 /** The marimba's bars stand on their frame, their tops this high off the desk. */
-export const MARIMBA = { top: 0.07 } as const;
+export const MARIMBA = { top: 0.084 } as const;
 /** The guitar lying on its back: its top this high off the desk, the strings and the fretboard a little above it. */
 export const GUITAR = { top: 0.045, strings: 0.055, board: 0.053 } as const;
 /** The neck's line (kit-local zone z) and the three chord positions along it (x), like frets. */
