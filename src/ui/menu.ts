@@ -65,7 +65,11 @@ export interface MenuInput {
 }
 
 const W = 1360;
-const back = (): Item => ({ id: 'back', label: 'BACK', kind: 'button', x: 24, y: 24, w: 170, h: 84 });
+const back = (): Item => ({ id: 'back', label: 'Back', kind: 'button', x: 24, y: 24, w: 190, h: 96 });
+/** The top-right corner button (beside the title). */
+const corner = (id: string, label: string): Item => ({ id, label, kind: 'button', x: W - 250, y: 24, w: 226, h: 96 });
+/** The bottom row: where every screen keeps what you do next. */
+const BOT = { y: 680, h: 200 };
 
 /** Split a row of `n` across the panel from x0 to x1 with a gap. */
 function row(n: number, x0: number, x1: number, gap: number): { x: number; w: number }[] {
@@ -78,61 +82,64 @@ export function buildPage(m: MenuInput): Page {
     case 'main': {
       const c = row(2, 24, W - 24, 24);
       const items: Item[] = [
-        { id: 'nav:instruments', label: 'INSTRUMENTS', sub: `Swap the ${m.inst.name.toLowerCase()} for another`, icon: m.inst.id, kind: 'big', x: c[0].x, y: 150, w: c[0].w, h: 290 },
-        { id: 'nav:songs', label: 'SONGS', sub: 'Play along with the band', kind: 'big', x: c[1].x, y: 150, w: c[1].w, h: 290 },
-        { id: 'nav:build', label: 'MAKE A TRACK', sub: 'Your own, part by part', kind: 'big', x: c[0].x, y: 464, w: c[0].w, h: 290 },
-        { id: 'nav:band', label: 'PLAY TOGETHER', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four headsets', kind: 'big', x: c[1].x, y: 464, w: c[1].w, h: 290 },
-        { id: 'nav:settings', label: 'SETTINGS', kind: 'button', x: W - 250, y: 30, w: 226, h: 84 },
+        { id: 'nav:instruments', label: 'Instruments', sub: 'Swap it', icon: m.inst.id, kind: 'big', x: c[0].x, y: 170, w: c[0].w, h: 340 },
+        { id: 'nav:songs', label: 'Songs', sub: 'Play along', kind: 'big', x: c[1].x, y: 170, w: c[1].w, h: 340 },
+        { id: 'nav:build', label: 'Make a track', sub: 'Part by part', kind: 'big', x: c[0].x, y: 534, w: c[0].w, h: 340 },
+        { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', kind: 'big', x: c[1].x, y: 534, w: c[1].w, h: 340 },
+        corner('nav:settings', 'Settings'),
       ];
-      return { id: 'main', title: 'THUMP', line: m.line || 'Pick something to play', items };
+      return { id: 'main', title: 'Thump', line: m.line || 'Pick something to play', items };
     }
     case 'instruments': {
-      const c = row(SHELF.length, 24, W - 24, 18);
-      const items: Item[] = SHELF.map((d, i) => ({ id: `inst:${d.id}`, label: d.name.toUpperCase(), icon: d.id, color: d.color, on: d.id === m.inst.id, kind: 'card' as const, x: c[i].x, y: 150, w: c[i].w, h: 360 }));
+      // two rows of three, a picture and a name each
+      const c = row(3, 24, W - 24, 18);
+      const items: Item[] = SHELF.map((d, i) => ({ id: `inst:${d.id}`, label: d.name, icon: d.id, color: d.color, on: d.id === m.inst.id, kind: 'card' as const, x: c[i % 3].x, y: 170 + Math.floor(i / 3) * 252, w: c[i % 3].w, h: 236 }));
       items.push(back());
-      if (m.inst.id !== 'drums') items.push({ id: 'nav:inst', label: `${m.inst.name.toUpperCase()}: ${m.inst.scale ? 'NOTES & SOUND' : 'SOUND'}`, kind: 'button', x: 24, y: 560, w: 640, h: 190 });
-      items.push({ id: 'nav:free', label: 'PLAY IT', kind: 'play', x: 696, y: 560, w: 640, h: 190 });
+      const h = row(2, 24, W - 24, 24);
+      if (m.inst.id !== 'drums') items.push({ id: 'nav:inst', label: m.inst.scale ? 'Notes & sound' : 'Sound', sub: m.inst.name, kind: 'button', x: h[0].x, y: BOT.y, w: h[0].w, h: BOT.h });
+      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: h[1].x, y: BOT.y, w: h[1].w, h: BOT.h });
       return { id: 'instruments', title: 'Instruments', line: 'Tap one to put it on the desk', items };
     }
     case 'inst': {
       const d = instDef(m.inst.id as never);
       const items: Item[] = [back()];
       // each row named on the left (not pressable)
-      const label = (text: string, y: number): Item => ({ id: `label:${text}`, label: text, kind: 'chip', off: true, x: 24, y, w: 216, h: 130 });
+      const label = (text: string, y: number): Item => ({ id: `label:${text}`, label: text, kind: 'chip', off: true, x: 24, y, w: 216, h: 140 });
       // (a drum has no notes to pick and no pitch: just its sound)
       const pitched = d.scales !== false;
-      const soundY = pitched ? 310 : 150;
-      items.push(label('SOUND', soundY));
+      const soundY = pitched ? 330 : 170;
+      items.push(label('Sound', soundY));
       if (pitched) {
-        items.push(label('NOTES', 150), label('PITCH', 470));
+        items.push(label('Notes', 170), label('Pitch', 490));
         const sc = row(SCALES.length, 260, W - 24, 14);
-        SCALES.forEach((s, i) => items.push({ id: `scale:${s.id}`, label: s.name.toUpperCase(), on: s.name === m.inst.scale, kind: 'chip', x: sc[i].x, y: 150, w: sc[i].w, h: 130 }));
-        items.push({ id: 'oct:-1', label: 'LOWER', kind: 'chip', off: m.inst.oct <= -1, x: 260, y: 470, w: 300, h: 130 });
-        items.push({ id: 'oct:+1', label: 'HIGHER', kind: 'chip', off: m.inst.oct >= 1, x: 760, y: 470, w: 300, h: 130 });
+        SCALES.forEach((s, i) => items.push({ id: `scale:${s.id}`, label: s.name, on: s.name === m.inst.scale, kind: 'chip', x: sc[i].x, y: 170, w: sc[i].w, h: 140 }));
+        items.push({ id: 'oct:-1', label: 'Lower', kind: 'chip', off: m.inst.oct <= -1, x: 260, y: 490, w: 320, h: 140 });
+        items.push({ id: 'oct:+1', label: 'Higher', kind: 'chip', off: m.inst.oct >= 1, x: 600, y: 490, w: 320, h: 140 });
       }
       const so = row(d.sounds.length, 260, W - 24, 14);
-      d.sounds.forEach((s, i) => items.push({ id: `sound:${s.id}`, label: s.name.toUpperCase(), on: s.name === m.inst.sound, kind: 'chip', x: so[i].x, y: soundY, w: so[i].w, h: 130 }));
-      items.push({ id: 'nav:free', label: 'PLAY IT', kind: 'play', x: 24, y: 640, w: W - 48, h: 130 });
+      d.sounds.forEach((s, i) => items.push({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound, kind: 'chip', x: so[i].x, y: soundY, w: so[i].w, h: 140 }));
+      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: 24, y: BOT.y, w: W - 48, h: BOT.h });
       return { id: 'inst', title: `${m.inst.name}`, line: '', items };
     }
     case 'songs': {
+      // the songs as tiles, two across; what you'll play down the right
       const items: Item[] = [back()];
-      m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.locked ? 'Play the one before it' : s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24, y: 136 + i * 110, w: 860, h: 92 }));
-      items.push({ id: 'level:easy', label: 'EASY', on: m.level === 'easy', kind: 'chip', x: 910, y: 130, w: 134, h: 110 });
-      items.push({ id: 'level:normal', label: 'NORMAL', on: m.level === 'normal', kind: 'chip', x: 1056, y: 130, w: 134, h: 110 });
-      items.push({ id: 'level:hard', label: 'HARD', on: m.level === 'hard', kind: 'chip', x: 1202, y: 130, w: 134, h: 110 });
-      items.push({ id: 'nav:instruments', label: m.inst.name.toUpperCase(), sub: 'You play this', icon: m.inst.id, kind: 'button', x: 910, y: 262, w: 426, h: 150 });
-      items.push({ id: 'listen', label: 'LISTEN FIRST', kind: 'button', x: 910, y: 432, w: 426, h: 110 });
-      items.push({ id: 'play', label: 'PLAY', kind: 'play', x: 910, y: 562, w: 426, h: 208 });
+      const tw = (956 - 24 - 24 - 16) / 2;
+      m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24 + (i % 2) * (tw + 16), y: 170 + Math.floor(i / 2) * 236, w: tw, h: 220 }));
+      const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';
+      items.push({ id: 'level', label: lv, sub: m.level === 'hard' ? 'Tap for easy' : 'Tap for harder', kind: 'button', x: 956, y: 170, w: 380, h: 150 });
+      items.push({ id: 'nav:instruments', label: m.inst.name, sub: 'Tap to change', kind: 'button', x: 956, y: 336, w: 380, h: 150 });
+      items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 956, y: 502, w: 380, h: 120 });
+      items.push({ id: 'play', label: 'Play', kind: 'play', x: 956, y: 638, w: 380, h: 242 });
       return { id: 'songs', title: 'Songs', line: m.sub, items };
     }
     case 'band': {
       const items: Item[] = [back()];
       const on = m.band.state === 'connected' || m.band.state === 'hosting';
-      if (!on) items.push({ id: 'band:start', label: 'START A BAND', sub: 'Friends type its code on the Thump page', kind: 'big', x: 24, y: 150, w: W - 48, h: 300 });
+      if (!on) items.push({ id: 'band:start', label: 'Start a band', sub: 'Friends type its code on the Thump page', kind: 'big', x: 24, y: 170, w: W - 48, h: 340 });
       else {
-        items.push({ id: 'nav:songs', label: 'PICK A SONG', sub: 'Everyone plays it, on one beat', kind: 'big', x: 24, y: 470, w: 640, h: 290 });
-        items.push({ id: 'band:leave', label: 'LEAVE', kind: 'button', x: 696, y: 470, w: 640, h: 290 });
+        items.push({ id: 'nav:songs', label: 'Pick a song', sub: 'Everyone plays it, on one beat', kind: 'big', x: 24, y: 534, w: 644, h: 340 });
+        items.push({ id: 'band:leave', label: 'Leave', kind: 'button', x: 692, y: 534, w: 644, h: 340 });
       }
       // (the code only once the connection service has it; a failure says what went wrong)
       const msg = m.band.message ?? '';
@@ -149,10 +156,9 @@ export function buildPage(m: MenuInput): Page {
       return { id: 'band', title: 'Play together', line, items };
     }
     case 'settings': {
-      const items: Item[] = [];
-      const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, sub: on ? 'On' : 'Off', on, kind: 'chip', x: 24 + (i % 3) * 444, y: 150 + Math.floor(i / 3) * 210, w: 424, h: 190 });
-      items.push(t('set:slow', 'SLOWER SONGS', m.settings.slow, 0), t('set:onehand', 'ONE HAND', m.settings.oneHand, 1), t('set:contrast', 'HIGH CONTRAST', m.settings.contrast, 2), t('set:words', 'HINTS IN\nTHE ROOM', m.settings.words, 3), t('set:backing', 'BACKING BAND', m.settings.backing, 4));
-      items.push({ id: 'back', label: 'DONE', kind: 'play', x: 24, y: 590, w: W - 48, h: 180 });
+      const items: Item[] = [back()];
+      const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, sub: on ? 'On' : 'Off', on, kind: 'chip', x: 24 + (i % 3) * 444, y: 170 + Math.floor(i / 3) * 260, w: 424, h: 240 });
+      items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in\nthe room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4));
       return { id: 'settings', title: 'Settings', line: '', items };
     }
     case 'tune': {
@@ -163,40 +169,40 @@ export function buildPage(m: MenuInput): Page {
     case 'free': {
       // (the drums have no notes or sounds to pick: no button for it)
       const drums = m.inst.id === 'drums';
-      const c = row(drums ? 3 : 4, 24, W - 24, 18);
-      const items: Item[] = [{ id: 'nav:instruments', label: 'INSTRUMENTS', kind: 'button', x: c[0].x, y: 520, w: c[0].w, h: 250 }];
-      if (!drums) items.push({ id: 'nav:inst', label: m.inst.scale ? 'NOTES &\nSOUND' : 'SOUND', sub: m.inst.scale ? `${m.inst.scale}, ${m.inst.sound}` : m.inst.sound, kind: 'button', x: c[1].x, y: 520, w: c[1].w, h: 250 });
-      items.push({ id: 'nav:songs', label: 'SONGS', kind: 'play', x: c[drums ? 1 : 2].x, y: 520, w: c[drums ? 1 : 2].w, h: 250 });
-      items.push({ id: 'nav:main', label: 'MENU', kind: 'button', x: c[drums ? 2 : 3].x, y: 520, w: c[drums ? 2 : 3].w, h: 250 });
+      const c = row(drums ? 2 : 3, 24, W - 24, 18);
+      const items: Item[] = [{ id: 'nav:instruments', label: 'Instruments', kind: 'button', x: c[0].x, y: BOT.y, w: c[0].w, h: BOT.h }];
+      if (!drums) items.push({ id: 'nav:inst', label: m.inst.scale ? 'Notes &\nsound' : 'Sound', sub: m.inst.scale ? `${m.inst.scale}, ${m.inst.sound.toLowerCase()}` : m.inst.sound, kind: 'button', x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h });
+      items.push({ id: 'nav:songs', label: 'Songs', kind: 'play', x: c[drums ? 1 : 2].x, y: BOT.y, w: c[drums ? 1 : 2].w, h: BOT.h });
+      items.push(corner('nav:main', 'Menu'));
       // how to play it, large, in the body (or what the game has to say)
-      return { id: 'free', title: m.inst.name, line: m.line || 'Play anything. Every note fits.', items, body: 'how', how: m.inst.how ?? '' };
+      return { id: 'free', title: m.inst.name, line: m.line || (m.inst.id === 'drums' || m.inst.id === 'congas' ? 'Hit anything. It all sounds right.' : 'Play anything. Every note fits.'), items, body: 'how', how: m.inst.how ?? '' };
     }
     case 'build': {
       const items: Item[] = m.perform
         ? [
-            { id: 'key:play', label: 'PERFORM IT', kind: 'play', x: 24, y: 590, w: 860, h: 180 },
-            { id: 'stop', label: m.sure ? 'SURE?' : 'STOP', kind: 'button', x: 908, y: 590, w: 428, h: 180 },
+            { id: 'key:play', label: 'Perform it', kind: 'play', x: 24, y: BOT.y, w: 860, h: BOT.h },
+            { id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'button', x: 908, y: BOT.y, w: 428, h: BOT.h },
           ]
         : [
-            { id: 'key:prev', label: 'BACK A PART', kind: 'button', x: 24, y: 590, w: 640, h: 180 },
-            { id: 'stop', label: m.sure ? 'SURE?' : 'STOP', kind: 'button', x: 696, y: 590, w: 640, h: 180 },
+            { id: 'key:prev', label: 'Back a part', kind: 'button', x: 24, y: BOT.y, w: 644, h: BOT.h },
+            { id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'button', x: 692, y: BOT.y, w: 644, h: BOT.h },
           ];
       return { id: 'build', title: m.line, line: m.sub, items, body: 'song' };
     }
     case 'song': {
       const c = row(Math.max(1, m.switchable.length) + 1, 24, W - 24, 18);
-      const items: Item[] = m.switchable.map((id, i) => ({ id: `inst:${id}`, label: instDef(id as never).name.toUpperCase(), icon: id, on: id === m.inst.id, color: instDef(id as never).color, kind: 'card' as const, x: c[i].x, y: 590, w: c[i].w, h: 180 }));
-      items.push({ id: 'stop', label: m.sure ? 'SURE?' : 'STOP', kind: 'button', x: c[c.length - 1].x, y: 590, w: c[c.length - 1].w, h: 180 });
+      const items: Item[] = m.switchable.map((id, i) => ({ id: `inst:${id}`, label: instDef(id as never).name, icon: id, on: id === m.inst.id, color: instDef(id as never).color, kind: 'card' as const, x: c[i].x, y: BOT.y, w: c[i].w, h: BOT.h }));
+      items.push({ id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'button', x: c[c.length - 1].x, y: BOT.y, w: c[c.length - 1].w, h: BOT.h });
       return { id: 'song', title: m.line, line: m.sub, items, body: 'song' };
     }
     case 'results': {
       const c = row(m.make ? 4 : 3, 24, W - 24, 18);
       const items: Item[] = [
-        { id: 'again', label: m.harder ? `AGAIN ON\n${m.harder}` : 'AGAIN', kind: 'play', x: c[0].x, y: 590, w: c[0].w, h: 180 },
-        { id: 'next', label: m.next, kind: 'button', off: !m.next, x: c[1].x, y: 590, w: c[1].w, h: 180 },
+        { id: 'again', label: m.harder ? `Again on\n${m.harder.toLowerCase()}` : 'Again', kind: 'play', x: c[0].x, y: BOT.y, w: c[0].w, h: BOT.h },
+        { id: 'next', label: m.next, kind: 'button', off: !m.next, x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h },
       ];
-      if (m.make) items.push({ id: 'make', label: 'MAKE IT\nYOURS', kind: 'button', x: c[2].x, y: 590, w: c[2].w, h: 180 });
-      items.push({ id: 'nav:main', label: 'MENU', kind: 'button', x: c[c.length - 1].x, y: 590, w: c[c.length - 1].w, h: 180 });
+      if (m.make) items.push({ id: 'make', label: 'Make it\nyours', kind: 'button', x: c[2].x, y: BOT.y, w: c[2].w, h: BOT.h });
+      items.push({ id: 'nav:main', label: 'Menu', kind: 'button', x: c[c.length - 1].x, y: BOT.y, w: c[c.length - 1].w, h: BOT.h });
       return { id: 'results', title: m.line, line: m.sub, items, body: 'results' };
     }
   }

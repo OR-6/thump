@@ -113,6 +113,21 @@ export class NoteJudge {
     return this.res;
   }
 
+  /**
+   * A hit no note took: how far off the nearest note on its lane was (s, negative: early), if one was within `span`
+   * seconds (not yet played, or just missed); else null.
+   */
+  near(lane: string, t: number, span: number): number | null {
+    let best: number | null = null;
+    for (let i = 0; i < this.notes.length; i++) {
+      const n = this.notes[i];
+      if (n.t - t > span) break;
+      if (n.lane !== lane || n.grade === 'perfect' || n.grade === 'good' || Math.abs(t - n.t) > span) continue;
+      if (best === null || Math.abs(t - n.t) < Math.abs(best)) best = t - n.t;
+    }
+    return best;
+  }
+
   /** Notes whose window has passed by song time `t` become misses; calls `onMiss` for each. */
   sweep(t: number, onMiss?: (n: JudgedNote, i: number) => void): void {
     for (let i = this.cursor; i < this.notes.length; i++) {

@@ -1,12 +1,13 @@
 /**
- * The word for a hit in a song, next to what you hit (Perfect in white, Good in the instrument's colour): it pops
+ * The word for a hit in a song, next to what you hit (Perfect in white, Good in the instrument's colour, Early or
+ * Late in grey): it pops
  * in over 80 ms a few centimetres above, rises a little, and is gone 250 ms later. Never in the middle of the view.
  * A small pool of planes, each a word drawn once.
  */
 import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
 import { FONT, whenFonts } from '../ui/fonts.js';
 
-const WORDS = ['Perfect', 'Good'] as const;
+const WORDS = ['Perfect', 'Good', 'Early', 'Late'] as const;
 const POOL = 6;
 
 function wordTexture(word: string): CanvasTexture {
@@ -59,12 +60,13 @@ export class HitWords {
 
   /** Show the word for `grade` at world `at` (3 cm above it), facing `head`, Good tinted `color`. */
   show(grade: string | null, at: Vector3, head: Vector3, color: number): void {
-    if (!this.meshes.length || (grade !== 'perfect' && grade !== 'good')) return;
+    const w = grade === 'perfect' ? 0 : grade === 'good' ? 1 : grade === 'early' ? 2 : grade === 'late' ? 3 : -1;
+    if (!this.meshes.length || w < 0) return;
     const i = this.next++ % this.meshes.length;
     const m = this.meshes[i];
     const mat = m.material as MeshBasicMaterial;
-    mat.map = this.tex[grade === 'perfect' ? 0 : 1];
-    mat.color.setHex(grade === 'perfect' ? 0xffffff : color);
+    mat.map = this.tex[w];
+    mat.color.setHex(w === 0 ? 0xffffff : w === 1 ? color : 0x9a9a9e);
     this.base[i].copy(at);
     this.base[i].y += 0.03;
     m.position.copy(this.base[i]);
@@ -86,7 +88,7 @@ export class HitWords {
       const out = a > 0.25 ? Math.max(0, 1 - (a - 0.25) / 0.25) : 1;
       mat.opacity = ease * out;
       m.scale.setScalar(0.85 + 0.15 * ease);
-      m.position.y = this.base[i].y + 0.01 * Math.min(1, a / 0.5);
+      m.position.y = this.base[i].y + 0.01 * (1 - Math.pow(1 - Math.min(1, a / 0.5), 2));
       if (a > 0.5) m.visible = false;
     }
   }

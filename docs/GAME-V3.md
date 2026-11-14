@@ -149,3 +149,12 @@ Unit: input per gesture on synthetic hand paths (press, strum, shake, continuous
 3. The band: shared clock, two online players, parts, bot. Deploy; judge round.
 4. P1 instruments one at a time, each complete. Deploy after each; judge and creative rounds.
 5. Device script for the user (per instrument feel), the video shot list (shot one: hands unfolding the kit on a real desk; shot two: two people in one room playing together), the gallery, the Devpost text.
+
+## Guitar and bass, precisely (14 Nov)
+
+A third placement: **HELD.** The guitar hangs where a strapped one would (body at the right hip, neck up-left), following the body not the room; pinch-hold the body to shift or resize. Bass is the same with four strings.
+
+- **Right hand, strumming:** a pick appears when thumb and index come together near the strings; bare fingertips also work. A strum is the pick or fingertips crossing the string planes in order: direction gives down/up, speed gives loudness, only crossed strings sound; the palm heel near the bridge mutes. Strings blur and vibrate on the frame they are struck; the pick bends.
+- **Left hand, chords, three levels.** Easy (default): four to six large glowing chord pads on the neck, one per chord in the song's key; touch one with any fingertip to hold it; touch nothing and the song's current chord plays anyway. Normal: the pads become finger dots in the real chord shape; a missed finger is forgiven. Pro: real frets; a fingertip pressing a string inside a fret space frets it, the rest ring open.
+- **Song notation:** chord pads light a beat ahead in the hand colour; a strum arrow sweeps across the strings for down/up; in Pro, notes travel down the neck to the fret where they land.
+- **Sound:** recorded strums and single notes per string with palm-mute layers, chord voicings matched to the shape, in key in Easy.

@@ -39,6 +39,9 @@ export class HandState {
   readonly rawPinch = new Vector3();
   readonly indexTip = new Vector3();
   readonly indexVel = new Vector3();
+  /** A controller's pointing ray (world): where it starts and which way it points. */
+  readonly rayO = new Vector3();
+  readonly rayD = new Vector3(0, 0, -1);
   readonly palm = new Vector3();
   palmRadius = 0.02;
   /** Raw fingertips (world): index is indexTip above; middle and ring for strikes. */
@@ -292,6 +295,8 @@ export class HandTrackerSystem extends createSystem({}) {
     const o = rp.transform.orientation;
     this.q.set(o.x, o.y, o.z, o.w);
     this.fwd.set(0, 0, -1).applyQuaternion(this.q);
+    h.rayO.set(p.x, p.y, p.z);
+    h.rayD.copy(this.fwd);
     this.tmpIndex.set(p.x, p.y, p.z).addScaledVector(this.fwd, CONTROLLER_TIP);
     const trigger = src.gamepad.buttons[0]?.value ?? 0;
     h.pinchDist = CONTROLLER_OPEN - (CONTROLLER_OPEN - 0.004) * trigger;

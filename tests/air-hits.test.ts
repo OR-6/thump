@@ -76,4 +76,31 @@ describe('hits in the air', () => {
     h.update(0, 0, 0.1, 0, 1 / 72, [snare], out);
     expect(out).toHaveLength(0);
   });
+  it('a surface can take a sideways brush (a strum) and re-arm sooner (a repeated key)', () => {
+    const strings: AirSurface = { id: 9, face: 'up', x: 0, y: 0.055, z: 0, w: 0.2, d: 0.1 };
+    // 60° from straight down: refused at the default, played with along 0.25
+    const out: AirHit[] = [];
+    path(new AirHits(1), [-0.08, 0.1, 0], [0.08, 0.01, 0], 8, [strings], out);
+    expect(out).toHaveLength(0);
+    path(new AirHits(1), [-0.08, 0.1, 0], [0.08, 0.01, 0], 8, [{ ...strings, along: 0.25 }], out);
+    expect(out).toHaveLength(1);
+    // a 1.5 cm lift repeats a key whose rearm is 1.2 cm, not one at the default 2 cm
+    for (const [rearm, want] of [[undefined, 1], [0.012, 2]] as const) {
+      const h = new AirHits(1);
+      const o: AirHit[] = [];
+      const k = { ...key, rearm };
+      path(h, [0.2, 0.1, 0], [0.2, 0.05, 0], 5, [k], o);
+      path(h, [0.2, 0.05, 0], [0.2, 0.075, 0], 5, [k], o);
+      path(h, [0.2, 0.075, 0], [0.2, 0.05, 0], 3, [k], o);
+      expect(o).toHaveLength(want);
+    }
+  });
+  it('a raised minimum speed: a stick drifting down over a head does not play', () => {
+    const o: AirHit[] = [];
+    const h = new AirHits(1);
+    for (let k = 0; k <= 12; k++) h.update(0, 0, 0.16 - k * 0.005, 0, 1 / 72, [snare], o, 6.5, 1.0);
+    expect(o).toHaveLength(0);
+    path(h, [0, 0.25, 0], [0, 0.1, 0], 4, [snare], o);
+    expect(o).toHaveLength(1);
+  });
 });

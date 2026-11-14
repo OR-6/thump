@@ -4,7 +4,7 @@
  * earned shows dim with a lock line. Kit-local (origin on the desk at the kit's centre, +Y up, −Z away from you).
  */
 import { BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace, Vector3 } from '@iwsdk/core';
-import { MARKER, whenFonts } from '../ui/fonts.js';
+import { FONT, whenFonts } from '../ui/fonts.js';
 
 export interface StandItem {
   id: string;
@@ -115,14 +115,12 @@ function tileTexture(item: StandItem, on: boolean): CanvasTexture {
   g.lineCap = 'round';
   ICON[item.id]?.(g, S * 0.86);
   g.globalAlpha = 1;
-  // its name on a strip of tape along the bottom
-  g.fillStyle = '#ece2c6';
-  g.fillRect(8, S - 34, S - 16, 24);
-  g.fillStyle = '#17150f';
-  g.font = `22px ${MARKER}`;
+  // its name along the bottom
+  g.fillStyle = '#ece6d8';
+  g.font = `600 22px ${FONT}`;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillText(item.locked ? 'SOON' : item.name.toUpperCase(), S / 2, S - 21);
+  g.fillText(item.locked ? 'Soon' : item.name, S / 2, S - 21);
   const t = new CanvasTexture(c);
   t.colorSpace = SRGBColorSpace;
   return t;

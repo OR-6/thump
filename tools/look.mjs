@@ -7,10 +7,10 @@ import { writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { xr, goto, placeKit, measureHand, slap, wait, state, run, HAND, DESK_Y } from './e2e-lib.mjs';
 
-const [out, inst = 'drums', menu = 'free', eye = '0,0.4,0.45', at = '0,0,-0.03'] = process.argv.slice(2);
+const [out, inst = 'drums', menu = 'free', eye = '0,0.42,0.34', at = '0,0,-0.03'] = process.argv.slice(2);
 let s = state();
 if (!s.debug?.kitOrigin) {
-  await goto('debug=1');
+  await goto('debug=1&shots=1');
   s = await placeKit();
   const k = s.debug.kitOrigin;
   await slap(await measureHand(), [k[0] + 0.06, DESK_Y, k[2]]);
@@ -30,5 +30,5 @@ xr('set-transform', { device: 'headset', position: { x: k[0] + e[0], y: k[1] + e
 xr('look-at', { device: 'headset', target: { x: k[0] + a[0], y: k[1] + a[1], z: k[2] + a[2] } });
 await wait(700);
 execFileSync('npx', ['@iwsdk/cli', 'browser', 'run', 'tools/shot-hd.mjs']);
-execFileSync('ffmpeg', ['-v', 'quiet', '-y', '-i', 'artifacts/shot-hd.png', '-vf', 'crop=ih*16/9:ih', out]);
+execFileSync('ffmpeg', ['-v', 'quiet', '-y', '-i', 'artifacts/shot-hd.png', '-vf', 'crop=ih*0.74*16/9:ih*0.74:(iw-ih*0.74*16/9)/2:0', out]);
 console.log(out);

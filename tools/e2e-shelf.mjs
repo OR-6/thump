@@ -91,7 +91,8 @@ await ui('nav:free');
 await tab('marimba');
 s = state();
 check('then a marimba', s.targets.inst?.[0] === 2 && s.game.display.page?.title === 'Marimba', `${s.game.display.line} inst=${s.targets.inst}`);
-await slapAt(s.targets.inst0);
+// (fingertips on the bar, a centimetre and a half through it as a real tap goes: hand heights over keys and bars are smoothed, so a 3 mm graze is too slight)
+await slapAt(s.targets.inst0.map((v, i) => v - (i === 1 ? 0.015 : 0)), [0, 1, 0], { from: 0.08, pose: { pitch: -50, yaw: 0, roll: 0 } });
 s = state();
 check('its low bar plays', s.debug.lastHit?.family === 'marimba' && s.debug.lastHit?.zone === 0, JSON.stringify(s.debug.lastHit));
 shot('shelf-marimba', look);

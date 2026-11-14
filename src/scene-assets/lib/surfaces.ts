@@ -61,7 +61,7 @@ export function headCoat(): DataTexture {
       const dx = (x - 63.5) / 64;
       const dy = (y - 63.5) / 64;
       const d = Math.hypot(dx, dy);
-      const wear = Math.exp(-Math.pow((d - 0.22) / 0.12, 2)) * 45 + Math.exp(-Math.pow(d / 0.16, 2)) * 20;
+      const wear = Math.exp(-Math.pow((d - 0.22) / 0.12, 2)) * 14 + Math.exp(-Math.pow(d / 0.16, 2)) * 6;
       const g = 250 - wear + (r() - 0.5) * 9;
       return [g, g, g - 3];
     }, true, false);
@@ -83,17 +83,18 @@ export function fineNormal(seed = 3, strength = 18): DataTexture {
 export function cymbalRings(): { map: DataTexture; rough: DataTexture } {
   const map = once('rings', () =>
     tex(4, 1024, (_x, y) => {
+      // (v is the distance from the centre, 0 to the edge 1: the bell smooth, then fine lathe rings to the edge)
       const v = y / 1023;
-      const groove = 0.5 + 0.5 * Math.sin(v * 300) * (v > 0.12 && v < 0.88 ? 1 : 0.15);
+      const groove = Math.sin(v * 600) * (v > 0.22 ? 1 : 0.15);
       // (fine and faint: real lathe rings are a sheen, not stripes)
-      const g = 222 + groove * 16;
-      return [g, g * 0.93, g * 0.78];
+      const g = 226 + groove * 4;
+      return [g, g * 0.85, g * 0.53];
     }, true),
   );
   const rough = once('ringsR', () =>
     tex(4, 1024, (_x, y) => {
       const v = y / 1023;
-      const g = 90 + 22 * (0.5 + 0.5 * Math.sin(v * 300)) * (v > 0.12 && v < 0.88 ? 1 : 0.3);
+      const g = 85 + 10 * Math.sin(v * 600) * (v > 0.22 ? 1 : 0.3);
       return [g, g, g];
     }, false),
   );
@@ -127,7 +128,7 @@ export function hammered(): DataTexture {
             }
           }
       const k = Math.sqrt(best) / 9;
-      const s = Math.min(1, k) * 20;
+      const s = Math.min(1, k) * 10;
       const len = Math.sqrt(best) || 1;
       return [128 + (dx / len) * s, 128 + (dy / len) * s, 245];
     }, false);

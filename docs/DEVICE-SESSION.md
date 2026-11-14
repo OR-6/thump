@@ -35,15 +35,19 @@ The tuning page (debug only): SETTINGS on the main menu, then poke SLOWER SONGS 
 
 ## 2. The panel (4 min)
 
-2a. Poke. Bring a fingertip slowly toward FREE PLAY. Good: it lights as your finger gets within a few centimetres, and presses (with a click) once your fingertip goes through the face, not before. Press BACK, then a few other tiles. Count presses you meant against presses you got.
+2a. Poke. Bring a fingertip slowly toward Instruments. Good: it lights as your finger gets within a few centimetres, and presses (with a click) once your fingertip goes through the face, not before. Press Back, then a few other tiles. Count presses you meant against presses you got.
 
 2b. Pinch. Pinch on an item instead of poking it. Good: it presses the item you were on, and only that one.
 
 2c. Reach. Is the panel easy to see and reach without leaning? Does your arm cross the instrument to get to it? Say what you'd move.
 
+2d. Text and a controller. Read the smallest line on the Songs page from your seat without leaning in: can you? Then pick up a controller, point it at a tile and pull the trigger. Good: the tile lights while you point at it and presses once on the pull.
+
+2e. Reaching across. With the congas out, poke the panel's bottom row. Good: no conga sounds as your hand passes over them to the panel.
+
 ## 3. The instruments (10 min)
 
-FREE PLAY, then a card each. Every one should unfold onto the desk when picked. Say whether each sounds with your hand.
+Instruments, then a card each. Every one should unfold onto the desk when picked. Say whether each sounds with your hand.
 
 3a. Piano. Ten hits on each of the six ivory keys with one finger, then walk up and down them. Each key should sink when hit. Then the wide ebony chord key on the left: each hit plays the next of three chords. Good: the key you meant every time, even the two end keys; no neighbour sounding.
 
@@ -67,7 +71,7 @@ Put the piano out. SONGS, Kick Start, EASY, then PLAY. After the count-in, notes
 - Partway through, poke the DRUMS card. The panel should say "Drums next", the drums come out at the next loop, and "Find it, then join in" gives you a bar before the notes start falling on the drums.
 - "Solo!" twice (a bar each): hit anything, fast. The room above eye level should dim (your hands and the desk stay lit) with soft colour, never flickering. On Easy the notes keep falling to the end.
 - "Bring it home": the band holds its chord and your instrument pulses. Wait two seconds, then hit it: the band should land on your hit.
-- "That was you": your two best bars play back with your notes in gold, the panel showing nothing else. Then read the results (the song and its %, stars, Perfect and Good, best run, "On time" % or which side of the beat), and fps min on line 1 straight after.
+- "That was you": your two best bars play back with your notes in gold, the panel showing nothing else. Then read the results (the song and its %, stars, Perfect and Good, best run, "Nicely on the beat" or which side of the beat), and fps min on line 1 straight after.
 - The count-in: four stick clicks from a light across the desk, which flashes on each.
 - Good: the notes land on the beat and on the right target, the switch lands at the next loop with a bar to find the drums, the frame rate holds.
 
@@ -115,7 +119,7 @@ On the panel: PLAY TOGETHER, START A BAND. The panel shows a 4-letter code. On t
 | Solo!: room above eye level dims, tray and hands stay lit?, any flicker? | |
 | tray: panel top row reachable without touching the seat ahead? any presses you didn't mean? | |
 | band: friend's light across the desk, sound from their side? | |
-| 4 notes on target and on the beat?, stars, notes played, On time %, switch landed?, fps min | |
+| 4 notes on target and on the beat?, stars, notes played, on the beat or which side, switch landed?, fps min | |
 | 5 build: time, where you hesitated, did the drop land?, how you performed it | |
 | 6 band: joined?, same beat?, friend's notes heard, how late, any echo | |
 | 7a fps / min / out ms / offset ms | |

@@ -5,7 +5,7 @@
  * count or the results' stars. You poke an item with a fingertip, or pinch it: it lights and clicks. One canvas;
  * presses and pulses are light quads on top, so nothing redraws every frame. Kit-local, centred behind the instrument.
  */
-import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace } from '@iwsdk/core';
+import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace, Vector3 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
 import { contactShadow } from '../art/lighting.js';
 import { thumb, whenThumbs } from '../art/thumbs.js';
@@ -13,22 +13,26 @@ import { FONT, whenFonts } from './fonts.js';
 import { star, type Display } from './module.js';
 import type { Item, Page } from './menu.js';
 import { ICON } from '../stand/stand.js';
+import { Minis } from './minis.js';
+import { motion } from './motion.js';
 
 /** The panel in kit-local space: centre, size (m), and how far it leans back (radians). */
 /**
  * The display: standing on the desk behind the instruments on two thin uprights, its bottom edge clear of the
  * keyboard's case (9 cm), tilted back 25°.
  */
-export const PANEL = { y: 0.28, z: -0.25, w: 0.34, h: 0.2, lean: 0.44 } as const;
-/** Canvas pixels (4 per millimetre). */
+export const PANEL = { y: 0.28, z: -0.25, w: 0.36, h: 0.24, lean: 0.44 } as const;
+/** Canvas pixels (3.78 per millimetre). */
 const CW = 1360;
-const CH = 800;
+const CH = 907;
+/** No text under this (12.7 mm on the panel: about 24 mm at 1 m from the seat). */
+const MIN_PX = 48;
 const MAX_ITEMS = 16;
 
 const INK = '#f2efe6';
 const SOFT = '#b9b9bd';
 /** The panel's one accent. */
-const ACCENT = '#ff4b33';
+const ACCENT = '#5ac8ff';
 const DIMI = '#6a6862';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
@@ -48,8 +52,7 @@ function rounded(g: CanvasRenderingContext2D, x: number, y: number, w: number, h
 }
 
 function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: number, min: number, room: number): number {
-  // (never below 30 px: about 7.5 mm on the panel, readable from a seat)
-  min = Math.max(30, min);
+  min = Math.max(MIN_PX, min, Math.min(px, MIN_PX));
   g.font = `${weight} ${px}px ${FONT}`;
   while (g.measureText(text).width > room && px > min) g.font = `${weight} ${--px}px ${FONT}`;
   return px;
@@ -160,7 +163,23 @@ export class Panel {
     this.countMesh.position.set(nz.x, nz.z, 0.0008);
     this.countMesh.renderOrder = 7;
     this.countMesh.visible = false;
-    this.root.add(this.bar, this.comboMesh, this.countMesh);
+    this.root.add(this.bar, this.comboMesh, this.countMesh, this.minis.root);
+    // the results' stars, each its own quad over the drawn one: it lands (1.4 → 1 with a little overshoot, 180 ms)
+    for (let i = 0; i < 3; i++) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 160;
+      const t = new CanvasTexture(c);
+      t.colorSpace = SRGBColorSpace;
+      const q = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: t, transparent: true, toneMapped: false, depthWrite: false }));
+      const z = itemZone({ x: CW / 2 - 170 + i * 170 - 80, y: 300 - 80, w: 160, h: 160 });
+      q.position.set(z.x, z.z, 0.0016);
+      q.userData.size = z.w;
+      q.renderOrder = 9;
+      q.visible = false;
+      this.starQuads.push(q);
+      this.starTex.push(t);
+      this.root.add(q);
+    }
     this.root.position.set(0, PANEL.y, PANEL.z);
     this.root.rotation.x = -PANEL.lean;
     this.fitStand();
@@ -182,17 +201,34 @@ export class Panel {
     this.place();
   }
   private tray = false;
-  /** How tall the instrument in front of it is: the display stands with its bottom edge 1.5 cm clear of it. */
+  /** How tall the instrument in front of it is: the display stands with its bottom edge 4 cm clear of it (a hand on
+   * the back of the instrument stays under it). */
   private clear = 0.19;
   standOver(top: number): void {
     this.clear = top;
     this.place();
   }
+  /** Where you sit: how far ahead of your head the instrument's centre is, and how high your eyes are over the desk. */
+  private baseY: number = PANEL.y;
+  private ahead = 0.34;
+  private eye = 0.42;
+  seat(ahead: number, eye: number): void {
+    this.ahead = ahead;
+    this.eye = Math.max(0.2, eye);
+    this.place();
+  }
   private place(): void {
     const lean = this.tray ? 0.36 : PANEL.lean;
-    const y = Math.max(0.17, this.clear + 0.015 + (PANEL.h / 2) * Math.cos(lean));
+    // (up toward your eyes rather than down over the instrument: a hand slapping its back passes under the panel)
+    const y = Math.max(this.tray ? 0.17 : 0.3, this.clear + 0.04 + (PANEL.h / 2) * Math.cos(lean));
+    // within 55 cm of your eyes (no further back than that, however far ahead the instrument went), never under 35
+    const dy = this.eye - y;
+    const flat = Math.sqrt(Math.max(0.01, 0.55 * 0.55 - dy * dy));
+    const nearest = Math.sqrt(Math.max(0.01, 0.35 * 0.35 - dy * dy));
+    const z = Math.min(this.ahead - nearest, Math.max(this.tray ? -0.22 : PANEL.z, this.ahead - flat));
     // (higher rather than nearer at a tray: its bottom edge stays clear of hands at the back of the instrument)
-    this.root.position.set(0, y, this.tray ? -0.22 : PANEL.z);
+    this.baseY = y;
+    this.root.position.set(0, y, z);
     this.root.rotation.x = -lean;
     this.fitStand();
   }
@@ -255,6 +291,29 @@ export class Panel {
   /** The song so far (a bar that grows) and the run of notes in a row (its own little canvas). */
   private bar: Mesh;
   private comboCanvas = document.createElement('canvas');
+  /** The Instruments screen's 3D miniatures (they stand in for the cards' pictures). */
+  readonly minis = new Minis();
+  private noPics = false;
+  /** The picked instrument's miniature flies from its card to the middle of the desk. */
+  flyMini(id: string): void {
+    this.root.updateMatrix();
+    const to = new Vector3(0, 0.03, 0.02).applyMatrix4(this.root.matrix.clone().invert());
+    this.minis.fly(id, to);
+  }
+  private starQuads: Mesh[] = [];
+  private starTex: CanvasTexture[] = [];
+  private starAge = [9, 9, 9];
+  /** Star `i` of the results just landed (its note is playing): it drops into place. */
+  starLand(i: number, gold = false): void {
+    const t = this.starTex[i];
+    if (!t) return;
+    const c = t.image as HTMLCanvasElement;
+    const g = c.getContext('2d')!;
+    g.clearRect(0, 0, 160, 160);
+    star(g, 80, 80, 64, true, gold);
+    t.needsUpdate = true;
+    this.starAge[i] = 0;
+  }
   private countCanvas = document.createElement('canvas');
   private countTex: CanvasTexture;
   private countMesh: Mesh;
@@ -298,7 +357,7 @@ export class Panel {
       this.press.fill(0);
     }
     this.page = p;
-    const isig = p.items.map((i) => `${i.id}@${i.x},${i.y},${i.w},${i.h}`).join(';');
+    const isig = p.items.map((i) => `${i.id}@${i.x},${i.y},${i.w},${i.h}${i.off ? '-' : ''}`).join(';');
     if (isig !== this.itemsSig) {
       this.itemsSig = isig;
       this.version++;
@@ -351,10 +410,25 @@ export class Panel {
       mm.opacity = 0.3 + 0.6 * this.hoverK;
       mm.color.setHex(this.hoverK > 0.9 ? 0xffffff : 0xfff2dc);
     }
-    // the panel grows in when it first shows; a new page slides up into place and fades in
-    if (this.root.visible && this.grow < 1) this.grow = Math.min(1, this.grow + dt / 0.35);
+    // the panel slides up into place when it first shows (250 ms, eased out); a new page slides up and fades in
+    if (this.root.visible && this.grow < 1) this.grow = Math.min(1, this.grow + dt / 0.25);
     const e = 1 - Math.pow(1 - this.grow, 3);
-    this.root.scale.setScalar(0.85 + 0.15 * e);
+    this.root.position.y = this.baseY - 0.05 * (1 - e);
+    {
+      const hi = this.hoverI >= 0 && this.hoverK > 0.05 ? (this.page?.items[this.hoverI]?.id ?? '') : '';
+      this.minis.update(dt, hi.startsWith('inst:') ? hi.slice(5) : '', motion.calm);
+    }
+    for (let i = 0; i < this.starQuads.length; i++) {
+      const q = this.starQuads[i];
+      q.visible = this.starAge[i] < 0.6 && this.page?.id === 'results';
+      if (!q.visible) continue;
+      this.starAge[i] += dt;
+      // (back-out: past 1 a little, then settled; it fades as the drawn star under it takes over)
+      const u = Math.min(1, this.starAge[i] / 0.18);
+      const s = 1 + 0.4 * (1 - u) - 0.08 * Math.sin(Math.PI * u) * (1 - u * 0.3);
+      q.scale.setScalar((q.userData.size as number) * s);
+      (q.material as MeshBasicMaterial).opacity = Math.min(1, this.starAge[i] / 0.06) * (this.starAge[i] > 0.4 ? Math.max(0, 1 - (this.starAge[i] - 0.4) / 0.2) : 1);
+    }
     if (this.turn < 1) this.turn = Math.min(1, this.turn + dt / 0.18);
     const te = 1 - Math.pow(1 - this.turn, 3);
     this.faceMat.opacity = (0.25 + 0.75 * te) * e;
@@ -377,6 +451,8 @@ export class Panel {
       const q = this.cards[i];
       // (not while a new page slides in: the face moves then, and the quads would sit apart from it)
       q.visible = !!this.cardLive[i] && this.turn >= 1 && te > 0.99;
+      // (and they fade in with the face)
+      (q.material as MeshBasicMaterial).opacity = this.faceMat.opacity;
       if (z && q.visible) {
         const target = this.press[i] > 0.7 ? 0.97 : i === this.hoverI && this.hoverK > 0.05 ? 1.04 : 1;
         const tau = target < this.cardS[i] ? 0.02 : target > 1 ? 0.04 : 0.05;
@@ -408,14 +484,14 @@ export class Panel {
     g.fillText(p.title, tx, 84);
     if (p.line) {
       g.fillStyle = SOFT;
-      fit(g, p.line, '500', 44, 32, right - tx);
-      g.fillText(p.line, tx, 128);
+      fit(g, p.line, '500', 48, 48, right - tx);
+      g.fillText(p.line, tx, 140);
     }
     if (d.code && p.id !== 'band') {
       g.fillStyle = INK;
-      g.font = `600 30px ${FONT}`;
-      const t = `BAND ${d.code}`;
-      g.fillText(t, CW - 40 - g.measureText(t).width, 128);
+      g.font = `600 48px ${FONT}`;
+      const t = `Band ${d.code}`;
+      g.fillText(t, CW - 40 - g.measureText(t).width, 140);
     }
     if (p.body === 'song') this.drawSong(g, d);
     if (p.body === 'results') this.drawResults(g, d);
@@ -433,8 +509,18 @@ export class Panel {
         g.fillText(b, 40, 380);
       } else g.fillText(p.how, 40, 340);
     }
+    this.noPics = p.id === 'instruments';
     p.items.forEach((it) => this.drawItem(g, it));
     this.tex.needsUpdate = true;
+    if (p.id === 'instruments') {
+      const cards = p.items
+        .filter((it) => it.kind === 'card' && it.id.startsWith('inst:'))
+        .map((it) => {
+          const S = it.h * 0.78;
+          return { id: it.id.slice(5), x: ((it.x + 18 + S / 2) / CW - 0.5) * PANEL.w, y: (0.5 - (it.y + it.h / 2) / CH) * PANEL.h };
+        });
+      this.minis.layout(cards, -this.root.rotation.x);
+    } else this.minis.hide();
   }
 
   private drawSong(g: CanvasRenderingContext2D, d: Display): void {
@@ -453,12 +539,12 @@ export class Panel {
       const at = (b: number) => X + ((R - X) * b) / m.beats;
       g.fillStyle = '#34322e';
       g.fillRect(at(m.second[0]), 474, at(m.second[1]) - at(m.second[0]), 14);
-      g.font = `600 32px ${FONT}`;
+      g.font = `600 48px ${FONT}`;
       for (const [a, z] of m.wild) {
         g.fillStyle = '#7a2a1e';
         g.fillRect(at(a), 474, at(z) - at(a), 14);
         g.fillStyle = INK;
-        const t = 'SOLO';
+        const t = 'Solo';
         g.fillText(t, (at(a) + at(z) - g.measureText(t).width) / 2, 458);
       }
     }
@@ -500,26 +586,26 @@ export class Panel {
     const b = d.best;
     if (!b) return;
     // how they split, and your longest run; a chip when you beat your best
-    g.font = `600 40px ${FONT}`;
+    g.font = `600 48px ${FONT}`;
     const parts = [`Perfect ${b.perfect}`, `Good ${b.good}`, b.run >= 4 ? `Best run ${b.run}` : ''].filter(Boolean).join('  ·  ');
     const w = g.measureText(parts).width;
-    const chip = b.better ? 230 : 0;
+    const chip = b.better ? 250 : 0;
     const x = (CW - w - chip) / 2;
     g.fillStyle = SOFT;
     g.fillText(parts, x, 452);
     if (b.better) {
-      rounded(g, x + w + 30, 408, 200, 60, 30);
+      rounded(g, x + w + 30, 400, 220, 72, 36);
       g.fillStyle = ACCENT;
       g.fill();
       g.fillStyle = '#16140f';
-      g.font = `700 32px ${FONT}`;
-      g.fillText('NEW BEST', x + w + 30 + (200 - g.measureText('NEW BEST').width) / 2, 449);
+      g.font = `700 48px ${FONT}`;
+      g.fillText('New best', x + w + 30 + (200 - g.measureText('New best').width) / 2, 455);
     }
   }
 
   /**
-   * A song on the setlist: its name in the grotesque, white, the line after it in grey, stars; the one picked has the
-   * accent bar down its left and a lighter row; a locked one is dim.
+   * A song on the setlist: its name in the grotesque, white, the line under it in grey, stars; the one picked has the
+   * accent bar down its left and a lighter tile; a locked one is dim.
    */
   private drawRow(g: CanvasRenderingContext2D, it: Item): void {
     rounded(g, it.x, it.y, it.w, it.h, 14);
@@ -530,18 +616,17 @@ export class Panel {
       rounded(g, it.x, it.y + 10, 8, it.h - 20, 4);
       g.fill();
     }
+    // a tile: the name, the line under it, the stars along the bottom
     const ink = it.off ? DIMI : INK;
     g.fillStyle = ink;
-    g.textBaseline = 'middle';
-    fit(g, it.label, '600', Math.min(42, it.h * 0.46), 24, 370);
-    g.fillText(it.label, it.x + 30, it.y + it.h / 2 + 1);
+    fit(g, it.label, '600', 56, 48, it.w - 60);
+    g.fillText(it.label, it.x + 30, it.y + 70);
     if (it.sub) {
       g.fillStyle = it.off ? DIMI : SOFT;
-      fit(g, it.sub, '400', 34, 26, it.w - 420 - 190);
-      g.fillText(it.sub, it.x + 420, it.y + it.h / 2 + 1);
+      fit(g, it.sub, '400', 48, 48, it.w - 60);
+      g.fillText(it.sub, it.x + 30, it.y + 132);
     }
-    g.textBaseline = 'alphabetic';
-    if (it.stars !== undefined && !it.off) for (let i = 0; i < 3; i++) star(g, it.x + it.w - 150 + i * 50, it.y + it.h / 2, 17, i < it.stars);
+    if (it.stars !== undefined && !it.off) for (let i = 0; i < 3; i++) star(g, it.x + 58 + i * 64, it.y + it.h - 42, 26, i < it.stars);
   }
 
   private drawItem(g: CanvasRenderingContext2D, it: Item): void {
@@ -550,7 +635,7 @@ export class Panel {
     const accent = ACCENT;
     const r = it.kind === 'chip' || it.kind === 'button' ? 22 : 28;
     rounded(g, it.x, it.y, it.w, it.h, r);
-    g.fillStyle = it.off ? '#111113' : it.on ? '#26262a' : it.kind === 'play' ? '#3a1712' : '#1a1a1d';
+    g.fillStyle = it.off ? '#111113' : it.on ? '#26262a' : it.kind === 'play' ? '#0e2533' : '#1a1a1d';
     g.fill();
     g.lineWidth = it.on ? 8 : 3;
     g.strokeStyle = it.off ? '#1e1e20' : it.on || it.kind === 'play' ? accent : '#38372f';
@@ -558,46 +643,56 @@ export class Panel {
     const ink = it.off ? DIMI : INK;
     g.fillStyle = ink;
     if (it.kind === 'card' || it.icon) {
-      // an instrument, drawn, with its name under it
-      const S = Math.min(it.h * (it.kind === 'card' ? 0.62 : 0.55), it.w * 0.7);
+      // an instrument, pictured, with its name under it (or beside it, on a wide card)
+      const wide = it.kind === 'card' && it.w >= it.h * 1.4;
+      const S = wide ? it.h * 0.78 : Math.min(it.h * (it.kind === 'card' ? 0.62 : 0.55), it.w * 0.7);
       g.save();
-      g.translate(it.x + (it.kind === 'card' ? (it.w - S) / 2 : it.w - S - 24), it.y + (it.kind === 'card' ? 10 : (it.h - S) / 2));
+      g.translate(it.x + (wide ? 18 : it.kind === 'card' ? (it.w - S) / 2 : it.w - S - 24), it.y + (wide ? (it.h - S) / 2 : it.kind === 'card' ? 10 : (it.h - S) / 2));
       g.strokeStyle = it.on ? INK : SOFT;
       g.fillStyle = it.on ? INK : SOFT;
       g.lineWidth = 5;
       g.lineCap = 'round';
       // the instrument itself, pictured (its line drawing until the pictures are made)
-      const pic = it.icon ? thumb(it.icon) : undefined;
+      // (on the Instruments screen the miniatures stand there instead)
+      const pic = it.icon && !(this.noPics && it.kind === 'card') ? thumb(it.icon) : undefined;
       if (pic) g.drawImage(pic, -S * 0.08, -S * 0.08, S * 1.16, S * 1.16);
-      else if (it.icon) ICON[it.icon]?.(g, S);
+      else if (it.icon && !(this.noPics && it.kind === 'card')) ICON[it.icon]?.(g, S);
       g.restore();
       g.fillStyle = ink;
+      if (wide) {
+        fit(g, it.label, '600', 56, 48, it.w - S - 50);
+        g.fillText(it.label, it.x + S + 34, it.y + it.h / 2 + 18);
+        return;
+      }
       if (it.kind === 'card') {
-        fit(g, it.label, '700', Math.min(48, it.h * 0.2), 30, it.w - 16);
+        fit(g, it.label, '600', 52, 48, it.w - 16);
         g.fillText(it.label, it.x + (it.w - g.measureText(it.label).width) / 2, it.y + it.h - 22);
         return;
       }
     }
     if (it.kind === 'big') {
-      fit(g, it.label, '700', 76, 36, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
-      g.fillText(it.label, it.x + 34, it.y + it.h / 2 + 10);
+      fit(g, it.label, '700', 72, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+      g.fillText(it.label, it.x + 34, it.y + it.h / 2 + 4);
       if (it.sub) {
         g.fillStyle = it.off ? DIMI : SOFT;
-        fit(g, it.sub, '500', 40, 30, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
-        g.fillText(it.sub, it.x + 34, it.y + it.h / 2 + 62);
+        fit(g, it.sub, '500', 48, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+        g.fillText(it.sub, it.x + 34, it.y + it.h / 2 + 66);
       }
       return;
     }
     // chip, button, play: the label in the middle (a second line under it)
     const lines = it.label.split('\n');
-    const px = fit(g, lines.reduce((a, b) => (a.length > b.length ? a : b)), '700', it.kind === 'play' ? 72 : 50, 22, it.w - (it.icon ? it.h * 0.7 : 0) - 30);
+    const px = fit(g, lines.reduce((a, b) => (a.length > b.length ? a : b)), '700', it.kind === 'play' ? 72 : 54, 48, it.w - (it.icon ? it.h * 0.7 : 0) - 30);
     const cx = it.x + (it.w - (it.icon ? it.h * 0.55 : 0)) / 2;
-    const top = it.y + it.h / 2 - ((lines.length - 1) * px * 1.1) / 2 + px * 0.35 - (it.sub ? 18 : 0);
-    lines.forEach((t, j) => g.fillText(t, cx - g.measureText(t).width / 2, top + j * px * 1.1));
+    // the block (label lines, then the sub under the last of them) centred in the item
+    const lh = px * 1.1;
+    const subH = it.sub ? 62 : 0;
+    const top = it.y + (it.h - (lines.length - 1) * lh - subH) / 2 + px * 0.35;
+    lines.forEach((t, j) => g.fillText(t, cx - g.measureText(t).width / 2, top + j * lh));
     if (it.sub) {
       g.fillStyle = it.off ? DIMI : SOFT;
-      fit(g, it.sub, '500', 34, 26, it.w - 30);
-      g.fillText(it.sub, cx - g.measureText(it.sub).width / 2, top + 50);
+      fit(g, it.sub, '500', 48, 48, it.w - 30);
+      g.fillText(it.sub, cx - g.measureText(it.sub).width / 2, top + (lines.length - 1) * lh + subH);
     }
   }
 }

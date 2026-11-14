@@ -36,7 +36,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'piano',
     name: 'Piano',
-    how: 'Press keys with your fingertips. The lit pad: a chord',
+    how: 'Press keys with your fingertips. The square on the left plays three at once',
     sounds: [
       { id: 'piano', name: 'Grand', family: 'keys' },
       { id: 'bowl', name: 'Bowl', family: 'bowl' },
@@ -61,7 +61,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'guitar',
     name: 'Guitar',
-    how: 'Pinch the neck for a chord, strum the strings',
+    how: 'Pinch the neck with one hand, sweep the strings with the other',
     sounds: [
       { id: 'nylon', name: 'Nylon', string: 'nylon' },
       { id: 'steel', name: 'Steel', string: 'steel' },
@@ -246,7 +246,7 @@ export function handpanZones(root: number, scale: Scale): Zone[] {
 }
 
 /** Where the guitar's strum band is (x from, x to, z from, z to): over the soundhole, hit or brush down to strum. */
-export const STRUM = { x0: 0.02, x1: 0.2, z0: -0.04, z1: 0.11 } as const;
+export const STRUM = { x0: -0.03, x1: 0.2, z0: -0.04, z1: 0.11 } as const;
 /** The marimba's bars stand on their frame, their tops this high off the desk. */
 export const MARIMBA = { top: 0.07 } as const;
 /** The guitar lying on its back: its top this high off the desk, the strings and the fretboard a little above it. */

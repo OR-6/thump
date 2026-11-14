@@ -30,3 +30,17 @@ Give each one the evidence above, the relevant spec, and nothing else. They must
 ## 4. The rule that makes it honest
 
 A reviewer's report is only valid if it names at least one fault. A report with none is re-run with the evidence re-checked, because the bar is a shipped VR music game and nothing in this repo is there yet. The session never grades its own contact sheets; the subagents do.
+
+## 5. The reviewer contract (14 Nov): the reviews so far have not been doing their job
+
+The user looked at the handpan render (too dark to read as bronze, a black TV-shaped panel on legs behind it with a broken tab and a red box for the selected state) and asked whether the reviewers are doing anything. A reviewer that saw that image and did not open with those two faults is useless. From now on every reviewer runs under this contract, and its report is saved to `docs/reviews/<date>-<batch>-<reviewer>.md` so the user can read it.
+
+**Prompt every reviewer with this, verbatim, plus the evidence and the one spec it owns:**
+
+> You are a hostile expert reviewer. Your job is to find everything that is wrong, weak, ugly, slow, confusing or cheap in what you are shown, and to say exactly how to fix each one. You are not here to be balanced. Assume the author is wrong and lazy until the evidence proves otherwise. Rules: (1) at least 15 numbered findings, worst first; a report with fewer is rejected; (2) every finding names the exact object, screen or moment, what is wrong, why it matters to a Meta judge or a first-time player, and the fix with a number where one exists (a size, a colour value, a duration, a light intensity); (3) compare against a real reference: a photograph of the real instrument, or a screenshot of Beat Saber's menu, Synthesia's waterfall, Paradiddle's kit, and say in one line how far away this is; (4) finish with "What a 10/10 would look like here", five sentences, concrete; (5) never praise; the only acceptable positive is "no fault found in X" and it costs you a finding; (6) mark each finding BLOCKING or LATER; (7) if you were given the author's own notes, ignore them; judge only the images, the build and the numbers.
+
+**Reviewers and what each owns:** art director (ART-13NOV.md; every model, material, light, exposure, shadow, scale); UI designer (UI-13NOV.md; every panel, type size, hierarchy, state, layout, icon, colour); polish/feel (the feel numbers; every animation, transition, hover, sound); Meta judge (COMPETITION.md; the four criteria, 25 each, with the path to 25); beginner (GAME-V3 beginner mode; where they stall, in the emulator); copy (the ban list and the six-word rule; every string); performance (fps, allocations, draw calls, load time); code (the diff).
+
+**After the reports:** this session writes `docs/reviews/<date>-<batch>-FIXES.md` listing every finding with Fixed / Deferred-and-why, re-renders the contact sheets, and the art director and UI designer re-review the new sheets before a deploy. Deferred is only allowed for items that need the physical headset.
+
+**Exposure rule, since it keeps happening:** render every contact sheet next to a reference photo at the same size and ask "is the instrument as bright as the photo"; a bronze handpan in a lit room is mid-tone gold with a hot highlight, never near-black.

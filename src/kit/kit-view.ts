@@ -3,7 +3,8 @@
  * toward the player): the drum pads, the table keys (a slim row of light bars that plays any melody
  * your room has no instrument for), the module at the back, and your hands' shadows on the table.
  */
-import { DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture } from '@iwsdk/core';
+import { DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture, SRGBColorSpace } from '@iwsdk/core';
+import { FONT } from '../ui/fonts.js';
 import { castShadows, contactShadow, shadowCatcher } from '../art/lighting.js';
 import { LANES, PADS, type Lane } from '../config.js';
 import { PadView } from './pad-view.js';
@@ -162,7 +163,7 @@ export class KitView {
     // (only the one that's out shows: the drums put every other model away)
     for (const [k, m] of this.models) m.root.visible = k === id;
     // the display stands just clear of it
-    this.module.standOver(id === 'drums' ? 0.19 : id === 'congas' ? CONGA.top : id === 'piano' ? 0.085 : id === 'marimba' ? MARIMBA.top : id === 'guitar' ? GUITAR.strings : HANDPAN.rim + HANDPAN.dome);
+    this.module.standOver(id === 'drums' ? 0.19 : id === 'congas' ? CONGA.top : id === 'piano' ? 0.105 : id === 'marimba' ? MARIMBA.top : id === 'guitar' ? GUITAR.strings : HANDPAN.rim + HANDPAN.dome);
     if (drums) {
       this.instZones = [];
       this.instShadow.visible = false;
@@ -199,6 +200,36 @@ export class KitView {
     o.group.position.y = id === 'piano' ? KEYBOARD.top + 0.0015 : id === 'marimba' ? MARIMBA.top + 0.001 : id === 'handpan' ? 0.02 : id === 'guitar' ? GUITAR.board + 0.001 : id === 'congas' ? CONGA.top + 0.001 : 0;
     this.unfoldT = 0;
     o.reveal(0, 0.03);
+  }
+  /** The piano's little screen: the name of its sound, in green on the dark glass. */
+  private screen: Mesh | null = null;
+  private screenText = '';
+  pianoScreen(text: string): void {
+    const display = this.models.get('piano')?.root.getObjectByName('Display');
+    if (!display) return;
+    if (!this.screen) {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 60;
+      const t = new CanvasTexture(c);
+      t.colorSpace = SRGBColorSpace;
+      this.screen = new Mesh(new PlaneGeometry(0.056, 0.0131), new MeshBasicMaterial({ map: t, transparent: true, toneMapped: false, depthWrite: false }));
+      this.screen.name = 'Screen';
+      this.screen.rotation.x = -Math.PI / 2;
+      this.screen.position.y = 0.0007;
+    }
+    if (this.screen.parent !== display) display.add(this.screen);
+    if (text === this.screenText) return;
+    this.screenText = text;
+    const t = (this.screen.material as MeshBasicMaterial).map as CanvasTexture;
+    const c = t.image as HTMLCanvasElement;
+    const g = c.getContext('2d')!;
+    g.clearRect(0, 0, 256, 60);
+    g.fillStyle = '#7dffb0';
+    g.font = `600 40px ${FONT}`;
+    g.textBaseline = 'middle';
+    g.fillText(text, 14, 32);
+    t.needsUpdate = true;
   }
   /** The bars were shown (the kit's first bloom): they come back with the drums. */
   private keysShown = false;

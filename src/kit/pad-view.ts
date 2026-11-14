@@ -23,7 +23,6 @@ import { asLight } from '../art/light.js';
 import { DRUM_H, buildDrum, buildHiHat, buildKick, drumStand } from '../scene-assets/lib/drums.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
-import { MARKER, whenFonts } from '../ui/fonts.js';
 import { contactShadow } from '../art/lighting.js';
 
 /** Low on the table: the real wood stops your hand, a centimetre and a half under the head. */
@@ -47,7 +46,7 @@ function buildLane(lane: Lane, size: number): Group {
   return g;
 }
 /** Each drum's lacquer (and the kick's dark front head). */
-const SHELL: Record<Lane, { shell: number; head?: number; throwOff?: boolean; port?: boolean; chromeShell?: boolean }> = { kick: { shell: 0x7a1d14, head: 0x1c1b1f, port: true }, snare: { shell: 0x2a2a30, throwOff: true, chromeShell: true }, hat: { shell: 0 }, tom: { shell: 0x7a1d14 }, gong: { shell: 0x3a2a18 } };
+const SHELL: Record<Lane, { shell: number; head?: number; throwOff?: boolean; port?: boolean; chromeShell?: boolean }> = { kick: { shell: 0x7a1d14, head: 0x1c1b1f, port: true }, snare: { shell: 0x16161a, throwOff: true }, hat: { shell: 0 }, tom: { shell: 0x7a1d14 }, gong: { shell: 0x3a2a18 } };
 const SQUASH_S = 0.14;
 
 /** Each drum's LED colour. */
@@ -111,8 +110,9 @@ export class PadView {
   private hoopMat: MeshStandardMaterial | undefined;
   private led: MeshBasicMaterial;
   private ledGlow: MeshBasicMaterial;
-  private ripple: Mesh;
-  private rippleT = 1;
+  /** Three rings that run out across the head on a hit, 80 ms apart, each fainter. */
+  private ripples: Mesh[] = [];
+  private rippleAge = [9, 9, 9];
   private base = new Color();
   private squashT = 1;
   private squashK = 0;
@@ -125,11 +125,6 @@ export class PadView {
   z = 0;
   lift = 0;
 
-  /**
-   * Paint the band's name on this drum's head in marker, the way bands do on a kick's front head (cream on the dark
-   * head, two lines if it's long). Empty: none.
-   */
-  private nameMesh: Mesh | null = null;
   /** The ring at its foot and its glow on the desk: drawn only while lit. */
   private ledMesh: Mesh | null = null;
   private glowMesh: Mesh | null = null;
@@ -139,46 +134,6 @@ export class PadView {
   private topCymbal: import('@iwsdk/core').Object3D | null = null;
   private wobble = 0;
   private wobbleT = 0;
-  paint(name: string): void {
-    if (!name) {
-      if (this.nameMesh) this.nameMesh.visible = false;
-      return;
-    }
-    const c = document.createElement('canvas');
-    c.width = c.height = 256;
-    const tex = new CanvasTexture(c);
-    tex.colorSpace = SRGBColorSpace;
-    const draw = () => {
-      const g = c.getContext('2d')!;
-      g.clearRect(0, 0, 256, 256);
-      const words = name.split(' ');
-      const lines = name.length > 12 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [name];
-      g.fillStyle = '#efe6cf';
-      g.textBaseline = 'middle';
-      lines.forEach((t, k) => {
-        let px = 54;
-        g.font = `${px}px ${MARKER}`;
-        while (g.measureText(t).width > 190 && px > 22) g.font = `${(px -= 2)}px ${MARKER}`;
-        g.save();
-        g.translate(128, 128 + (k - (lines.length - 1) / 2) * px * 1.05);
-        g.rotate(-0.06);
-        g.fillText(t, -g.measureText(t).width / 2, 0);
-        g.restore();
-      });
-      tex.needsUpdate = true;
-    };
-    draw();
-    whenFonts(draw);
-    if (!this.nameMesh) {
-      this.nameMesh = new Mesh(new PlaneGeometry(this.radius * 1.7, this.radius * 1.7), new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
-      this.nameMesh.name = 'BandName';
-      this.nameMesh.rotation.x = -Math.PI / 2;
-      this.nameMesh.position.y = HEIGHT + 0.0006;
-      this.nameMesh.renderOrder = 3;
-      this.body.add(this.nameMesh);
-    } else (this.nameMesh.material as MeshBasicMaterial).map = tex;
-    this.nameMesh.visible = true;
-  }
 
   constructor(readonly lane: Lane, hc = false) {
     const spec = PADS[lane];
@@ -210,23 +165,28 @@ export class PadView {
     glow.rotation.x = -Math.PI / 2;
     glow.position.y = 0.001;
     glow.renderOrder = 3;
-    // a ripple ring that spreads across the head on a hit
-    this.ripple = new Mesh(new RingGeometry(0.9, 1, 48), asLight(new MeshBasicMaterial({ color: this.base.clone(), transparent: true, opacity: 0, depthWrite: false, toneMapped: false })));
-    this.ripple.rotation.x = -Math.PI / 2;
-    this.ripple.position.y = HEAD_Y[lane] + 0.0008;
-    // (the kick's head faces you: its ripple stands up on it)
-    if (lane === 'kick') {
-      this.ripple.rotation.x = 0;
-      this.ripple.position.set(0, spec.size / 2 + 0.004, KICK_DEPTH / 2 + 0.003);
+    // ripple rings that spread across the head on a hit
+    const ringGeo = new RingGeometry(0.9, 1, 48);
+    for (let k = 0; k < 3; k++) {
+      const rp = new Mesh(ringGeo, asLight(new MeshBasicMaterial({ color: this.base.clone(), transparent: true, opacity: 0, depthWrite: false, toneMapped: false })));
+      rp.rotation.x = -Math.PI / 2;
+      rp.position.y = HEAD_Y[lane] + 0.0008;
+      // (the kick's head faces you: its ripple stands up on it)
+      if (lane === 'kick') {
+        rp.rotation.x = 0;
+        rp.position.set(0, spec.size / 2 + 0.004, KICK_DEPTH / 2 + 0.003);
+      }
+      rp.renderOrder = 4;
+      rp.visible = false;
+      this.ripples.push(rp);
     }
-    this.ripple.renderOrder = 4;
     const shadow = new Mesh(flatPlane(), new MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false }));
     shadow.scale.setScalar(R * 2.8);
     shadow.position.y = 0.0006;
     shadow.renderOrder = 1;
     this.ledMesh = led;
     this.glowMesh = glow;
-    this.group.add(led, glow, this.ripple, shadow);
+    this.group.add(led, glow, ...this.ripples, shadow);
     this.group.visible = false;
   }
 
@@ -256,7 +216,7 @@ export class PadView {
     this.squashT = 0;
     this.squashK = gain;
     this.flash = Math.max(this.flash, 0.4 + 0.6 * gain);
-    this.rippleT = 0;
+    for (let k = 0; k < 3; k++) this.rippleAge[k] = -0.08 * k;
   }
 
   private white = 0;
@@ -298,12 +258,16 @@ export class PadView {
     }
     this.body.scale.setScalar(s);
     this.squashed.scale.set(sxz, sy, sxz);
-    if (this.rippleT < 1) {
-      this.rippleT = Math.min(1, this.rippleT + dt / 0.22);
-      const r = 1 - Math.pow(1 - this.rippleT, 2);
-      this.ripple.scale.setScalar(this.radius * (0.15 + 0.85 * r));
-      (this.ripple.material as MeshBasicMaterial).opacity = 0.6 * (0.4 + 0.6 * this.squashK) * Math.pow(1 - this.rippleT, 2);
-      if (this.lane !== 'kick') this.ripple.position.y = this.headY + 0.0008;
+    for (let k = 0; k < 3; k++) {
+      if (this.rippleAge[k] > 0.15) continue;
+      this.rippleAge[k] += dt;
+      const rp = this.ripples[k];
+      const u = Math.max(0, Math.min(1, this.rippleAge[k] / 0.15));
+      rp.visible = this.rippleAge[k] >= 0 && u < 1;
+      const r = 1 - Math.pow(1 - u, 2);
+      rp.scale.setScalar(this.radius * (0.15 + 0.85 * r));
+      (rp.material as MeshBasicMaterial).opacity = 0.6 * (1 - 0.3 * k) * (0.4 + 0.6 * this.squashK) * Math.pow(1 - u, 2);
+      if (this.lane !== 'kick') rp.position.y = this.headY + 0.0008;
     }
     this.flash = Math.max(0, this.flash - dt * 4);
     this.white = Math.max(0, this.white - dt * 3);

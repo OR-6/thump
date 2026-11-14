@@ -130,6 +130,18 @@ describe('timing judge', () => {
     expect(j.hit('kick', 2 * spb - 0.05)?.grade).toBe('perfect');
   });
 
+  it('a hit no note took, near one: early or late, and by how much', () => {
+    const j = new NoteJudge(notes, spb);
+    const w = j.win.good;
+    // just before the snare's window: early (negative); just after the kick at beat 2 was missed: late
+    expect(j.hit('snare', spb - w - 0.03)).toBeNull();
+    expect(j.near('snare', spb - w - 0.03, 0.25 * spb)).toBeLessThan(0);
+    j.sweep(2 * spb + w + 0.01);
+    expect(j.near('kick', 2 * spb + w + 0.03, 0.25 * spb)).toBeGreaterThan(0);
+    // nowhere near a note on that lane: nothing
+    expect(j.near('kick', spb, 0.25 * spb)).toBeNull();
+  });
+
   it('a note is hit once; the wrong pad does not take it', () => {
     const j = new NoteJudge(notes, spb);
     expect(j.hit('snare', 0)).toBeNull();

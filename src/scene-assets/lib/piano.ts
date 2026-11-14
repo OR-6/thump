@@ -35,6 +35,8 @@ export interface PianoOptions {
   low?: number;
   /** Whole octaves; a final C is added on top. */
   octaves?: number;
+  /** An end panel this wide inside the case to the left of the keys (a stage keyboard's wheels and pads). */
+  left?: number;
 }
 
 export interface PianoParts {
@@ -166,7 +168,12 @@ export function buildPiano(opts: PianoOptions = {}): PianoParts {
     root.add(o);
     return o;
   };
-  block('Bed', satin, width + 2 * cheekW, caseH, depth, 0, caseH / 2, -depth / 2 + 0.012);
+  // (an end panel to the left widens the case: everything spans it, the left cheek outside it)
+  const L = opts.left ?? 0;
+  const cw = width + L;
+  const ccx = -L / 2;
+  block('Bed', satin, cw + 2 * cheekW, caseH, depth, ccx, caseH / 2, -depth / 2 + 0.012);
+  if (L > 0) block('EndPanel', satin, L, KEY.top - 0.004, depth - 0.012, -width / 2 - L / 2, (KEY.top - 0.004) / 2, -depth / 2 + 0.018);
   // the cheeks: walnut, as tall as the keys at the front, rising to the panel at the back
   const backH = 0.095;
   for (const side of [-1, 1]) {
@@ -183,7 +190,7 @@ export function buildPiano(opts: PianoOptions = {}): PianoParts {
     g.translate(0, 0, -cheekW / 2);
     g.rotateY(Math.PI / 2);
     const cheek = named(new Mesh(g, walnut), side < 0 ? 'CheekL' : 'CheekR');
-    cheek.position.set(side * (width / 2 + cheekW / 2), 0, 0.012);
+    cheek.position.set(side < 0 ? -width / 2 - L - cheekW / 2 : width / 2 + cheekW / 2, 0, 0.012);
     cheek.castShadow = true;
     cheek.receiveShadow = true;
     root.add(cheek);
@@ -192,15 +199,15 @@ export function buildPiano(opts: PianoOptions = {}): PianoParts {
   // the fallboard: a gloss strip just behind the keys, the felt along its front, a shadow line under it
   const fallD = 0.03;
   const fallZ = -(KEY.length + 0.002) - fallD / 2;
-  block('Fallboard', gloss, width, KEY.top + 0.012, fallD, 0, (KEY.top + 0.012) / 2, fallZ);
+  block('Fallboard', gloss, cw, KEY.top + 0.012, fallD, ccx, (KEY.top + 0.012) / 2, fallZ);
   const strip = named(new Mesh(new BoxGeometry(width, 0.004, 0.003), felt()), 'Felt');
   strip.position.set(0, KEY.top + 0.001, -KEY.length - 0.002);
   root.add(strip);
   // the control panel: brushed aluminium on a sloped satin back, rising to the cheeks' height
   const panD = depth - KEY.length - 0.014 - fallD;
   const panZ = fallZ - fallD / 2 - panD / 2;
-  block('Back', satin, width, backH - 0.004, panD, 0, (backH - 0.004) / 2, panZ);
-  const face = block('ControlPanel', brushed, width - 0.01, 0.003, panD - 0.012, 0, backH - 0.002, panZ);
+  block('Back', satin, cw, backH - 0.004, panD, ccx, (backH - 0.004) / 2, panZ);
+  const face = block('ControlPanel', brushed, cw - 0.01, 0.003, panD - 0.012, ccx, backH - 0.002, panZ);
   void face;
   const knob = new CylinderGeometry(0.006, 0.0065, 0.01, 24);
   const knobMat = new MeshStandardMaterial({ name: 'Knob', color: 0x1a1a1c, roughness: 0.4 });

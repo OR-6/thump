@@ -60,7 +60,10 @@ export function buildDrum(d: number, look: DrumLook): Group {
   const shell = named(new Mesh(new LatheGeometry(shellPts, 72), shellMat), 'Shell');
   // the head: coated, a slight crown, worn grey where the sticks land (the kick's is dark, with a port)
   const dark = look.head !== undefined;
-  const headMat = new MeshStandardMaterial({ name: 'Head', color: look.head ?? 0xe6e0d2, map: dark ? null : headCoat(), normalMap: fineNormal(5, 14), roughness: dark ? 0.6 : 0.8 });
+  // (a dark resonant head is a glossy film: it carries the room's reflections, not a matte hole)
+  const headMat = dark
+    ? new MeshPhysicalMaterial({ name: 'Head', color: look.head, normalMap: fineNormal(5, 14), roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.12 })
+    : new MeshStandardMaterial({ name: 'Head', color: 0xe6e0d2, map: headCoat(), normalMap: fineNormal(5, 14), roughness: 0.8 });
   const head = named(new Mesh(new CylinderGeometry(R * 0.985, R * 0.985, 0.0012, 72), headMat), 'Head');
   head.position.y = DRUM_H - 0.0016;
   // (top-face uvs for the wear: a cylinder's cap maps its circle to the texture)
@@ -129,7 +132,13 @@ function cymbal(d: number, mat: MeshStandardMaterial, name: string): Mesh {
     new Vector2(R * 0.2, 0.0041),
     new Vector2(0.0012, 0.0041),
   ];
-  return named(new Mesh(new LatheGeometry(pts, 72), mat), name);
+  const geo = new LatheGeometry(pts, 72);
+  // (the lathe's v runs along the profile's points; the rings want it to run out from the centre)
+  const pos = geo.attributes.position;
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setY(i, Math.min(1, Math.hypot(pos.getX(i), pos.getZ(i)) / R));
+  uv.needsUpdate = true;
+  return named(new Mesh(geo, mat), name);
 }
 
 /**
@@ -139,23 +148,24 @@ function cymbal(d: number, mat: MeshStandardMaterial, name: string): Mesh {
 export function buildHiHat(d: number, height = DRUM_H + 0.004): Group {
   const g = named(new Group(), 'HiHat');
   const rings = cymbalRings();
-  const mat = new MeshStandardMaterial({ name: 'Bronze', color: 0xd8a85a, map: rings.map, roughnessMap: rings.rough, metalness: 1, roughness: 1 });
+  const mat = new MeshStandardMaterial({ name: 'Bronze', color: 0xe2bf78, map: rings.map, roughnessMap: rings.rough, metalness: 0.7, roughness: 0.9 });
   const rodMat = chrome();
   const H = height;
   const rod = named(new Mesh(new CylinderGeometry(0.0022, 0.0022, H + 0.014, 12), rodMat), 'Rod');
   rod.position.y = (H + 0.014) / 2;
   const legs = named(new Group(), 'Legs');
   legs.add(tripod(Math.min(0.06, H * 0.45), rodMat));
+  // (the cymbals and the clutch as one, pivoting where they sit: a hit moves them, not the stand)
+  const cymbals = named(new Group(), 'Cymbals');
+  cymbals.position.y = H;
   const bottom = cymbal(d, mat, 'Bottom');
-  bottom.position.y = H - 0.004;
+  bottom.position.y = -0.004;
   // the top cymbal hangs face down over it, a centimetre up, tipped toward you
   const top = cymbal(d, mat, 'Top');
   top.rotation.set(Math.PI - 0.035, 0, 0.02);
-  top.position.y = H + 0.006;
+  top.position.y = 0.006;
   const clutch = named(new Mesh(new CylinderGeometry(0.0038, 0.0038, 0.005, 14), rodMat), 'Clutch');
-  clutch.position.y = H + 0.0095;
-  // (the cymbals and the clutch as one: a hit moves them, not the stand)
-  const cymbals = named(new Group(), 'Cymbals');
+  clutch.position.y = 0.0095;
   cymbals.add(bottom, top, clutch);
   g.add(legs, rod, cymbals);
   return g;

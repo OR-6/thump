@@ -49,3 +49,17 @@ Given only the contact sheets and the live build's screenshots, names every plac
 2. The drum kit rebuilt to the brief, with sticks and hit animation. Contact sheets. Deploy.
 3. The keys rebuilt to the brief. The setlist and the stand. Contact sheets. Deploy. Art director round.
 4. The marimba. Then every new instrument to the same bar.
+
+## Piano, second pass (14 Nov): the user says it looks basic. He is right.
+
+A black box with keys is a toy. A premium keyboard is premium because of edges, materials and detail. Reference: a stage piano (Nord Stage, Yamaha CP88, Roland RD-2000) or the keyboard end of a grand (fallboard, curved cheek blocks). Do all of these:
+
+1. **Edges.** Every case edge gets a real chamfer or 3 mm fillet (ExtrudeGeometry with bevel, or RoundedBoxGeometry). Sharp box edges catch no light; that is most of why it reads as flat.
+2. **Materials with variety.** Walnut or ash **end cheeks** with visible grain and a satin clearcoat; a **brushed-aluminium top panel** behind the keys with a faint anisotropic sheen (a directional roughness map); a **satin black** case body, not gloss everywhere; **rubber feet**; a **gloss black fallboard strip** above the keys that reflects the environment. Four materials minimum on the case.
+3. **Control panel** behind the keys (stage-piano style): a row of six small knobs with pointer marks, two faders, a small dark display with one line of real text (the sound name), a backlit power dot, two pitch and mod wheels at the left end sunk into the panel. All of it decorative but modelled, 8 to 12 mm tall, with their own shadows. No brand, no logo.
+4. **Keys that read as ivory and ebony.** White keys: a very faint warm ivory tint with a slight gloss, the front face with a 1 mm rounded top edge, and **ambient occlusion** between keys and under the fallboard (a dark gradient strip 6 mm wide where the keys disappear under the fallboard, and a 0.3 mm dark line in every gap); black keys: satin, with a 1 mm chamfer on the top edges and the sloped front. AO is the single biggest realism win on a keyboard.
+5. **Lighting with contrast.** The environment must have bright patches (the procedural room needs two or three large bright rectangles like windows and a softbox) so gloss surfaces show reflections; a rim light from behind-above traces the top edges; the key light casts the black keys' shadows onto the whites.
+6. **Proportions.** The case is deeper than the keys (26 to 30 cm) with the control panel on the back third, the keybed sunk 8 mm into it, the key slip in front standing 10 mm above the desk, overall height at the back 9 to 10 cm.
+7. **Life.** A pressed key's neighbours do not move; the pressed key dips at the front and the white key's shadow on the keybed shortens; the display shows the note names as they are played; the power dot breathes slowly.
+
+Judge it with the art director against a photo of a stage piano from the seated view before calling it done.

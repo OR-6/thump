@@ -67,7 +67,8 @@ export class PianoModel implements DeskModel {
   private readonly lacquer = new MeshPhysicalMaterial({ name: 'Lacquer', color: 0x0c0c0e, roughness: 0.32, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.08 });
   private readonly satin = new MeshStandardMaterial({ name: 'Satin', color: 0x111113, roughness: 0.55 });
   private readonly wheelMat = new MeshStandardMaterial({ name: 'Wheel', color: 0x1c1c1f, roughness: 0.6 });
-  private readonly padMat = new MeshStandardMaterial({ name: 'ChordPad', color: 0x2a2a2e, roughness: 0.5, emissive: 0xffe6b8, emissiveIntensity: 0.25 });
+  private readonly padMat = new MeshStandardMaterial({ name: 'ChordPad', color: 0x2a2a2e, roughness: 0.5, emissive: 0xffe6b8, emissiveIntensity: 0 });
+  private padGlow = 0;
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -75,21 +76,21 @@ export class PianoModel implements DeskModel {
     this.blacks = [];
     const whites = zones.filter((q) => q.i < PIANO_CHORD);
     if (!whites.length) return;
-    const parts = buildPiano({ low: 48, octaves: 2 });
-    // its centre where the zones' keys are centred; its front edge at the zones' front
+    // its centre where the zones' keys are centred; its front edge at the zones' front; the case takes in the end
+    // panel to the left of the keys, out to just past the chord pad
     const cx = (whites[0].x + whites[whites.length - 1].x) / 2;
+    const chord = zones.find((q) => q.i === PIANO_CHORD);
+    const keysLeft = cx - (whites.length * KEYBOARD.pitch) / 2;
+    const left = chord ? Math.max(0, keysLeft - (chord.x - chord.w * 1.1)) : 0;
+    const parts = buildPiano({ low: 48, octaves: 2, left });
     parts.root.position.set(cx, 0, -KEYBOARD.front);
     this.root.add(parts.root);
     const mids = [...parts.keys.keys()].sort((a, b) => a - b);
     for (const m of mids) (isBlack(m) ? this.blacks : this.keys).push(parts.keys.get(m)!);
-    // the left end panel, as on a stage keyboard: pitch and mod wheels at the back, and in front of them the chord
-    // pad, a backlit square that plays a chord
-    const chord = zones.find((q) => q.i === PIANO_CHORD);
+    // on the end panel, as on a stage keyboard: pitch and mod wheels at the back, and in front of them the chord
+    // pad, a square that lights when it plays a chord
     if (chord) {
       const podH = KEYBOARD.top - 0.004;
-      const pod = named(new Mesh(new BoxGeometry(chord.w * 2 + 0.018, podH, 0.17), this.satin), 'EndPanel');
-      pod.position.set(chord.x, podH / 2, -chord.z - 0.035);
-      this.root.add(pod);
       const wheel = new CylinderGeometry(0.02, 0.02, 0.009, 32);
       for (const dx of [-0.011, 0.011]) {
         const w = named(new Mesh(wheel, this.wheelMat), 'Wheel');
@@ -108,6 +109,7 @@ export class PianoModel implements DeskModel {
   /** Key i (the white keys; 15 the chord button; 30 and up the black keys) goes down. */
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.35 + 0.3 * gain);
+    if (i === PIANO_CHORD) this.padGlow = 0.6 + 0.6 * gain;
   }
 
   update(dt: number): void {
@@ -117,6 +119,11 @@ export class PianoModel implements DeskModel {
     for (let i = 0; i < this.keys.length; i++) press(this.keys[i], this.spring.x[i]);
     for (let j = 0; j < this.blacks.length; j++) press(this.blacks[j], this.spring.x[30 + j]);
     if (this.button) this.button.position.y = this.buttonY + Math.max(-0.004, Math.min(0, this.spring.x[PIANO_CHORD]));
+    // (it lights as it plays, 80 ms in, out over a quarter second)
+    if (this.padGlow > 0) {
+      this.padGlow = Math.max(0, this.padGlow - dt * 4);
+      this.padMat.emissiveIntensity = this.padGlow;
+    }
   }
 }
 
@@ -162,8 +169,8 @@ export class GuitarModel implements DeskModel {
   })();
   private readonly side = new MeshPhysicalMaterial({ name: 'Mahogany', color: 0x5a2c16, map: woodGrain(63), roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.15 });
   private readonly rosewood = mat('Rosewood', 0x2e1810, 0.5);
-  private readonly bronze = mat('Bronze', 0xb89a6a, 0.35, 1);
-  private readonly steel = mat('Steel', 0xd8d6d0, 0.25, 1);
+  private readonly bronze = mat('Bronze', 0xb89a6a, 0.18, 1);
+  private readonly steel = mat('Steel', 0xd8d6d0, 0.18, 1);
   private readonly chrome = mat('Chrome', 0xe2e5ea, 0.16, 1);
   private readonly bone = mat('Bone', 0xeee6d2, 0.4);
   private readonly cream = mat('Binding', 0xefe6d0, 0.35);
@@ -186,7 +193,8 @@ export class GuitarModel implements DeskModel {
     const bx0 = strs[0].x - strs[0].w / 2 - 0.02;
     const bx1 = strs[0].x + strs[0].w / 2 + 0.03;
     const len = bx1 - bx0;
-    const wid = 0.2;
+    // (a body about 0.78 as wide as it is long, like a dreadnought's)
+    const wid = Math.min(0.215, len * 0.78);
     const cx = (bx0 + bx1) / 2;
     // the body: spruce top and back on mahogany sides
     const shape = guitarShape(len, wid);
@@ -289,8 +297,8 @@ export class GuitarModel implements DeskModel {
     this.neck.add(head);
     // six strings from the bridge to the nut: the low three wound bronze, the high three plain steel
     strs.forEach((q, i) => {
-      const r = 0.0009 - i * 0.00009;
-      const s = named(new Mesh(new CylinderGeometry(r, r, brx - nx0, 6), i < 3 ? this.bronze : this.steel), `String${i}`);
+      const r = 0.001 - i * 0.00008;
+      const s = named(new Mesh(new CylinderGeometry(r, r, brx - nx0, 8), i < 3 ? this.bronze : this.steel), `String${i}`);
       s.rotation.z = Math.PI / 2;
       s.position.set((brx + nx0) / 2, GUITAR.strings, -(zc + (i - 2.5) * 0.009));
       this.neck.add(s);
@@ -313,7 +321,7 @@ export class GuitarModel implements DeskModel {
     for (let i = 0; i < this.pads.length; i++) {
       this.padK[i] *= Math.exp(-dt * 9);
       const m = this.pads[i];
-      m.position.y = GUITAR.board + 0.0004 - 0.002 * this.padK[i];
+      m.position.y = GUITAR.board + 0.0004 - 0.0003 * this.padK[i];
       (m.material as MeshBasicMaterial).opacity = this.padK[i] * 0.8;
     }
     // strummed strings blur: a fast shimmer across, dying away
@@ -430,15 +438,17 @@ export class MarimbaModel implements DeskModel {
   private readonly wood = (() => {
     const map = woodGrain(41).clone();
     map.needsUpdate = true;
-    map.repeat.set(18, 5);
+    // (the bars' uvs are in metres: one stretch of grain along each bar, not a quilt of tiles)
+    map.repeat.set(7, 7);
     map.rotation = Math.PI / 2;
     return new MeshPhysicalMaterial({ name: 'Rosewood', color: 0x5e2a1a, map, roughness: 0.38, clearcoat: 0.5, clearcoatRoughness: 0.22 });
   })();
-  private readonly frame = new MeshPhysicalMaterial({ name: 'Frame', color: 0x3b2416, map: woodGrain(43), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.3 });
+  private readonly frame = new MeshPhysicalMaterial({ name: 'Frame', color: 0x6b4a2e, map: woodGrain(43), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.3 });
+  private readonly yarn = new MeshStandardMaterial({ name: 'Yarn', color: 0x2c3a5c, normalMap: fineNormal(9, 30), roughness: 0.95 });
+  private readonly birch = mat('Birch', 0xd9b98a, 0.5);
   private readonly cord = mat('Cord', 0x26211c, 0.9);
   private readonly brass = mat('Brass', 0xc8a050, 0.3, 1);
   private readonly chrome = mat('Chrome', 0xe2e5ea, 0.16, 1);
-  private readonly gold = mat('Anodised', 0xb8955a, 0.3, 1);
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -487,8 +497,8 @@ export class MarimbaModel implements DeskModel {
       tr.lineTo(wTop / 2, H);
       tr.lineTo(-wTop / 2, H);
       tr.lineTo(-wTop / 2 - 0.02, 0);
-      const g = new ExtrudeGeometry(tr, { depth: 0.016, bevelEnabled: true, bevelSize: 0.0015, bevelThickness: 0.0015, bevelSegments: 2 });
-      g.translate(0, 0, -0.008);
+      const g = new ExtrudeGeometry(tr, { depth: 0.01, bevelEnabled: true, bevelSize: 0.0015, bevelThickness: 0.0015, bevelSegments: 2 });
+      g.translate(0, 0, -0.005);
       const end = named(new Mesh(g, this.frame), 'End');
       end.rotation.y = Math.PI / 2;
       end.position.set(sx, 0, -zc);
@@ -515,15 +525,31 @@ export class MarimbaModel implements DeskModel {
       const bar = named(new Mesh(g, this.wood), `Bar${i}`);
       bar.position.set(q.x, this.barY, -q.z);
       this.bars.push(bar);
-      // its resonator: a chrome tube lying behind it, longer for the low bars, capped
-      // its resonator hangs under it: longer and wider under the low bars, gold
+      // its resonator hangs under it, chrome: from just under the rails down to a centimetre off the desk under the
+      // low bars, shorter and narrower under the high ones
       const k = i / Math.max(1, zones.length - 1);
-      const tl = 0.034 - 0.016 * k;
-      const tr = 0.011 - 0.003 * k;
-      const tube = named(new Mesh(new CylinderGeometry(tr, tr, tl, 20, 1, true), this.gold), `Resonator${i}`);
-      tube.position.set(q.x, MARIMBA.top - 0.03 - tl / 2, -q.z);
-      this.root.add(bar, tube);
+      const top = MARIMBA.top - 0.025;
+      const tl = top - 0.01 - 0.012 * k;
+      const tr = 0.016 - 0.004 * k;
+      const tube = named(new Mesh(new CylinderGeometry(tr, tr, tl, 24, 1, true), this.chrome), `Resonator${i}`);
+      tube.position.set(q.x, top - tl / 2, -q.z);
+      const cap = named(new Mesh(new CylinderGeometry(tr, tr, 0.0015, 24), this.chrome), 'Cap');
+      cap.position.set(q.x, top - tl, -q.z);
+      this.root.add(bar, tube, cap);
     });
+    // its two mallets, lying beside it: birch handles, wound yarn heads
+    for (const dx of [0.02, 0.038]) {
+      const m = named(new Group(), 'Mallet');
+      const handle = new Mesh(new CylinderGeometry(0.0028, 0.0028, 0.2, 10), this.birch);
+      handle.rotation.x = Math.PI / 2;
+      const head = new Mesh(new SphereGeometry(0.0125, 20, 14), this.yarn);
+      head.scale.set(1, 0.92, 1.08);
+      head.position.z = -0.105;
+      m.add(handle, head);
+      m.position.set(x1 + dx, 0.0125, -zc + 0.01);
+      m.rotation.y = dx > 0.03 ? -0.06 : 0.04;
+      this.root.add(m);
+    }
   }
 
   struck(i: number, gain: number): void {
@@ -563,7 +589,8 @@ export class CongaModel implements DeskModel {
   private readonly stripe = mat('Stripe', 0x2a140a, 0.4, 0.05);
   private readonly crown = mat('Crown', 0x1d1d20, 0.35, 0.8);
   private readonly lug = mat('Lug', 0xcfd3d8, 0.2, 1);
-  /** The heads' height: a conga's barrel, cut down to a desk, still a barrel (12 cm). */
+  private readonly wrapHide = mat('HideEdge', 0xa88456, 0.8);
+  /** The heads' height: a conga's barrel, cut down to a desk, still a barrel (22 cm). */
   static readonly H = CONGA.top;
 
   layout(zones: readonly Zone[]): void {
@@ -576,11 +603,11 @@ export class CongaModel implements DeskModel {
       const R = zones[d * 2 + 1].w;
       const drum = named(new Group(), d === 0 ? 'Tumba' : 'Quinto');
       drum.position.set(inner.x, 0, -inner.z);
-      // the shell: a conga's barrel, narrow at the foot, swelling to its belly two fifths up, in to the head
+      // the shell: a conga's barrel, narrow at the foot, swelling to its belly a third of the way up, in to the head
       const rAt = (y: number) => {
         const t = Math.max(0, Math.min(1, y / (H - 0.004)));
-        // (foot 0.78, belly 1.05 a third of the way up, in to the head)
-        return R * (0.78 + 0.27 * Math.sin(Math.PI * Math.min(1, Math.pow(t, 0.55) * 0.85)) + 0.12 * t);
+        // (foot 0.6, belly 1.1 at 0.35, the head 1.0)
+        return R * (t < 0.35 ? 0.6 + 0.5 * Math.sin((Math.PI / 2) * (t / 0.35)) : 1.1 - 0.1 * Math.pow((t - 0.35) / 0.65, 2));
       };
       const pts: Vector2[] = [];
       for (let k = 0; k <= 16; k++) pts.push(new Vector2(rAt((k / 16) * (H - 0.004)), (k / 16) * (H - 0.004)));
@@ -607,29 +634,35 @@ export class CongaModel implements DeskModel {
         }
       }
       // the head: rawhide, the low drum a shade darker, its own material so it can glow
-      const hide = new MeshStandardMaterial({ name: 'Rawhide', color: d === 0 ? 0xe2c79a : 0xe8d0a6, roughness: 0.82 });
+      const hide = new MeshStandardMaterial({ name: 'Rawhide', color: d === 0 ? 0xd9bd8c : 0xdfc497, roughness: 0.82 });
       const head = named(new Mesh(new CylinderGeometry(R * 0.985, R * 0.985, 0.002, 48), hide), 'Head');
       head.position.y = H - 0.002;
+      // (where the hide wraps over the edge it's darker: a centimetre band round it)
+      const wrap = named(new Mesh(new RingGeometry(R * 0.985 - 0.01, R * 0.985, 48), this.wrapHide), 'HideEdge');
+      wrap.rotation.x = -Math.PI / 2;
+      wrap.position.y = 0.0011;
+      head.add(wrap);
       // the slap zone: nothing painted on the hide; a ring of light that shows only when the edge is played
       const ringMat = new MeshBasicMaterial({ name: 'Edge', color: 0xfff0c0, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
       const ring = named(new Mesh(new RingGeometry(inner.w, R * 0.96, 48), ringMat), 'EdgeLight');
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = H - 0.0008;
       // the crown hoop: a black rolled rim over the head's edge
-      const crown = named(new Mesh(new TorusGeometry(R * 1.0, 0.0028, 10, 56), this.crown), 'Crown');
+      const crown = named(new Mesh(new TorusGeometry(R * 1.0, 0.004, 10, 56), this.crown), 'Crown');
       crown.rotation.x = -Math.PI / 2;
       crown.position.y = H - 0.0005;
       // side plates and lugs: four on the low drum, four on the high, each a plate on the shell with a rod to the rim
       const lugs = named(new Group(), 'Lugs');
-      const plate = new BoxGeometry(0.006, 0.01, 0.0016);
-      const rod = new CylinderGeometry(0.001, 0.001, H * 0.16, 8);
+      // (chrome side plates 35 mm tall, each with its rod up to the crown)
+      const plate = new BoxGeometry(0.0016, 0.035, 0.008);
+      const rod = new CylinderGeometry(0.0011, 0.0011, 0.02, 8);
       for (let i = 0; i < 6; i++) {
         const a = ((i + 0.5) / 6) * Math.PI * 2;
         const l = named(new Group(), `Lug${i}`);
         const p = new Mesh(plate, this.lug);
-        p.position.set(rAt(H * 0.78) + 0.0012, H * 0.78, 0);
+        p.position.set(rAt(H * 0.7) + 0.0012, H * 0.7, 0);
         const r = new Mesh(rod, this.lug);
-        r.position.set(rAt(H * 0.9) + 0.0014, H * 0.9, 0);
+        r.position.set(rAt(H - 0.015) + 0.0016, H - 0.013, 0);
         l.add(p, r);
         l.rotation.y = a;
         lugs.add(l);
@@ -645,7 +678,7 @@ export class CongaModel implements DeskModel {
 
   struck(i: number, gain: number): void {
     const d = i >> 1;
-    this.spring.kick(d, 0.06 + 0.12 * gain);
+    this.spring.kick(d, 0.12 + 0.2 * gain);
     this.glow[i & 3] = 0.5 + 0.6 * gain;
   }
 
@@ -653,7 +686,7 @@ export class CongaModel implements DeskModel {
     this.spring.step(dt, 1800, 30);
     this.heads.forEach((h, d) => {
       // the head gives under the hand and comes back
-      h.position.y = CongaModel.H - 0.002 + Math.max(-0.003, Math.min(0, this.spring.x[d] * 0.05));
+      h.position.y = CongaModel.H - 0.002 + Math.max(-0.003, Math.min(0, this.spring.x[d]));
       const open = (this.glow[d * 2] = Math.max(0, this.glow[d * 2] - dt * 6));
       const slap = (this.glow[d * 2 + 1] = Math.max(0, this.glow[d * 2 + 1] - dt * 8));
       (h.material as MeshStandardMaterial).emissive.setHex(0xffb060).multiplyScalar(open * 0.5);

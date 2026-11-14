@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Contact sheets for the art standard (docs/ART-13NOV.md): each instrument on the desk in the emulator, from the
- * seated view (eyes 40 cm over the desk, 45 cm back from the instrument) and a quarter view, saved under
+ * seated view (eyes 42 cm over the desk, 34 cm back from the instrument, as in play) and a quarter view, saved under
  * docs/art/<instrument>/seated.png and quarter.png. Run with the dev server up: node tools/art-sheet.mjs [ids...]
  */
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
@@ -17,11 +17,11 @@ const view = (name, eye, at) => {
   xr('set-transform', { device: 'headset', position: { x: eye[0], y: eye[1], z: eye[2] } });
   xr('look-at', { device: 'headset', target: { x: at[0], y: at[1], z: at[2] } });
   execFileSync('npx', ['@iwsdk/cli', 'browser', 'run', 'tools/shot-hd.mjs']);
-  // the middle of the headset view, 16:9 (about what a seated head takes in)
-  execFileSync('ffmpeg', ['-v', 'quiet', '-y', '-i', 'artifacts/shot-hd.png', '-vf', 'crop=ih*16/9:ih', name]);
+  // the middle of the headset view, 16:9 (about what a seated head takes in), above the emulator's own floor marker
+  execFileSync('ffmpeg', ['-v', 'quiet', '-y', '-i', 'artifacts/shot-hd.png', '-vf', 'crop=ih*0.74*16/9:ih*0.74:(iw-ih*0.74*16/9)/2:0', name]);
 };
 
-await goto('debug=1');
+await goto('debug=1&shots=1');
 const s = await placeKit();
 const k = s.debug.kitOrigin;
 await slap(await measureHand(), [k[0] + 0.06, DESK_Y, k[2]]);
@@ -34,7 +34,8 @@ for (const id of ids) {
   await wait(1500);
   mkdirSync(`docs/art/${id}`, { recursive: true });
   const at = [k[0], DESK_Y + 0.01, k[2] - 0.03];
-  view(`docs/art/${id}/seated.png`, [k[0], DESK_Y + 0.4, k[2] + 0.45], at);
+  // (where you sit in play: eyes 42 cm over the desk, the instrument's centre 34 cm ahead)
+  view(`docs/art/${id}/seated.png`, [k[0], DESK_Y + 0.42, k[2] + 0.34], at);
   view(`docs/art/${id}/quarter.png`, [k[0] + 0.32, DESK_Y + 0.28, k[2] + 0.3], at);
   console.log(`${id}: docs/art/${id}/seated.png, quarter.png`);
 }

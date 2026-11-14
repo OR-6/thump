@@ -105,7 +105,7 @@ describe('the game', () => {
       g.tick(t);
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t + 0.004, 0.8));
       if (g.display.line === 'Solo!') sawFill = true;
-      if (g.display.line === 'No lights now') sawHold = true;
+      if (g.display.line === 'No lights: keep going') sawHold = true;
     }
     expect(g.mode).toBe('results');
     expect(sawFill && sawHold).toBe(true);
@@ -117,7 +117,7 @@ describe('the game', () => {
     for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
     g.tick((t += 1.6));
     expect(g.display.line).toMatch(/: \d+%$/);
-    expect(g.display.sub).toMatch(/On time \d+%|ahead|behind|Loose/);
+    expect(g.display.sub).toMatch(/on the beat|ahead|behind|Listen first/);
     expect(g.display.stars).toBe(3);
     // the machine played under it: the parts you don't play live (perc, keys, bass), never the ones you do
     expect(voiced.slice(before, songEnd).some((k) => k.startsWith('keys:'))).toBe(true);

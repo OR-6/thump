@@ -32,8 +32,8 @@ describe('the panel pages', () => {
   });
   it("an instrument's settings: its scales, its sounds, an octave down or up", () => {
     const p = buildPage(base('inst'));
-    expect(p.items.filter((i) => i.id.startsWith('scale:')).map((i) => i.label)).toEqual(['HAPPY', 'SAD', 'BLUESY', 'DREAMY']);
-    expect(p.items.find((i) => i.id.startsWith('scale:') && i.on)?.label).toBe('HAPPY');
+    expect(p.items.filter((i) => i.id.startsWith('scale:')).map((i) => i.label)).toEqual(['Happy', 'Sad', 'Bluesy', 'Dreamy']);
+    expect(p.items.find((i) => i.id.startsWith('scale:') && i.on)?.label).toBe('Happy');
     expect(p.items.find((i) => i.id === 'sound:piano')?.on).toBe(true);
     expect(p.items.some((i) => i.id === 'oct:+1')).toBe(true);
   });
@@ -41,7 +41,7 @@ describe('the panel pages', () => {
     const p = buildPage(base('songs'));
     expect(p.items.find((i) => i.id === 'song:1')?.off).toBe(true);
     expect(p.items.find((i) => i.id === 'song:0')?.stars).toBe(2);
-    expect(p.items.find((i) => i.id === 'level:easy')?.on).toBe(true);
+    expect(p.items.find((i) => i.id === 'level')?.label).toBe('Easy');
     expect(p.items.some((i) => i.id === 'play')).toBe(true);
   });
   it('in a song: switch instrument, or stop', () => {
@@ -50,14 +50,14 @@ describe('the panel pages', () => {
     expect(p.body).toBe('song');
   });
   it('results: three stars on Easy and AGAIN goes up to Normal', () => {
-    expect(buildPage({ ...base('results'), harder: 'NORMAL' }).items.find((i) => i.id === 'again')?.label).toBe('AGAIN ON\nNORMAL');
-    expect(buildPage(base('results')).items.find((i) => i.id === 'again')?.label).toBe('AGAIN');
+    expect(buildPage({ ...base('results'), harder: 'NORMAL' }).items.find((i) => i.id === 'again')?.label).toBe('Again on\nnormal');
+    expect(buildPage(base('results')).items.find((i) => i.id === 'again')?.label).toBe('Again');
   });
   it('nothing on any page overlaps, and everything is on the panel', () => {
     for (const id of ['main', 'instruments', 'inst', 'songs', 'band', 'settings', 'free', 'build', 'song', 'results'] as PageId[]) {
       const items = buildPage(base(id)).items;
       for (const a of items) {
-        expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 800).toBe(true);
+        expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);
         for (const b of items) if (a !== b) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
       }
     }

@@ -54,9 +54,10 @@ export class Waterfall {
   }
 
   /**
-   * Draw the notes. `q` is the desk's orientation (notes fall along its up), `resolve` finds a key's target.
+   * Draw the notes. `q` is the desk's orientation (notes fall along its up), `resolve` finds a key's target. During the
+   * count-in (`countIn` 4, 3, 2, 1) the beams light from the bottom up, a quarter more each beat, brighter.
    */
-  update(notes: readonly MoteView[], count: number, q: Quaternion, resolve: (key: string, at: Vector3, col: Color, t: NoteTarget) => boolean): void {
+  update(notes: readonly MoteView[], count: number, q: Quaternion, resolve: (key: string, at: Vector3, col: Color, t: NoteTarget) => boolean, countIn = 0): void {
     let ns = 0;
     let nd = 0;
     let nb = 0;
@@ -98,11 +99,13 @@ export class Waterfall {
       }
       // a faint beam above it, down which it falls
       if (n.ahead > 0.1 && nb < MAX) {
-        const len = SHOW_BEATS * FALL_PER_BEAT - h;
+        const full = SHOW_BEATS * FALL_PER_BEAT - h;
+        const fill = countIn > 0 ? Math.min(1, (5 - countIn) / 4) : 1;
+        const len = full * fill;
         if (len > 0.01) {
           _m.compose(at.addScaledVector(_up, len / 2 + 0.004), q, _s.set(Math.min(w, 0.03) * 0.35, len, Math.min(d, 0.03) * 0.35));
           this.beams.setMatrixAt(nb, _m);
-          this.beams.setColorAt(nb++, _c.multiplyScalar(0.6));
+          this.beams.setColorAt(nb++, _c.multiplyScalar(countIn > 0 ? 1.2 : 0.6));
         }
       }
     }

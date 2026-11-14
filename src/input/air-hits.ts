@@ -18,6 +18,10 @@ export interface AirSurface {
   r?: number;
   w?: number;
   d?: number;
+  /** How much of the motion must be into it (default AIR.along; a strum brushes across, so less). */
+  along?: number;
+  /** How far back out a point must come before it can play it again (default AIR.rearm). */
+  rearm?: number;
 }
 
 export interface AirHit {
@@ -26,6 +30,8 @@ export interface AirHit {
   /** Crossing speed (m/s) and loudness 0..1. */
   speed: number;
   gain: number;
+  /** How far through the surface it is on the frame it played (m): the point that led a slap is deepest. */
+  depth: number;
 }
 
 /**
@@ -79,7 +85,7 @@ export class AirHits {
    * Point `p` is now at (x, y, z) after `dt` s. Each surface it crossed the right way, fast enough, inside, is a hit
    * pushed to `out` (at most one: one note per finger). Returns how many were added.
    */
-  update(p: number, x: number, y: number, z: number, dt: number, surfaces: readonly AirSurface[], out: AirHit[], full: number = AIR.fullSpeed): number {
+  update(p: number, x: number, y: number, z: number, dt: number, surfaces: readonly AirSurface[], out: AirHit[], full: number = AIR.fullSpeed, min: number = AIR.minSpeed): number {
     const i = p * 3;
     const px = this.prev[i];
     const py = this.prev[i + 1];
@@ -106,7 +112,7 @@ export class AirHits {
       const t = p * IDS + s.id;
       const now = side(s, x, y, z);
       if (this.through[t]) {
-        if (now > AIR.rearm) this.through[t] = 0;
+        if (now > (s.rearm ?? AIR.rearm)) this.through[t] = 0;
         continue;
       }
       const was = side(s, px, py, pz);
@@ -121,8 +127,8 @@ export class AirHits {
       // the speed into it over the last two frames; and most of the motion must be into it, not across
       const span = dt + qdt;
       const speed = span > 0 ? (side(s, qx, qy, qz) - now) / span : 0;
-      if (speed < (s.face === 'front' ? AIR.frontSpeed : AIR.minSpeed) || (moved > 0 && was - now < AIR.along * moved)) continue;
-      out.push({ surface: s.id, point: p, speed, gain: airGain(speed, full) });
+      if (speed < (s.face === 'front' ? Math.max(min, AIR.frontSpeed) : min) || (moved > 0 && was - now < (s.along ?? AIR.along) * moved)) continue;
+      out.push({ surface: s.id, point: p, speed, gain: airGain(speed, full), depth: -now });
       // one note per finger: nothing under it plays until it comes back out
       for (const q of surfaces) this.through[p * IDS + q.id] = 1;
       return 1;

@@ -19,7 +19,7 @@ s = await until((x) => x.debug.surfaces.length > 0, 5000);
 const fams = s.debug.surfaces.map((x) => `${x.id}:${x.label || '-'}→${x.family}@${x.reach}`);
 console.log(`surfaces: ${fams.join('  ')}`);
 check('the room has surfaces (planes found)', s.debug.planes > 0 && s.debug.surfaces.length > 1, `planes=${s.debug.planes} meshes=${s.debug.meshes}`);
-check('the panel shows the main menu', s.game.display.page?.id === 'main' && s.game.display.page?.title === 'THUMP', `${s.game.display.page?.id} ${s.game.display.page?.title}`);
+check('the panel shows the main menu', s.game.display.page?.id === 'main' && s.game.display.page?.title === 'Thump', `${s.game.display.page?.id} ${s.game.display.page?.title}`);
 const look = [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05];
 shot('room-01-placed', look);
 
@@ -211,7 +211,7 @@ if (SONG) {
   s = await until((x) => (x.progress.built ?? []).includes('kick-start'), 150000, 1000);
   check('six parts later your machine runs', (s.progress.built ?? []).includes('kick-start'), `${s.game.display.line} / ${s.game.display.sub}`);
   s = await until((x) => (x.game.display.page?.items ?? []).some((i) => i.id === 'key:play'), 15000, 500);
-  check('and the panel offers PERFORM IT', (s.game.display.page?.items ?? []).some((i) => i.id === 'key:play' && i.label === 'PERFORM IT'), JSON.stringify((s.game.display.page?.items ?? []).map((i) => i.label)));
+  check('and the panel offers PERFORM IT', (s.game.display.page?.items ?? []).some((i) => i.id === 'key:play' && i.label === 'Perform it'), JSON.stringify((s.game.display.page?.items ?? []).map((i) => i.label)));
   shot('room-06-machine', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
 }
 done('E2E room');
