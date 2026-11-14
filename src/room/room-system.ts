@@ -579,9 +579,21 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return true;
     },
     voice: (key, at, vel, mate, you) => {
+      const when = this.clock.toAudio(at);
+      // a guitar string as it was played ('pluck:string:midi')
+      if (key.startsWith('pluck:')) {
+        const [, s, m] = key.split(':');
+        const snd = instDef('guitar').sounds.find((x) => x.id === this.shelfCfg('guitar').sound) ?? instDef('guitar').sounds[0];
+        const st = Number(s);
+        const midi = Number(m);
+        if (!Number.isFinite(midi)) return;
+        if (snd.string) audio.pluck(midi, 0.3 + 0.62 * vel, 0.25, when, snd.string, `string${st}`);
+        else audio.modal(snd.family ?? 'harp', midi, 0.3 + 0.62 * vel, 0.25, when, 0.5, `guitar${st}`, st);
+        if (this.kit.inst === 'guitar') this.later(at, () => (this.kit.models.get('guitar') as HeldGuitarModel | undefined)?.pluck(st, vel));
+        return;
+      }
       const r = this.ref(key);
       if (!r) return;
-      const when = this.clock.toAudio(at);
       // the bandmate's own notes: its mallets fly there and strike on the note
       if (mate && !motion.calm) this.malletTo(r, at);
       if (r.kind === 'clap') {
@@ -3441,6 +3453,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private guitarPluck(p: Pluck, offset: number): void {
     const midi = this.guitarString(p.string);
     (this.kit.models.get('guitar') as HeldGuitarModel | undefined)?.pluck(p.string, p.vel);
+    // (free play: each string is a note of its own, recorded as it sounded; in a song the strum is what counts)
+    if (midi !== null && !this.game.harmony()?.song) this.game.hit(`pluck:${p.string}:${midi}`, p.t, p.vel);
     if (midi !== null) {
       const snd = instDef('guitar').sounds.find((x) => x.id === this.shelfCfg('guitar').sound) ?? instDef('guitar').sounds[0];
       const v = 0.3 + 0.62 * p.vel;
@@ -3511,7 +3525,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.guideStrums++;
     this.dimmer.hit(instDef('guitar').color, vel);
     this.kit.instStruck(9, vel);
-    const gs = this.game.hit(this.game.harmony() ? 'guitar:9' : `guitar:${Math.max(0, this.guitarChord)}`, t, vel);
+    // (in free play the strings were each heard already: the strum itself isn't a note of its own)
+    const gs = this.game.harmony()?.song ? this.game.hit('guitar:9', t, vel) : null;
     this.wordFor(gs, 9, 'guitar');
     this.airStrike.t = t;
     this.airStrike.speed = vel * 1.4;
@@ -3645,6 +3660,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.blackStruck(j, gain);
     this.freeFx(`piano:${k.a}`, gain);
     const g = this.game.hit(`piano:${song ? PIANO_BLACK + j : k.a}`, t, gain);
+    if (!song) this.game.hit(`piano:${k.b}`, t + 0.012, gain);
     this.wordAt.set(k.x, KEYBOARD.blackTop, -k.z);
     this.hitWords?.show(g, this.kit.root.localToWorld(this.wordAt), this.head, instDef('piano').color);
     this.record(this.kitSurface, 30 + j, gain, st, g, 'piano-black');

@@ -1425,7 +1425,7 @@ export class Game {
   private groovePlayed(key: string, t: number): void {
     const f = this.stage.freeHarmony?.();
     if (!this.stage.setting('band', false)) return;
-    if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('handpan:') || key.startsWith('congas:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
+    if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('pluck:') || key.startsWith('handpan:') || key.startsWith('congas:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
     if (this.groove) {
       this.groove.last = t;
       // and keeps following you: a note a little off the band's eighths nudges the band a little toward it
