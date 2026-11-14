@@ -1,0 +1,3 @@
+Interface sounds, impacts and jingles in this folder are by Kenney (www.kenney.nl):
+Interface Sounds, UI Audio, Impact Sounds and Music Jingles. License: Creative Commons Zero (CC0).
+http://creativecommons.org/publicdomain/zero/1.0/
