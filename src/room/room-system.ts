@@ -58,7 +58,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { CONGA, KEYBOARD, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { CONGA, GUITAR, KEYBOARD, NECK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -1370,7 +1370,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!key.startsWith(this.kit.instKey)) return false;
       // the guitar's strum: a bar across the strings (zone 9 is the strum, not a zone of its own)
       if (this.kit.inst === 'guitar' && r.zone >= 9) {
-        out.set((STRUM.x0 + STRUM.x1) / 2, 0.008, -(STRUM.z0 + STRUM.z1) / 2);
+        out.set((STRUM.x0 + STRUM.x1) / 2, GUITAR.strings + 0.002, -(STRUM.z0 + STRUM.z1) / 2);
         root.localToWorld(out);
         col.setHex(instDef('guitar').color);
         t.w = STRUM.x1 - STRUM.x0;
@@ -1381,7 +1381,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const z = this.kit.instZones[r.zone % PIANO_LOW];
       if (!z) return false;
       const hp = this.kit.inst === 'handpan' ? handpanShape(this.kit.instZones) : null;
-      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) + 0.003 : this.kit.inst === 'guitar' ? 0.024 : this.kit.inst === 'congas' ? CONGA.top + 0.002 : this.kit.inst === 'piano' ? KEYBOARD.top + 0.001 : 0.013, -z.z);
+      out.set(z.x, this.kit.inst === 'marimba' ? 0.016 : hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) + 0.003 : this.kit.inst === 'guitar' ? GUITAR.board + 0.002 : this.kit.inst === 'congas' ? CONGA.top + 0.002 : this.kit.inst === 'piano' ? KEYBOARD.top + 0.001 : 0.013, -z.z);
       root.localToWorld(out);
       col.setHex(instDef(this.kit.inst).color);
       t.round = z.shape === 'disc';
@@ -1462,7 +1462,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.sample.pinching = false;
       }
       this.handMallets[i].set(this.malletOn[i], h.palm, this.malletTip[i], delta);
-      if (pinched && !this.pinchWas[i]) this.pinchStand(h.pinchPoint);
+      if (pinched && !this.pinchWas[i]) {
+        this.pinchStand(h.pinchPoint);
+        // with the guitar out, a pinch on the neck holds that chord (the left hand's grip)
+        if (this.kit.inst === 'guitar') this.pinchChord(h.pinchPoint, i === 0 ? 'left' : 'right');
+      }
       this.pinchWas[i] = pinched;
       this.sample.pinching = this.swaps.holding(i) || (this.pinchHeld[i] > 0.15 && (this.progress.unlocks as string[]).includes('swaps'));
       for (let k = 0; k < this.surfaces.length; k++) {
@@ -2329,7 +2333,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** When the kit came out (its drums are struck in the air from a moment after). */
   private kitOutT = -1;
-  private air = new AirHits(10);
+  /** Points per hand: three fingertips, the palm, the stick's tip, the thumb and the pinky. */
+  private air = new AirHits(AIR_PTS * 2);
+  private airSig = '';
+  private airGap = [0, 0];
+  private airLock = [-9, -9];
+  private airLockSpeed = [0, 0];
+  private fistHold = [0, 0];
+  private stickSnap = [false, false];
+  private stickFilt = [new OneEuro3(1.5, 0.3), new OneEuro3(1.5, 0.3)];
   private airOut: AirHit[] = [];
   /** The drums' heads as surfaces (kit-local), refreshed each frame from where the pads are. */
   private airSurf: AirSurface[] = Array.from({ length: 32 }, (_, i) => ({ id: i, face: 'up' as const, x: 0, y: 0, z: 0, r: -1 }));
@@ -2394,6 +2406,30 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // the heads, where the pads stand now
     let n = 0;
     if (piano) n = this.pianoSurfaces();
+    const guitar = out && this.kit.inst === 'guitar';
+    if (guitar) {
+      // the chord positions on the fretboard (a fingertip pressing one), then the strings over the body (a strum)
+      for (let c = 0; c < 3; c++) {
+        const s = this.airSurf[n++];
+        s.id = c;
+        s.face = 'up';
+        s.x = NECK.x[c];
+        s.y = GUITAR.board;
+        s.z = -NECK.z;
+        s.r = undefined;
+        s.w = NECK.w;
+        s.d = 0.06;
+      }
+      const s = this.airSurf[n++];
+      s.id = 9;
+      s.face = 'up';
+      s.x = (STRUM.x0 + STRUM.x1) / 2;
+      s.y = GUITAR.strings;
+      s.z = -(STRUM.z0 + STRUM.z1) / 2;
+      s.r = undefined;
+      s.w = STRUM.x1 - STRUM.x0 + 0.04;
+      s.d = STRUM.z1 - STRUM.z0 + 0.03;
+    }
     if (congas)
       if (isPan) {
         // the handpan: each field a disc at its height on the dome
@@ -2449,47 +2485,92 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.airSurf[k].r = -1;
       this.airSurf[k].w = undefined;
     }
+    // (the instrument or the piano's song state changed: every point starts afresh, so none fires from where it was)
+    const sig = `${this.kit.inst}|${n}|${this.game.harmony()?.song ? 1 : 0}`;
+    if (sig !== this.airSig) {
+      this.airSig = sig;
+      for (let p = 0; p < AIR_PTS * 2; p++) this.air.forget(p);
+    }
     for (let i = 0; i < 2; i++) {
       const h = i === 0 ? hands.left : hands.right;
       const side: Side = i === 0 ? 'left' : 'right';
       if (!h.tracked || h.controller) {
-        for (let k = 0; k < 5; k++) this.air.forget(i * 5 + k);
-        this.fist[i] = false;
+        // a frame or two of lost tracking mid-stroke is not a new start: forget only after a tenth of a second
+        this.airGap[i] += dt;
+        if (this.airGap[i] > 0.1) {
+          for (let k = 0; k < AIR_PTS; k++) this.air.forget(i * AIR_PTS + k);
+          this.fist[i] = false;
+        }
         continue;
       }
-      // a fist (not a pinch: that's for the panel) holds a stick
+      const step = dt + (this.airGap[i] <= 0.1 ? this.airGap[i] : 0);
+      this.airGap[i] = 0;
+      // a fist (not a pinch: that's for the panel) holds a stick; it has to stay a fist (or open) for 80 ms to change
       const c = this.curl(h);
-      const was = this.fist[i];
-      this.fist[i] = was ? c < 0.075 : c < 0.06;
-      if (this.fist[i] !== was) this.air.forget(i * 5 + 4);
+      const want = this.fist[i] ? c < 0.085 : c < 0.065;
+      if (want !== this.fist[i]) {
+        this.fistHold[i] += dt;
+        if (this.fistHold[i] >= 0.08) {
+          this.fist[i] = want;
+          this.fistHold[i] = 0;
+          this.air.forget(i * AIR_PTS + 4);
+          this.stickSnap[i] = true;
+        }
+      } else this.fistHold[i] = 0;
       if (this.fist[i]) {
-        // along the hand from the palm through the index knuckle, a little down; it lags a touch (it has weight)
-        this.airP.subVectors(h.knuckleIndex, h.palm);
+        // along the hand from the wrist through the middle knuckle (a long, steady line), a little down; filtered,
+        // so it has a little weight; snapped to the hand the moment the fist closes
+        this.airP.subVectors(h.knuckleMiddle, h.wrist);
         if (this.airP.lengthSq() > 1e-8) {
           this.airP.normalize();
           this.airP.y -= 0.25;
           this.airP.normalize();
-          this.stickDir[i].lerp(this.airP, Math.min(1, dt / 0.025)).normalize();
+          if (this.stickSnap[i]) {
+            this.stickDir[i].copy(this.airP);
+            this.stickFilt[i].reset();
+            this.stickSnap[i] = false;
+          } else this.stickFilt[i].filter(this.airP, dt, this.stickDir[i]);
+          this.stickDir[i].normalize();
         }
-        this.stickTip[i].copy(h.palm).addScaledVector(this.stickDir[i], STICK_LEN);
+        this.stickTip[i].copy(h.knuckleMiddle).addScaledVector(this.stickDir[i], STICK_LEN);
       }
-      if (!drums && !piano && !congas) continue;
-      // the points that can strike: three fingertips and the palm (an open hand), or the stick's tip (a fist); the
-      // piano's keys only by fingertips (a flat hand resting on them plays nothing)
-      const pts = this.fist[i] ? 1 : 4;
-      for (let k = 0; k < 5; k++) {
-        const use = piano ? k < 3 : congas ? k < 4 : this.fist[i] ? k === 4 : k < 4;
-        if (!use) continue;
-        const w = k === 0 ? h.indexTip : k === 1 ? h.middleTip : k === 2 ? h.ringTip : k === 3 ? this.airP.copy(h.palm).setY(h.palm.y - h.palmRadius) : this.stickTip[i];
+      if (!drums && !piano && !congas && !guitar) continue;
+      // the points that can strike: on the piano the five fingertips (a flat hand resting on the keys plays nothing);
+      // else three fingertips and the palm (an open hand), or the stick's tip (a fist). A pinching hand is reaching
+      // for the panel: only a stick plays
+      const pinching = h.pinch.pinching;
+      const locked = !piano && this.clock.t - this.airLock[i] < 0.05;
+      for (let k = 0; k < AIR_PTS; k++) {
+        const use = piano ? k < 3 || k >= 5 : congas || guitar ? k < 4 && !pinching : this.fist[i] ? k === 4 : k < 4 && !pinching;
+        const p = i * AIR_PTS + k;
+        if (!use) {
+          this.air.forget(p);
+          continue;
+        }
+        const w = k === 0 ? h.indexTip : k === 1 ? h.middleTip : k === 2 ? h.ringTip : k === 3 ? this.airP.copy(h.palm).setY(h.palm.y - h.palmRadius) : k === 4 ? this.stickTip[i] : k === 5 ? h.thumbTip : h.pinkyTip;
         this.airP.copy(w).applyMatrix4(inv);
         this.airOut.length = 0;
-        this.air.update(i * 5 + k, this.airP.x, this.airP.y, this.airP.z, dt, this.airSurf, this.airOut);
+        // (the loudness range: a stick moves far faster than a fingertip on a key)
+        const full = k === 4 ? 4.5 : piano ? 1.0 : 2.5;
+        this.air.update(p, this.airP.x, this.airP.y, this.airP.z, step, this.airSurf, this.airOut, full);
         for (const hit of this.airOut) {
+          // one slap is one note: the other points of the same hand land a moment later (not on the piano: chords)
+          if (locked) continue;
+          // on the piano, a neighbouring finger dipping with the one that pressed isn't a press of its own
+          if (piano && this.clock.t - this.airLock[i] < 0.06 && hit.speed < 0.8 * this.airLockSpeed[i]) continue;
+          this.airLock[i] = this.clock.t;
+          this.airLockSpeed[i] = hit.speed;
           this.handHitT[i] = this.clock.t;
           this.airStrike.t = this.clock.t;
           this.airStrike.speed = hit.speed;
           this.airStrike.gain = hit.gain;
           const pan = Math.max(-0.8, Math.min(0.8, this.airP.x / 0.4));
+          if (guitar) {
+            if (hit.surface === 9) this.playStrum(side, hit.gain, pan, this.clock.t, this.airStrike);
+            else this.playChordPad(hit.surface, side, hit.gain, pan, this.clock.t, this.airStrike);
+            this.debug.hits++;
+            continue;
+          }
           if (congas) {
             this.playZone(this.kit.inst, hit.surface, side, hit.gain, pan, this.clock.t, this.airStrike);
             this.debug.hits++;
@@ -2507,7 +2588,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           this.debug.hits++;
         }
       }
-      void pts;
     }
   }
 
@@ -2873,29 +2953,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         best = i;
       }
     }
-    if (id === 'guitar') {
-      if (best >= 0) {
-        // a chord pad: that chord, and a soft strum of it so the hand that picks is heard too
-        this.guitarChord = best;
-        if (!this.game.harmony()?.song) this.chordPickedT = this.clock.t;
-        if (this.flam('guitar', best, side, t)) return;
-        this.strum(best, gain * 0.45, pan, 0);
-        o?.hit(best, gain);
-        this.kit.instStruck(best, gain);
-        this.record(this.kitSurface, best, gain, st, this.game.hit(`guitar:${best}`, t, gain), 'chord');
-        return;
-      }
-      if (x >= STRUM.x0 - 0.03 && x <= STRUM.x1 + 0.03 && z >= STRUM.z0 - 0.03 && z <= STRUM.z1 + 0.03) {
-        if (this.flam('guitar', 9, side, t)) return;
-        this.strum(this.guitarChord, gain, pan, 0);
-        this.dimmer.hit(instDef('guitar').color, gain);
-        for (let s = 3; s < 9; s++) o?.hit(s, gain * (1 - (s - 3) * 0.08));
-        this.kit.instStruck(3, gain);
-        // (in a track a strum is just a strum: it plays the chord under the bar)
-        this.record(this.kitSurface, 9, gain, st, this.game.hit(this.game.harmony() ? 'guitar:9' : `guitar:${this.guitarChord}`, t, gain), 'strum');
-        return;
-      }
-    } else if (best >= 0) {
+    // (the guitar lies on its back, its strings up off the desk: strummed and fretted in the air)
+    if (id === 'guitar') return;
+    if (best >= 0) {
       this.playZone(id, best, side, gain, pan, t, st);
       return;
     }
@@ -2919,6 +2979,42 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const g = this.game.hit(`${id}:${best}`, t, gain);
     if (g === 'perfect') o?.perfect(best);
     this.record(this.kitSurface, best, gain, st, g, id);
+  }
+
+  /** A pinch near the guitar's neck: the chord position it's on. */
+  private pinchChord(at: Vector3, side: Side): void {
+    this.tmp.copy(at).applyMatrix4(this.kitSurface.inv);
+    if (Math.abs(this.tmp.y - GUITAR.board) > 0.04 || Math.abs(-this.tmp.z - NECK.z) > 0.045) return;
+    for (let c = 0; c < 3; c++)
+      if (Math.abs(this.tmp.x - NECK.x[c]) <= NECK.w / 2 + 0.006) {
+        this.airStrike.t = this.clock.t;
+        this.airStrike.speed = 0.5;
+        this.airStrike.gain = 0.6;
+        this.playChordPad(c, side, 0.6, 0, this.clock.t, this.airStrike);
+        return;
+      }
+  }
+  /** A chord position on the guitar's neck: that chord, and a soft strum of it so the hand that picks is heard. */
+  private playChordPad(best: number, side: Side, gain: number, pan: number, t: number, st: Strike): void {
+    const o = this.kit.instOverlay();
+    this.guitarChord = best;
+    if (!this.game.harmony()?.song) this.chordPickedT = this.clock.t;
+    if (this.flam('guitar', best, side, t)) return;
+    this.strum(best, gain * 0.45, pan, 0);
+    o?.hit(best, gain);
+    this.kit.instStruck(best, gain);
+    this.record(this.kitSurface, best, gain, st, this.game.hit(`guitar:${best}`, t, gain), 'chord');
+  }
+  /** A strum through the strings: the chord picked (or the song's). */
+  private playStrum(side: Side, gain: number, pan: number, t: number, st: Strike): void {
+    const o = this.kit.instOverlay();
+    if (this.flam('guitar', 9, side, t)) return;
+    this.strum(this.guitarChord, gain, pan, 0);
+    this.dimmer.hit(instDef('guitar').color, gain);
+    for (let s = 3; s < 9; s++) o?.hit(s, gain * (1 - (s - 3) * 0.08));
+    this.kit.instStruck(3, gain);
+    // (in a track a strum is just a strum: it plays the chord under the bar)
+    this.record(this.kitSurface, 9, gain, st, this.game.hit(this.game.harmony() ? 'guitar:9' : `guitar:${this.guitarChord}`, t, gain), 'strum');
   }
 
   /** A black key: the white keys either side of it together (outside a song). */
@@ -3728,7 +3824,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const id = key.slice(0, key.indexOf(':')) as InstId;
       const q = this.kit.inst === id ? this.kit.instZones[r.zone % PIANO_LOW] : null;
       // (the piano's keys are pressed in the air: as a finger would)
-      if (q && (id === 'piano' || id === 'congas' || id === 'handpan')) {
+      if (q && id === 'guitar') {
+        const st = fakeStrike(t);
+        this.playChordPad(q.i, 'left', st.gain, 0, t, st);
+      } else if (q && (id === 'piano' || id === 'congas' || id === 'handpan')) {
         const st = fakeStrike(t);
         this.playZone(id, q.i, 'left', st.gain, 0, t, st);
       } else if (q) {
@@ -3871,10 +3970,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.keyZones.forEach((z, i) => (out[`edge${i}`] = root.localToWorld(this.tmp.set(z.x, 0, -z.z)).toArray().map(r4)));
     // the instrument on the desk: each of its notes (and the guitar's strum band)
     // (each where it's struck: the piano's keys are up in its case)
-    const top = this.kit.inst === 'piano' ? KEYBOARD.top : this.kit.inst === 'congas' ? CONGA.top : 0;
+    const top = this.kit.inst === 'piano' ? KEYBOARD.top : this.kit.inst === 'congas' ? CONGA.top : this.kit.inst === 'guitar' ? GUITAR.board : 0;
     const hp = this.kit.inst === 'handpan' ? handpanShape(this.kit.instZones) : null;
     this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = root.localToWorld(this.tmp.set(z.x, hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) : top, -z.z)).toArray().map(r4)));
-    if (this.kit.inst === 'guitar') out.strum = root.localToWorld(this.tmp.set((STRUM.x0 + STRUM.x1) / 2, 0, -(STRUM.z0 + STRUM.z1) / 2)).toArray().map(r4);
+    if (this.kit.inst === 'guitar') out.strum = root.localToWorld(this.tmp.set((STRUM.x0 + STRUM.x1) / 2, GUITAR.strings, -(STRUM.z0 + STRUM.z1) / 2)).toArray().map(r4);
     out.inst = [SHELF.findIndex((d) => d.id === this.kit.inst)];
     for (const it of this.kit.module.page?.items ?? []) {
       const z = itemZone(it);
@@ -3904,6 +4003,43 @@ const PLAY_REACH_M = 1.3;
 /** How fast the last chord's ring of light crosses the room (m/s); each instrument plays as it arrives. */
 const FINALE_SPEED = 2.2;
 const LANE_INDEX: Partial<Record<string, number>> = { kick: 0, snare: 1, hat: 2, tom: 3, rim: 4 };
+/** Points tracked per hand for hits in the air. */
+const AIR_PTS = 7;
+/**
+ * A One-Euro filter on a direction (or any 3-vector): smooth when it's still, quick when it moves (a stick that has a
+ * little weight without lagging a stroke).
+ */
+class OneEuro3 {
+  private x = new Vector3();
+  private dx = new Vector3();
+  private has = false;
+  private tmp = new Vector3();
+  constructor(
+    private readonly minCutoff: number,
+    private readonly beta: number,
+    private readonly dCutoff = 1,
+  ) {}
+  reset(): void {
+    this.has = false;
+  }
+  private alpha(cutoff: number, dt: number): number {
+    const tau = 1 / (2 * Math.PI * cutoff);
+    return 1 / (1 + tau / Math.max(1e-4, dt));
+  }
+  filter(v: Vector3, dt: number, out: Vector3): Vector3 {
+    if (!this.has) {
+      this.x.copy(v);
+      this.dx.set(0, 0, 0);
+      this.has = true;
+      return out.copy(v);
+    }
+    this.tmp.subVectors(v, this.x).divideScalar(Math.max(1e-4, dt));
+    this.dx.lerp(this.tmp, this.alpha(this.dCutoff, dt));
+    const cutoff = this.minCutoff + this.beta * this.dx.length();
+    this.x.lerp(v, this.alpha(cutoff, dt));
+    return out.copy(this.x);
+  }
+}
 /** The drums struck in the air, in their surfaces' order. */
 const AIR_LANES: Lane[] = ['kick', 'snare', 'hat', 'tom'];
 

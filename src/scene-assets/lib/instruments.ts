@@ -6,9 +6,9 @@
  * when strummed. A handpan: a nitrided steel shell with its tone fields and raised ding. A marimba: rosewood bars
  * that bounce, on a frame. Deterministic: the same in the app and the editor.
  */
-import { BoxGeometry, CircleGeometry, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
+import { BoxGeometry, CircleGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
-import { CONGA, HANDPAN, KEYBOARD, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
 import { fineNormal, hammered, woodGrain } from './surfaces.js';
 
@@ -105,21 +105,33 @@ export class PianoModel implements DeskModel {
   }
 }
 
-/** A guitar's outline (top view, x along the body, y across it): two bouts and a waist. */
+/**
+ * A guitar's outline (top view, x along the body from the neck end, y across it): the upper bout by the neck smaller
+ * (0.78 of the width), the waist (0.62) a little toward the neck, the lower bout the widest.
+ */
 function guitarShape(len: number, wid: number): Shape {
   const s = new Shape();
   const L = len / 2;
   const W = wid / 2;
   s.moveTo(-L, 0);
-  s.bezierCurveTo(-L, W * 0.9, -L * 0.45, W * 1.02, -L * 0.15, W * 0.72);
-  s.bezierCurveTo(0, W * 0.6, L * 0.1, W * 0.62, L * 0.25, W * 0.82);
-  s.bezierCurveTo(L * 0.55, W * 1.08, L, W * 0.9, L, 0);
-  s.bezierCurveTo(L, -W * 0.9, L * 0.55, -W * 1.08, L * 0.25, -W * 0.82);
-  s.bezierCurveTo(L * 0.1, -W * 0.62, 0, -W * 0.6, -L * 0.15, -W * 0.72);
-  s.bezierCurveTo(-L * 0.45, -W * 1.02, -L, -W * 0.9, -L, 0);
+  s.bezierCurveTo(-L, W * 0.62, -L * 0.62, W * 0.8, -L * 0.32, W * 0.74);
+  s.bezierCurveTo(-L * 0.18, W * 0.7, -L * 0.14, W * 0.6, -L * 0.04, W * 0.62);
+  s.bezierCurveTo(L * 0.18, W * 0.66, L * 0.3, W * 1.0, L * 0.62, W * 1.0);
+  s.bezierCurveTo(L * 0.92, W * 1.0, L, W * 0.62, L, 0);
+  s.bezierCurveTo(L, -W * 0.62, L * 0.92, -W * 1.0, L * 0.62, -W * 1.0);
+  s.bezierCurveTo(L * 0.3, -W * 1.0, L * 0.18, -W * 0.66, -L * 0.04, -W * 0.62);
+  s.bezierCurveTo(-L * 0.14, -W * 0.6, -L * 0.18, -W * 0.7, -L * 0.32, -W * 0.74);
+  s.bezierCurveTo(-L * 0.62, -W * 0.8, -L, -W * 0.62, -L, 0);
   return s;
 }
 
+/**
+ * An acoustic guitar lying on its back on the desk, at a guitar's proportions cut to a tray: a clear-coated spruce
+ * top with cream binding, a three-ring rosette and a tortoiseshell pickguard, mahogany sides 4.5 cm deep, a rosewood
+ * bridge with six pins and a bone saddle; a rosewood fretboard with frets at their real spacing and pearl dots at
+ * 3, 5, 7, 9 and 12; a headstock tipped back with three tuners a side; three bronze strings and three steel. The
+ * chord positions on the neck show nothing until a song asks; strummed strings shimmer.
+ */
 export class GuitarModel implements DeskModel {
   readonly root = named(new Group(), 'Guitar');
   private strings: Mesh[] = [];
@@ -127,13 +139,21 @@ export class GuitarModel implements DeskModel {
   private t = 0;
   private body = named(new Group(), 'Body');
   private neck = named(new Group(), 'Neck');
-  private posMarks: Mesh[] = [];
-  private spring = new Springs(3);
-  private readonly spruce = mat('Spruce', 0xd9b47a, 0.45);
-  private readonly side = mat('Mahogany', 0x5a2c16, 0.4);
-  private readonly rosewood = mat('Rosewood', 0x3a2016, 0.55);
-  private readonly nickel = mat('Nickel', 0xd8d6d0, 0.25, 1);
+  private readonly spruce = (() => {
+    const map = woodGrain(61).clone();
+    map.needsUpdate = true;
+    map.repeat.set(9, 30);
+    return new MeshPhysicalMaterial({ name: 'Spruce', color: 0xe0bf86, map, roughness: 0.42, clearcoat: 1, clearcoatRoughness: 0.12 });
+  })();
+  private readonly side = new MeshPhysicalMaterial({ name: 'Mahogany', color: 0x5a2c16, map: woodGrain(63), roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.15 });
+  private readonly rosewood = mat('Rosewood', 0x2e1810, 0.5);
+  private readonly bronze = mat('Bronze', 0xb89a6a, 0.35, 1);
+  private readonly steel = mat('Steel', 0xd8d6d0, 0.25, 1);
+  private readonly chrome = mat('Chrome', 0xe2e5ea, 0.16, 1);
   private readonly bone = mat('Bone', 0xeee6d2, 0.4);
+  private readonly cream = mat('Binding', 0xefe6d0, 0.35);
+  private readonly pearl = mat('Pearl', 0xf0ece2, 0.25);
+  private readonly tortoise = new MeshPhysicalMaterial({ name: 'Tortoise', color: 0x2a140c, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 });
 
   constructor() {
     this.root.add(this.body, this.neck);
@@ -143,91 +163,132 @@ export class GuitarModel implements DeskModel {
     this.body.clear();
     this.neck.clear();
     this.strings = [];
-    this.posMarks = [];
     const pads = zones.filter((q) => q.degree >= 0);
     const strs = zones.filter((q) => q.degree < 0);
     if (!strs.length || !pads.length) return;
+    const T = GUITAR.top;
     const zc = strs.reduce((a, q) => a + q.z, 0) / strs.length;
-    const bx0 = strs[0].x - strs[0].w / 2;
-    const bx1 = strs[0].x + strs[0].w / 2;
-    const len = bx1 - bx0 + 0.05;
-    const cx = (bx0 + bx1) / 2 + 0.01;
-    // the body: a spruce top on mahogany sides, lying on the desk
-    const top = new Mesh(new ExtrudeGeometry(guitarShape(len, 0.17), { depth: 0.012, bevelEnabled: true, bevelSize: 0.002, bevelThickness: 0.002, bevelSegments: 2, curveSegments: 24 }), [this.spruce, this.side]);
-    named(top, 'Top');
-    top.rotation.x = -Math.PI / 2;
-    top.position.set(cx, 0.002, -zc);
-    // the soundhole and rosette, under the strum
-    const hole = named(new Mesh(new CircleGeometry(0.03, 40), mat('Soundhole', 0x0b0806, 0.9)), 'Soundhole');
+    const bx0 = strs[0].x - strs[0].w / 2 - 0.02;
+    const bx1 = strs[0].x + strs[0].w / 2 + 0.03;
+    const len = bx1 - bx0;
+    const wid = 0.2;
+    const cx = (bx0 + bx1) / 2;
+    // the body: spruce top and back on mahogany sides
+    const shape = guitarShape(len, wid);
+    const box = named(new Mesh(new ExtrudeGeometry(shape, { depth: T - 0.004, bevelEnabled: true, bevelSize: 0.0015, bevelThickness: 0.0015, bevelSegments: 2, curveSegments: 28 }), [this.spruce, this.side]), 'Box');
+    box.rotation.x = -Math.PI / 2;
+    box.position.set(cx, 0.0015, -zc);
+    // the binding: a cream line round the top's edge
+    const outer = guitarShape(len + 0.003, wid + 0.003);
+    const inner = guitarShape(len - 0.003, wid - 0.003);
+    outer.holes.push(new Path(inner.getPoints(28).reverse()));
+    const binding = named(new Mesh(new ShapeGeometry(outer, 28), this.cream), 'Binding');
+    binding.rotation.x = -Math.PI / 2;
+    binding.position.set(cx, T + 0.0003, -zc);
+    // the soundhole with its rosette (three rings), the pickguard below it
+    const hx = cx - len * 0.16;
+    const hole = named(new Mesh(new CircleGeometry(0.03, 48), mat('Soundhole', 0x0b0806, 0.9)), 'Soundhole');
     hole.rotation.x = -Math.PI / 2;
-    hole.position.set(cx - len * 0.12, 0.0165, -zc);
-    const rose = named(new Mesh(new RingGeometry(0.032, 0.038, 48), this.rosewood), 'Rosette');
-    rose.rotation.x = -Math.PI / 2;
-    rose.position.set(hole.position.x, 0.0166, -zc);
-    const bridge = named(new Mesh(new BoxGeometry(0.014, 0.004, 0.07), this.rosewood), 'Bridge');
-    bridge.position.set(cx + len * 0.28, 0.0175, -zc);
-    const saddle = named(new Mesh(new BoxGeometry(0.003, 0.003, 0.06), this.bone), 'Saddle');
-    saddle.position.set(bridge.position.x - 0.003, 0.0205, -zc);
-    this.body.add(top, hole, rose, bridge, saddle);
-    // the neck: rosewood with nickel frets, running left to the nut; the chord positions sit on it
-    const nx0 = Math.min(...pads.map((q) => q.x - q.w / 2)) - 0.03;
-    const nx1 = bx0 + 0.01;
-    const fb = named(new Mesh(new BoxGeometry(nx1 - nx0, 0.008, 0.05), this.rosewood), 'Fretboard');
-    fb.position.set((nx0 + nx1) / 2, 0.012, -zc);
-    const heel = named(new Mesh(new BoxGeometry(nx1 - nx0, 0.008, 0.044), this.side), 'NeckBack');
-    heel.position.set((nx0 + nx1) / 2, 0.004, -zc);
-    const nut = named(new Mesh(new BoxGeometry(0.004, 0.005, 0.05), this.bone), 'Nut');
-    nut.position.set(nx0 + 0.002, 0.0175, -zc);
-    const head = named(new Mesh(new BoxGeometry(0.05, 0.01, 0.056), this.side), 'Headstock');
-    head.position.set(nx0 - 0.026, 0.008, -zc);
-    this.neck.add(fb, heel, nut, head);
-    const fretGeo = new BoxGeometry(0.0016, 0.0016, 0.05);
-    for (let x = nx0 + 0.022; x < nx1; x += 0.024) {
-      const f = named(new Mesh(fretGeo, this.nickel), 'Fret');
-      f.position.set(x, 0.0168, -zc);
+    hole.position.set(hx, T + 0.0004, -zc);
+    const rings = named(new Group(), 'Rosette');
+    for (const [r0, r1, m] of [[0.0315, 0.033, this.rosewood], [0.0345, 0.0375, this.cream], [0.039, 0.0405, this.rosewood]] as const) {
+      const ring = new Mesh(new RingGeometry(r0, r1, 56), m);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(hx, T + 0.0005, -zc);
+      rings.add(ring);
+    }
+    const guard = named(new Mesh(new CircleGeometry(0.03, 36), this.tortoise), 'Pickguard');
+    guard.rotation.x = -Math.PI / 2;
+    guard.scale.set(1.25, 0.8, 1);
+    guard.position.set(hx + 0.03, T + 0.0005, -(zc - 0.04));
+    // the bridge with six pins and the saddle
+    const brx = cx + len * 0.24;
+    const bridge = named(new Mesh(new BoxGeometry(0.016, 0.005, 0.075), this.rosewood), 'Bridge');
+    bridge.position.set(brx, T + 0.0025, -zc);
+    const saddle = named(new Mesh(new BoxGeometry(0.003, 0.004, 0.062), this.bone), 'Saddle');
+    saddle.position.set(brx - 0.004, T + 0.006, -zc);
+    this.body.add(box, binding, hole, rings, guard, bridge, saddle);
+    const pin = new CylinderGeometry(0.0018, 0.0018, 0.003, 10);
+    for (let k = 0; k < 6; k++) {
+      const p = new Mesh(pin, this.bone);
+      p.position.set(brx + 0.004, T + 0.0055, -(zc + (k - 2.5) * 0.011));
+      this.body.add(p);
+    }
+    // the neck: from the body's upper bout to the nut past the chord positions; the fretboard on it
+    const nx0 = Math.min(...pads.map((q) => q.x - q.w / 2)) - 0.035;
+    const nx1 = bx0 + 0.02;
+    const B = GUITAR.board;
+    const neckBack = named(new Mesh(new BoxGeometry(nx1 - nx0, 0.016, 0.046), this.side), 'NeckBack');
+    neckBack.position.set((nx0 + nx1) / 2, B - 0.012, -zc);
+    const fb = named(new Mesh(new BoxGeometry(nx1 - nx0, 0.005, 0.052), this.rosewood), 'Fretboard');
+    fb.position.set((nx0 + nx1) / 2, B - 0.0025, -zc);
+    const nut = named(new Mesh(new BoxGeometry(0.004, 0.006, 0.052), this.bone), 'Nut');
+    nut.position.set(nx0 + 0.002, B + 0.001, -zc);
+    this.neck.add(neckBack, fb, nut);
+    // frets at their real places: the nut to the saddle is the scale; fret n sits at S·(1 − 2^(−n/12))
+    const S = brx - 0.004 - nx0;
+    const fretGeo = new BoxGeometry(0.0018, 0.0018, 0.052);
+    const fretX = (n: number) => nx0 + S * (1 - Math.pow(2, -n / 12));
+    for (let n = 1; fretX(n) < nx1 - 0.004; n++) {
+      const f = named(new Mesh(fretGeo, this.steel), 'Fret');
+      f.position.set(fretX(n), B + 0.0006, -zc);
       this.neck.add(f);
     }
-    // the chord positions: a pearl inlay each (coloured), lit when picked
-    const inlay = new CircleGeometry(0.008, 24);
-    const colours = [0xffa630, 0x6fa8ff, 0x2ad1b5];
-    pads.forEach((q, i) => {
-      const m = named(new Mesh(inlay, mat(`Inlay${i}`, colours[i % 3], 0.3)), `Chord${i}`);
+    const dot = new CircleGeometry(0.0035, 20);
+    for (const [n, dz] of [[3, 0], [5, 0], [7, 0], [9, 0], [12, -0.012], [12, 0.012]] as const) {
+      const x = (fretX(n - 1) + fretX(n)) / 2;
+      if (x > nx1 - 0.004) continue;
+      const m = new Mesh(dot, this.pearl);
       m.rotation.x = -Math.PI / 2;
-      m.position.set(q.x, 0.0168, -q.z);
+      m.position.set(x, B + 0.0003, -(zc + dz));
       this.neck.add(m);
-      this.posMarks.push(m);
-    });
-    // six strings from the bridge to the nut, low (thick) to high (thin)
+    }
+    // the headstock, tipped back 13° toward the desk, three tuners a side
+    const head = named(new Group(), 'Headstock');
+    head.position.set(nx0, B - 0.003, -zc);
+    head.rotation.z = -0.23;
+    const plate = new Mesh(new BoxGeometry(0.075, 0.012, 0.058), this.side);
+    plate.position.set(-0.04, 0, 0);
+    head.add(plate);
+    const post = new CylinderGeometry(0.0022, 0.0022, 0.012, 10);
+    const button = new CylinderGeometry(0.004, 0.004, 0.006, 14);
+    for (let k = 0; k < 3; k++)
+      for (const sd of [-1, 1]) {
+        const x = -0.018 - k * 0.022;
+        const p = new Mesh(post, this.chrome);
+        p.position.set(x, 0.01, sd * 0.017);
+        const b = new Mesh(button, this.chrome);
+        b.rotation.x = Math.PI / 2;
+        b.position.set(x, 0, sd * 0.036);
+        head.add(p, b);
+      }
+    this.neck.add(head);
+    // six strings from the bridge to the nut: the low three wound bronze, the high three plain steel
     strs.forEach((q, i) => {
-      const r = 0.0009 - i * 0.00008;
-      const s = named(new Mesh(new CylinderGeometry(r, r, bridge.position.x - nx0, 6), this.nickel), `String${i}`);
+      const r = 0.0009 - i * 0.00009;
+      const s = named(new Mesh(new CylinderGeometry(r, r, brx - nx0, 6), i < 3 ? this.bronze : this.steel), `String${i}`);
       s.rotation.z = Math.PI / 2;
-      s.position.set((bridge.position.x + nx0) / 2, 0.0215, -(zc + (i - 2.5) * 0.008));
+      s.position.set((brx + nx0) / 2, GUITAR.strings, -(zc + (i - 2.5) * 0.009));
       this.neck.add(s);
       this.strings.push(s);
     });
   }
 
   struck(i: number, gain: number): void {
-    if (i < 3) this.spring.kick(i, 0.2);
-    else this.shake = Math.max(this.shake, 0.5 + 0.5 * gain);
+    if (i >= 3) this.shake = Math.max(this.shake, 0.5 + 0.5 * gain);
   }
 
   update(dt: number): void {
     this.t += dt;
-    this.spring.step(dt);
     this.shake = Math.max(0, this.shake - dt * 1.6);
     // strummed strings blur: a fast shimmer across, dying away
-    this.strings.forEach((s, i) => {
+    for (let i = 0; i < this.strings.length; i++) {
+      const s = this.strings[i];
       const a = this.shake * 0.0012 * Math.sin(this.t * (90 + i * 13));
-      s.position.y = 0.0215 + a;
+      s.position.y = GUITAR.strings + a;
       s.scale.x = 1 + this.shake * 0.6;
       s.scale.z = 1 + this.shake * 0.6;
-    });
-    this.posMarks.forEach((m, i) => {
-      m.position.y = 0.0168 + Math.max(-0.002, Math.min(0, this.spring.x[i] * 0.3));
-      m.scale.setScalar(1 + Math.max(0, -this.spring.x[i]) * 30);
-    });
+    }
   }
 }
 

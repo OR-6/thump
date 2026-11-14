@@ -24,6 +24,7 @@ const JOINTS: XRHandJoint[] = [
   'middle-finger-phalanx-proximal',
   'index-finger-phalanx-proximal',
   'pinky-finger-phalanx-proximal',
+  'pinky-finger-tip',
 ];
 
 export class HandState {
@@ -43,6 +44,11 @@ export class HandState {
   /** Raw fingertips (world): index is indexTip above; middle and ring for strikes. */
   readonly middleTip = new Vector3();
   readonly ringTip = new Vector3();
+  /** The wrist, the middle finger's knuckle (a stick runs along the line between), the thumb and pinky tips. */
+  readonly wrist = new Vector3();
+  readonly knuckleMiddle = new Vector3();
+  readonly thumbTip = new Vector3();
+  readonly pinkyTip = new Vector3();
   /** Index and pinky knuckles (world): a flat slap lands on these too. */
   readonly knuckleIndex = new Vector3();
   readonly knucklePinky = new Vector3();
@@ -191,6 +197,8 @@ export class HandTrackerSystem extends createSystem({}) {
         const mkp = J[6];
         const ikp = J[7];
         const pkp = J[8];
+        const wr = J[2];
+        const ptp = J[9];
         this.seen[side] = true;
         const h = hands[side];
         h.controller = false;
@@ -228,6 +236,10 @@ export class HandTrackerSystem extends createSystem({}) {
         h.tipRadius = this.radii[side][1] || 0.008;
         h.middleTip.copy(mtp);
         h.ringTip.copy(rtp);
+        h.wrist.copy(wr);
+        h.knuckleMiddle.copy(mkp);
+        h.thumbTip.copy(tp);
+        h.pinkyTip.copy(ptp);
         h.upDot = this.wristUp[side];
       }
     }

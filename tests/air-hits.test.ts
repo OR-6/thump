@@ -52,4 +52,28 @@ describe('hits in the air', () => {
     path(new AirHits(1), [-0.1, 0.1, 0.2], [-0.1, 0.1, 0.0], 6, [kick], out);
     expect(out.map((o) => o.surface)).toEqual([3]);
   });
+  it('a finger resting on a key with 5 mm of tracking jitter plays nothing for a minute', () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 2;
+    const h = new AirHits(1);
+    const out: AirHit[] = [];
+    // (it starts resting on the key: that rest is not a press)
+    for (let k = 0; k < 72 * 60; k++) h.update(0, 0.2 + rnd() * 0.003, 0.061 + rnd() * 0.005, rnd() * 0.003, 1 / 72, [key], out);
+    expect(out.length).toBeLessThanOrEqual(1);
+  });
+  it('a hand sliding past a drum, mostly sideways, grazes nothing', () => {
+    const out: AirHit[] = [];
+    path(new AirHits(1), [-0.15, 0.135, 0], [0.15, 0.12, 0], 10, [snare], out);
+    expect(out).toHaveLength(0);
+  });
+  it('a point coming back after a gap (forgotten) does not fire from its old place', () => {
+    const h = new AirHits(1);
+    const out: AirHit[] = [];
+    path(h, [0, 0.25, 0], [0, 0.2, 0], 3, [snare], out);
+    h.forget(0);
+    // it reappears below the head (the hand moved while unseen)
+    h.update(0, 0, 0.1, 0, 1 / 72, [snare], out);
+    h.update(0, 0, 0.1, 0, 1 / 72, [snare], out);
+    expect(out).toHaveLength(0);
+  });
 });

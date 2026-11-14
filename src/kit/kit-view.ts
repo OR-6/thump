@@ -13,7 +13,7 @@ import { zonesFor, type Zone } from '../room/zones.js';
 import { CongaModel, GuitarModel, HandpanModel, MarimbaModel, PianoModel, type DeskModel } from '../scene-assets/lib/instruments.js';
 import { Tag } from '../ui/tag.js';
 import { Vector3 } from '@iwsdk/core';
-import { CONGA, KEYBOARD, instZones, type InstId, type Scale } from './shelf.js';
+import { CONGA, GUITAR, KEYBOARD, instZones, type InstId, type Scale } from './shelf.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.11 } as const;
@@ -194,7 +194,7 @@ export class KitView {
     o.rest = 0;
     // (the piano's chord button is red rubber on its case: no tape)
     this.chordTag.mesh.visible = false;
-    o.group.position.y = id === 'piano' ? KEYBOARD.top + 0.0015 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? 0.022 : id === 'congas' ? CONGA.top + 0.001 : 0;
+    o.group.position.y = id === 'piano' ? KEYBOARD.top + 0.0015 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? GUITAR.board + 0.001 : id === 'congas' ? CONGA.top + 0.001 : 0;
     this.unfoldT = 0;
     o.reveal(0, 0.03);
   }

@@ -99,10 +99,11 @@ shot('shelf-marimba', look);
 await tab('guitar');
 s = state();
 check('then a guitar', s.targets.inst?.[0] === 3 && s.game.display.page?.title === 'Guitar', `${s.game.display.line} inst=${s.targets.inst}`);
-await slapAt(s.targets.inst1);
+// (fingertips first onto the fretboard, 5 cm up: a chord position)
+await slapAt(s.targets.inst1.map((v, i) => v - (i === 1 ? 0.01 : 0)), [0, 1, 0], { from: 0.06, pose: { pitch: -50, yaw: 0, roll: 0 } });
 s = state();
 check('a chord pad picks a chord (and strums it softly)', s.debug.lastHit?.family === 'chord' && s.debug.lastHit?.zone === 1, JSON.stringify(s.debug.lastHit));
-await slapAt(s.targets.strum);
+await slapAt(s.targets.strum.map((v, i) => v - (i === 1 ? 0.012 : 0)), [0, 1, 0], { from: 0.06, pose: { pitch: -50, yaw: 0, roll: 0 } });
 s = state();
 check('the strum band strums it', s.debug.lastHit?.family === 'strum', JSON.stringify(s.debug.lastHit));
 shot('shelf-guitar', look);

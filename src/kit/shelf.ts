@@ -247,6 +247,8 @@ export function handpanZones(root: number, scale: Scale): Zone[] {
 
 /** Where the guitar's strum band is (x from, x to, z from, z to): over the soundhole, hit or brush down to strum. */
 export const STRUM = { x0: 0.02, x1: 0.2, z0: -0.04, z1: 0.11 } as const;
+/** The guitar lying on its back: its top this high off the desk, the strings and the fretboard a little above it. */
+export const GUITAR = { top: 0.045, strings: 0.055, board: 0.053 } as const;
 /** The neck's line (kit-local zone z) and the three chord positions along it (x), like frets. */
 export const NECK = { z: 0.035, x: [-0.205, -0.143, -0.081], w: 0.056, h: 0.07 } as const;
 
