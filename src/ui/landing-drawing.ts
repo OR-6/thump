@@ -5,7 +5,8 @@
  * `.glow` copy of its shape that lights in the instrument's colour when it's hit.
  */
 import { PADS } from '../config.js';
-import { CONGA, KEYBOARD, NECK, PIANO_CHORD, SHELF, marimbaZones, handpanZones, pianoBlacks, pianoZones, scaleById, type InstId } from '../kit/shelf.js';
+import { INST_LIGHT } from './theme.js';
+import { CONGA, KEYBOARD, NECK, PIANO_CHORD, marimbaZones, handpanZones, pianoBlacks, pianoZones, scaleById, type InstId } from '../kit/shelf.js';
 
 /** The page plays in C, the happy scale (a pentatonic: every key works with every other). */
 export const PAGE_SCALE = scaleById('happy');
@@ -34,7 +35,8 @@ const part = (p: Part) =>
 const circle = (x: number, y: number, r: number, attrs = '') => `<circle cx="${x}" cy="${y}" r="${r}" ${attrs}/>`;
 const rect = (x: number, y: number, w: number, h: number, attrs = '') => `<rect x="${+x.toFixed(2)}" y="${+y.toFixed(2)}" width="${+w.toFixed(2)}" height="${+h.toFixed(2)}" ${attrs}/>`;
 
-const light = (id: InstId) => hex(SHELF.find((d) => d.id === id)?.color ?? 0xffffff);
+/** Each instrument's own light (the game's: the panel's edge flashes it as you play). */
+const light = (id: InstId) => hex(INST_LIGHT[id] ?? 0xffffff);
 
 function lugs(x: number, y: number, r: number, n: number, size: number, fill: string): string {
   let s = '';
@@ -64,7 +66,7 @@ function drums(): string {
     const p = PADS[c.lane];
     const x = cm(p.x), y = -cm(p.z), r = cm(p.size / 2);
     s += part({
-      id: c.lane, label: c.label, light: hex(p.color),
+      id: c.lane, label: c.label, light: light('drums'),
       body: lugs(x, y, r + 0.35, c.lugs, 0.45, '#8c9297') + circle(x, y, r + 0.1, 'fill="#9aa1a6"') + circle(x, y, r - 0.45, 'fill="url(#coated)"'),
       glow: circle(x, y, r + 0.1),
     });
@@ -75,7 +77,7 @@ function drums(): string {
     let rings = '';
     for (let i = 1; i <= 7; i++) rings += circle(x, y, +(r * (0.3 + i * 0.095)).toFixed(2), 'fill="none" stroke="#8a6424" stroke-opacity="0.45" stroke-width="0.12"');
     s += part({
-      id: c.lane, label: c.label, light: hex(p.color),
+      id: c.lane, label: c.label, light: light('drums'),
       body: circle(x, y, r, 'fill="url(#brass)"') + rings + circle(x, y, r * 0.27, 'fill="#c99a48" stroke="#8a6424" stroke-width="0.15"') + circle(x, y, 0.45, 'fill="#55575a"'),
       glow: circle(x, y, r),
     });
