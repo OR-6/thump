@@ -15,7 +15,11 @@ import type { Item, Page } from './menu.js';
 import { ICON } from '../stand/stand.js';
 
 /** The panel in kit-local space: centre, size (m), and how far it leans back (radians). */
-export const PANEL = { y: 0.19, z: -0.2, w: 0.34, h: 0.2, lean: 0.47 } as const;
+/**
+ * The display: standing on the desk behind the instruments on two thin uprights, its bottom edge clear of the
+ * keyboard's case (9 cm), tilted back 25°.
+ */
+export const PANEL = { y: 0.182, z: -0.25, w: 0.34, h: 0.2, lean: 0.44 } as const;
 /** Canvas pixels (4 per millimetre). */
 const CW = 1360;
 const CH = 800;
@@ -163,8 +167,8 @@ export class Panel {
    */
   compact(on: boolean): void {
     // (higher rather than nearer: its bottom edge stays clear of hands at the back of the instrument)
-    this.root.position.set(0, on ? 0.26 : PANEL.y, on ? -0.18 : PANEL.z);
-    this.root.rotation.x = -(on ? 0.3 : PANEL.lean);
+    this.root.position.set(0, on ? 0.2 : PANEL.y, on ? -0.22 : PANEL.z);
+    this.root.rotation.x = -(on ? 0.36 : PANEL.lean);
     this.fitStand();
   }
 
@@ -190,14 +194,14 @@ export class Panel {
     foot.scale.set(PANEL.w * 0.86, 0.006, 0.032);
     foot.position.set(0, 0.003, bz - 0.006);
     for (const [m, x] of [[l, -PANEL.w / 2 + 0.035], [r, PANEL.w / 2 - 0.035]] as const) {
-      m.scale.set(0.007, by - 0.004, 0.007);
+      m.scale.set(0.005, by - 0.004, 0.005);
       m.position.set(x, (by + 0.004) / 2, bz);
     }
     // the kickstand: from the middle of the back of the display down to the desk behind it
     const top = { y: P.y, z: P.z - 0.004 * Math.cos(lean) - 0.003 };
     const footZ = top.z - top.y * 0.5;
     const len = Math.hypot(top.y, top.z - footZ);
-    kick.scale.set(PANEL.w * 0.4, 0.005, len);
+    kick.scale.set(0.02, 0.005, len);
     kick.position.set(0, top.y / 2, (top.z + footZ) / 2);
     kick.rotation.x = Math.atan2(top.y, top.z - footZ);
     (this.stand.children[4] as Mesh).position.set(0, 0.0006, bz - 0.02);

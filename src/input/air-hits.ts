@@ -106,6 +106,9 @@ export class AirHits {
       if (speed < AIR.minSpeed) continue;
       out.push({ surface: s.id, point: p, speed, gain: airGain(speed) });
       n++;
+      // one note per finger: it has played; nothing under it plays until it comes back out (list what wins first)
+      for (let q = 0; q < surfaces.length && q < this.maxSurfaces; q++) this.through[p * this.maxSurfaces + q] = 1;
+      break;
     }
     return n;
   }

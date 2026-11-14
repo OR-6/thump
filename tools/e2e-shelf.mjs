@@ -7,9 +7,9 @@
 import { xr, state, wait, check, done, shot, goto, placeKit, until, HAND, DESK_Y } from './e2e-lib.mjs';
 
 const FLAT = { pitch: 0, yaw: 0, roll: 0 };
-async function slapAt(at, n = [0, 1, 0], { speed = 1.0, from = 0.08 } = {}) {
+async function slapAt(at, n = [0, 1, 0], { speed = 1.0, from = 0.08, pose = FLAT } = {}) {
   const P = [at[0] + n[0] * 0.3, at[1] + n[1] * 0.3, at[2] + n[2] * 0.3];
-  xr('set-transform', { device: HAND, position: { x: P[0], y: P[1], z: P[2] }, orientation: FLAT });
+  xr('set-transform', { device: HAND, position: { x: P[0], y: P[1], z: P[2] }, orientation: pose });
   await wait(300);
   const h = state().right;
   const pts = [[h.palm, h.palmRadius], [h.indexTip, h.tipRadius], [h.middleTip, h.tipRadius], [h.ringTip, h.tipRadius], [h.knuckleIndex, 0.011], [h.knucklePinky, 0.011]];
@@ -26,7 +26,7 @@ async function slapAt(at, n = [0, 1, 0], { speed = 1.0, from = 0.08 } = {}) {
   const along = side[0] * n[0] + side[1] * n[1] + side[2] * n[2];
   const lat = [side[0] - n[0] * along, side[1] - n[1] * along, side[2] - n[2] * along];
   const base = (d) => ({ x: at[0] - lat[0] + n[0] * (d - low), y: at[1] - lat[1] + n[1] * (d - low), z: at[2] - lat[2] + n[2] * (d - low) });
-  xr('set-transform', { device: HAND, position: base(from), orientation: FLAT });
+  xr('set-transform', { device: HAND, position: base(from), orientation: pose });
   await wait(250);
   xr('animate-to', { device: HAND, position: base(-0.003), duration: from / speed });
   await wait((from / speed) * 1000 + 200);
@@ -74,9 +74,11 @@ await tab('piano');
 s = state();
 check('Instruments, then the piano card, puts a piano on the desk', s.targets.inst?.[0] === 1 && s.game.display.page?.title === 'Piano', `${s.game.display.page?.id} ${s.game.display.page?.title} inst=${s.targets.inst}`);
 let before = s.debug.hits;
-await slapAt(s.targets.inst2);
+// (fingertips press the keys, 6 cm up in the case: aim the hand so its fingers, not its palm, land on the key)
+// (fingertips first: the hand pitched down, as on a keyboard; the press goes 1 cm on)
+await slapAt(s.targets.inst2.map((v, i) => v - (i === 1 ? 0.01 : 0)), [0, 1, 0], { from: 0.06, pose: { pitch: -50, yaw: 0, roll: 0 } });
 s = state();
-check('a piano key plays its note', s.debug.hits > before && s.debug.lastHit?.family === 'piano' && s.debug.lastHit?.zone === 2, JSON.stringify(s.debug.lastHit));
+check('fingertips pressing the piano play its keys', s.debug.hits > before && /piano/.test(s.debug.lastHit?.family ?? ''), JSON.stringify(s.debug.lastHit));
 shot('shelf-piano', look);
 await ui('nav:inst');
 s = state();

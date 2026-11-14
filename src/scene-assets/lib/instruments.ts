@@ -8,7 +8,8 @@
  */
 import { BoxGeometry, CircleGeometry, DoubleSide, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
-import { KEYBOARD, PIANO_CHORD, pianoBlacks } from '../../kit/shelf.js';
+import { KEYBOARD, PIANO_CHORD } from '../../kit/shelf.js';
+import { KEY, buildPiano, isBlack } from './piano.js';
 import { fineNormal, woodGrain } from './surfaces.js';
 
 const mat = (name: string, color: number, roughness: number, metalness = 0) => new MeshStandardMaterial({ name, color, roughness, metalness });
@@ -46,128 +47,59 @@ class Springs {
 }
 
 /**
- * The keyboard, at real key size: fourteen ivory keys 23.5 mm apart and 150 mm long with notches where the black keys
- * sit, ten black keys 11 by 95 mm standing 10 mm higher with bevelled tops, in a lacquered case (rounded end cheeks,
- * a red felt rail behind the keys, a slim lip in front, a nameboard), and a red rubber chord button on the case to
- * the left. Keys sink 8 mm on a spring when played.
+ * The keyboard: the real-size keyboard of lib/piano.ts (two octaves and a top C, keys pivoting at their backs, a
+ * deep lacquered case), placed where the piano's zones are, and a red rubber chord button on a pod to its left.
+ * A key goes down when played and springs back.
  */
 export class PianoModel implements DeskModel {
   readonly root = named(new Group(), 'Piano');
-  private keys: Mesh[] = [];
-  private keyY: number[] = [];
-  private spring = new Springs(48);
-  private blackKeys: Mesh[] = [];
-  private blackY = 0;
+  private keys: Group[] = [];
+  private blacks: Group[] = [];
   private button: Mesh | null = null;
-  private readonly ivory = new MeshStandardMaterial({ name: 'Ivory', color: 0xf7f2e7, roughness: 0.3, normalMap: fineNormal(9, 6) });
-  private readonly ebony = new MeshStandardMaterial({ name: 'Ebony', color: 0x121115, roughness: 0.62 });
-  private readonly lacquer = new MeshPhysicalMaterial({ name: 'Lacquer', color: 0x0a0a0c, roughness: 0.35, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.06 });
-  private readonly felt = mat('Felt', 0x7a1418, 1);
+  private buttonY = 0;
+  private spring = new Springs(48);
+  private readonly lacquer = new MeshPhysicalMaterial({ name: 'Lacquer', color: 0x0c0c0e, roughness: 0.32, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.08 });
   private readonly rubber = mat('Rubber', 0xc8261c, 0.55);
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
     this.keys = [];
-    this.keyY = [];
-    this.blackKeys = [];
-    const K = KEYBOARD;
+    this.blacks = [];
     const whites = zones.filter((q) => q.i < PIANO_CHORD);
-    const chord = zones.find((q) => q.i === PIANO_CHORD);
     if (!whites.length) return;
-    const blacks = pianoBlacks(zones);
-    const x0 = whites[0].x - K.pitch / 2;
-    const x1 = whites[whites.length - 1].x + K.pitch / 2;
-    const zf = K.front;
-    const zb = K.front + K.len;
-    const BASE = 0.006;
-    const KEY_T = 0.014;
-    const left = chord ? chord.x - chord.w - 0.014 : x0;
-    const box = new BoxGeometry(1, 1, 1);
-    const part = (name: string, m: MeshStandardMaterial, sx: number, sy: number, sz: number, x: number, y: number, z: number) => {
-      const o = named(new Mesh(box, m), name);
-      o.scale.set(sx, sy, sz);
-      o.position.set(x, y, z);
-      this.root.add(o);
-      return o;
-    };
-    // the case: a base under everything, a nameboard and felt rail behind the keys, a lip in front
-    part('Base', this.lacquer, x1 - left + 0.03, BASE, zb - zf + 0.06, (left + x1) / 2, BASE / 2, -((zf + zb) / 2 + 0.012));
-    part('Nameboard', this.lacquer, x1 - left + 0.03, 0.034, 0.03, (left + x1) / 2, 0.017, -(zb + 0.022));
-    part('Felt', this.felt, x1 - x0, 0.004, 0.006, (x0 + x1) / 2, BASE + KEY_T + 0.002, -(zb + 0.004));
-    part('Lip', this.lacquer, x1 - x0 + 0.004, 0.009, 0.006, (x0 + x1) / 2, BASE + 0.0045, -(zf - 0.004));
-    // the end cheeks, rounded on top
-    const cheekL = 0.016;
-    for (const [nm, cx] of [['CheekLeft', left - 0.008 + 0.015 - cheekL / 2], ['CheekRight', x1 + cheekL / 2 + 0.001]] as const) {
-      part(nm, this.lacquer, cheekL, 0.026, zb - zf + 0.052, cx, 0.013, -((zf + zb) / 2 + 0.008));
-      const top = named(new Mesh(new CylinderGeometry(cheekL / 2, cheekL / 2, zb - zf + 0.052, 16), this.lacquer), `${nm}Top`);
-      top.rotation.x = Math.PI / 2;
-      top.position.set(cx, 0.026, -((zf + zb) / 2 + 0.008));
-      this.root.add(top);
-    }
-    // the white keys: the full width at the front, notched at the back round the black keys
-    const backZ0 = zb - K.blackLen;
-    whites.forEach((q) => {
-      const w = q.w;
-      let l = q.x - w / 2;
-      let r = q.x + w / 2;
-      for (const b of blacks) {
-        if (b.x > q.x && b.x - b.w / 2 - 0.0008 < r) r = b.x - b.w / 2 - 0.0008;
-        if (b.x < q.x && b.x + b.w / 2 + 0.0008 > l) l = b.x + b.w / 2 + 0.0008;
-      }
-      const key = named(new Group(), `Key${q.i}`) as unknown as Mesh;
-      const front = new Mesh(box, this.ivory);
-      front.scale.set(w, KEY_T, backZ0 - zf);
-      front.position.set(0, 0, -((zf + backZ0) / 2 - q.z));
-      const back = new Mesh(box, this.ivory);
-      back.scale.set(r - l, KEY_T, zb - backZ0);
-      back.position.set((l + r) / 2 - q.x, 0, -((backZ0 + zb) / 2 - q.z));
-      (key as unknown as Group).add(front, back);
-      this.keyY[q.i] = BASE + KEY_T / 2;
-      key.position.set(q.x, this.keyY[q.i], -q.z);
-      this.keys[q.i] = key;
-      this.root.add(key);
-    });
-    // the black keys: 10 mm proud of the whites, a narrower top for the bevel
-    this.blackY = BASE + KEY_T + 0.005;
-    blacks.forEach((b, j) => {
-      const k = named(new Group(), `Black${j}`) as unknown as Mesh;
-      const body = new Mesh(box, this.ebony);
-      body.scale.set(b.w, 0.01, b.h);
-      const cap = new Mesh(box, this.ebony);
-      cap.scale.set(b.w * 0.78, 0.002, b.h * 0.94);
-      cap.position.set(0, 0.006, -b.h * 0.02);
-      (k as unknown as Group).add(body, cap);
-      k.position.set(b.x, this.blackY, -b.z);
-      this.root.add(k);
-      this.blackKeys.push(k);
-    });
-    // the chord button: a red rubber dome on the case, left of the keys
+    const parts = buildPiano({ low: 48, octaves: 2 });
+    // its centre where the zones' keys are centred; its front edge at the zones' front
+    const cx = (whites[0].x + whites[whites.length - 1].x) / 2;
+    parts.root.position.set(cx, 0, -KEYBOARD.front);
+    this.root.add(parts.root);
+    const mids = [...parts.keys.keys()].sort((a, b) => a - b);
+    for (const m of mids) (isBlack(m) ? this.blacks : this.keys).push(parts.keys.get(m)!);
+    // the chord button: a red rubber dome on a lacquered pod, left of the keyboard, as tall as the keys
+    const chord = zones.find((q) => q.i === PIANO_CHORD);
     if (chord) {
-      const ring = named(new Mesh(new CylinderGeometry(chord.w + 0.004, chord.w + 0.006, 0.004, 40), this.lacquer), 'ButtonRing');
-      ring.position.set(chord.x, BASE + 0.002, -chord.z);
+      const podH = KEYBOARD.top - 0.006;
+      const pod = named(new Mesh(new BoxGeometry(chord.w * 2 + 0.016, podH, chord.w * 2 + 0.03), this.lacquer), 'ButtonPod');
+      pod.position.set(chord.x, podH / 2, -chord.z);
       const dome = named(new Mesh(new CylinderGeometry(chord.w * 0.92, chord.w, 0.008, 40), this.rubber), 'ChordButton');
-      dome.position.set(chord.x, BASE + 0.008, -chord.z);
-      this.root.add(ring, dome);
+      this.buttonY = podH + 0.004;
+      dome.position.set(chord.x, this.buttonY, -chord.z);
+      this.root.add(pod, dome);
       this.button = dome;
-      this.keyY[PIANO_CHORD] = BASE + 0.008;
-      this.keys[PIANO_CHORD] = dome;
     }
   }
 
-  /** Key i (the white keys, then 14 the chord button; 30 and up the black keys) goes down. */
+  /** Key i (the white keys; 15 the chord button; 30 and up the black keys) goes down. */
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.3 + 0.3 * gain);
   }
 
   update(dt: number): void {
-    // critically damped: down in ~25 ms, back without bouncing up
+    // down in about 40 ms, back over about 160 (critically damped, no bounce)
     this.spring.step(dt, 1600, 80);
-    for (let i = 0; i < this.keys.length; i++) {
-      const k = this.keys[i];
-      if (!k || this.keyY[i] === undefined) continue;
-      k.position.y = this.keyY[i] + Math.max(i === PIANO_CHORD ? -0.004 : -0.008, Math.min(0, this.spring.x[i]));
-    }
-    for (let j = 0; j < this.blackKeys.length; j++) this.blackKeys[j].position.y = this.blackY + Math.max(-0.008, Math.min(0, this.spring.x[30 + j]));
+    const press = (k: Group, x: number) => (k.rotation.x = KEY.press * Math.min(1, Math.max(0, -x / 0.008)));
+    for (let i = 0; i < this.keys.length; i++) press(this.keys[i], this.spring.x[i]);
+    for (let j = 0; j < this.blacks.length; j++) press(this.blacks[j], this.spring.x[30 + j]);
+    if (this.button) this.button.position.y = this.buttonY + Math.max(-0.004, Math.min(0, this.spring.x[PIANO_CHORD]));
   }
 }
 

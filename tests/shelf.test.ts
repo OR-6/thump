@@ -17,7 +17,7 @@ describe('the instrument shelf', () => {
   it('the piano: two octaves of real keys (23.5 mm apart, 150 mm long), climbing, in the scale; it fits a tray', () => {
     const z = pianoZones(60, scaleById('happy'));
     const keys = z.slice(0, PIANO_CHORD);
-    expect(keys).toHaveLength(14);
+    expect(keys).toHaveLength(15);
     for (let i = 1; i < keys.length; i++) {
       expect(keys[i].midi).toBeGreaterThan(keys[i - 1].midi);
       expect(keys[i].x - keys[i - 1].x).toBeCloseTo(0.0235, 4);
@@ -25,7 +25,7 @@ describe('the instrument shelf', () => {
     for (const k of keys) expect(k.h).toBeCloseTo(0.15, 4);
     const left = Math.min(...z.map((k) => k.x - (k.shape === 'disc' ? k.w : k.w / 2)));
     const right = Math.max(...z.map((k) => k.x + (k.shape === 'disc' ? k.w : k.w / 2)));
-    expect(right - left).toBeLessThan(0.44);
+    expect(right - left).toBeLessThan(0.46);
     // the tune's first note is in the middle (the sixth key)
     expect(keys[5].degree).toBe(0);
   });
