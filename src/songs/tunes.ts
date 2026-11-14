@@ -45,14 +45,17 @@ export interface Tune {
 }
 
 /** One lesson per instrument: a slow original, its moves one at a time (bars 0, 4, 8, 12). */
-const C_TUNE = 'C2 E2 G2 E2 | F2 A2 G4 | E2 G2 c2 G2 | F2 E2 D4 | C2 E2 G2 E2 | F2 A2 c4 | B2 G2 A2 B2 | c8 | ';
-const C_CHORDS = 'C | F | C | G | C | F | G | C | ';
-const KEYS_TUNE = 'C8 | E8 | G8 | c8 | C2 D2 E2 F2 | G2 F2 E2 D2 | C2 D2 E2 F2 | G8 | E2 E2 F2 G2 | G2 F2 E2 D2 | C2 C2 D2 E2 | E4 D4 | E2 E2 F2 G2 | G2 F2 E2 D2 | C2 C2 D2 E2 | D4 C4';
-const KEYS_CHORDS = 'C | C | C | C | C | G | C | G | C | G | C | G | C | G | C | C';
+// (the drum and conga lessons' band: a hook over the four chords half the radio uses, Am F C G, with a lift in the
+// second half; the keys and marimba lesson: a tune on the eight notes a marimba has, C to c, over C Am F G, that
+// starts with slow notes and ends on a syncopated hook)
+const C_TUNE = 'e2 e c d2 c A | c2 A2 c3 d | e2 g e d2 c2 | d4 B2 G2 | e2 e c d2 c A | c2 A2 F3 G | E2 G c e2 d2 | B2 d2 g4 | a2 g e d2 c2 | c2 d e f2 e2 | g3 e c2 G2 | B2 c d B4 | e2 e c d2 c A | c2 A2 c3 d | B2 d2 B2 G2 | A8';
+const C_CHORDS = 'Am | F | C | G | Am | F | C | G | Am | F | C | G | Am | F | G | Am';
+const KEYS_TUNE = 'E4 G4 | A4 E4 | F4 A4 | G8 | C2 D2 E2 G2 | A2 G2 E2 C2 | F2 G2 A2 c2 | B4 G4 | E2 G2 A3 G | E2 D2 C4 | E2 G2 A2 c2 | B6 G2 | c2 B2 A2 G2 | A2 G2 E4 | F2 E2 D2 E2 | C8';
+const KEYS_CHORDS = 'C | Am | F | G | C | Am | F | G | C | Am | F | G | C | Am | G | C';
 const keysSteps = (first: string) => [
-  { bar: 0, title: 'One note', say: first, level: 'normal' as const },
-  { bar: 4, title: 'Walk up', say: 'Walk up the notes, then back down', level: 'normal' as const },
-  { bar: 8, title: 'A tune', say: 'A tune you know: Ode to Joy', level: 'normal' as const },
+  { bar: 0, title: 'Slow notes', say: first, level: 'normal' as const },
+  { bar: 4, title: 'Walk', say: 'Walk along the notes, one after the next', level: 'normal' as const },
+  { bar: 8, title: 'The hook', say: 'The hook: it skips ahead, then lands', level: 'normal' as const },
   { bar: 12, title: 'Your turn', say: 'All of it: keep with the band', level: 'normal' as const },
 ];
 export const LESSONS: readonly Tune[] = [
@@ -65,8 +68,8 @@ export const LESSONS: readonly Tune[] = [
     style: 'rock',
     passes: 1,
     original: true,
-    melody: C_TUNE + C_TUNE.trimEnd().replace(/\|\s*$/, ''),
-    chords: C_CHORDS + C_CHORDS.trimEnd().replace(/\|\s*$/, ''),
+    melody: C_TUNE,
+    chords: C_CHORDS,
     lesson: {
       inst: 'drums',
       steps: [
@@ -112,7 +115,7 @@ export const LESSONS: readonly Tune[] = [
     style: 'ballad',
     passes: 1,
     original: true,
-    melody: 'G2 B2 d2 B2 | c2 e2 d4 | A2 c2 B2 A2 | G8 | G2 B2 d2 B2 | c2 e2 d4 | A2 c2 B2 A2 | G8 | B2 d2 g2 d2 | e2 c2 d4 | c2 B2 A2 F2 | G8 | B2 d2 g2 d2 | e2 c2 d4 | c2 B2 A2 F2 | G8',
+    melody: 'B2 d2 g3 d | e2 c2 G4 | A4 F2 A2 | B2 d2 g4 | B2 d2 g3 a | g2 e2 c4 | d2 c2 A2 F2 | G8 | g2 f g a2 g2 | e2 d e c4 | d4 A2 F2 | G2 B2 d4 | B2 d2 g3 d | e2 c2 G4 | A2 F2 A2 c2 | G8',
     chords: 'G | C | D | G | G | C | D | G | G | C | D | G | G | C | D | G',
     lesson: {
       inst: 'guitar',
@@ -154,8 +157,8 @@ export const LESSONS: readonly Tune[] = [
     style: 'funk',
     passes: 1,
     original: true,
-    melody: C_TUNE + C_TUNE.trimEnd().replace(/\|\s*$/, ''),
-    chords: C_CHORDS + C_CHORDS.trimEnd().replace(/\|\s*$/, ''),
+    melody: C_TUNE,
+    chords: C_CHORDS,
     lesson: {
       inst: 'congas',
       steps: [

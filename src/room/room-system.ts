@@ -77,6 +77,7 @@ import { HandMallet, MALLET_HEAD_R, MALLET_LEN, STICK_LEN } from './hand-mallet.
 import { KICK_DEPTH } from '../kit/pad-view.js';
 import { INST_LIGHT } from '../ui/theme.js';
 import { HitFx, type PartShape } from './hit-fx.js';
+import { ApproachRings } from './approach-rings.js';
 import { GuitarHands, HG, heldMatrix, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
@@ -149,6 +150,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private worldRoot = new Group();
   private head = new Vector3();
   private hitFx: HitFx | null = null;
+  private approach: ApproachRings | null = null;
   /** The part last judged, its shape for the hit flash (and the streak's ring). */
   private lastPart: PartShape = { at: new Vector3(), q: new Quaternion(), w: 0, d: 0, round: true };
   private fxKey = '';
@@ -163,15 +165,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.fxKey = key;
     return this.game.hit(key, t, gain);
   }
-  /** A judged hit lights the part it was on: its outline swells off it (a Perfect brighter and twice). */
-  private partFx(g: string, at: Vector3): void {
-    if (g !== 'perfect' && g !== 'good') return;
-    const s = this.lastPart;
+  /** Where `key`'s part is (world), its shape and colour: what the hit flash and the approach rings draw round. */
+  private shapeOf = (key: string, s: PartShape, col: Color): boolean => {
     this.kit.root.getWorldQuaternion(s.q);
-    const held = this.kit.inst === 'guitar' && this.fxKey.startsWith('guitar:');
-    if (held) {
+    if (this.kit.inst === 'guitar' && key.startsWith('guitar:')) {
       // the guitar on your lap: a fret zone on the neck, or the strings over the soundhole
-      const z = Number(this.fxKey.slice(7));
+      const z = Number(key.slice(7));
       const zone = z >= 0 && z < 3;
       this.heldWorld(zone ? zoneX(z) : HG.strikeX, HG.strings + 0.002, 0, s.at);
       this.heldM.decompose(this.fxN, this.fxQ, this.fxS);
@@ -179,19 +178,28 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       s.w = zone ? 0.085 : 0.11;
       s.d = 0.05;
       s.round = false;
-      this.partCol.setHex(instDef('guitar').color);
-    } else if (this.resolveNote(this.fxKey, s.at, this.partCol, this.fxNt)) {
-      s.w = this.fxNt.w;
-      s.d = this.fxNt.d;
-      s.round = this.fxNt.round;
-      // (a leaning surface: turned from the kit's up to its normal)
-      if (this.fxNt.nx || this.fxNt.ny || this.fxNt.nz) {
-        this.fxN.set(this.fxNt.nx ?? 0, this.fxNt.ny ?? 1, this.fxNt.nz ?? 0).normalize();
-        this.fxS.copy(RoomSystem.UP).applyQuaternion(s.q);
-        this.fxQ.setFromUnitVectors(this.fxS, this.fxN);
-        s.q.premultiply(this.fxQ);
-      }
-    } else {
+      col.setHex(instDef('guitar').color);
+      return true;
+    }
+    if (!this.resolveNote(key, s.at, col, this.fxNt)) return false;
+    s.w = this.fxNt.w;
+    s.d = this.fxNt.d;
+    s.round = this.fxNt.round;
+    // (a leaning surface: turned from the kit's up to its normal)
+    if (this.fxNt.nx || this.fxNt.ny || this.fxNt.nz) {
+      this.fxN.set(this.fxNt.nx ?? 0, this.fxNt.ny ?? 1, this.fxNt.nz ?? 0).normalize();
+      this.fxS.copy(RoomSystem.UP).applyQuaternion(s.q);
+      this.fxQ.setFromUnitVectors(this.fxS, this.fxN);
+      s.q.premultiply(this.fxQ);
+    }
+    return true;
+  };
+  /** A judged hit lights the part it was on: its outline swells off it (a Perfect brighter and twice). */
+  private partFx(g: string, at: Vector3): void {
+    if (g !== 'perfect' && g !== 'good') return;
+    const s = this.lastPart;
+    if (!this.shapeOf(this.fxKey, s, this.partCol)) {
+      this.kit.root.getWorldQuaternion(s.q);
       s.at.copy(at);
       s.w = s.d = 0.04;
       s.round = true;
@@ -287,6 +295,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.hitWords = new HitWords(this.worldRoot);
     // what you hit answers in its own shape (src/room/hit-fx.ts)
     this.hitFx = new HitFx(this.worldRoot);
+    this.approach = new ApproachRings(this.worldRoot);
     this.hitWords.onShow = (g, at) => this.partFx(g, at);
     this.hint = new Tag(0.36, 0.05);
     this.worldRoot.add(this.hint.mesh);
@@ -410,6 +419,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     light: (key, k) => {
       const r = this.ref(key);
       if (!r) return;
+      // (in a song the approach ring says when; the glow only hints which, softly, so the two don't blur together)
+      if (this.game.mode === 'play' || this.game.mode === 'count') k *= 0.45;
       if (r.kind === 'pad') this.kit.pad(r.lane)?.setGlow(k);
       else if (r.kind === 'keys') this.kit.keys.light(r.zone, k);
       else if (r.kind === 'inst') {
@@ -1510,6 +1521,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.module.root.localToWorld(this.tmp2);
     // the song's notes fall onto what plays them
     this.waterfall.update(dt, this.game, this.kit.root, this.resolveNote);
+    this.approach?.update(this.game, this.shapeOf, motion.calm);
     this.dimmer.update(dt, this.head, motion.calm);
     audio.idle();
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
