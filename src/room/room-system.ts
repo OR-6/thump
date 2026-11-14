@@ -1628,7 +1628,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const dt = Math.min(delta, 0.1);
     this.watchFrames(delta);
     // (paused by you: the song's clock holds still; you can still use the panel)
-    if (!this.userPaused && !this.lessonHold) this.clock.tick(Math.min(dt, 0.05), audio.running, audio.now());
+    if (!this.userPaused) this.clock.tick(Math.min(dt, 0.05), audio.running, audio.now());
     else this.clock.hold();
     // the panel's own time: it runs while the song is paused (the song's clock stands still then, and a press timed on
     // it would never count)
@@ -4924,7 +4924,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** Paused by you: the song, the band and scoring hold still; resuming counts you back in. */
   private userPaused = false;
-  /** A lesson holding the song still for you (its clock stands; your hits still play). */
+  /** A lesson holding the song still for you (the game holds its own song clock; the room's time runs on). */
   private lessonHold = false;
   private setUserPaused(p: boolean): void {
     if (p === this.userPaused) return;

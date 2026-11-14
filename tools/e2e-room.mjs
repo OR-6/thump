@@ -8,7 +8,7 @@
  *   node tools/e2e-room.mjs            discovery by real slaps
  *   node tools/e2e-room.mjs --song     also a song with the autoplayer
  */
-import { xr, run, state, wait, check, done, shot, goto, placeKit, until, HAND, DESK_Y } from './e2e-lib.mjs';
+import { xr, run, state, wait, check, done, shot, goto, placeKit, until, slap, measureHand, HAND, DESK_Y } from './e2e-lib.mjs';
 
 const SONG = process.argv.includes('--song');
 const FLAT = { pitch: 0, yaw: 0, roll: 0 };
@@ -187,6 +187,14 @@ s = state();
 await slapAt(s.targets['ui:play'], s.targets.panelNormal, { speed: 0.5, from: 0.05 });
 s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 3000);
 check('SONGS, then PLAY, plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && !!s.game.song, `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
+// (a lesson first holds to say its first step: a hit on the drums goes on, as a player would after reading it)
+const hand = await measureHand();
+for (let i = 0; i < 6 && !(state().game.motes > 0); i++) {
+  await wait(700);
+  // (from well above the heads, as a hand comes down onto a drum)
+  await slap(hand, [s.debug.kitOrigin[0] + 0.06, DESK_Y, s.debug.kitOrigin[2]], { from: 0.25, speed: 1.5 });
+  await until((x) => x.game.motes > 0, 1500);
+}
 s = await until((x) => x.game.motes > 0, 8000);
 check("the song's notes fly to the drums", s.game.motes > 0, `motes=${s.game.motes} ${s.game.display.line} / ${s.game.display.sub}`);
 shot('room-05-song', look);

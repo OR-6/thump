@@ -19,7 +19,6 @@ import { ringMarkSvg, wordmarkSvg } from './brand.js';
 import { PAGE_ROOT, PAGE_SCALE, VIEW, centreOnTray, deskSvg, viewFor } from './landing-drawing.js';
 
 const LIVE_URL = 'or-6.github.io/thump';
-const REPO_URL = 'https://github.com/OR-6/thump';
 
 /** The band, in the page's order: its name, a few words on it, how you play it, and its capture from the game. */
 const BAND: { id: InstId; label: string; what: string; line: string; alt: string }[] = [
@@ -243,8 +242,7 @@ export function mountLanding(world: World): void {
       <div class="wrap foot-in">
         <div class="foot-brand">${wordmarkSvg('currentColor', 'Thump')}<p>An entry in the Meta VR Start Developer Competition 2026 (Gaming).</p></div>
         <div class="foot-text">
-          <p>Instrument samples from the Versilian Community Sample Library (CC0). Interface sounds and particles by Kenney (CC0).</p>
-          <p><a href="${REPO_URL}/blob/main/LICENSE">MIT licence</a> <a href="${REPO_URL}">GitHub</a></p>
+          <p>Instrument samples from the Versilian Community Sample Library (CC0); the guitar is a Martin HD-28 recorded by Jeff Learman (Discord SFZ GM Bank, CC0). Interface sounds and particles by Kenney (CC0).</p>
         </div>
       </div>
     </footer>`;

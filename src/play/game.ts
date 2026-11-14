@@ -1932,11 +1932,8 @@ export class Game {
     if (this.mode === 'build') return this.hitBuild(key, t, gain);
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
     if (this.mode === 'discover' && this.looper.state === 'off') this.groovePlayed(key, t);
-    if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
-    // listening: you can play along, nothing's scored
-    if (this.listening) return null;
     // a lesson holding for you: a step to read goes on with any hit (not scored); a note waits for its own hit
-    if (this.hold) {
+    if (this.hold && (this.mode === 'play' || this.mode === 'count')) {
       if (gain < 0.15) return null;
       if (this.hold.kind === 'read') {
         this.setHold(null);
@@ -1947,6 +1944,9 @@ export class Game {
       this.setHold(null);
       this.waitsLeft--;
     }
+    if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
+    // listening: you can play along, nothing's scored
+    if (this.listening) return null;
     // the band's waiting for your last hit
     if (this.finalWait >= 0 && this.perf) {
       if (gain < 0.2) return null;
@@ -1987,6 +1987,11 @@ export class Game {
   }
 
   tick(t: number): void {
+    // (a lesson holding: the song's own clock stands still, its start pushed on by the time that passes; the room's
+    // time runs on, so hands, sound and the screen all carry on)
+    const passed = t - this.lastTickT;
+    this.lastTickT = t;
+    if (this.hold && passed > 0 && passed < 1 && (this.mode === 'play' || this.mode === 'count')) this.clock.delay(passed);
     this.t = t;
     // (a lesson's hold ends with the song)
     if (this.hold && this.mode !== 'play' && this.mode !== 'count') this.setHold(null);
@@ -2434,6 +2439,7 @@ export class Game {
   coachFocus: string | null = null;
   private readDone = -1;
   private waitsLeft = 0;
+  private lastTickT = 0;
   /** How many of this step's notes will still wait for you (0: it plays on). */
   get lessonWaits(): number {
     return this.hold?.kind === 'read' ? 3 : this.waitsLeft;
