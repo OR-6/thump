@@ -6,7 +6,7 @@
  * the drum's centre, +Y up; sizes in metres.
  */
 import { BoxGeometry, CylinderGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, TorusGeometry, Vector2, Vector3 } from '@iwsdk/core';
-import { carbonTwill, cymbalRings, fineNormal, headCoat, meshWeave, woodGrain } from './surfaces.js';
+import { carbonTwill, cymbalPatina, cymbalRings, fineNormal, headCoat, meshWeave, woodGrain } from './surfaces.js';
 
 /** The old low drums' head height (still the default shell depth for anything flat). */
 export const DRUM_H = 0.022;
@@ -44,7 +44,8 @@ export const KIT_STYLES: readonly KitStyle[] = ['acoustic', 'jazz', 'electronic'
 export function cymbalMat(style: KitStyle): MeshStandardMaterial {
   if (style === 'electronic') return new MeshStandardMaterial({ name: 'RubberPad', color: 0x1c1c1f, roughness: 0.85, normalMap: fineNormal(3, 18) });
   const rings = cymbalRings();
-  return new MeshStandardMaterial({ name: 'Bronze', color: style === 'jazz' ? 0xa98a52 : 0xd9b25e, map: rings.map, roughnessMap: rings.rough, metalness: 1, roughness: style === 'jazz' ? 1.3 : 1 });
+  // (a jazz kit's cymbals are older and darker: a patina of spots over the lathe sheen)
+  return new MeshStandardMaterial({ name: 'Bronze', color: style === 'jazz' ? 0xa98a52 : 0xd9b25e, map: style === 'jazz' ? cymbalPatina() : rings.map, roughnessMap: rings.rough, metalness: 1, roughness: style === 'jazz' ? 1.3 : 1 });
 }
 
 const chrome = () => new MeshStandardMaterial({ name: 'Chrome', color: 0xe8eaee, metalness: 1, roughness: 0.14 });
@@ -279,9 +280,11 @@ export function buildCymbal(d: number, height: number, tilt: number, kind: 'cras
   cymbals.position.y = height;
   cymbals.rotation.x = tilt;
   // (a crash's bow rises to a clear domed bell about 1 cm up; a ride is heavier with a wider bell)
-  const top = cymbal(d, cymbalMat(style), 'Top', kind === 'ride' ? 0.28 : 0.22, kind === 'ride' ? 0.013 : 0.012);
+  // (a jazz kit's are thinner: their profile 0.7 as high)
+  const thin = style === 'jazz' ? 0.7 : 1;
+  const top = cymbal(d, cymbalMat(style), 'Top', kind === 'ride' ? 0.28 : 0.22, (kind === 'ride' ? 0.013 : 0.012) * thin);
   const felt = named(new Mesh(new CylinderGeometry(0.0045, 0.0045, 0.003, 14), new MeshStandardMaterial({ name: 'Felt', color: style === 'electronic' ? 0x2a2a2e : 0x7a1f1a, roughness: 0.95 })), 'Felt');
-  felt.position.y = (kind === 'ride' ? 0.013 : 0.012) + 0.0015;
+  felt.position.y = (kind === 'ride' ? 0.013 : 0.012) * thin + 0.0015;
   const nut = named(new Mesh(new BoxGeometry(0.012, 0.003, 0.003), metal), 'WingNut');
   nut.position.y = felt.position.y + 0.003;
   cymbals.add(top, felt, nut);

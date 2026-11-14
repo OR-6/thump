@@ -204,3 +204,21 @@ export function straightGrain(seed = 9): DataTexture {
     }, true);
   });
 }
+
+/** An old jazz cymbal's face (colour): the same fine lathe sheen, with a patina of darker spots over a fifth of it. */
+export function cymbalPatina(): DataTexture {
+  return once('patina', () => {
+    const r = rng(53);
+    const spots = Array.from({ length: 40 }, () => ({ u: r() * 128, v: 30 + r() * 220, s: 3 + r() * 9 }));
+    return tex(128, 256, (x, y) => {
+      const v = y / 255;
+      let g = 226 + Math.sin(v * 600) * 3 * (v > 0.22 ? 1 : 0.15);
+      for (const p of spots) {
+        const du = Math.min(Math.abs(x - p.u), 128 - Math.abs(x - p.u));
+        const d = Math.hypot(du, (y - p.v) * 0.6) / p.s;
+        if (d < 1) g -= 70 * (1 - d * d);
+      }
+      return [g, g * 0.88, g * 0.66];
+    }, true);
+  });
+}

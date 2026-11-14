@@ -36,6 +36,8 @@ export const HEAD_Y: Record<Lane, number> = { snare: 0.12, tom: 0.18, hat: 0.16,
 /** How far each piece tips toward the player (rad), as a drummer sets a kit: the rack tom and the crash most, the
  * snare a little, the bass drum and floor tom flat. */
 export const TILT: Record<Lane, number> = { snare: 0.08, tom: 0.3, hat: 0.05, kick: 0, floor: 0.04, crash: 0.3, ride: 0.15, gong: 0 };
+/** A jazz kit's own sizes (smaller drums, an 18-inch bass drum, a bigger ride); the rest as PADS. */
+const JAZZ_SIZE: Partial<Record<Lane, number>> = { kick: 0.2, tom: 0.14, floor: 0.17, crash: 0.17, ride: 0.25 };
 /** Where the player's eyes are, kit-local (the pieces turn to face them). */
 export const PLAYER_Z = 0.36;
 /** (kept for anything still reading the old kick's depth) */
@@ -222,12 +224,13 @@ export class PadView {
 
   constructor(readonly lane: Lane, hc = false, readonly style: KitStyle = 'acoustic') {
     const spec = PADS[lane];
-    this.radius = spec.size / 2;
+    const size = (style === 'jazz' ? JAZZ_SIZE[lane] : undefined) ?? spec.size;
+    this.radius = size / 2;
     const R = this.radius;
     this.group.name = `Pad-${lane}`;
     this.base.setHex(LED[lane]);
     // the drum itself (the hat: a hi-hat), its head the part a hit dents
-    const model = buildLane(lane, spec.size, style);
+    const model = buildLane(lane, size, style);
     this.model = model;
     this.depth = style === 'electronic' ? (EPAD_DEPTH[lane] ?? 0.035) : (DEPTH[lane] ?? 0.05);
     const cym = lane === 'hat' || lane === 'crash' || lane === 'ride';
@@ -250,7 +253,7 @@ export class PadView {
     // it sits on the desk: a soft shadow under it
     // (the drums that stand on the desk itself, the bass drum and floor tom, sit in a tighter, darker shadow)
     const onDesk = lane === 'kick' || lane === 'floor';
-    this.group.add(contactShadow(spec.size * (onDesk ? 1.2 : 1.5), spec.size * (onDesk ? 1.2 : 1.5), onDesk ? 1 : 0.9));
+    this.group.add(contactShadow(size * (onDesk ? 1.2 : 1.5), size * (onDesk ? 1.2 : 1.5), onDesk ? 1 : 0.9));
     // the LED ring round the base, and its glow on the table
     // (the ring at its foot is off at rest: it lights only when a song asks for this drum)
     this.led = new MeshBasicMaterial({ color: 0x000000, toneMapped: false, transparent: true, opacity: 0 });
