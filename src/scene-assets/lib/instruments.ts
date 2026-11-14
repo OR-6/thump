@@ -8,7 +8,7 @@
  */
 import { BoxGeometry, CircleGeometry, PlaneGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
-import { CONGA, GUITAR, HANDPAN, KEYBOARD, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
 import { fineNormal, hammered, woodGrain } from './surfaces.js';
 
@@ -414,7 +414,7 @@ export class HandpanModel implements DeskModel {
 export class MarimbaModel implements DeskModel {
   readonly root = named(new Group(), 'Marimba');
   private bars: Mesh[] = [];
-  private barY = 0.0085;
+  private barY = MARIMBA.top - 0.008;
   private spring = new Springs(8);
   private readonly wood = (() => {
     const map = woodGrain(41).clone();
@@ -447,28 +447,40 @@ export class MarimbaModel implements DeskModel {
       const b = { x: x1, z: zc + s * node(last.h) };
       const len = Math.hypot(b.x - a.x, b.z - a.z);
       const ang = Math.atan2(b.z - a.z, b.x - a.x);
+      // (the frame stands the bars up off the desk: the rails just under them)
+      const RY = MARIMBA.top - 0.024;
       const rail = named(new Mesh(box, this.frame), 'Rail');
-      rail.scale.set(len, 0.006, 0.012);
-      rail.position.set((a.x + b.x) / 2, 0.003, -(a.z + b.z) / 2);
+      rail.scale.set(len, 0.01, 0.014);
+      rail.position.set((a.x + b.x) / 2, RY, -(a.z + b.z) / 2);
       rail.rotation.y = ang;
       const c = named(new Mesh(new CylinderGeometry(0.0011, 0.0011, len, 8), this.cord), 'Cord');
       c.rotation.set(0, ang, Math.PI / 2);
-      c.position.set((a.x + b.x) / 2, 0.0072, -(a.z + b.z) / 2);
+      c.position.set((a.x + b.x) / 2, RY + 0.006, -(a.z + b.z) / 2);
       this.root.add(rail, c);
       // brass posts between the bars, holding the cord
       for (let k = 0; k <= zones.length; k++) {
         const px = k === 0 ? first.x - first.w / 2 - 0.004 : k === zones.length ? last.x + last.w / 2 + 0.004 : (zones[k - 1].x + zones[k].x) / 2;
         const t = (px - a.x) / (b.x - a.x);
-        const post = named(new Mesh(new CylinderGeometry(0.0013, 0.0013, 0.012, 8), this.brass), 'Post');
-        post.position.set(px, 0.009, -(a.z + (b.z - a.z) * t));
+        const post = named(new Mesh(new CylinderGeometry(0.0013, 0.0013, 0.014, 8), this.brass), 'Post');
+        post.position.set(px, RY + 0.01, -(a.z + (b.z - a.z) * t));
         this.root.add(post);
       }
     }
-    // the end blocks
-    for (const [sx, h] of [[x0 - 0.007, first.h], [x1 + 0.007, last.h]] as const) {
-      const end = named(new Mesh(box, this.frame), 'End');
-      end.scale.set(0.014, 0.013, node(h) * 2 + 0.03);
-      end.position.set(sx, 0.0065, -zc);
+    // the end frames: a trapezoid each, from the desk up to the rails, wider at the foot
+    for (const [sx, h] of [[x0 - 0.009, first.h], [x1 + 0.009, last.h]] as const) {
+      const wTop = node(h) * 2 + 0.03;
+      const H = MARIMBA.top - 0.018;
+      const tr = new Shape();
+      tr.moveTo(-wTop / 2 - 0.02, 0);
+      tr.lineTo(wTop / 2 + 0.02, 0);
+      tr.lineTo(wTop / 2, H);
+      tr.lineTo(-wTop / 2, H);
+      tr.lineTo(-wTop / 2 - 0.02, 0);
+      const g = new ExtrudeGeometry(tr, { depth: 0.016, bevelEnabled: true, bevelSize: 0.0015, bevelThickness: 0.0015, bevelSegments: 2 });
+      g.translate(0, 0, -0.008);
+      const end = named(new Mesh(g, this.frame), 'End');
+      end.rotation.y = Math.PI / 2;
+      end.position.set(sx, 0, -zc);
       this.root.add(end);
     }
     zones.forEach((q, i) => {
@@ -486,17 +498,19 @@ export class MarimbaModel implements DeskModel {
       shape.quadraticCurveTo(-w, h, -w, h - r);
       shape.lineTo(-w, -h + r);
       shape.quadraticCurveTo(-w, -h, -w + r, -h);
-      const g = new ExtrudeGeometry(shape, { depth: 0.007, bevelEnabled: true, bevelThickness: 0.001, bevelSize: 0.001, bevelSegments: 2, curveSegments: 4 });
+      const g = new ExtrudeGeometry(shape, { depth: 0.013, bevelEnabled: true, bevelThickness: 0.0015, bevelSize: 0.0015, bevelSegments: 2, curveSegments: 4 });
       g.rotateX(-Math.PI / 2);
-      g.translate(0, -0.0035, 0);
+      g.translate(0, -0.0065, 0);
       const bar = named(new Mesh(g, this.wood), `Bar${i}`);
       bar.position.set(q.x, this.barY, -q.z);
       this.bars.push(bar);
       // its resonator: a chrome tube lying behind it, longer for the low bars, capped
-      const tl = 0.06 + 0.08 * (1 - i / Math.max(1, zones.length - 1));
-      const tube = named(new Mesh(new CylinderGeometry(0.008, 0.008, tl, 20, 1, false), this.gold), `Resonator${i}`);
-      tube.rotation.x = Math.PI / 2;
-      tube.position.set(q.x, 0.0078, -(q.z + q.h / 2 + 0.012 + tl / 2));
+      // its resonator hangs under it: longer and wider under the low bars, gold
+      const k = i / Math.max(1, zones.length - 1);
+      const tl = 0.034 - 0.016 * k;
+      const tr = 0.011 - 0.003 * k;
+      const tube = named(new Mesh(new CylinderGeometry(tr, tr, tl, 20, 1, true), this.gold), `Resonator${i}`);
+      tube.position.set(q.x, MARIMBA.top - 0.03 - tl / 2, -q.z);
       this.root.add(bar, tube);
     });
   }
@@ -554,7 +568,8 @@ export class CongaModel implements DeskModel {
       // the shell: a conga's barrel, narrow at the foot, swelling to its belly two fifths up, in to the head
       const rAt = (y: number) => {
         const t = Math.max(0, Math.min(1, y / (H - 0.004)));
-        return R * (0.86 + 0.17 * Math.sin(Math.PI * Math.pow(t, 0.75)) + 0.1 * t);
+        // (foot 0.78, belly 1.05 a third of the way up, in to the head)
+        return R * (0.78 + 0.27 * Math.sin(Math.PI * Math.min(1, Math.pow(t, 0.55) * 0.85)) + 0.12 * t);
       };
       const pts: Vector2[] = [];
       for (let k = 0; k <= 16; k++) pts.push(new Vector2(rAt((k / 16) * (H - 0.004)), (k / 16) * (H - 0.004)));

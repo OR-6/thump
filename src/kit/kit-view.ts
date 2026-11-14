@@ -13,7 +13,7 @@ import { zonesFor, type Zone } from '../room/zones.js';
 import { CongaModel, GuitarModel, HandpanModel, MarimbaModel, PianoModel, type DeskModel } from '../scene-assets/lib/instruments.js';
 import { Tag } from '../ui/tag.js';
 import { Vector3 } from '@iwsdk/core';
-import { CONGA, GUITAR, KEYBOARD, instZones, type InstId, type Scale } from './shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, instZones, type InstId, type Scale } from './shelf.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.11 } as const;
@@ -161,6 +161,8 @@ export class KitView {
     this.instKey = `${id}:`;
     // (only the one that's out shows: the drums put every other model away)
     for (const [k, m] of this.models) m.root.visible = k === id;
+    // the display stands just clear of it
+    this.module.standOver(id === 'drums' ? 0.19 : id === 'congas' ? CONGA.top : id === 'piano' ? 0.085 : id === 'marimba' ? MARIMBA.top : id === 'guitar' ? GUITAR.strings : HANDPAN.rim + HANDPAN.dome);
     if (drums) {
       this.instZones = [];
       this.instShadow.visible = false;
@@ -194,7 +196,7 @@ export class KitView {
     o.rest = 0;
     // (the piano's chord button is red rubber on its case: no tape)
     this.chordTag.mesh.visible = false;
-    o.group.position.y = id === 'piano' ? KEYBOARD.top + 0.0015 : id === 'marimba' ? 0.014 : id === 'handpan' ? 0.02 : id === 'guitar' ? GUITAR.board + 0.001 : id === 'congas' ? CONGA.top + 0.001 : 0;
+    o.group.position.y = id === 'piano' ? KEYBOARD.top + 0.0015 : id === 'marimba' ? MARIMBA.top + 0.001 : id === 'handpan' ? 0.02 : id === 'guitar' ? GUITAR.board + 0.001 : id === 'congas' ? CONGA.top + 0.001 : 0;
     this.unfoldT = 0;
     o.reveal(0, 0.03);
   }

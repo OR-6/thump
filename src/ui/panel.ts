@@ -166,9 +166,22 @@ export class Panel {
    * nearer and higher, more upright, so it's short of the seatback ahead.
    */
   compact(on: boolean): void {
-    // (higher rather than nearer: its bottom edge stays clear of hands at the back of the instrument)
-    this.root.position.set(0, on ? 0.2 : PANEL.y, on ? -0.22 : PANEL.z);
-    this.root.rotation.x = -(on ? 0.36 : PANEL.lean);
+    this.tray = on;
+    this.place();
+  }
+  private tray = false;
+  /** How tall the instrument in front of it is: the display stands with its bottom edge 1.5 cm clear of it. */
+  private clear = 0.19;
+  standOver(top: number): void {
+    this.clear = top;
+    this.place();
+  }
+  private place(): void {
+    const lean = this.tray ? 0.36 : PANEL.lean;
+    const y = Math.max(0.17, this.clear + 0.015 + (PANEL.h / 2) * Math.cos(lean));
+    // (higher rather than nearer at a tray: its bottom edge stays clear of hands at the back of the instrument)
+    this.root.position.set(0, y, this.tray ? -0.22 : PANEL.z);
+    this.root.rotation.x = -lean;
     this.fitStand();
   }
 
