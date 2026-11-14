@@ -1362,20 +1362,32 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private waterfall = new Waterfall();
   private dimmer = new Dimmer();
   /** Where a note lands (world), its colour, and its target's size and shape. */
+  private leanQ = new Quaternion();
+  private leanN = new Vector3();
   private resolveNote = (key: string, out: Vector3, col: Color, t: NoteTarget): boolean => {
     const r = this.ref(key);
     if (!r || r.kind === 'clap') return false;
     const root = this.kit.root;
+    t.nx = t.ny = t.nz = 0;
+    // (a leaning surface's normal, kit-local, into the world)
+    const lean = (nx: number, ny: number, nz: number) => {
+      root.getWorldQuaternion(this.leanQ);
+      this.leanN.set(nx, ny, nz).applyQuaternion(this.leanQ);
+      t.nx = this.leanN.x;
+      t.ny = this.leanN.y;
+      t.nz = this.leanN.z;
+    };
     if (r.kind === 'pad') {
       const p = this.kit.pad(r.lane);
       if (!p || !p.visible || this.kit.inst !== 'drums') return false;
-      // (on the head, where it's struck; the kick's on its top)
+      // (on the head, where it's struck, at its tilt)
       out.set(p.x, p.headY + 0.002, p.z);
       root.localToWorld(out);
       col.setHex(LED[r.lane]);
       t.w = p.radius * 2;
       t.d = t.w;
       t.round = true;
+      if (p.tilt) lean(Math.sin(p.tilt) * Math.sin(p.yaw), Math.cos(p.tilt), Math.sin(p.tilt) * Math.cos(p.yaw));
       return true;
     }
     if (r.kind === 'keys') {
@@ -1410,6 +1422,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       t.round = z.shape === 'disc';
       t.w = t.round ? z.w * 2 : z.w;
       t.d = t.round ? t.w : z.h;
+      if (this.kit.inst === 'congas') {
+        const cn = congaNormal(z.x, -z.z);
+        lean(cn.nx, cn.ny, cn.nz);
+      } else if (hp) {
+        // (the dome's slope under the field: its normal tips outward)
+        const d = Math.hypot(z.x - hp.x, z.z - hp.z);
+        const slope = (handpanY(d + 0.001, hp.R) - handpanY(Math.max(0, d - 0.001), hp.R)) / 0.002;
+        const ux = d > 1e-4 ? (z.x - hp.x) / d : 0;
+        const uz = d > 1e-4 ? -(z.z - hp.z) / d : 0;
+        lean(-slope * ux, 1, -slope * uz);
+      }
       return true;
     }
     const s = r.surface!;

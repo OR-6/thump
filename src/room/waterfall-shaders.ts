@@ -4,7 +4,7 @@
  * a soft halo (the fake bloom), a streak (comet trails, chord filaments, sparks), and the aurora behind the lane.
  * Every one only adds light (see art/light.ts): over passthrough nothing may darken the room.
  */
-import { ShaderMaterial, Vector3 } from '@iwsdk/core';
+import { DoubleSide, ShaderMaterial, Vector3 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
 
 const OUT = /* glsl */ `
@@ -16,9 +16,19 @@ const OUT = /* glsl */ `
  * Shapes: 0 capsule (stands on its axis, turned to you), 1 lens, 2 crescent, 3 ring, 4 key flood, 5 head flood, 6 sweep.
  * The others lie on the plane whose normal is the axis; with no axis (zero) a shape faces you.
  */
-export function shapeMaterial(): ShaderMaterial {
-  return asLight(
+export function shapeMaterial(shade = false): ShaderMaterial {
+  // (painted: the same shapes in solid colour (vData.w its brightness, 0 for a dark outline), so a ring reads over a
+  // cream head, bright metal or a bright room; the one place the waterfall covers what's under it, only under its marks)
+  const wrap = (m: ShaderMaterial) => {
+    if (!shade) return asLight(m);
+    m.transparent = true;
+    m.depthWrite = false;
+    return m;
+  };
+  return wrap(
     new ShaderMaterial({
+      // (a flat shape's quad faces down as built: drawn from both sides, or every ring and flood is culled from above)
+      side: DoubleSide,
       uniforms: { uX: { value: new Vector3(1, 0, 0) } },
       vertexShader: /* glsl */ `
         attribute vec3 iPos; attribute vec3 iAxis; attribute vec2 iSize; attribute vec3 iCol; attribute vec4 iData;
@@ -82,7 +92,7 @@ export function shapeMaterial(): ShaderMaterial {
             c = mix(c, vec3(dot(c, vec3(0.3, 0.5, 0.2))) * 0.6, min(1.0, vData.y * 2.0));
             if (hash(floor((vUv + 1.0) * vec2(6.0, 14.0))) < vData.y * 1.4 - (0.5 - vUv.y * 0.5) * 0.4) discard;
           }
-          ${OUT}
+          ${shade ? 'float al = clamp(max(c.r, max(c.g, c.b)) * 1.6, 0.0, 0.95); gl_FragColor = vec4(min(c / max(0.001, max(c.r, max(c.g, c.b))) * vData.w, vec3(1.0)), al);\n          #include <colorspace_fragment>' : OUT}
         }`,
     }),
   );

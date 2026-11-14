@@ -47,19 +47,19 @@ describe('the note path', () => {
 
 describe('note forms', () => {
   it('each instrument has its form', () => {
-    expect(formOf('kit:snare', true)).toBe('disc');
-    expect(formOf('kit:kick', true)).toBe('disc');
-    expect(formOf('kit:hat', true)).toBe('cymbal');
-    expect(formOf('kit:gong', true)).toBe('cymbal');
+    expect(formOf('kit:snare', true)).toBe('ring');
+    expect(formOf('kit:kick', true)).toBe('ring');
+    expect(formOf('kit:hat', true)).toBe('ring');
+    expect(formOf('kit:gong', true)).toBe('ring');
     expect(formOf('piano:4', false)).toBe('fall');
     expect(formOf('keys:2', false)).toBe('fall');
-    expect(formOf('handpan:3', true)).toBe('arc');
-    expect(formOf('marimba:7', false)).toBe('arc');
-    expect(formOf('guitar:0', false)).toBe('neck');
-    expect(formOf('guitar:2', false)).toBe('neck');
+    expect(formOf('handpan:3', true)).toBe('ring');
+    expect(formOf('marimba:7', false)).toBe('fall');
+    expect(formOf('guitar:0', false)).toBe('ring');
+    expect(formOf('guitar:2', false)).toBe('ring');
     expect(formOf('guitar:9', false)).toBe('strum');
     expect(formOf('guitar:5', false)).toBe('fall');
-    expect(formOf('congas:1', true)).toBe('disc');
+    expect(formOf('congas:1', true)).toBe('ring');
     expect(formOf('s3:1', false)).toBe('fall');
     expect(pathOf('arc')).toBe('arc');
     expect(pathOf('neck')).toBe('slide');

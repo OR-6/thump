@@ -41,6 +41,10 @@ export interface NoteTarget {
   w: number;
   d: number;
   round: boolean;
+  /** The struck surface's normal (world) when it leans (a tipped drum, a conga, the handpan's dome); unset: straight up. */
+  nx?: number;
+  ny?: number;
+  nz?: number;
 }
 
 /** What the waterfall reads from the game each frame (the Game fits it). */
@@ -129,6 +133,7 @@ const _t: NoteTarget = { w: 0, d: 0, round: false };
 const _path: PathPoint = { up: 0, along: 0, du: 0, da: 0 };
 const _X = new Vector3();
 const _U = new Vector3();
+const _nrm = new Vector3();
 const _Z = new Vector3();
 const _dir = new Vector3();
 const _head = new Vector3();
@@ -163,6 +168,8 @@ export class Waterfall {
   readonly sparks = new SparkPool(SPARKS);
   readonly look = new StreakLook();
   private shapes: Batch;
+  /** The dark band under the rings (so they read on bright surfaces). */
+  private shades: Batch;
   private landing: Batch;
   private halos: Batch;
   private streaks: Batch;
@@ -196,6 +203,7 @@ export class Waterfall {
     const landMat = shapeMaterial();
     this.shapeMats = [shapeMat, landMat];
     this.shapes = new Batch('WaterfallNotes', quad, Q_POS, MAX_NOTES * 2, shapeMat, 7);
+    this.shades = new Batch('WaterfallShade', quad, Q_POS, MAX_NOTES * 2, shapeMaterial(true), 5);
     this.landing = new Batch('WaterfallLanding', quad, Q_POS, FX, landMat, 7);
     this.halos = new Batch('WaterfallHalos', quad, HALO, MAX_NOTES + FX, haloMaterial(), 6);
     this.streaks = new Batch('WaterfallTrails', strip, STREAK, MAX_NOTES * 3, streakMaterial(), 6);
@@ -208,7 +216,7 @@ export class Waterfall {
     this.aurora.renderOrder = 5;
     this.aurora.matrix.makeScale(0, 0, 0);
     this.root.name = 'Waterfall';
-    this.root.add(this.aurora, this.streaks.mesh, this.halos.mesh, this.shapes.mesh, this.landing.mesh, this.sparkDraw.mesh);
+    this.root.add(this.aurora, this.shades.mesh, this.streaks.mesh, this.halos.mesh, this.shapes.mesh, this.landing.mesh, this.sparkDraw.mesh);
   }
 
   /**
@@ -235,6 +243,7 @@ export class Waterfall {
     const H = this.halos;
     const T = this.streaks;
     S.n = H.n = T.n = 0;
+    this.shades.n = 0;
     let guides = 0;
     let shown = 0;
     let pr = 0;
@@ -295,6 +304,45 @@ export class Waterfall {
       const cb = k * _c.b;
       let r: number;
       let len: number;
+      if (form === 'ring') {
+        // a ring lying on the surface (at its own lean), closing onto the target's edge on the beat, over a faint
+        // disc of where to strike that fills in as it comes
+        _nrm.set(_t.nx ?? 0, _t.ny ?? 0, _t.nz ?? 0);
+        if (_nrm.lengthSq() < 0.5) _nrm.copy(_U);
+        else _nrm.normalize();
+        const R = Math.max(0.012, _t.w / 2);
+        const a0 = Math.max(0, n.ahead);
+        // (only the last two beats: it starts at 1.6 times the target and closes onto its edge on the beat)
+        if (a0 > 2) {
+          prevAhead = n.ahead;
+          continue;
+        }
+        const rr = R * (1 + 0.6 * amp * (a0 / 2));
+        // (brighter, and the core thicker, as it closes: you see it coming from the seat and feel the moment)
+        const kr = Math.min(1.6, k * (1.1 + 0.9 * near));
+        _ctr.copy(_p).addScaledVector(_nrm, 0.0025);
+        // a dark band under it (it reads on any surface), the soft glow round it, then its bright core
+        // (painted in its colour, with a dark edge either side, then its light on top)
+        _tmp.copy(_ctr).addScaledVector(_nrm, -0.0004);
+        this.shape(this.shades, _tmp, _nrm, rr * 1.015, rr * 1.015, 1, 1, 1, 3, ash, Math.min(0.6, 0.011 / rr + 0.04), 0);
+        this.shape(this.shades, _ctr, _nrm, rr, rr, _c.r, _c.g, _c.b, 3, ash, Math.min(0.5, (0.004 + 0.003 * near) / rr + 0.02), Math.min(1, 0.55 + 0.45 * near));
+        this.shape(S, _ctr, _nrm, rr * 1.04, rr * 1.04, _c.r * kr * 0.18, _c.g * kr * 0.18, _c.b * kr * 0.18, 3, ash, Math.min(0.6, 0.01 / rr + 0.04), 0);
+        this.shape(S, _ctr, _nrm, rr, rr, _c.r * kr, _c.g * kr, _c.b * kr, 3, ash, Math.min(0.5, (0.004 + 0.003 * near) / rr + 0.02), gold);
+        // the target: where to strike, filling in as it comes, and a bright edge the ring meets
+        const fill = (0.05 + 0.18 * near * near) * (n.faint ? 0.3 : 1);
+        _tmp.copy(_p).addScaledVector(_nrm, 0.0018);
+        this.shape(S, _tmp, _nrm, R * 0.97, R * 0.97, _c.r * fill, _c.g * fill, _c.b * fill, 3, ash, 1, 0);
+        this.shape(this.shades, _tmp, _nrm, R * 1.005, R * 1.005, 1, 1, 1, 3, ash, Math.min(0.5, 0.005 / R + 0.02), 0);
+        // (the target painted in, its colour coming up to half strength as the ring arrives)
+        const tf = 0.06 + 0.22 * near * near;
+        this.shape(this.shades, _tmp, _nrm, R * 0.97, R * 0.97, _c.r * tf, _c.g * tf, _c.b * tf, 3, ash, 1, 1);
+        this.shape(S, _tmp, _nrm, R, R, _c.r * fill * 1.6, _c.g * fill * 1.6, _c.b * fill * 1.6, 3, ash, Math.min(0.5, 0.0025 / R + 0.01), 0);
+        // (a chord of rings: joined to the one before, so two at once read as one moment)
+        if (Math.abs(n.ahead - prevAhead) < 0.02 && n.ahead > 0) this.streak(T, _prev, _ctr, 0.0011, 0.0011, cr, cg, cb, 0.4, 0.4);
+        prevAhead = n.ahead;
+        _prev.copy(_ctr);
+        continue;
+      }
       if (form === 'disc' || form === 'cymbal') {
         // a lens (or a crescent) facing you as it falls onto the head, and a ring on the head closing onto its rim
         r = Math.min(0.03, Math.max(0.014, (_t.w / 2) * 0.4));
@@ -358,6 +406,7 @@ export class Waterfall {
     this.drawFx(dt, amp);
     this.drawSparks(dt);
     S.commit();
+    this.shades.commit();
     H.commit();
     T.commit();
     this.landing.commit();
@@ -368,7 +417,7 @@ export class Waterfall {
   /** A hit at `at` (world) in `col`, on a target the size of `t`: sparks, a ripple, the key flooding, a flash. */
   burst(at: Vector3, col: Color, t: NoteTarget, form: NoteForm, perfect: boolean): void {
     const amp = motion.calm ? 0.5 : 1;
-    const flat = form === 'disc' || form === 'cymbal';
+    const flat = form === 'disc' || form === 'cymbal' || form === 'ring';
     const R = flat ? t.w / 2 : Math.max(t.w, 0.02) / 2;
     // the flash (fake bloom)
     _tmp.copy(at).addScaledVector(_U, 0.012);

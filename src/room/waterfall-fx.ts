@@ -15,16 +15,18 @@ export const ARC_UP = 0.15;
 export const SLIDE_PER_BEAT = 0.045;
 export const SLIDE_LIFT = 0.01;
 
-export type NoteForm = 'fall' | 'arc' | 'neck' | 'strum' | 'disc' | 'cymbal';
+export type NoteForm = 'fall' | 'arc' | 'neck' | 'strum' | 'disc' | 'cymbal' | 'ring';
 export type PathKind = 'fall' | 'arc' | 'slide';
 
 /** A note's form by its key (`kit:hat`, `piano:4`, `guitar:9`…) and whether its target is round. */
 export function formOf(key: string, round: boolean): NoteForm {
-  if (key.startsWith('kit:')) return key === 'kit:hat' || key === 'kit:gong' ? 'cymbal' : 'disc';
-  if (key.startsWith('guitar:')) return key === 'guitar:9' ? 'strum' : key.length === 8 && key.charCodeAt(7) <= 50 ? 'neck' : 'fall';
-  if (key.startsWith('handpan:') || key.startsWith('marimba:')) return 'arc';
-  if (key.startsWith('piano:') || key.startsWith('keys:')) return 'fall';
-  return round ? 'disc' : 'fall';
+  // anything you strike on a round head or field (drums, cymbals, congas, the handpan) and the guitar's chord
+  // positions: a ring that closes onto it on the beat; keys and bars: a bar of light falling onto them; the strum: a
+  // bar of light onto the strings
+  if (key.startsWith('kit:') || key.startsWith('congas:') || key.startsWith('handpan:')) return 'ring';
+  if (key.startsWith('guitar:')) return key === 'guitar:9' ? 'strum' : key.length === 8 && key.charCodeAt(7) <= 50 ? 'ring' : 'fall';
+  if (key.startsWith('piano:') || key.startsWith('keys:') || key.startsWith('marimba:')) return 'fall';
+  return round ? 'ring' : 'fall';
 }
 
 export function pathOf(form: NoteForm): PathKind {
