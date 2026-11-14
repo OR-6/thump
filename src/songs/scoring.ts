@@ -55,10 +55,13 @@ export class ScoreKeeper {
   perfect = 0;
   good = 0;
   miss = 0;
+  /** The spotlight's ×2 while it's on (on top of the streak's multiplier). */
+  boost = 1;
   private readonly ev: ScoreEvent = { points: 0, mult: 1, multUp: false, milestone: 0, broke: 0 };
 
   reset(): void {
     this.score = this.combo = this.maxCombo = this.perfect = this.good = this.miss = 0;
+    this.boost = 1;
   }
 
   get mult(): number {
@@ -74,7 +77,7 @@ export class ScoreKeeper {
     else this.good++;
     const mult = this.mult;
     const e = this.ev;
-    e.points = POINTS[grade] * mult;
+    e.points = POINTS[grade] * mult * this.boost;
     this.score += e.points;
     e.mult = mult;
     e.multUp = mult > before;
@@ -136,11 +139,13 @@ export interface BestRun {
   accuracy: number;
   letter: Letter;
   fullCombo: boolean;
+  /** Its score at the start of each bar (the ghost you race next time). */
+  trace?: number[];
 }
 
 /** Keep the better of two runs (by score); says whether the new one beat the old. */
-export function keepBest(old: BestRun | undefined, run: ScoreSummary): { best: BestRun; better: boolean } {
-  const mine: BestRun = { score: run.score, accuracy: Math.round(run.accuracy * 1000) / 1000, letter: run.letter, fullCombo: run.fullCombo };
+export function keepBest(old: BestRun | undefined, run: ScoreSummary, trace?: number[]): { best: BestRun; better: boolean } {
+  const mine: BestRun = { score: run.score, accuracy: Math.round(run.accuracy * 1000) / 1000, letter: run.letter, fullCombo: run.fullCombo, ...(trace ? { trace } : {}) };
   if (!old) return { best: mine, better: false };
   if (run.score > old.score) return { best: { ...mine, fullCombo: mine.fullCombo || old.fullCombo }, better: true };
   return { best: { ...old, fullCombo: old.fullCombo || mine.fullCombo }, better: false };
@@ -151,10 +156,17 @@ const FLOOR: Record<Letter, number> = { S: 0.95, A: 0.88, B: 0.78, C: 0.65, D: 0
 const n0 = (v: number) => Math.round(v).toLocaleString('en-GB');
 /** One line that makes you want one more go: how far past your best, how far short of it, or what the next grade needs. */
 export function hookFor(run: ScoreSummary, prev: BestRun | undefined, better: boolean): string {
-  if (better && prev) return `New best, up ${n0(run.score - prev.score)}`;
-  if (prev && run.score < prev.score) return `${n0(prev.score - run.score)} short of your best`;
+  if (!better && prev && run.score < prev.score) return `${n0(prev.score - run.score)} short of your best`;
   const next = NEXT[run.letter];
   if (next) return `${Math.max(1, Math.ceil((FLOOR[next] - run.accuracy) * 100))}% more for ${next}`;
   if (!run.fullCombo) return run.miss === 1 ? 'One miss from a full combo' : `${run.miss} misses from a full combo`;
   return run.allPerfect ? 'Every note perfect' : 'Full combo';
+}
+
+/** Where a run stood at bar position `f` (bars from the song's start, fractional), from its trace. */
+export function traceAt(trace: readonly number[], f: number): number {
+  if (!trace.length || f <= 0) return 0;
+  const i = Math.floor(f);
+  if (i >= trace.length - 1) return trace[trace.length - 1];
+  return trace[i] + (trace[i + 1] - trace[i]) * (f - i);
 }

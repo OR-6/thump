@@ -129,6 +129,7 @@ class Batch {
 
 const _p = new Vector3();
 const _c = new Color();
+const _gold = new Color(0xffd36a);
 const _t: NoteTarget = { w: 0, d: 0, round: false };
 const _path: PathPoint = { up: 0, along: 0, du: 0, da: 0 };
 const _X = new Vector3();
@@ -318,6 +319,8 @@ export class Waterfall {
       const n = feed.motes[i];
       if (n.ahead > SHOW_BEATS) continue;
       if (!resolve(n.key, _p, _c, _t)) continue;
+      // (a spotlight bar's notes: gold)
+      if (n.gold) _c.lerp(_gold, 0.8);
       const form = formOf(n.key, _t.round);
       // the lane reaches every note this song plays (kit-local)
       _tmp.copy(_p).applyMatrix4(_inv);

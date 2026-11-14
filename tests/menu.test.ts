@@ -71,7 +71,7 @@ describe('the panel pages', () => {
     expect(p.body).toBe('song');
   });
   it('results: three stars on Easy and AGAIN goes up to Normal', () => {
-    expect(buildPage({ ...base('results'), harder: 'NORMAL' }).items.find((i) => i.id === 'again')?.label).toBe('Again on\nnormal');
+    expect(buildPage({ ...base('results'), harder: 'NORMAL' }).items.find((i) => i.id === 'again')?.label).toBe('Again on normal');
     expect(buildPage(base('results')).items.find((i) => i.id === 'again')?.label).toBe('Again');
   });
   it('paused: songs, restart, and resume to the front', () => {

@@ -23,7 +23,7 @@ export interface Item {
   /** A song's best grade at this level (S–D). */
   grade?: string;
   /** big: a main-menu tile; card: an instrument; row: a list row; chip: a small choice; button: a plain one. */
-  kind: 'big' | 'card' | 'row' | 'chip' | 'button' | 'play';
+  kind: 'big' | 'card' | 'row' | 'chip' | 'button' | 'play' | 'ghost';
   x: number;
   y: number;
   w: number;
@@ -65,6 +65,8 @@ export interface MenuInput {
   make?: boolean;
   /** Three stars: AGAIN goes up a level ('NORMAL' or 'HARD'; '' not). */
   harder?: string;
+  /** A D on Normal or Hard: the second button offers the song again on Easy. */
+  easier?: boolean;
   /** Make a track: the machine is in, PERFORM starts it. */
   perform?: boolean;
   /** STOP was pressed once: it asks. */
@@ -248,9 +250,9 @@ function buildPageFor(m: MenuInput): Page {
     }
     case 'song': {
       // pause in the corner, always in the same place; the instruments you can switch to along the bottom, then stop
-      const c = row(Math.max(1, m.switchable.length) + 1, 24, W - 24, 18);
+      const c = row(Math.max(1, m.switchable.length), 32, 1104 - 16, 16);
       const items: Item[] = m.switchable.map((id, i) => ({ id: `inst:${id}`, label: instDef(id as never).name, icon: id, on: id === m.inst.id, color: instDef(id as never).color, kind: 'card' as const, x: c[i].x, y: BOT.y, w: c[i].w, h: BOT.h }));
-      items.push({ id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'button', x: c[c.length - 1].x, y: BOT.y, w: c[c.length - 1].w, h: BOT.h });
+      items.push({ id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'ghost', x: 1104, y: BOT.y, w: 224, h: BOT.h });
       items.push(corner('pause', 'Pause'));
       return { id: 'song', title: m.line, line: m.sub, items, body: 'song' };
     }
@@ -265,13 +267,17 @@ function buildPageFor(m: MenuInput): Page {
       return { id: 'pause', title: 'Paused', line: m.line, items, body: 'how', how: 'Resume counts you back in' };
     }
     case 'results': {
-      const c = row(m.make ? 4 : 3, 24, W - 24, 18);
-      const items: Item[] = [
-        { id: 'again', label: m.harder ? `Again on\n${m.harder.toLowerCase()}` : 'Again', kind: 'play', x: c[0].x, y: BOT.y, w: c[0].w, h: BOT.h },
-        { id: 'next', label: m.next, kind: 'button', off: !m.next, x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h },
-      ];
-      if (m.make) items.push({ id: 'make', label: 'Make it\nyours', kind: 'button', x: c[2].x, y: BOT.y, w: c[2].w, h: BOT.h });
-      items.push({ id: 'nav:main', label: 'Menu', kind: 'button', x: c[c.length - 1].x, y: BOT.y, w: c[c.length - 1].w, h: BOT.h });
+      // menu on the left, the song's way on in the middle, the one thing to press on the right
+      const again: Item = { id: 'again', label: m.harder ? `Again on ${m.harder.toLowerCase()}` : 'Again', kind: 'play', x: 0, y: BOT.y, w: 0, h: BOT.h };
+      const second: Item = m.easier ? { id: 'again:easy', label: 'Again on easy', kind: 'button', x: 0, y: BOT.y, w: 0, h: BOT.h } : { id: 'next', label: 'Next', sub: m.next ? 'The next song' : undefined, kind: 'button', off: !m.next, x: 0, y: BOT.y, w: 0, h: BOT.h };
+      const items: Item[] = m.make
+        ? [
+            { id: 'nav:main', label: 'Menu', kind: 'button', x: 32, y: BOT.y, w: 224, h: BOT.h },
+            { id: 'make', label: 'Make it yours', kind: 'button', x: 272, y: BOT.y, w: 320, h: BOT.h },
+            { ...second, x: 608, w: 320 },
+            { ...again, x: 944, w: 384 },
+          ]
+        : [{ id: 'nav:main', label: 'Menu', kind: 'button', x: 32, y: BOT.y, w: 300, h: BOT.h }, { ...second, x: 348, w: 420 }, { ...again, x: 784, w: 544 }];
       return { id: 'results', title: m.line, line: m.sub, items, body: 'results' };
     }
   }

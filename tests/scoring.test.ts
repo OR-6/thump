@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ScoreKeeper, keepBest, letterFor, maxScore, multFor } from '../src/songs/scoring';
+import { ScoreKeeper, keepBest, letterFor, maxScore, multFor, traceAt } from '../src/songs/scoring';
 
 describe('points', () => {
   it('a streak multiplies: ×2 from ten in a row, up to ×4', () => {
@@ -66,5 +66,23 @@ describe('the result', () => {
     expect(second.better).toBe(true);
     expect(second.best.score).toBe(500);
     expect(keepBest(second.best, a.summary(5)).better).toBe(false);
+  });
+});
+
+describe('the spotlight and your best', () => {
+  it('the spotlight doubles a note on top of the streak', () => {
+    const k = new ScoreKeeper();
+    for (let i = 0; i < 10; i++) k.hit('perfect');
+    k.boost = 2;
+    expect(k.hit('perfect').points).toBe(400);
+  });
+  it('your best is kept bar by bar, and raced between bars', () => {
+    const a = new ScoreKeeper();
+    for (let i = 0; i < 5; i++) a.hit('perfect');
+    const kept = keepBest(undefined, a.summary(5), [0, 200, 500]).best;
+    expect(kept.trace).toEqual([0, 200, 500]);
+    expect(traceAt(kept.trace!, 0.5)).toBe(100);
+    expect(traceAt(kept.trace!, 1.5)).toBe(350);
+    expect(traceAt(kept.trace!, 9)).toBe(500);
   });
 });

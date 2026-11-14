@@ -72,8 +72,12 @@ export interface Display {
   score?: number;
   mult?: number;
   acc?: number;
+  /** The spotlight: its meter (0..1; while on, what's left), whether it's on, whether it can be fired (hands up). */
+  spot?: { meter: number; active: boolean; ready: boolean };
+  /** Your score against your best run at this point in the song (null: no best yet). */
+  ghost?: number | null;
   /** Results: the run, a line to beat, and seconds since the results began counting (they animate on it). */
-  result?: (import('../songs/scoring.js').ScoreSummary & { better: boolean; hook: string; t: number }) | null;
+  result?: (import('../songs/scoring.js').ScoreSummary & { better: boolean; hook: string; t: number; prev: number; stampT: number }) | null;
   /** The panel's page (src/ui/menu.ts), and the item that pulses for attention. */
   page?: import('./menu.js').Page;
   focus?: string;

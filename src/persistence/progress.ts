@@ -103,7 +103,7 @@ export function loadProgress(): Progress {
     for (const [k, v] of Object.entries(r.top as Record<string, unknown>)) {
       const b = v as { score?: unknown; accuracy?: unknown; letter?: unknown; fullCombo?: unknown };
       if (typeof b?.score === 'number' && b.score >= 0 && b.score < 1e8 && typeof b.accuracy === 'number' && b.accuracy >= 0 && b.accuracy <= 1 && typeof b.letter === 'string' && 'SABCD'.includes(b.letter) && b.letter.length === 1)
-        p.top[k] = { score: Math.round(b.score), accuracy: b.accuracy, letter: b.letter as 'S', fullCombo: b.fullCombo === true };
+        p.top[k] = { score: Math.round(b.score), accuracy: b.accuracy, letter: b.letter as 'S', fullCombo: b.fullCombo === true, ...(Array.isArray((b as { trace?: unknown }).trace) && ((b as { trace: unknown[] }).trace).length <= 400 && ((b as { trace: unknown[] }).trace).every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0) ? { trace: (b as { trace: number[] }).trace.map(Math.round) } : {}) };
     }
   }
   if (r.gold && typeof r.gold === 'object') for (const [k, v] of Object.entries(r.gold)) if (v === true) p.gold[k] = true;

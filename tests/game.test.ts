@@ -117,7 +117,9 @@ describe('the game', () => {
     for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
     // (the score counts up and the grade lands first: the stars after 2.1 s)
     g.tick((t += 1.6));
-    expect(g.display.line).toMatch(/: \d+%$/);
+    // (the results name the song; the score, grade and accuracy are on the medal)
+    expect(g.display.line).not.toBe('That was you');
+    expect(g.display.result).toBeTruthy();
     expect(g.display.sub).toMatch(/on the beat|ahead|behind|Listen first/);
     g.tick((t += 1.6));
     expect(g.display.stars).toBe(3);
@@ -322,7 +324,9 @@ describe('the game', () => {
     expect(g.display.line).toBe('That was you');
     expect(g.display.stars).toBe(-1);
     for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
-    expect(g.display.line).toMatch(/: \d+%$/);
+    // (the results name the song; the score, grade and accuracy are on the medal)
+    expect(g.display.line).not.toBe('That was you');
+    expect(g.display.result).toBeTruthy();
     g.tick((t += 6.6));
     expect(g.display.sub).toBe('The tick never missed');
     g.key('play');
@@ -616,7 +620,7 @@ describe('the game', () => {
     expect(g.last!.stars).toBe(3);
     g.tick((t += 8));
     // the results: again, the next song, or the menu (a written-out song has no loop of its own to build)
-    expect(g.display.page?.items.map((i) => i.id)).toEqual(['again', 'next', 'nav:main']);
+    expect(g.display.page?.items.map((i) => i.id)).toEqual(['nav:main', 'next', 'again']);
     g.act('next');
     expect(g.mode).toBe('count');
     expect(g.song?.name).toBe(SONG_TRACKS[1].name);

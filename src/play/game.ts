@@ -11,7 +11,7 @@ import { PIANO_CHORD, PIANO_LOW } from '../kit/shelf.js';
 import { oneHanded, secPerBeat, type BedEvent, type Note, type Song, bed as chordBed } from '../songs/chart.js';
 import { EventCursor, SongClock } from '../songs/sequencer.js';
 import { NoteJudge, windows, type Grade, type JudgeNote, type Summary } from '../songs/judge.js';
-import { ScoreKeeper, hookFor, keepBest, type ScoreSummary } from '../songs/scoring.js';
+import { ScoreKeeper, hookFor, keepBest, traceAt, type ScoreSummary } from '../songs/scoring.js';
 import { SONGS, dailySong } from '../songs/songs.js';
 import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/cast.js';
 import { bed } from '../songs/chart.js';
@@ -50,6 +50,14 @@ export interface GameStage {
   gradeStamp?(letter: string, fullCombo: boolean): void;
   /** The results' score ticking as it counts up. */
   countTick?(): void;
+  /** The results' new best chip popped; a full combo (or every note perfect) is said. */
+  newBest?(): void;
+  fullCombo?(allPerfect: boolean): void;
+  /** The spotlight: a gold bar played clean filled it (meter 0..1); it was fired; it ran out. You passed your best. */
+  spotGain?(meter: number): void;
+  spotFire?(): void;
+  spotEnd?(): void;
+  overtake?(): void;
   /** A lesson's next step began. */
   lessonStep?(title: string): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
@@ -156,6 +164,8 @@ export interface MoteView {
   since?: number;
   /** In the no-lights bars: drawn faint (still there, so it doesn't look like the song stopped). */
   faint?: boolean;
+  /** A spotlight bar's note: drawn gold (hit them all to fill the spotlight). */
+  gold?: boolean;
 }
 
 export interface GameOptions {
@@ -1038,6 +1048,13 @@ export class Game {
     this.scorer.reset();
     this.lastScore = null;
     this.lessonIdx = -1;
+    this.spotMeter = 0;
+    this.spotUntil = -1;
+    this.spotBars.clear();
+    this.spotReadySaid = false;
+    this.trace = [];
+    this.overtook = false;
+    this.ghost = this.progress.top?.[`${m.track.id}:${this.level}`]?.trace ?? null;
     this.finalWait = -1;
     this.domSent = false;
     const t = m.track;
@@ -1250,9 +1267,11 @@ export class Game {
     const sc = this.scorer.summary(s.total);
     pr.top ??= {};
     const prevTop = pr.top[bk];
-    const kb = keepBest(prevTop, sc);
+    this.trace.push(this.scorer.score);
+    const kb = keepBest(prevTop, sc, this.trace.slice(0, 400));
     pr.top[bk] = kb.best;
-    this.lastScore = { ...sc, better: kb.better, hook: hookFor(sc, prevTop, kb.better), t: 0 };
+    this.lastScore = { ...sc, better: kb.better, hook: hookFor(sc, prevTop, kb.better), t: 0, prev: prevTop?.score ?? -1, stampT: -1 };
+    this.sung = 0;
     this.stamped = false;
     this.tickAt = 0;
     this.lastBest = { run: this.bestRun, better: before !== undefined && pct > before, song: p.track.name, pct, perfect: s.perfect, good: s.good, wasEasy3: this.level !== 'hard' && stars === 3 };
@@ -1961,6 +1980,7 @@ export class Game {
     this.combo++;
     // the points: more in a streak; the multiplier's step and a run's milestone are moments
     const se = this.scorer.hit(r.grade === 'perfect' ? 'perfect' : 'good');
+    this.spotNote(this.judge.notes[r.index]?.beat ?? -1, true);
     if (se.multUp) this.stage.multUp?.(se.mult);
     if (se.milestone) this.stage.milestone?.(se.milestone);
     if (this.combo > this.bestRun) this.bestRun = this.combo;
@@ -2021,19 +2041,35 @@ export class Game {
       const c = this.fromPerform && this.carried ? 2.5 : 0;
       // (a scored song: the score counts up, the ring fills, the grade lands at 1.8 s, then the stars)
       const sc = this.fromPerform ? this.lastScore : null;
-      const g0 = sc ? 2.1 : 0;
+      // (a scored song's reveal takes 2.9 s; then the buttons are yours)
+      const g0 = sc ? 1.6 : 0;
       const stage = el < 1.3 + g0 ? 0 : el < 4 + g0 ? 1 : el < 4 + g0 + c ? 2 : el < 7 + g0 + c && this.newUnlocks.length ? 3 : 4;
       if (sc) {
         sc.t = this.replaying ? 0 : el;
         this.display.result = sc;
         // (ticks as it counts up, slowing as it settles)
-        if (!this.replaying && el > 0.2 && el < 1.6 && el - this.tickAt > 0.05 + 0.1 * ((el - 0.2) / 1.4)) {
+        if (!this.replaying && el > 0.15 && el < 1.35 && el - this.tickAt > 0.05 + 0.1 * ((el - 0.15) / 1.2)) {
           this.tickAt = el;
           this.stage.countTick?.();
         }
-        if (!this.stamped && !this.replaying && el >= 1.8) {
-          this.stamped = true;
-          this.stage.gradeStamp?.(sc.letter, sc.fullCombo);
+        // the grade lands on the band's beat: from 1.6 s, at a beat within 150 ms, or at 1.75 s at the latest
+        if (!this.stamped && !this.replaying && el >= 1.6) {
+          const b = this.clock.beatAt(t);
+          const off = Math.abs(b - Math.round(b)) * this.clock.spb;
+          if (off < 0.15 || el >= 1.75) {
+            this.stamped = true;
+            sc.stampT = el;
+            this.stage.gradeStamp?.(sc.letter, sc.fullCombo);
+          }
+        }
+        // a new best's chip at 2.65 s with its sting; a full combo said over the panel at 2.85
+        if (!this.replaying && this.sung === 0 && el >= 2.65) {
+          this.sung = 1;
+          if (sc.better && sc.prev >= 0) this.stage.newBest?.();
+        }
+        if (!this.replaying && this.sung === 1 && el >= 2.85) {
+          this.sung = 2;
+          if (sc.fullCombo) this.stage.fullCombo?.(sc.allPerfect);
         }
       }
       if (stage !== this.resultsStage) {
@@ -2041,7 +2077,7 @@ export class Game {
         this.refreshDisplay();
       }
       // the stars land one by one, 200 ms apart, each with its note (after your replay)
-      const lit = this.replaying ? -1 : Math.min(this.last?.stars ?? 0, Math.max(0, Math.floor((el - g0) / (sc ? 0.28 : 0.2))));
+      const lit = this.replaying ? -1 : Math.min(this.last?.stars ?? 0, sc ? (el < 1.95 ? 0 : 1 + Math.floor((el - 1.95) / 0.22)) : Math.max(0, Math.floor(el / 0.2)));
       // (every star that landed since the last frame: a slow frame mustn't swallow one's note)
       if (lit > this.display.stars && lit > 0) for (let s = Math.max(0, this.display.stars); s < lit; s++) this.stage.starLanded?.(s, this.last?.stars ?? 0);
       this.display.stars = lit;
@@ -2067,6 +2103,7 @@ export class Game {
     this.display.progress = Math.max(0, beat / (song.bars * 4));
     this.display.combo = this.combo;
     this.lessonTick(beat);
+    this.spotTick(beat);
     this.display.score = this.scorer.score;
     this.display.mult = this.scorer.mult;
     this.display.acc = this.scorer.accuracy;
@@ -2089,6 +2126,7 @@ export class Game {
       if (k < MAX_MOTES) {
         const m = this.motes[k++];
         m.faint = dim;
+        m.gold = this.spotGold(n.beat);
         m.key = n.lane;
         m.ahead = d;
         m.grade = n.grade;
@@ -2193,8 +2231,9 @@ export class Game {
       // drums and gongs keep themselves for the last chord (the whole room plays that)
     });
   }
-  private onMiss = (n: { lane: string }): void => {
+  private onMiss = (n: { lane: string; beat: number }): void => {
     if (this.listening) return;
+    this.spotNote(n.beat, false);
     this.combo = 0;
     const se = this.scorer.missed();
     if (se.broke) this.stage.comboBroke?.(se.broke);
@@ -2283,8 +2322,108 @@ export class Game {
   private combo = 0;
   /** The song's points, and the last scored song's result (null: none, or not a scored song). */
   readonly scorer = new ScoreKeeper();
-  lastScore: (ScoreSummary & { better: boolean; hook: string; t: number }) | null = null;
+  lastScore: (ScoreSummary & { better: boolean; hook: string; t: number; prev: number; stampT: number }) | null = null;
   private stamped = false;
+  /** A tap in the results' first 2.9 s: everything lands at once (one soft stamp if it hadn't), and the tap does nothing else. */
+  skipReveal(): boolean {
+    const sc = this.lastScore;
+    if (this.mode !== 'results' || !this.fromPerform || !sc || this.replaying) return false;
+    const el = this.t - this.resultsT0;
+    if (el >= 2.9) return false;
+    this.resultsT0 = this.t - 2.9;
+    this.tickAt = 9;
+    this.sung = 2;
+    if (!this.stamped) {
+      this.stamped = true;
+      sc.stampT = 2.9;
+      this.stage.gradeStamp?.(sc.letter, false);
+    }
+    return true;
+  }
+  // ---- the spotlight: the last bar of each four is gold; play one clean and the meter fills a quarter; from half
+  // full, both hands up fires it: ×2 on top of the streak for four beats a quarter ----
+  private spotMeter = 0;
+  private spotUntil = -1;
+  private spotLen = 16;
+  private spotReadySaid = false;
+  private spotBars = new Map<number, { total: number; hit: number; failed: boolean; done: boolean }>();
+  /** The gold bar a beat is in (bars from the song's start), or -1. Lessons have none. */
+  private spotBar(beat: number): number {
+    const p = this.perf;
+    if (!p || beat < 0 || p.track.score?.tune.lesson) return -1;
+    const s = p.track.score;
+    const meter = s?.meter ?? 4;
+    const rel = beat - (s?.starts[0] ?? 0);
+    const bar = Math.floor(rel / meter + 1e-6);
+    if (bar < 3 || bar % 4 !== 3 || within(p.fills, beat, 0)) return -1;
+    return bar;
+  }
+  private spotGold(beat: number): boolean {
+    const b = this.spotBar(beat);
+    if (b < 0) return false;
+    const st = this.spotBars.get(b);
+    return !st || !st.failed;
+  }
+  private spotNote(beat: number, hit: boolean): void {
+    const b = this.spotBar(beat);
+    if (b < 0 || !this.judge) return;
+    let st = this.spotBars.get(b);
+    if (!st) {
+      let total = 0;
+      for (const n of this.judge.notes) if (this.spotBar(n.beat) === b) total++;
+      this.spotBars.set(b, (st = { total, hit: 0, failed: false, done: false }));
+    }
+    if (hit) st.hit++;
+    else st.failed = true;
+    if (st.done || st.failed || st.hit < st.total) return;
+    st.done = true;
+    if (this.spotUntil > this.clock.beatAt(this.t)) return;
+    this.spotMeter = Math.min(1, this.spotMeter + 0.25);
+    this.stage.spotGain?.(this.spotMeter);
+  }
+  /** Both hands up: the spotlight comes on, if it's half full or more. */
+  fireSpotlight(): boolean {
+    const beat = this.clock.beatAt(this.t);
+    if (this.mode !== 'play' || this.spotMeter < 0.5 || beat < this.spotUntil) return false;
+    this.spotLen = this.spotMeter * 16;
+    this.spotUntil = beat + this.spotLen;
+    this.spotMeter = 0;
+    this.stage.spotFire?.();
+    return true;
+  }
+  /** Per frame: the boost on or off; the race against your best. */
+  private spotTick(beat: number): void {
+    const on = beat < this.spotUntil;
+    if (this.scorer.boost === 2 && !on) this.stage.spotEnd?.();
+    this.scorer.boost = on ? 2 : 1;
+    if (this.perf?.track.score?.tune.lesson) {
+      this.display.spot = undefined;
+      this.display.ghost = null;
+      return;
+    }
+    const d = (this.display.spot ??= { meter: 0, active: false, ready: false });
+    d.active = on;
+    d.meter = on ? (this.spotUntil - beat) / Math.max(1, this.spotLen) : this.spotMeter;
+    d.ready = !on && this.spotMeter >= 0.5 && this.mode === 'play';
+    // your best run, bar by bar: how far ahead of it (or behind) you are now
+    const s = this.perf?.track.score;
+    const f = (beat - (s?.starts[0] ?? 0)) / (s?.meter ?? 4);
+    while (f >= 0 && this.trace.length <= Math.floor(f) && this.trace.length < 400) this.trace.push(this.scorer.score);
+    if (!this.ghost || f < 0) {
+      this.display.ghost = null;
+      return;
+    }
+    const g = traceAt(this.ghost, f);
+    this.display.ghost = this.scorer.score - g;
+    if (!this.overtook && f > 2 && g > 0 && this.scorer.score > g) {
+      this.overtook = true;
+      this.stage.overtake?.();
+    }
+  }
+  private trace: number[] = [];
+  private ghost: number[] | null = null;
+  private overtook = false;
+
   /** The lesson's step now (-1: none, or not a lesson). */
   private lessonIdx = -1;
   private lessonNow(): { title: string; say: string } | null {
@@ -2305,6 +2444,7 @@ export class Game {
     this.refreshDisplay();
   }
   private tickAt = 0;
+  private sung = 0;
   /** The song the panel's card shows (◀ ▶ browse; PLAY plays it). */
   songSel = 0;
   /** The page of songs on the panel (six to a page), or −1: the page with the one picked. */
@@ -2379,6 +2519,7 @@ export class Game {
       this.refreshDisplay();
       return;
     }
+    if (this.skipReveal()) return;
     if (id === 'play') return this.playSong(this.songSel);
     // the instrument's lesson
     if (id === 'learn') {
@@ -2407,6 +2548,12 @@ export class Game {
     }
     // (three stars: again is a level up; key('play') does it)
     if (id === 'again') return this.key('play');
+    // (a D on Normal or Hard: the song again on Easy)
+    if (id === 'again:easy') {
+      this.level = 'easy';
+      this.stage.saveLevel?.('easy');
+      return this.key('play');
+    }
     if (id === 'next') {
       // the next song as written (after any)
       const i = this.machine ? (this.tracks.indexOf(this.machine.track) + 1) % this.tracks.length : this.nextSong();
@@ -2501,6 +2648,7 @@ export class Game {
       loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
       settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) },
       next: this.fromPerform ? 'Next\nsong' : '',
+      easier: this.mode === 'results' && this.fromPerform && this.lastScore?.letter === 'D' && this.level !== 'easy',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,
       harder: this.mode === 'results' && this.fromPerform && this.lastBest.wasEasy3 && this.level !== 'hard' ? (this.level === 'easy' ? 'NORMAL' : 'HARD') : '',
       perform: this.mode === 'build' && !!this.bld && this.bld.phase === 'run' && this.bld.dropAt <= 0,
@@ -2656,7 +2804,7 @@ export class Game {
       case 'results': {
         const s = this.last!;
         const st = this.resultsStage;
-        d.line = this.fromPerform ? `${this.lastBest.song}: ${this.lastBest.pct}%` : `${s.perfect + s.good} of ${s.total} notes`;
+        d.line = this.fromPerform ? (this.lastScore ? this.lastBest.song : `${this.lastBest.song}: ${this.lastBest.pct}%`) : `${s.perfect + s.good} of ${s.total} notes`;
         d.stars = s.stars;
         d.best = this.fromPerform ? this.lastBest : null;
         if (this.replaying) {
@@ -2674,7 +2822,8 @@ export class Game {
         // (only what you can see: a tom on the kit; the rest is the old box's and stays quiet)
         const fresh = this.newUnlocks.includes('tom') ? unlockLine('tom') : '';
         const next = this.fromPerform;
-        if (st <= 1) d.sub = this.fromPerform && this.lastTight >= 0 ? feel : '';
+        const lv = this.level === 'hard' ? 'Hard' : this.level === 'normal' ? 'Normal' : 'Easy';
+        if (st <= 1) d.sub = this.fromPerform && this.lastTight >= 0 ? (this.lastScore ? `${lv} · ${feel}` : feel) : '';
         else if (st === 2 && this.fromPerform && this.carried) d.sub = this.carried;
         else if (st <= 3 && fresh) d.sub = fresh;
         else d.sub = '';

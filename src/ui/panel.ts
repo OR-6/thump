@@ -76,6 +76,7 @@ function overlayQuad(w: number, h: number, at: { x: number; y: number; w: number
   const mesh = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false }));
   mesh.scale.set(z.w, z.h, 1);
   mesh.userData.size = z.w;
+  mesh.userData.h = z.h;
   mesh.userData.y = z.z;
   mesh.position.set(z.x, z.z, 0.0018);
   mesh.renderOrder = 9;
@@ -83,77 +84,166 @@ function overlayQuad(w: number, h: number, at: { x: number; y: number; w: number
   return { c, g: c.getContext('2d')!, tex, mesh };
 }
 const fmt = (n: number) => n.toLocaleString('en-GB');
-const MULT_INK = ['#f4f4f2', '#f4f4f2', '#7fb4ff', '#7be0a0', '#ffd36a'];
-/** The score while you play: the number, the multiplier, accuracy. */
-function drawHud(g: CanvasRenderingContext2D, score: number, mult: number, acc: number): void {
-  g.clearRect(0, 0, 832, 400);
-  g.textAlign = 'right';
-  g.fillStyle = INK;
+const INK2 = '#f2efe6';
+const MUTED = '#9b9ba1';
+const GOLD = '#ffd36a';
+const RED = '#ff5f4f';
+/** One ladder for mastery: ×2 and B blue, ×3 and A green, ×4 and S gold. */
+const MULT_INK = [INK2, INK2, '#7fb4ff', '#7be0a0', GOLD];
+/** The run: its count in the multiplier's colour, the chip, "in a row" (page px from (32, 176)). */
+function drawRun(g: CanvasRenderingContext2D, combo: number, mult: number, spot: boolean): void {
+  g.clearRect(0, 0, 600, 260);
+  const ink = spot ? GOLD : MULT_INK[mult] ?? INK2;
+  g.fillStyle = ink;
   g.font = `700 150px ${FONT}`;
-  g.fillText(fmt(score), 820, 160);
-  g.font = `600 64px ${FONT}`;
-  g.fillStyle = '#a8a8ae';
-  g.fillText(`${(acc * 100).toFixed(1)}%`, 820, 270);
-  // the multiplier: a chip in its colour (×1: just quiet)
-  const t = `×${mult}`;
-  g.font = `800 72px ${FONT}`;
-  const w = g.measureText(t).width + 48;
-  const x = 820 - g.measureText(`${(acc * 100).toFixed(1)}%`).width * (64 / 72) - 40 - w;
-  rounded(g, x, 205, w, 92, 46);
-  g.fillStyle = mult > 1 ? MULT_INK[mult] : 'rgba(255,255,255,0.08)';
-  g.fill();
-  g.fillStyle = mult > 1 ? '#16140f' : '#a8a8ae';
-  g.textAlign = 'center';
-  g.fillText(t, x + w / 2, 276);
+  g.fillText(String(combo), 0, 150);
+  let x = 0;
+  if (mult > 1 || spot) {
+    const t = `×${spot ? mult * 2 : mult}`;
+    g.font = `800 48px ${FONT}`;
+    const w = g.measureText(t).width + 40;
+    rounded(g, 0, 186, w, 64, 32);
+    g.fillStyle = ink;
+    g.fill();
+    g.fillStyle = '#16140f';
+    g.fillText(t, 20, 234);
+    x = w + 16;
+  }
+  g.fillStyle = MUTED;
+  g.font = `500 48px ${FONT}`;
+  g.fillText('in a row', x, 232);
+}
+/** The score, accuracy, and your best's race (page px from (808, 176), right-aligned to 1328). */
+function drawHud(g: CanvasRenderingContext2D, score: number, acc: number, ghost: number | null): void {
+  g.clearRect(0, 0, 520, 260);
+  g.textAlign = 'right';
+  g.fillStyle = INK2;
+  g.font = `700 96px ${FONT}`;
+  g.fillText(fmt(score), 520, 96);
+  g.font = `600 48px ${FONT}`;
+  g.fillStyle = MUTED;
+  g.fillText(`${(acc * 100).toFixed(1)}%`, 520, 160);
+  if (ghost !== null) {
+    g.fillStyle = ghost >= 0 ? '#7be0a0' : MUTED;
+    g.fillText(ghost >= 0 ? `+${fmt(ghost)} on best` : `${fmt(-ghost)} behind best`, 520, 222);
+  }
   g.textAlign = 'left';
 }
-/** The results' score, as it counts up. */
-function drawCountUp(g: CanvasRenderingContext2D, score: number): void {
-  g.clearRect(0, 0, 1024, 192);
-  g.fillStyle = INK;
-  g.font = `700 150px ${FONT}`;
-  g.fillText(fmt(score), 0, 150);
-  const w = g.measureText(fmt(score)).width;
-  g.fillStyle = '#8e8e94';
-  g.font = `500 52px ${FONT}`;
-  g.fillText('points', w + 24, 150);
+/** The spotlight: its name (or what to do), four segments filling gold (page px from (32, 516)). */
+function drawSpot(g: CanvasRenderingContext2D, meter: number, active: boolean, ready: boolean): void {
+  g.clearRect(0, 0, 820, 72);
+  g.font = `600 48px ${FONT}`;
+  g.fillStyle = active || ready ? GOLD : MUTED;
+  g.fillText(active ? 'Spotlight ×2' : ready ? 'Hands up!' : 'Spotlight', 0, 52);
+  for (let i = 0; i < 4; i++) {
+    const x = 350 + i * 118;
+    rounded(g, x, 26, 106, 20, 10);
+    g.fillStyle = 'rgba(255,255,255,0.1)';
+    g.fill();
+    const f = Math.max(0, Math.min(1, meter * 4 - i));
+    if (f > 0) {
+      rounded(g, x, 26, Math.max(20, 106 * f), 20, 10);
+      g.fillStyle = GOLD;
+      g.fill();
+    }
+  }
 }
-/** The accuracy ring, filled to `k` (0..1), the number under the grade. */
+/** The results' score as it counts up (page px from (576, 240)). */
+function drawCountUp(g: CanvasRenderingContext2D, score: number): void {
+  g.clearRect(0, 0, 752, 188);
+  g.fillStyle = INK2;
+  g.font = `700 150px ${FONT}`;
+  g.fillText(fmt(score), 0, 157);
+}
+/** The medal's ring, filled to `k` in `ink` (page px from (48, 172): centre (240, 240), radius 210). */
 function drawRing(g: CanvasRenderingContext2D, k: number, ink: string): void {
-  g.clearRect(0, 0, 512, 512);
+  g.clearRect(0, 0, 480, 480);
   g.lineCap = 'round';
-  g.lineWidth = 30;
+  g.lineWidth = 28;
   g.strokeStyle = 'rgba(255,255,255,0.08)';
   g.beginPath();
-  g.arc(256, 256, 224, 0, Math.PI * 2);
+  g.arc(240, 240, 210, 0, Math.PI * 2);
   g.stroke();
   if (k > 0.002) {
     g.strokeStyle = ink;
     g.beginPath();
-    g.arc(256, 256, 224, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
+    g.arc(240, 240, 210, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
     g.stroke();
   }
-  g.fillStyle = '#c9c4bb';
-  g.font = `600 56px ${FONT}`;
-  g.textAlign = 'center';
-  g.fillText(`${(k * 100).toFixed(1)}%`, 256, 430);
-  g.textAlign = 'left';
 }
-/** The grade's letter, in its colour, with a glow. */
+/** The grade's letter in its colour (a glow for S and A). */
 function drawGrade(g: CanvasRenderingContext2D, letter: string): void {
-  g.clearRect(0, 0, 256, 256);
-  g.font = `800 200px ${FONT}`;
+  g.clearRect(0, 0, 300, 300);
+  g.font = `800 280px ${FONT}`;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.shadowColor = GRADE_INK[letter] ?? '#ffffff';
-  g.shadowBlur = 24;
-  g.fillStyle = GRADE_INK[letter] ?? '#ffffff';
-  g.fillText(letter, 128, 136);
+  if (letter === 'S' || letter === 'A') {
+    g.shadowColor = GRADE_INK[letter];
+    g.shadowBlur = 28;
+  }
+  g.fillStyle = GRADE_INK[letter] ?? INK2;
+  g.fillText(letter, 150, 162);
   g.shadowBlur = 0;
   g.textAlign = 'left';
   g.textBaseline = 'alphabetic';
 }
-
+/** The line over the score: a new best (a white chip and by how much), else your best, else a first clear. */
+function drawBrow(g: CanvasRenderingContext2D, better: boolean, prev: number, score: number): void {
+  g.clearRect(0, 0, 752, 72);
+  if (better && prev >= 0) {
+    g.font = `700 48px ${FONT}`;
+    const w = g.measureText('New best').width + 48;
+    rounded(g, 0, 4, w, 64, 32);
+    g.fillStyle = '#f4f4f2';
+    g.fill();
+    g.fillStyle = '#0b0b0d';
+    g.fillText('New best', 24, 53);
+    g.fillStyle = INK2;
+    g.font = `600 48px ${FONT}`;
+    g.fillText(`+${fmt(score - prev)}`, w + 20, 53);
+    return;
+  }
+  g.font = `500 48px ${FONT}`;
+  g.fillStyle = MUTED;
+  g.fillText(prev >= 0 ? `Best ${fmt(prev)}` : 'First clear', 0, 52);
+}
+/** What the run was: the verdict, accuracy and its badge, the notes (page px from (576, 420)). */
+function drawDetails(g: CanvasRenderingContext2D, r: { hook: string; letter: string; accuracy: number; fullCombo: boolean; allPerfect: boolean; maxCombo: number; perfect: number; good: number; miss: number }): void {
+  g.clearRect(0, 0, 752, 236);
+  g.font = `600 56px ${FONT}`;
+  g.fillStyle = r.allPerfect ? GOLD : INK2;
+  fit(g, r.hook, '600', 56, 48, 752);
+  g.fillText(r.hook, 0, 48);
+  let x = 0;
+  g.font = `700 48px ${FONT}`;
+  g.fillStyle = GRADE_INK[r.letter] ?? INK2;
+  const a = `${(r.accuracy * 100).toFixed(1)}%`;
+  g.fillText(a, x, 128);
+  x += g.measureText(a).width;
+  const badge = r.fullCombo ? ' · Full combo' : ` · longest run ${r.maxCombo}`;
+  g.font = r.fullCombo ? `700 48px ${FONT}` : `400 48px ${FONT}`;
+  g.fillStyle = r.fullCombo ? GOLD : MUTED;
+  g.fillText(badge, x, 128);
+  // the notes: numbers in Ink, words quiet (a zero dropped if it won't fit)
+  const parts: [number, string][] = [[r.perfect, 'perfect'], [r.good, 'good'], [r.miss, 'miss']];
+  const draw = (ps: [number, string][], dry: boolean) => {
+    let px = 0;
+    ps.forEach(([n, w], i) => {
+      g.font = `600 48px ${FONT}`;
+      g.fillStyle = INK2;
+      if (!dry) g.fillText(String(n), px, 196);
+      px += g.measureText(String(n)).width;
+      g.font = `400 48px ${FONT}`;
+      g.fillStyle = MUTED;
+      const t = ` ${w}${i < ps.length - 1 ? ' · ' : ''}`;
+      if (!dry) g.fillText(t, px, 196);
+      px += g.measureText(t).width;
+    });
+    return px;
+  };
+  const ps = draw(parts, true) > 752 ? parts.filter(([n]) => n > 0) : parts;
+  draw(ps, false);
+}
 /** Each grade's colour: S gold, A green, B blue, C and D quieter. */
 const GRADE_INK: Record<string, string> = { S: '#ffd36a', A: '#7be0a0', B: '#7fb4ff', C: '#c9c4bb', D: '#8e8e94' };
 
@@ -286,7 +376,7 @@ export class Panel {
     this.bar = new Mesh(barGeo, new MeshBasicMaterial({ color: 0xf2efe6, toneMapped: false, transparent: true }));
     this.bar.renderOrder = 7;
     this.bar.visible = false;
-    const bz = itemZone({ x: 40, y: 470, w: CW - 80, h: 22 });
+    const bz = itemZone({ x: 32, y: 488, w: CW - 64, h: 16 });
     this.bar.position.set(bz.x - bz.w / 2, bz.z, 0.0008);
     this.bar.scale.set(0.0001, bz.h, 1);
     this.barW = bz.w;
@@ -304,13 +394,26 @@ export class Panel {
     this.comboTex.minFilter = LinearFilter;
     // the score while you play (its own canvas: it changes on every hit), the results' ring, grade and score, and
     // a callout that pops over the panel (×2, a run of 50, a run lost)
-    this.hud = overlayQuad(832, 400, { x: 560, y: 170, w: 520, h: 250 });
-    this.ring = overlayQuad(512, 512, { x: 60, y: 210, w: 400, h: 400 });
-    this.grade = overlayQuad(256, 256, { x: 115, y: 245, w: 290, h: 290 });
-    this.scoreQ = overlayQuad(1024, 192, { x: 520, y: 175, w: 800, h: 150 });
-    this.callout = overlayQuad(1024, 192, { x: CW / 2 - 450, y: -230, w: 900, h: 169 });
-    this.grade.mesh.userData.size = this.grade.mesh.scale.x;
-    for (const q of [this.hud, this.ring, this.grade, this.scoreQ, this.callout]) this.root.add(q.mesh);
+    // playing: the run (its count, the multiplier, in its colour), the score (with accuracy and your best), the
+    // spotlight's meter; the results: the ring and grade, a line over the score, the score, what it was made of
+    this.run = overlayQuad(600, 260, { x: 32, y: 176, w: 600, h: 260 });
+    this.hud = overlayQuad(520, 260, { x: 808, y: 176, w: 520, h: 260 });
+    this.spotQ = overlayQuad(820, 72, { x: 32, y: 516, w: 820, h: 72 });
+    this.ring = overlayQuad(480, 480, { x: 48, y: 172, w: 480, h: 480 });
+    this.grade = overlayQuad(300, 300, { x: 138, y: 222, w: 300, h: 300 });
+    this.brow = overlayQuad(752, 72, { x: 576, y: 176, w: 752, h: 72 });
+    this.scoreQ = overlayQuad(752, 188, { x: 576, y: 240, w: 752, h: 188 });
+    this.details = overlayQuad(752, 236, { x: 576, y: 420, w: 752, h: 236 });
+    this.callout = overlayQuad(1000, 150, { x: CW / 2 - 500, y: -210, w: 1000, h: 150 });
+    for (const q of [this.run, this.hud, this.spotQ, this.ring, this.grade, this.brow, this.scoreQ, this.details, this.callout]) this.root.add(q.mesh);
+    // (the stamp's shockwave: a ring of light out from the medal, no canvas)
+    const rz = itemZone({ x: 288 - 210, y: 412 - 210, w: 420, h: 420 });
+    this.shock = new Mesh(new RingGeometry(0.94, 1, 72), new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+    this.shock.position.set(rz.x, rz.z, 0.002);
+    this.shock.userData.r = rz.w / 2;
+    this.shock.renderOrder = 9;
+    this.shock.visible = false;
+    this.root.add(this.shock);
     // the count-in's number, on its own: the page isn't redrawn on each beat just before the first note
     this.countCanvas.width = 256;
     this.countCanvas.height = 256;
@@ -461,11 +564,21 @@ export class Panel {
     const to = new Vector3(0, 0.03, 0.02).applyMatrix4(this.root.matrix.clone().invert());
     this.minis.fly(id, to);
   }
+  private run: Quad;
   private hud: Quad;
+  private spotQ: Quad;
   private ring: Quad;
   private grade: Quad;
+  private brow: Quad;
   private scoreQ: Quad;
+  private details: Quad;
   private callout: Quad;
+  private shock: Mesh;
+  private runKey = '';
+  private spotKey = '';
+  private browKey = '';
+  private detKey = '';
+  private stampAge = 9;
   private hudShown = -1;
   private hudKey = '';
   private hudT = 0;
@@ -476,24 +589,27 @@ export class Panel {
   /** A moment worth saying over the panel: '×2', 'Run of 50', 'Run lost' (gold, white or grey). */
   say(text: string, tone: 'gold' | 'white' | 'grey' = 'white'): void {
     const g = this.callout.g;
-    g.clearRect(0, 0, 1024, 192);
-    g.font = `800 120px ${FONT}`;
+    g.clearRect(0, 0, 1000, 150);
+    g.font = `700 96px ${FONT}`;
+    const w = Math.min(992, g.measureText(text).width + 96);
+    rounded(g, (1000 - w) / 2, 8, w, 134, 67);
+    g.fillStyle = 'rgba(18,18,20,0.92)';
+    g.fill();
+    g.lineWidth = 2;
+    g.strokeStyle = 'rgba(255,255,255,0.14)';
+    g.stroke();
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.lineWidth = 16;
-    g.strokeStyle = 'rgba(0,0,0,0.55)';
-    g.strokeText(text, 512, 100);
-    g.fillStyle = tone === 'gold' ? '#ffd36a' : tone === 'grey' ? '#a8a8ae' : '#f4f4f2';
-    g.fillText(text, 512, 100);
+    g.fillStyle = tone === 'gold' ? GOLD : tone === 'grey' ? MUTED : INK2;
+    g.fillText(text, 500, 80);
     g.textAlign = 'left';
     g.textBaseline = 'alphabetic';
     this.callout.tex.needsUpdate = true;
     this.calloutAge = 0;
   }
-  /** The results' grade hit the panel: it shakes a little. */
-  private shake = 0;
+  /** The results' grade landed: the medal pulses, a ring of light runs out, the panel gives under it. */
   stamp(): void {
-    this.shake = 1;
+    this.stampAge = 0;
   }
   private starQuads: Mesh[] = [];
   private starTex: CanvasTexture[] = [];
@@ -504,7 +620,7 @@ export class Panel {
     if (!t) return;
     const q = this.starQuads[i];
     const scored = !!this.shown?.result;
-    const z = itemZone(scored ? { x: 580 + i * 120 - 60, y: 480 - 60, w: 120, h: 120 } : { x: CW / 2 - 170 + i * 170 - 80, y: 300 - 80, w: 160, h: 160 });
+    const z = itemZone(scored ? { x: 180 + i * 72, y: 504, w: 72, h: 72 } : { x: CW / 2 - 170 + i * 170 - 80, y: 300 - 80, w: 160, h: 160 });
     q.position.set(z.x, z.z, 0.0016);
     q.userData.size = z.w;
     const c = t.image as HTMLCanvasElement;
@@ -537,20 +653,14 @@ export class Panel {
       this.lastDigit = digit;
       if (digit > 0) this.drawCount(digit);
     }
-    const combo = song ? (d.combo ?? 0) : 0;
-    this.comboMesh.visible = combo >= 4;
-    if (combo !== this.lastCombo) {
-      this.lastCombo = combo;
-      if (combo >= 4) this.drawCombo(combo);
-    }
+    // (the run is its own quad now: the old combo canvas stays hidden)
+    this.comboMesh.visible = false;
     // (the page object is rebuilt only when the display changes: the same one, the same count and stars, is no change)
     // (the count-in's number is its own: the page only cares whether there is one)
-    const half = !!d.result && d.result.t >= 2.1;
-    if (p === this.page && d.count > 0 === this.lastCount > 0 && d.stars === this.lastStars && half === this.lastHalf) return;
-    this.lastHalf = half;
+    if (p === this.page && d.count > 0 === this.lastCount > 0 && (d.stars === this.lastStars || !!d.result) && !(p.body === 'song' && d.map && !this.sig)) return;
     this.lastCount = d.count;
     this.lastStars = d.stars;
-    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, d.result ? `${d.result.t >= 2.1}|${d.result.hook}` : '', p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}|${i.grade ?? ''}`).join(',')].join('~');
+    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, d.result ? 'r' : '', p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}|${i.grade ?? ''}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
     if (p.id !== this.pageId) {
@@ -858,35 +968,25 @@ export class Panel {
   }
 
   private drawSong(g: CanvasRenderingContext2D, d: Display): void {
-    const X = 40;
-    const R = CW - 40;
+    const X = 32;
+    const R = CW - 32;
     // (the count-in's number is drawn on its own canvas)
     if (d.count > 0) return;
-    if (d.stars >= 0) for (let i = 0; i < 3; i++) star(g, R - 210 + i * 76, 230, 30, i < d.stars, d.gold);
-    // (the progress bar's track; its fill and the run of notes are drawn apart)
+    // the progress track (its fill is a mesh); each solo a red stretch on it, named above
     g.fillStyle = '#2a2927';
-    rounded(g, X, 470, R - X, 22, 11);
+    rounded(g, X, 488, R - X, 16, 8);
     g.fill();
-    // the song's map on it: the second half a shade lighter, each solo a red stretch marked above
     const m = d.map;
     if (m && m.beats > 0) {
       const at = (b: number) => X + ((R - X) * b) / m.beats;
-      g.fillStyle = '#34322e';
-      g.fillRect(at(m.second[0]), 474, at(m.second[1]) - at(m.second[0]), 14);
       g.font = `600 48px ${FONT}`;
       for (const [a, z] of m.wild) {
-        g.fillStyle = '#7a2a1e';
-        g.fillRect(at(a), 474, at(z) - at(a), 14);
-        g.fillStyle = INK;
+        g.fillStyle = 'rgba(255,95,79,0.9)';
+        g.fillRect(at(a), 488, at(z) - at(a), 16);
+        g.fillStyle = RED;
         const t = 'Solo';
-        g.fillText(t, (at(a) + at(z) - g.measureText(t).width) / 2, 458);
+        g.fillText(t, Math.max(X, Math.min(R - g.measureText(t).width, (at(a) + at(z) - g.measureText(t).width) / 2)), 470);
       }
-    }
-    if (d.meter >= 0) {
-      g.fillStyle = '#2a2927';
-      g.fillRect(X, 520, R - X, 10);
-      g.fillStyle = INK;
-      g.fillRect(X, 520, (R - X) * d.meter, 10);
     }
   }
 
@@ -913,105 +1013,155 @@ export class Panel {
     this.comboTex.needsUpdate = true;
   }
 
-  /** The score while you play, the results' count-up, ring and grade, the callout: all animated here. */
+  /** The HUD while you play, the results' reveal, the callout: all animated here (each quad redrawn on change). */
   private animateScore(dt: number): void {
     const d = this.shown;
     const pid = this.page?.id;
-    // playing: the number rolls up to the score, the multiplier pulses as it steps up
     const playing = pid === 'song' && !!d && d.count <= 0 && d.score !== undefined && !this.hidden;
+    // the run: its count in the multiplier's colour (gold in the spotlight), the chip, "in a row"
+    const combo = playing && d ? (d.combo ?? 0) : 0;
+    this.run.mesh.visible = combo >= 4;
+    const mult = d?.mult ?? 1;
+    const spot = !!d?.spot?.active;
+    if (mult > this.lastMult) this.hudPulse = 1;
+    this.lastMult = mult;
+    this.hudPulse = Math.max(0, this.hudPulse - dt / 0.15);
+    if (this.run.mesh.visible) {
+      const key = `${combo}|${mult}|${spot}`;
+      if (key !== this.runKey) {
+        this.runKey = key;
+        drawRun(this.run.g, combo, mult, spot);
+        this.run.tex.needsUpdate = true;
+      }
+      this.run.mesh.scale.set((this.run.mesh.userData.size as number) * (1 + 0.06 * this.hudPulse), (this.run.mesh.userData.h as number) * (1 + 0.06 * this.hudPulse), 1);
+    }
+    // the score: it rolls up; accuracy under it; how you stand against your best
     this.hud.mesh.visible = playing;
     if (playing && d) {
       const target = d.score ?? 0;
       if (this.hudShown < 0 || target < this.hudShown) this.hudShown = target;
       this.hudShown += (target - this.hudShown) * Math.min(1, dt * 14);
       if (target - this.hudShown < 1) this.hudShown = target;
-      const mult = d.mult ?? 1;
-      if (mult > this.lastMult) this.hudPulse = 1;
-      this.lastMult = mult;
-      this.hudPulse = Math.max(0, this.hudPulse - dt * 3);
       this.hudT -= dt;
-      const key = `${Math.round(this.hudShown)}|${mult}|${Math.round((d.acc ?? 1) * 1000)}`;
+      const ghost = d.ghost === null || d.ghost === undefined ? null : Math.round(d.ghost / 10) * 10;
+      const key = `${Math.round(this.hudShown)}|${Math.round((d.acc ?? 1) * 1000)}|${ghost}`;
       if (key !== this.hudKey && this.hudT <= 0) {
         this.hudKey = key;
-        this.hudT = 0.05;
-        drawHud(this.hud.g, Math.round(this.hudShown), mult, d.acc ?? 1);
+        this.hudT = 1 / 30;
+        drawHud(this.hud.g, Math.round(this.hudShown), d.acc ?? 1, ghost);
         this.hud.tex.needsUpdate = true;
       }
-      this.hud.mesh.scale.setScalar((this.hud.mesh.userData.size as number) * (1 + 0.06 * this.hudPulse));
     } else this.hudShown = -1;
-    // the results: the score counts up, the ring fills to your accuracy, the grade stamps in at 1.8 s
+    // the spotlight: its four segments, what to do
+    const sp = playing ? d?.spot : undefined;
+    this.spotQ.mesh.visible = !!sp;
+    if (sp) {
+      const key = `${Math.round(sp.meter * 40)}|${sp.active}|${sp.ready}`;
+      if (key !== this.spotKey) {
+        this.spotKey = key;
+        drawSpot(this.spotQ.g, sp.meter, sp.active, sp.ready);
+        this.spotQ.tex.needsUpdate = true;
+      }
+      // (ready: it breathes, asking for your hands)
+      (this.spotQ.mesh.material as MeshBasicMaterial).opacity = sp.ready ? 0.75 + 0.25 * Math.sin(performance.now() / 160) : 1;
+    }
+    // the results: the score counts up while the ring fills in Ink; the grade stamps (the ring takes its colour, a
+    // ring of light runs out); the line over the score and the details fade in
     const r = pid === 'results' ? d?.result : null;
     const on = !!r && r.t > 0;
-    this.ring.mesh.visible = this.scoreQ.mesh.visible = on;
-    this.grade.mesh.visible = on && !!r && r.t >= 1.8;
+    for (const q of [this.ring, this.scoreQ, this.brow, this.details]) q.mesh.visible = on;
+    const stamped = on && !!r && r.stampT >= 0 && r.t >= r.stampT;
+    this.grade.mesh.visible = stamped;
     if (on && r) {
       const ease = (u: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
-      const ks = ease((r.t - 0.2) / 1.4);
-      const kr = ease((r.t - 0.4) / 1.3);
-      const key = `${Math.round(r.score * ks)}|${Math.round(r.accuracy * kr * 1000)}|${r.letter}`;
+      const ks = ease((r.t - 0.15) / 1.2);
+      const kr = ease((r.t - 0.25) / 1.2);
+      const ink = GRADE_INK[r.letter] ?? INK2;
+      const key = `${Math.round(r.score * ks)}|${Math.round(r.accuracy * kr * 1000)}|${stamped}`;
       if (key !== this.resKey) {
         this.resKey = key;
         drawCountUp(this.scoreQ.g, Math.round(r.score * ks));
         this.scoreQ.tex.needsUpdate = true;
-        drawRing(this.ring.g, r.accuracy * kr, GRADE_INK[r.letter] ?? '#f4f4f2');
+        drawRing(this.ring.g, r.accuracy * kr, stamped ? ink : 'rgba(242,239,230,0.6)');
         this.ring.tex.needsUpdate = true;
-        drawGrade(this.grade.g, r.letter);
-        this.grade.tex.needsUpdate = true;
+        if (stamped) {
+          drawGrade(this.grade.g, r.letter);
+          this.grade.tex.needsUpdate = true;
+        }
       }
-      if (this.grade.mesh.visible) {
-        // (in from twice its size with a little overshoot, 250 ms: a stamp)
-        const u = Math.min(1, (r.t - 1.8) / 0.25);
-        const back = 1 + 2.2 * Math.pow(u - 1, 3) + 1.2 * Math.pow(u - 1, 2);
-        const sc = u < 1 ? 2.2 - 1.2 * back : 1;
-        this.grade.mesh.scale.setScalar((this.grade.mesh.userData.size as number) * sc);
-        (this.grade.mesh.material as MeshBasicMaterial).opacity = Math.min(1, u * 4);
+      // (the score settles with a little bump as it lands)
+      const bump = r.t > 1.35 && r.t < 1.49 ? Math.sin(((r.t - 1.35) / 0.14) * Math.PI) : 0;
+      this.scoreQ.mesh.scale.set((this.scoreQ.mesh.userData.size as number) * (1 + 0.04 * bump), (this.scoreQ.mesh.userData.h as number) * (1 + 0.04 * bump), 1);
+      if (stamped) {
+        const u = Math.min(1, (r.t - r.stampT) / 0.22);
+        const low = r.letter === 'D';
+        // a stamp: in from 1.8× with a 6 % overshoot (a D just fades in from 1.1×)
+        const sc = low ? 1.1 - 0.1 * u : u < 1 ? 1.8 - 0.8 * u - 0.06 * Math.sin(u * Math.PI) * 1.6 : 1;
+        this.grade.mesh.scale.set((this.grade.mesh.userData.size as number) * sc, (this.grade.mesh.userData.h as number) * sc, 1);
+        (this.grade.mesh.material as MeshBasicMaterial).opacity = low ? Math.min(1, (r.t - r.stampT) / 0.2) : Math.min(1, u * 4);
+        const pu = Math.min(1, (r.t - r.stampT) / 0.3);
+        const pulse = 1 + 0.03 * Math.sin(pu * Math.PI);
+        this.ring.mesh.scale.set((this.ring.mesh.userData.size as number) * pulse, (this.ring.mesh.userData.h as number) * pulse, 1);
       }
-    } else this.resKey = '';
-    // the panel's own little jolt as the grade lands
-    if (this.shake > 0) {
-      this.shake = Math.max(0, this.shake - dt * 5);
-      this.root.position.x = 0.004 * this.shake * Math.sin(this.shake * 40);
+      // the line over the score at 2.05 s, the details at 2.15 (the new best chip pops at 2.65)
+      const browKey = `${r.better}|${r.prev}|${r.score}|${r.t >= 2.65}`;
+      if (browKey !== this.browKey) {
+        this.browKey = browKey;
+        drawBrow(this.brow.g, r.better, r.prev, r.score);
+        this.brow.tex.needsUpdate = true;
+      }
+      const pop = r.better && r.t >= 2.65 ? Math.min(1, (r.t - 2.65) / 0.24) : 1;
+      const ps = r.better ? (pop < 0.6 ? 0.8 + (0.25 * pop) / 0.6 : 1.05 - 0.05 * ((pop - 0.6) / 0.4)) : 1;
+      (this.brow.mesh.material as MeshBasicMaterial).opacity = r.better ? (r.t >= 2.65 ? Math.min(1, pop * 3) : 0) : Math.min(1, Math.max(0, (r.t - 2.05) / 0.2));
+      this.brow.mesh.scale.set((this.brow.mesh.userData.size as number) * ps, (this.brow.mesh.userData.h as number) * ps, 1);
+      const dk = `${r.hook}|${r.letter}|${r.perfect}|${r.good}|${r.miss}|${r.maxCombo}`;
+      if (dk !== this.detKey) {
+        this.detKey = dk;
+        drawDetails(this.details.g, r);
+        this.details.tex.needsUpdate = true;
+      }
+      (this.details.mesh.material as MeshBasicMaterial).opacity = Math.min(1, Math.max(0, (r.t - 2.15) / 0.2));
+    } else this.resKey = this.browKey = this.detKey = '';
+    // the stamp: the shockwave runs out from the medal, the panel gives a little under it
+    if (this.stampAge < 0.4) {
+      this.stampAge += dt;
+      const u = Math.min(1, this.stampAge / 0.3);
+      const hard = !!r && (r.letter === 'S' || r.letter === 'A' || r.letter === 'B' || r.letter === 'C');
+      this.shock.visible = u < 1 && hard;
+      const rr = (this.shock.userData.r as number) * (1 + (40 / 210) * u);
+      this.shock.scale.set(rr, rr, 1);
+      const sm = this.shock.material as MeshBasicMaterial;
+      sm.color.set(GRADE_INK[r?.letter ?? 'S'] ?? INK2);
+      sm.opacity = 0.7 * (1 - u);
+      const give = r?.letter === 'S' || r?.letter === 'A' ? 0.012 : hard ? 0.007 : 0;
+      this.root.scale.setScalar(1 - give * Math.sin(Math.min(1, this.stampAge / 0.24) * Math.PI));
+    } else {
+      this.shock.visible = false;
+      if (this.root.scale.x !== 1) this.root.scale.setScalar(1);
     }
     // the callout: pops up, holds, floats off
     this.callout.mesh.visible = this.calloutAge < 1.2 && !this.hidden;
     if (this.callout.mesh.visible) {
       this.calloutAge += dt;
       const a = this.calloutAge;
-      const pop = a < 0.12 ? 0.6 + 0.5 * (a / 0.12) : a < 0.2 ? 1.1 - 0.1 * ((a - 0.12) / 0.08) : 1;
-      this.callout.mesh.scale.setScalar((this.callout.mesh.userData.size as number) * pop);
+      const popc = a < 0.12 ? 0.6 + 0.5 * (a / 0.12) : a < 0.2 ? 1.1 - 0.1 * ((a - 0.12) / 0.08) : 1;
+      this.callout.mesh.scale.set((this.callout.mesh.userData.size as number) * popc, (this.callout.mesh.userData.h as number) * popc, 1);
       (this.callout.mesh.material as MeshBasicMaterial).opacity = a > 0.8 ? Math.max(0, 1 - (a - 0.8) / 0.4) : 1;
       this.callout.mesh.position.y = (this.callout.mesh.userData.y as number) + 0.01 * Math.max(0, a - 0.5);
     }
   }
 
   private drawResults(g: CanvasRenderingContext2D, d: Display): void {
-    // a scored song: the ring and grade, the score, a line to beat, the stars, then what it was made of
-    const r = d.result;
-    if (r) {
-      if (r.t < 2.1) return;
-      g.font = `600 52px ${FONT}`;
-      if (r.better) {
-        const w = g.measureText(r.hook).width + 60;
-        rounded(g, 520, 345, w, 76, 38);
-        g.fillStyle = '#ffd36a';
-        g.fill();
-        g.fillStyle = '#16140f';
-        g.fillText(r.hook, 550, 400);
-      } else {
-        g.fillStyle = '#a8a8ae';
-        g.fillText(r.hook, 520, 400);
+    // a scored song: the page holds only the medal's three star slots (everything else is its own quad)
+    if (d.result) {
+      for (let i = 0; i < 3; i++) {
+        g.beginPath();
+        g.arc(216 + i * 72, 540, 30, 0, Math.PI * 2);
+        g.lineWidth = 3;
+        g.strokeStyle = 'rgba(255,255,255,0.25)';
+        g.stroke();
       }
-      for (let i = 0; i < 3; i++) star(g, 580 + i * 120, 480, 46, i < Math.max(0, d.stars), d.gold);
-      const cols: [string, string][] = [[String(r.perfect), 'Perfect'], [String(r.good), 'Good'], [String(r.miss), 'Miss'], [String(r.maxCombo), 'Best run']];
-      cols.forEach(([v, l], i) => {
-        const x = 520 + i * 200;
-        g.fillStyle = INK;
-        g.font = `700 64px ${FONT}`;
-        g.fillText(v, x, 590);
-        g.fillStyle = '#8e8e94';
-        g.font = `500 48px ${FONT}`;
-        g.fillText(l, x, 645);
-      });
+      for (let i = 0; i < Math.max(0, d.stars); i++) star(g, 216 + i * 72, 540, 30, true, d.gold);
       return;
     }
     // (stars hidden while your replay plays)
@@ -1089,6 +1239,11 @@ export class Panel {
       // the one thing to press next: solid white, black type
       g.fillStyle = '#f4f4f2';
       g.fill();
+    } else if (it.kind === 'ghost') {
+      // (stop, quit, leave: an outline, its word quiet)
+      g.lineWidth = 2;
+      g.strokeStyle = 'rgba(255,255,255,0.18)';
+      g.stroke();
     } else {
       g.fillStyle = it.off ? 'rgba(255,255,255,0.025)' : it.on ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)';
       g.fill();
@@ -1098,7 +1253,7 @@ export class Panel {
         g.stroke();
       }
     }
-    const ink = it.off ? DIMI : INK;
+    const ink = it.off ? DIMI : it.kind === 'ghost' ? MUTED : INK;
     g.fillStyle = ink;
     if (it.kind === 'card' || it.icon) {
       // an instrument, pictured, with its name under it (or beside it, on a wide card)

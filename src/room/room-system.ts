@@ -403,9 +403,33 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         audio.cheer(letter === 'S' ? 1 : 0.7, letter === 'S');
         this.dimmer.hit(letter === 'S' ? 0xffd36a : 0x7be0a0, 1);
       }
-      if (fullCombo) this.later(this.clock.t + 0.5, () => this.kit.module.say('Full combo', 'gold'));
+      void fullCombo;
     },
     countTick: () => audio.tick(0.07),
+    newBest: () => audio.chime([76, 83], 0.09, 0.5),
+    fullCombo: (all) => this.kit.module.say(all ? 'All perfect' : 'Full combo', 'gold'),
+    spotGain: (m) => {
+      if (m >= 0.5 && !this.spotSaid) {
+        this.spotSaid = true;
+        this.kit.module.say('Hands up: Spotlight', 'gold');
+      } else this.kit.module.say('Spotlight +25%', 'gold');
+      audio.chime([79, 84], 0.07, 0.4);
+    },
+    spotFire: () => {
+      this.spotSaid = false;
+      this.kit.module.say('Spotlight!', 'gold');
+      audio.riser(0.5);
+      audio.crash(0.7);
+      audio.cheer(1, true);
+      this.dimmer.hit(0xffd36a, 1);
+    },
+    spotEnd: () => {
+      audio.whoosh(0);
+    },
+    overtake: () => {
+      this.kit.module.say('Ahead of your best', 'gold');
+      audio.chime([72, 79, 84], 0.06, 0.45);
+    },
     lessonStep: (title) => {
       this.kit.module.say(title);
       audio.chime([76, 79], 0.08, 0.35);
@@ -1520,6 +1544,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const inv = this.tmpM.copy(this.kit.root.matrixWorld).invert();
     // fists and sticks, and the drums' heads struck in the air
     this.airTick(delta, inv);
+    this.spotGesture(delta);
     for (let i = 0; i < 2; i++) {
       const side = SIDES[i];
       const h = hands[side];
@@ -3437,6 +3462,32 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     return n === null ? null : n + (h?.song ? 0 : (cfg.oct ?? 0) * 12);
   }
   private gNotes = [0, 0, 0, 0, 0, 0];
+
+  // ---- the spotlight's gesture: both hands up, at your eyes or higher, for a quarter second ----
+  private spotSaid = false;
+  private handsUpT = 0;
+  private spotBeat = -1;
+  private spotGesture(dt: number): void {
+    const sp = this.game.display.spot;
+    // while it's on, the room pulses gold on every beat
+    if (sp?.active) {
+      const b = Math.floor(this.game.beatNow);
+      if (b !== this.spotBeat) {
+        this.spotBeat = b;
+        this.dimmer.hit(0xffd36a, 0.45);
+      }
+    }
+    if (!sp?.ready || this.userPaused) {
+      this.handsUpT = 0;
+      return;
+    }
+    const up = (h: typeof hands.left) => h.tracked && h.wrist.y > this.head.y - 0.12;
+    this.handsUpT = up(hands.left) && up(hands.right) ? this.handsUpT + dt : 0;
+    if (this.handsUpT >= 0.25) {
+      this.handsUpT = 0;
+      this.game.fireSpotlight();
+    }
+  }
 
   /** A strum: scored in a song, recorded in free play, the strum line flashes. */
   private guitarStrummed(vel: number, t: number): void {
