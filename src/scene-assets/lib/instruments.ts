@@ -65,7 +65,9 @@ export class PianoModel implements DeskModel {
   private buttonY = 0;
   private spring = new Springs(48);
   private readonly lacquer = new MeshPhysicalMaterial({ name: 'Lacquer', color: 0x0c0c0e, roughness: 0.32, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.08 });
-  private readonly rubber = mat('Rubber', 0xc8261c, 0.55);
+  private readonly satin = new MeshStandardMaterial({ name: 'Satin', color: 0x111113, roughness: 0.55 });
+  private readonly wheelMat = new MeshStandardMaterial({ name: 'Wheel', color: 0x1c1c1f, roughness: 0.6 });
+  private readonly padMat = new MeshStandardMaterial({ name: 'ChordPad', color: 0x2a2a2e, roughness: 0.5, emissive: 0xffe6b8, emissiveIntensity: 0.25 });
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -80,17 +82,26 @@ export class PianoModel implements DeskModel {
     this.root.add(parts.root);
     const mids = [...parts.keys.keys()].sort((a, b) => a - b);
     for (const m of mids) (isBlack(m) ? this.blacks : this.keys).push(parts.keys.get(m)!);
-    // the chord button: a red rubber dome on a lacquered pod, left of the keyboard, as tall as the keys
+    // the left end panel, as on a stage keyboard: pitch and mod wheels at the back, and in front of them the chord
+    // pad, a backlit square that plays a chord
     const chord = zones.find((q) => q.i === PIANO_CHORD);
     if (chord) {
-      const podH = KEYBOARD.top - 0.006;
-      const pod = named(new Mesh(new BoxGeometry(chord.w * 2 + 0.016, podH, chord.w * 2 + 0.03), this.lacquer), 'ButtonPod');
-      pod.position.set(chord.x, podH / 2, -chord.z);
-      const dome = named(new Mesh(new CylinderGeometry(chord.w * 0.92, chord.w, 0.008, 40), this.rubber), 'ChordButton');
-      this.buttonY = podH + 0.004;
-      dome.position.set(chord.x, this.buttonY, -chord.z);
-      this.root.add(pod, dome);
-      this.button = dome;
+      const podH = KEYBOARD.top - 0.004;
+      const pod = named(new Mesh(new BoxGeometry(chord.w * 2 + 0.018, podH, 0.17), this.satin), 'EndPanel');
+      pod.position.set(chord.x, podH / 2, -chord.z - 0.035);
+      this.root.add(pod);
+      const wheel = new CylinderGeometry(0.02, 0.02, 0.009, 32);
+      for (const dx of [-0.011, 0.011]) {
+        const w = named(new Mesh(wheel, this.wheelMat), 'Wheel');
+        w.rotation.z = Math.PI / 2;
+        w.position.set(chord.x + dx, podH - 0.008, -chord.z - 0.075);
+        this.root.add(w);
+      }
+      const pad = named(new Mesh(new BoxGeometry(chord.w * 1.7, 0.006, chord.w * 1.7), this.padMat), 'ChordPad');
+      this.buttonY = podH + 0.003;
+      pad.position.set(chord.x, this.buttonY, -chord.z);
+      this.root.add(pad);
+      this.button = pad;
     }
   }
 

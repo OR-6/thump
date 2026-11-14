@@ -5,7 +5,8 @@
  * named `Key:<midi>` pivoting at its back, so pressing it is one rotation. Deterministic and parentless.
  * Keyboard-local: origin on the desk at the keyboard's centre, +Y up, −Z away from the player; metres.
  */
-import { BoxGeometry, ExtrudeGeometry, Group, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, Shape } from '@iwsdk/core';
+import { BoxGeometry, CylinderGeometry, ExtrudeGeometry, Group, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, Shape } from '@iwsdk/core';
+import { woodGrain } from './surfaces.js';
 
 export const KEY = {
   /** White key pitch (centre to centre) and the gap between keys. */
@@ -147,40 +148,108 @@ export function buildPiano(opts: PianoOptions = {}): PianoParts {
     keys.set(midi, g);
   }
 
-  // the case: end cheeks, a key bed under the keys, a key slip in front, the fallboard behind, a felt strip, a lip
-  const cheekW = 0.028;
+  // the case: a satin black body (a key bed under the keys, a key slip in front), walnut end cheeks, a gloss
+  // fallboard strip with the felt along it, and behind the keys a brushed-aluminium control panel (knobs, faders, a
+  // small display, a power light). Every block's edges rounded, so the lacquer and metal catch the light.
+  const cheekW = 0.024;
   const depth = 0.27;
-  const caseMat = lacquer();
+  const satin = new MeshStandardMaterial({ name: 'Satin', color: 0x111113, roughness: 0.55 });
+  const walnut = new MeshPhysicalMaterial({ name: 'Walnut', color: 0x5a3a24, map: woodGrain(71), roughness: 0.45, clearcoat: 0.6, clearcoatRoughness: 0.35 });
+  const gloss = lacquer();
+  const brushed = new MeshStandardMaterial({ name: 'Brushed', color: 0xb8bcc2, metalness: 1, roughness: 0.3 });
   const caseH = KEY.top - KEY.thick - 0.004; // the key bed's top, just under the keys
-  const bed = named(new Mesh(new BoxGeometry(width + 2 * cheekW, caseH, depth), caseMat), 'Bed');
-  bed.position.set(0, caseH / 2, -depth / 2 + 0.012);
-  bed.receiveShadow = true;
-  root.add(bed);
+  const block = (name: string, m: MeshStandardMaterial, w: number, h: number, d: number, x: number, y: number, z: number) => {
+    const o = named(new Mesh(rounded(w, h, d, 0.003), m), name);
+    o.position.set(x, y, z);
+    o.castShadow = true;
+    o.receiveShadow = true;
+    root.add(o);
+    return o;
+  };
+  block('Bed', satin, width + 2 * cheekW, caseH, depth, 0, caseH / 2, -depth / 2 + 0.012);
+  // the cheeks: walnut, as tall as the keys at the front, rising to the panel at the back
+  const backH = 0.095;
   for (const side of [-1, 1]) {
-    const cheek = named(new Mesh(new BoxGeometry(cheekW, KEY.top + 0.022, depth), caseMat), side < 0 ? 'CheekL' : 'CheekR');
-    cheek.position.set(side * (width / 2 + cheekW / 2), (KEY.top + 0.022) / 2, -depth / 2 + 0.012);
+    const sh = new Shape();
+    const front = KEY.top + 0.008;
+    sh.moveTo(0, 0);
+    sh.lineTo(depth, 0);
+    sh.lineTo(depth, backH);
+    sh.lineTo(depth * 0.42, backH);
+    sh.quadraticCurveTo(depth * 0.3, front, depth * 0.12, front);
+    sh.lineTo(0, front);
+    sh.lineTo(0, 0);
+    const g = new ExtrudeGeometry(sh, { depth: cheekW, bevelEnabled: true, bevelSize: 0.002, bevelThickness: 0.002, bevelSegments: 3, curveSegments: 10 });
+    g.translate(0, 0, -cheekW / 2);
+    g.rotateY(Math.PI / 2);
+    const cheek = named(new Mesh(g, walnut), side < 0 ? 'CheekL' : 'CheekR');
+    cheek.position.set(side * (width / 2 + cheekW / 2), 0, 0.012);
     cheek.castShadow = true;
     cheek.receiveShadow = true;
     root.add(cheek);
   }
-  const slip = named(new Mesh(new BoxGeometry(width, KEY.top - 0.016, 0.012), caseMat), 'KeySlip');
-  slip.position.set(0, (KEY.top - 0.016) / 2, 0.006);
-  slip.castShadow = true;
-  root.add(slip);
-  const fallH = KEY.top + 0.022;
-  const fall = named(new Mesh(new BoxGeometry(width, fallH, depth - KEY.length - 0.014), caseMat), 'Fallboard');
-  fall.position.set(0, fallH / 2, -(KEY.length + 0.002) - (depth - KEY.length - 0.014) / 2);
-  fall.castShadow = true;
-  fall.receiveShadow = true;
-  root.add(fall);
-  const strip = named(new Mesh(new BoxGeometry(width, 0.006, 0.004), felt()), 'Felt');
+  block('KeySlip', satin, width, KEY.top - 0.016, 0.012, 0, (KEY.top - 0.016) / 2, 0.006);
+  // the fallboard: a gloss strip just behind the keys, the felt along its front, a shadow line under it
+  const fallD = 0.03;
+  const fallZ = -(KEY.length + 0.002) - fallD / 2;
+  block('Fallboard', gloss, width, KEY.top + 0.012, fallD, 0, (KEY.top + 0.012) / 2, fallZ);
+  const strip = named(new Mesh(new BoxGeometry(width, 0.004, 0.003), felt()), 'Felt');
   strip.position.set(0, KEY.top + 0.001, -KEY.length - 0.002);
   root.add(strip);
-  const lip = named(new Mesh(new BoxGeometry(width + 2 * cheekW, 0.004, 0.006), alu()), 'Lip');
-  lip.position.set(0, fallH + 0.002, -(depth - 0.012) + 0.003);
-  root.add(lip);
+  // the control panel: brushed aluminium on a sloped satin back, rising to the cheeks' height
+  const panD = depth - KEY.length - 0.014 - fallD;
+  const panZ = fallZ - fallD / 2 - panD / 2;
+  block('Back', satin, width, backH - 0.004, panD, 0, (backH - 0.004) / 2, panZ);
+  const face = block('ControlPanel', brushed, width - 0.01, 0.003, panD - 0.012, 0, backH - 0.002, panZ);
+  void face;
+  const knob = new CylinderGeometry(0.006, 0.0065, 0.01, 24);
+  const knobMat = new MeshStandardMaterial({ name: 'Knob', color: 0x1a1a1c, roughness: 0.4 });
+  const dot = new BoxGeometry(0.001, 0.0006, 0.004);
+  const white = new MeshStandardMaterial({ name: 'Mark', color: 0xe8e8e8, roughness: 0.5 });
+  for (let k = 0; k < 6; k++) {
+    const kx = -width / 2 + 0.08 + k * 0.026;
+    const kn = new Mesh(knob, knobMat);
+    kn.position.set(kx, backH + 0.005, panZ);
+    const mk = new Mesh(dot, white);
+    mk.position.set(kx, backH + 0.0103, panZ + 0.003);
+    mk.rotation.y = (k * 0.7) % 1.6 - 0.8;
+    root.add(kn, mk);
+  }
+  for (let k = 0; k < 2; k++) {
+    const slot = new Mesh(new BoxGeometry(0.004, 0.001, 0.03), new MeshStandardMaterial({ color: 0x050506, roughness: 0.8 }));
+    slot.position.set(width / 2 - 0.12 + k * 0.022, backH + 0.0005, panZ);
+    const cap = new Mesh(new BoxGeometry(0.012, 0.006, 0.006), knobMat);
+    cap.position.set(slot.position.x, backH + 0.0035, panZ - 0.006 + k * 0.01);
+    root.add(slot, cap);
+  }
+  const lcd = named(new Mesh(new BoxGeometry(0.06, 0.0012, 0.014), new MeshStandardMaterial({ name: 'Display', color: 0x0d1a14, emissive: 0x1a3a2a, roughness: 0.2 })), 'Display');
+  lcd.position.set(width / 2 - 0.05, backH + 0.0007, panZ);
+  const power = named(new Mesh(new CylinderGeometry(0.0018, 0.0018, 0.0012, 12), new MeshStandardMaterial({ name: 'Power', color: 0x30ff80, emissive: 0x30ff80, emissiveIntensity: 0.8 })), 'Power');
+  power.position.set(-width / 2 + 0.035, backH + 0.0007, panZ);
+  root.add(lcd, power);
 
   return { root, keys, width };
+}
+
+/** A box with its edges rounded by `r` (an extruded rounded rectangle, bevelled): x by y by z, centred. */
+function rounded(w: number, h: number, d: number, r: number): ExtrudeGeometry {
+  const sh = new Shape();
+  const x = -w / 2 + r;
+  const y = -h / 2 + r;
+  const W = w - 2 * r;
+  const H = h - 2 * r;
+  sh.moveTo(x, y - r);
+  sh.lineTo(x + W, y - r);
+  sh.quadraticCurveTo(x + W + r, y - r, x + W + r, y);
+  sh.lineTo(x + W + r, y + H);
+  sh.quadraticCurveTo(x + W + r, y + H + r, x + W, y + H + r);
+  sh.lineTo(x, y + H + r);
+  sh.quadraticCurveTo(x - r, y + H + r, x - r, y + H);
+  sh.lineTo(x - r, y);
+  sh.quadraticCurveTo(x - r, y - r, x, y - r);
+  const g = new ExtrudeGeometry(sh, { depth: Math.max(0.0005, d - 2 * r), bevelEnabled: true, bevelSize: r * 0.9, bevelThickness: r, bevelSegments: 2, curveSegments: 4 });
+  g.translate(0, 0, -(d - 2 * r) / 2);
+  return g;
 }
 
 /** The X centre of a key, keyboard-local. */

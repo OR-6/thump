@@ -36,7 +36,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'piano',
     name: 'Piano',
-    how: 'Press keys with your fingertips. Red button: a chord',
+    how: 'Press keys with your fingertips. The lit pad: a chord',
     sounds: [
       { id: 'piano', name: 'Grand', family: 'keys' },
       { id: 'bowl', name: 'Bowl', family: 'bowl' },
