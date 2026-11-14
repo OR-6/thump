@@ -6,8 +6,10 @@
  * lives here (docs/DEVICE-SESSION.md names them).
  */
 
-export type Lane = 'kick' | 'snare' | 'hat' | 'tom' | 'gong';
-export const LANES: readonly Lane[] = ['kick', 'snare', 'hat', 'tom', 'gong'];
+export type Lane = 'kick' | 'snare' | 'hat' | 'tom' | 'floor' | 'crash' | 'ride' | 'gong';
+export const LANES: readonly Lane[] = ['kick', 'snare', 'hat', 'tom', 'floor', 'crash', 'ride', 'gong'];
+/** The kit's pieces beyond the four a song needs (the full kit; a small kit leaves them off). */
+export const EXTRA_LANES: readonly Lane[] = ['floor', 'crash', 'ride'];
 
 export interface PadSpec {
   lane: Lane;
@@ -38,13 +40,17 @@ export const PALETTE = {
  * landing, hat out right and a little nearer, tom out left). z = 0 is where the palm rested.
  */
 export const PADS: Record<Lane, PadSpec> = {
-  // drum-sized under your hands, 4 cm apart, and still about a tray's width (48 cm; 63 with the tom): kick and snare
-  // in front of you, the hat to the right, the tom to the left
-  // (as a right-handed drummer has them: hi-hat left of the snare, the kick in the middle, the tom to the right)
-  kick: { lane: 'kick', size: 0.18, x: 0.15, z: -0.03, color: PALETTE.tomato, mark: 'none' },
-  snare: { lane: 'snare', size: 0.16, x: -0.07, z: 0.02, color: PALETTE.mustard, mark: 'stripe' },
-  hat: { lane: 'hat', size: 0.16, x: -0.27, z: -0.02, color: PALETTE.teal, mark: 'notch' },
-  tom: { lane: 'tom', size: 0.12, x: 0.35, z: -0.06, color: PALETTE.plum, mark: 'ring' },
+  // a full kit played with hands, every head facing up (nothing for the feet): the hi-hat on the left, the snare in
+  // front of you, the bass drum lying flat front right (the biggest, lowest head), a rack tom between them at the
+  // back, a floor tom on the right, the crash and ride out to the sides where nothing else is under them; pieces at
+  // least 4 cm apart seen from above, so a hand coming down on one never passes through another
+  kick: { lane: 'kick', size: 0.2, x: 0.15, z: 0.05, color: PALETTE.tomato, mark: 'none' },
+  snare: { lane: 'snare', size: 0.16, x: -0.08, z: 0.04, color: PALETTE.mustard, mark: 'stripe' },
+  hat: { lane: 'hat', size: 0.16, x: -0.28, z: -0.02, color: PALETTE.teal, mark: 'notch' },
+  tom: { lane: 'tom', size: 0.12, x: 0.0, z: -0.13, color: PALETTE.plum, mark: 'ring' },
+  floor: { lane: 'floor', size: 0.15, x: 0.37, z: 0.0, color: PALETTE.navy, mark: 'ring' },
+  crash: { lane: 'crash', size: 0.18, x: -0.45, z: -0.18, color: PALETTE.brass, mark: 'brass' },
+  ride: { lane: 'ride', size: 0.19, x: 0.46, z: -0.2, color: PALETTE.brass, mark: 'brass' },
   // the gong goes on a real wall within reach when there is one; this is the table-edge fallback
   gong: { lane: 'gong', size: 0.12, x: 0.29, z: -0.08, color: PALETTE.brass, mark: 'brass' },
 };

@@ -33,6 +33,9 @@ const ONE_HAND: Record<Lane, { x: number; z: number }> = {
   hat: { x: 0.36, z: 0.14 },
   tom: { x: -0.16, z: 0.14 },
   gong: { x: 0.3, z: -0.2 },
+  floor: { x: -0.3, z: -0.06 },
+  crash: { x: 0.42, z: -0.12 },
+  ride: { x: 0.1, z: -0.24 },
 };
 
 export function zoneRadius(size: number): number {

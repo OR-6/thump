@@ -35,6 +35,7 @@ import {
 } from '@iwsdk/core';
 import { PADS, PLACE, STRIKE, type Lane } from '../config.js';
 import { hands, type HandState, type Side } from '../input/hands.js';
+import { KIT_STYLES, type KitStyle } from '../scene-assets/lib/drums.js';
 import { AIR, AirHits, type AirHit, type AirSurface } from '../input/air-hits.js';
 import { Placement, kitPose } from '../app/placement.js';
 import { FrameGuard } from '../app/frame-guard.js';
@@ -58,7 +59,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, NECK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, KEYS as KEY_NAMES, MARIMBA, NECK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -371,7 +372,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     freeHarmony: () => {
       const id = this.kit.inst;
       const sc = scaleById(id === 'drums' ? 'happy' : (this.settings.shelf[id]?.scale ?? 'happy'));
-      return { inst: id, root: 48 + this.game.keyPc, chords: sc.chords };
+      return { inst: id, root: 48 + (id === 'drums' ? 0 : this.keyOf(id)), chords: sc.chords };
     },
     useInstrument: (id) => this.useInstrument(id as InstId | null),
     shelfSet: (which) => this.shelfChange(which),
@@ -486,7 +487,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     unlock: (u: Unlock) => {
       void u;
-      if (u === 'tom') {
+      if (u === 'tom' && this.lanes().includes('tom')) {
         this.layout();
         this.kit.pad('tom')?.appear('slide');
         audio.whoosh(-0.4);
@@ -1142,10 +1143,25 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   /** The kit's pads: kick, snare, hat, and the tom once unlocked. */
+  /** The kit's pieces that are out: the full kit (the default), or a small one (kick, snare, hat). */
   private lanes(): Lane[] {
     const l: Lane[] = ['kick', 'snare', 'hat'];
-    if ((this.progress.unlocks as string[]).includes('tom')) l.push('tom');
+    if (this.settings.shelf.drums?.pieces === 'small') return l;
+    l.push('tom', 'floor', 'crash', 'ride');
     return l;
+  }
+  /** The kit's style and pieces as set: its look rebuilt if it changed, its sound, and only its pieces shown. */
+  private kitStyleNow = '';
+  private applyKit(): void {
+    const style = (this.settings.shelf.drums?.sound ?? 'acoustic') as KitStyle;
+    const want = KIT_STYLES.includes(style) ? style : 'acoustic';
+    audio.kitStyle = want;
+    if (want !== this.kitStyleNow) {
+      this.kitStyleNow = want;
+      this.kit.setKitStyle(want);
+    }
+    this.layout();
+    if (this.placement.phase === 'placed') this.kit.showLanes(this.lanes());
   }
 
   private layout(): void {
@@ -1348,7 +1364,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const p = this.kit.pad(r.lane);
       if (!p || !p.visible || this.kit.inst !== 'drums') return false;
       // (on the head, where it's struck; the kick's on its top)
-      out.set(p.x, r.lane === 'kick' ? 2 * p.radius + 0.006 : p.headY + 0.002, p.z);
+      out.set(p.x, p.headY + 0.002, p.z);
       root.localToWorld(out);
       col.setHex(LED[r.lane]);
       t.w = p.radius * 2;
@@ -2330,7 +2346,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     const pad = lane !== 'rim' ? this.kit.pad(lane) : undefined;
     if (pad && g) {
-      this.wordAt.set(pad.x, lane === 'kick' ? 2 * pad.radius : pad.headY, pad.z);
+      this.wordAt.set(pad.x, pad.headY, pad.z);
       this.hitWords?.show(g, this.kit.root.localToWorld(this.wordAt), this.head, LED[lane as Lane]);
     }
     this.record(this.kitSurface, 0, gain, st, g, lane);
@@ -2509,29 +2525,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const s = this.airSurf[n++];
         s.id = AIR_LANES.indexOf(lane);
         const r = p.radius;
-        if (lane === 'kick') {
-          s.face = 'front';
-          s.x = p.x;
-          s.y = r + 0.004;
-          s.z = p.z + KICK_DEPTH / 2;
-          s.r = r;
-          // (and its top: a beginner slaps down on the big drum)
-          const t = this.airSurf[n++];
-          t.id = 4;
-          t.face = 'up';
-          t.x = p.x;
-          t.y = 2 * r + 0.004;
-          t.z = p.z;
-          t.r = undefined;
-          t.w = r * 1.6;
-          t.d = KICK_DEPTH;
-        } else {
-          s.face = 'up';
-          s.x = p.x;
-          s.y = p.headY;
-          s.z = p.z;
-          s.r = r * 1.1;
-        }
+        // (every head faces up now, the bass drum's too; a cymbal is struck where it sits, a little wider)
+        s.face = 'up';
+        s.x = p.x;
+        s.y = p.headY;
+        s.z = p.z;
+        s.r = r * (lane === 'crash' || lane === 'ride' ? 1.15 : 1.1);
       }
     this.airCount = n;
     // (the rest can't be struck: a radius nothing is inside)
@@ -2676,7 +2675,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.debug.hits++;
       return;
     }
-    const lane = hit.surface === 4 ? 'kick' : AIR_LANES[hit.surface];
+    const lane = AIR_LANES[hit.surface];
     if (!lane || this.flam('air', hit.surface, side, this.clock.t)) return;
     this.playLane(lane, hit.gain, this.airP.x, this.clock.t, this.airStrike);
     this.debug.hits++;
@@ -2698,8 +2697,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     return h?.song ? { scale: h.minor ? 'sad' : 'happy', sound: c.sound, oct: c.oct } : c;
   }
   /** Lowest notes: the piano round middle C, the handpan and guitar an octave down, all in the song's key. */
+  /** The key an instrument plays in: the song's in a song, else the one you set for it. */
+  private keyOf(id: InstId): number {
+    return this.game.harmony()?.song ? this.game.keyPc : (this.settings.shelf[id]?.key ?? 0);
+  }
   private instRoot(id: InstId): number {
-    const pc = this.game.keyPc;
+    const pc = this.keyOf(id);
     // (the piano's tune sits above the band's chords: its root between F4 and E5); your octave on top
     const oct = (this.settings.shelf[id]?.oct ?? 0) * 12;
     // (the marimba carries the tune too: up with the piano's, over the band's chords, not inside them)
@@ -2709,7 +2712,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const id = this.kit.inst;
     const d = instDef(id);
     const c = this.shelfCfg(id);
-    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name, oct: c.oct ?? 0 };
+    const kc = this.settings.shelf[id]?.key ?? 0;
+    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name, oct: c.oct ?? 0, key: id === 'drums' ? '' : (KEY_NAMES.find((k) => k.pc === kc)?.name ?? 'C'), pieces: this.settings.shelf.drums?.pieces ?? 'full' };
   }
   /** A song or a build wants this instrument out (null: the one you chose in free play). Not saved. */
   private useInstrument(id: InstId | null): void {
@@ -2935,7 +2939,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.game.refreshDisplay();
       return;
     }
-    if (kind === 'scale' || kind === 'sound' || kind === 'oct') {
+    if (kind === 'scale' || kind === 'sound' || kind === 'oct' || kind === 'key' || kind === 'pieces') {
       this.setShelf(kind, arg);
       this.game.refreshDisplay();
       return;
@@ -2952,16 +2956,25 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.game.act(id);
   }
 
-  /** Change the instrument's scale, sound, or octave (saved), and let it be heard. */
-  private setShelf(kind: 'scale' | 'sound' | 'oct', arg: string): void {
+  /** Change the instrument's scale, key, sound, octave or (the drums) pieces, saved, and let it be heard. */
+  private setShelf(kind: 'scale' | 'sound' | 'oct' | 'key' | 'pieces', arg: string): void {
     const id = this.kit.inst;
-    if (id === 'drums') return;
-    const c = { ...this.shelfCfg(id) };
+    const c = { ...(this.settings.shelf[id] ?? this.shelfCfg(id)) };
     if (kind === 'scale') c.scale = arg;
     else if (kind === 'sound') c.sound = arg;
+    else if (kind === 'key') c.key = Math.max(0, Math.min(11, Number(arg) || 0));
+    else if (kind === 'pieces') c.pieces = arg === 'small' ? 'small' : 'full';
     else c.oct = Math.max(-1, Math.min(1, (c.oct ?? 0) + (arg === '+1' ? 1 : -1)));
     this.settings = { ...this.settings, shelf: { ...this.settings.shelf, [id]: c } };
     saveSettings(this.settings);
+    if (id === 'drums') {
+      // a new kit (its look and its sound), or more or fewer pieces: rebuilt where it stands, and a fill to hear it
+      this.applyKit();
+      const t0 = audio.now();
+      const fill: Lane[] = ['kick', 'snare', 'tom', 'floor', 'crash'];
+      fill.filter((l) => this.lanes().includes(l)).forEach((l, i) => audio.drum(l, 0.7, 0, t0 + i * 0.14));
+      return;
+    }
     this.putOut(id);
     const t0 = audio.now();
     if (id === 'guitar') this.strum(0, 0.6, 0, t0);
@@ -3767,7 +3780,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.panelZones();
     this.moduleSurface.discovered = true;
     this.moduleSurface.detector.resetSurface(0);
-    this.layout();
+    // the kit as you set it (its style and pieces), laid out
+    this.applyKit();
     // the kit and room come back as they were when you return within the session
     if (this.kitSurface.discovered) {
       this.kit.reveal(this.lanes());
@@ -4125,10 +4139,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (this.placement.phase !== 'placed') return out;
     const root = this.kit.root;
     root.updateMatrixWorld(true);
-    // (each drum's head where it is struck: the kick's is its front, facing you; strike it along kickNormal reversed)
+    // (each drum's head, or cymbal, where it is struck: all face up)
     for (const [lane, p] of this.kit.pads)
-      if (p.visible) out[lane] = root.localToWorld(lane === 'kick' ? this.tmp.set(p.x, p.radius + 0.004, p.z + KICK_DEPTH / 2) : this.tmp.set(p.x, p.headY, p.z)).toArray().map(r4);
-    out.kickNormal = this.tmp.set(0, 0, 1).transformDirection(root.matrixWorld).toArray().map(r4);
+      if (p.visible) out[lane] = root.localToWorld(this.tmp.set(p.x, p.headY, p.z)).toArray().map(r4);
     out.table = root.localToWorld(this.tmp.set(0, 0, 0)).toArray().map(r4);
     KEYS.forEach((k, i) => {
       const z = this.moduleSurface.zones[i];
@@ -4238,7 +4251,7 @@ class OneEuro3 {
   }
 }
 /** The drums struck in the air, in their surfaces' order. */
-const AIR_LANES: Lane[] = ['kick', 'snare', 'hat', 'tom'];
+const AIR_LANES: Lane[] = ['kick', 'snare', 'hat', 'tom', 'floor', 'crash', 'ride'];
 
 const NOT_TRACKED: HandSample = { tracked: false, pinching: false, points: [] };
 

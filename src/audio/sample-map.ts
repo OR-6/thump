@@ -494,6 +494,20 @@ export const SAMPLES: Record<string, Sample[]> = {
       "tone": 0
     }
   ],
+  "kit:crash": [
+    {
+      "file": "kit-crash-01.mp3",
+      "midi": null,
+      "layer": 2,
+      "tone": 0
+    },
+    {
+      "file": "kit-crash-02.mp3",
+      "midi": null,
+      "layer": 1,
+      "tone": 0
+    }
+  ],
   "kit:hat": [
     {
       "file": "kit-hat-01.mp3",

@@ -8,6 +8,7 @@ import { FONT } from '../ui/fonts.js';
 import { castShadows, contactShadow, shadowCatcher } from '../art/lighting.js';
 import { LANES, PADS, type Lane } from '../config.js';
 import { PadView } from './pad-view.js';
+import type { KitStyle } from '../scene-assets/lib/drums.js';
 import { Panel } from '../ui/panel.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
@@ -230,6 +231,33 @@ export class KitView {
     g.textBaseline = 'middle';
     g.fillText(text, 14, 32);
     t.needsUpdate = true;
+  }
+  /** A different kit (acoustic, jazz, electronic): every piece rebuilt in its look, where it stood, as it was. */
+  setKitStyle(style: KitStyle): void {
+    for (const [lane, old] of this.pads) {
+      const p = new PadView(lane, false, style);
+      p.x = old.x;
+      p.z = old.z;
+      if (old.visible) p.appear('fade');
+      this.padRoot.remove(old.group);
+      old.group.traverse((o) => {
+        const m = o as Mesh;
+        if (m.isMesh) {
+          m.geometry.dispose();
+          for (const x of Array.isArray(m.material) ? m.material : [m.material]) x.dispose();
+        }
+      });
+      this.pads.set(lane, p);
+      this.padRoot.add(p.group);
+    }
+    castShadows(this.padRoot);
+  }
+  /** Only these pieces of the kit out (the rest put away). */
+  showLanes(lanes: readonly Lane[]): void {
+    for (const [lane, p] of this.pads) {
+      if (lanes.includes(lane) && !p.visible) p.appear('fade');
+      else if (!lanes.includes(lane) && p.visible) p.hide();
+    }
   }
   /** The bars were shown (the kit's first bloom): they come back with the drums. */
   private keysShown = false;

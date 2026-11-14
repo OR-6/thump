@@ -32,7 +32,7 @@ export interface InstDef {
 }
 
 export const SHELF: readonly InstDef[] = [
-  { id: 'drums', name: 'Drums', how: 'Slap the drum tops, or make fists for sticks', sounds: [{ id: 'kit', name: 'Kit' }], scales: false, color: 0xff5a3c },
+  { id: 'drums', name: 'Drums', how: 'Slap the drum tops, or make fists for sticks', sounds: [{ id: 'acoustic', name: 'Acoustic' }, { id: 'jazz', name: 'Jazz' }, { id: 'electronic', name: 'Electronic' }], scales: false, color: 0xff5a3c },
   {
     id: 'piano',
     name: 'Piano',
@@ -297,3 +297,14 @@ export function percVoice(sound: string, zone: number): { tone: number; size: nu
   // congas: the low drum is the tumba, the high one the quinto; the edge is the conga between, with a crack
   return { tone: high ? 2 : edge ? 1 : 0, size: edge ? 0.4 : 0.5, slap: edge };
 }
+
+/** The keys you can put an instrument in (its lowest note), by name. */
+export const KEYS: readonly { pc: number; name: string }[] = [
+  { pc: 0, name: 'C' },
+  { pc: 2, name: 'D' },
+  { pc: 4, name: 'E' },
+  { pc: 5, name: 'F' },
+  { pc: 7, name: 'G' },
+  { pc: 9, name: 'A' },
+  { pc: 10, name: 'B♭' },
+];

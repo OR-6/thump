@@ -88,7 +88,7 @@ export function cymbalRings(): { map: DataTexture; rough: DataTexture } {
       const groove = Math.sin(v * 600) * (v > 0.22 ? 1 : 0.15);
       // (fine and faint: real lathe rings are a sheen, not stripes)
       const g = 226 + groove * 4;
-      return [g, g * 0.85, g * 0.53];
+      return [g, g * 0.9, g * 0.68];
     }, true),
   );
   const rough = once('ringsR', () =>
@@ -133,4 +133,15 @@ export function hammered(): DataTexture {
       return [128 + (dx / len) * s, 128 + (dy / len) * s, 245];
     }, false);
   });
+}
+
+/** An electronic drum's mesh head (greyscale): a fine woven grid, the threads a shade lighter than the gaps. */
+export function meshWeave(): DataTexture {
+  return once('weave', () =>
+    tex(64, 64, (x, y) => {
+      const a = (x % 4 < 2) !== (y % 4 < 2) ? 1 : 0;
+      const g = 60 + a * 38 + ((x * 7 + y * 13) % 5);
+      return [g, g, g];
+    }, true),
+  );
 }

@@ -343,6 +343,11 @@ describe('strike detection', () => {
 describe('pad layout and picking', () => {
   const pads = kitLayout(['kick', 'snare', 'hat'], { handed: 'right', oneHand: null });
 
+  it('the full kit: seven pieces, none within 4 cm of another seen from above', () => {
+    const all = kitLayout(['kick', 'snare', 'hat', 'tom', 'floor', 'crash', 'ride'], { handed: 'right', oneHand: null });
+    for (const a of all) for (const b of all) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThanOrEqual((a.size + b.size) / 2 + 0.04 - 1e-6);
+  });
+
   it('zones are at least 9 cm across and pads at least 4 cm apart', () => {
     for (const p of kitLayout(['kick', 'snare', 'hat', 'tom'], { handed: 'right', oneHand: null })) expect(p.zone * 2).toBeGreaterThanOrEqual(0.09);
     for (const oneHand of [null, 'left', 'right'] as const) {

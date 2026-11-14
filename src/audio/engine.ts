@@ -190,20 +190,30 @@ class Engine {
    * A drum. `vel` 0..1 (harder: louder, brighter, a sharper attack); `pan` −1..1 from the pad's spot;
    * `size` > 1 for a pad on a big surface (a wall): lower, longer, more room.
    */
+  /** The kit's sound: recorded acoustic drums, the same played softer in a bigger room (jazz), or synthesised
+   * (electronic). */
+  kitStyle: 'acoustic' | 'jazz' | 'electronic' = 'acoustic';
+
   drum(voice: Voice, vel: number, pan = 0, when = 0, size = 1): void {
     const ctx = this.ready();
     if (!ctx) return;
     const t = Math.max(ctx.currentTime, when || ctx.currentTime);
-    const v = Math.max(0.05, Math.min(1, vel));
+    const v0 = Math.max(0.05, Math.min(1, vel));
+    // (a jazz kit is played lighter: a softer kick, everything a touch quieter, more of the room)
+    const jazz = this.kitStyle === 'jazz';
+    const v = jazz ? v0 * (voice === 'kick' ? 0.7 : 0.88) : v0;
     this.played[voice] = (this.played[voice] ?? 0) + 1;
     this.lastGain = v;
     this.lastVoice = voice;
     this.lastAt = t;
+    // the floor tom is the tom, bigger and lower
+    if (voice === 'floor') size = Math.max(size, 2.2);
     const big = Math.max(1, size);
-    const key = `kit:${voice}`;
-    if (this.sampler.has(key)) {
+    const key = voice === 'floor' ? 'kit:tom' : voice === 'ride' ? 'ride' : `kit:${voice}`;
+    const electronic = this.kitStyle === 'electronic' && (voice === 'kick' || voice === 'snare' || voice === 'hat' || voice === 'tom' || voice === 'floor' || voice === 'crash' || voice === 'ride');
+    if (!electronic && this.sampler.has(key)) {
       // a big surface's drum (a wall) is a little lower and roomier
-      this.playSample(ctx, key, null, v, 0, Math.min(1, (big - 1) / 2) * 0.6 + 0.5, pan, voice === 'hat' ? 0.25 : 0.45, DRUM_LEVEL[voice] ?? 0.8, t, key);
+      this.playSample(ctx, key, null, v, 0, Math.min(1, (big - 1) / 2) * 0.6 + 0.5, pan, (voice === 'hat' ? 0.25 : 0.45) + (jazz ? 0.2 : 0), DRUM_LEVEL[voice] ?? 0.8, t, key);
       // the cajon's bass tone gets a sub underneath: a kick you feel
       if (voice !== 'kick') return;
       const o = ctx.createOscillator();
@@ -216,7 +226,30 @@ class Engine {
       o.stop(t + 0.35);
       return;
     }
-    switch (voice) {
+    switch (voice === 'floor' ? 'tom' : voice) {
+      case 'crash':
+      case 'ride': {
+        // a cymbal: bright noise, high-passed, a long ring (the ride shorter, with a bell ping on top)
+        const ride = voice === 'ride';
+        const n = this.noiseSrc(ctx, t, ride ? 1.2 : 2.2);
+        const hp = ctx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.value = ride ? 5200 : 3800;
+        const g = this.out(ctx, this.drums, pan, 0.6, t, 1);
+        this.env(g.gain, t, (ride ? 0.22 : 0.4) * v, 0.002, ride ? 0.9 : 1.9);
+        n.connect(hp).connect(g);
+        if (ride) {
+          const o = ctx.createOscillator();
+          o.type = 'square';
+          o.frequency.value = 2400;
+          const og = this.out(ctx, this.drums, pan, 0.4, t, 1);
+          this.env(og.gain, t, 0.05 * v, 0.001, 0.35);
+          o.connect(og);
+          o.start(t);
+          o.stop(t + 0.5);
+        }
+        break;
+      }
       case 'kick': {
         const o = ctx.createOscillator();
         o.type = 'sine';
@@ -1106,7 +1139,7 @@ const FAMILY_LEVEL: Partial<Record<string, number>> = {
   gong: 0.8, timpani: 0.85, frame: 0.8, congas: 0.75, cajon: 0.8, slit: 0.75, block: 0.6, triangle: 0.4, tambourine: 0.55, shaker: 0.5, stomp: 0.9,
   ride: 0.45, cowbell: 0.55, clap: 0.7, clave: 0.6,
 };
-const DRUM_LEVEL: Partial<Record<string, number>> = { kick: 0.95, snare: 0.75, hat: 0.45, tom: 0.75, rim: 0.6 };
+const DRUM_LEVEL: Partial<Record<string, number>> = { kick: 0.95, snare: 0.75, hat: 0.45, tom: 0.75, floor: 0.8, crash: 0.6, ride: 0.5, rim: 0.6 };
 
 /** The shaper's input −1..1 stands for −CLIP_RANGE..CLIP_RANGE. */
 const CLIP_RANGE = 4;

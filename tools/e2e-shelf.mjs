@@ -56,19 +56,22 @@ check('and the panel shows free play', s.game.display.page?.id === 'free' && s.g
 await wait(5500);
 const look = [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05];
 
-// the drums stand up off the desk: a hand coming down through the snare's head plays it; pushing into the kick's
-// front head plays the kick
+// the drums stand up off the desk, every head facing up: a hand coming down through the snare's head plays it, and
+// the same on the bass drum lying flat and on the crash out to the left
 s = state();
 let hits0 = s.debug.hits;
 await slapAt(s.targets.snare, [0, 1, 0], { from: 0.1 });
 s = state();
 check('a hand down through the snare head (13 cm up) plays the snare', s.debug.hits > hits0 && s.debug.lastHit?.family === 'snare', JSON.stringify(s.debug.lastHit));
 hits0 = s.debug.hits;
-// (a real hit goes through the head: the helper stops at first contact, so aim 2 cm past it)
-const kn = s.targets.kickNormal;
-await slapAt(s.targets.kick.map((v, i) => v - kn[i] * 0.02), kn, { from: 0.12 });
+// (a real hit goes through the head: the helper stops at first contact, so aim past it)
+await slapAt(s.targets.kick.map((v, i) => v - (i === 1 ? 0.02 : 0)), [0, 1, 0], { from: 0.1 });
 s = state();
-check("pushing into the kick's front head plays the kick", s.debug.hits > hits0 && s.debug.lastHit?.family === 'kick', JSON.stringify(s.debug.lastHit));
+check('a hand down on the bass drum (flat, 10 cm up) plays the kick', s.debug.hits > hits0 && s.debug.lastHit?.family === 'kick', JSON.stringify(s.debug.lastHit));
+hits0 = s.debug.hits;
+await slapAt(s.targets.crash.map((v, i) => v - (i === 1 ? 0.02 : 0)), [0, 1, 0], { from: 0.1 });
+s = state();
+check('and on the crash, out to the left', s.debug.hits > hits0 && s.debug.lastHit?.family === 'crash', JSON.stringify(s.debug.lastHit));
 
 await tab('piano');
 s = state();

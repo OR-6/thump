@@ -42,7 +42,7 @@ export class Sampler {
     if (this.loading) return;
     this.loading = true;
     // what you hear first loads first: the kit, the desk's bars, the band, then the rest of the room
-    const first = ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:rim', 'keys', 'band:piano'];
+    const first = ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:crash', 'ride', 'kit:rim', 'keys', 'band:piano'];
     const keys = [...first.filter((k) => SAMPLES[k]), ...Object.keys(SAMPLES).filter((k) => !first.includes(k))];
     const files: string[] = [];
     for (const k of keys)

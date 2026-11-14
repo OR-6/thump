@@ -3,7 +3,7 @@
  * where it sits on the panel, in canvas pixels 1360×800). Pure, so every screen is testable: the main menu, the
  * instruments, an instrument's settings, the songs, playing together, settings, and the screens inside a song.
  */
-import { SCALES, SHELF, instDef } from '../kit/shelf.js';
+import { KEYS, SCALES, SHELF, instDef } from '../kit/shelf.js';
 
 export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'settings' | 'song' | 'build' | 'results' | 'tune';
 
@@ -43,7 +43,7 @@ export interface MenuInput {
   page: PageId;
   line: string;
   sub: string;
-  inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string };
+  inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full' };
   songs: { name: string; meta: string; stars: number; locked: boolean }[];
   songSel: number;
   level: 'easy' | 'normal' | 'hard';
@@ -96,29 +96,45 @@ export function buildPage(m: MenuInput): Page {
       const items: Item[] = SHELF.map((d, i) => ({ id: `inst:${d.id}`, label: d.name, icon: d.id, color: d.color, on: d.id === m.inst.id, kind: 'card' as const, x: c[i % 3].x, y: 170 + Math.floor(i / 3) * 252, w: c[i % 3].w, h: 236 }));
       items.push(back());
       const h = row(2, 24, W - 24, 24);
-      if (m.inst.id !== 'drums') items.push({ id: 'nav:inst', label: m.inst.scale ? 'Notes & sound' : 'Sound', sub: m.inst.name, kind: 'button', x: h[0].x, y: BOT.y, w: h[0].w, h: BOT.h });
+      items.push({ id: 'nav:inst', label: m.inst.id === 'drums' ? 'Kit' : 'Settings', sub: m.inst.name, kind: 'button', x: h[0].x, y: BOT.y, w: h[0].w, h: BOT.h });
       items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: h[1].x, y: BOT.y, w: h[1].w, h: BOT.h });
       return { id: 'instruments', title: 'Instruments', line: 'Tap one to put it on the desk', items };
     }
     case 'inst': {
       const d = instDef(m.inst.id as never);
       const items: Item[] = [back()];
-      // each row named on the left (not pressable)
-      const label = (text: string, y: number): Item => ({ id: `label:${text}`, label: text, kind: 'chip', off: true, x: 24, y, w: 216, h: 140 });
-      // (a drum has no notes to pick and no pitch: just its sound)
-      const pitched = d.scales !== false;
-      const soundY = pitched ? 330 : 170;
-      items.push(label('Sound', soundY));
-      if (pitched) {
-        items.push(label('Notes', 170), label('Pitch', 490));
-        const sc = row(SCALES.length, 260, W - 24, 14);
-        SCALES.forEach((s, i) => items.push({ id: `scale:${s.id}`, label: s.name, on: s.name === m.inst.scale, kind: 'chip', x: sc[i].x, y: 170, w: sc[i].w, h: 140 }));
-        items.push({ id: 'oct:-1', label: 'Lower', kind: 'chip', off: m.inst.oct <= -1, x: 260, y: 490, w: 320, h: 140 });
-        items.push({ id: 'oct:+1', label: 'Higher', kind: 'chip', off: m.inst.oct >= 1, x: 600, y: 490, w: 320, h: 140 });
+      // each row named on the left (not pressable), its choices across
+      const label = (text: string, y: number): Item => ({ id: `label:${text}`, label: text, kind: 'chip', off: true, x: 24, y, w: 216, h: 116 });
+      const across = (ids: { id: string; label: string; on: boolean; off?: boolean }[], y: number) => {
+        const r = row(ids.length, 256, W - 24, 12);
+        ids.forEach((c, i) => items.push({ id: c.id, label: c.label, on: c.on, off: c.off, kind: 'chip', x: r[i].x, y, w: r[i].w, h: 116 }));
+      };
+      if (d.id === 'drums') {
+        // a drum kit: its kind, and how much of it is out
+        items.push(label('Kit', 170), label('Pieces', 302));
+        across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), 170);
+        across([{ id: 'pieces:full', label: 'Full kit', on: m.inst.pieces !== 'small' }, { id: 'pieces:small', label: 'Small kit', on: m.inst.pieces === 'small' }], 302);
+      } else {
+        // (a drum has no notes to pick and no pitch: just its sound)
+        const pitched = d.scales !== false;
+        let y = 170;
+        if (pitched) {
+          items.push(label('Notes', y));
+          across(SCALES.map((s) => ({ id: `scale:${s.id}`, label: s.name, on: s.name === m.inst.scale })), y);
+          y += 130;
+          items.push(label('Key', y));
+          across(KEYS.map((k) => ({ id: `key:${k.pc}`, label: k.name, on: k.name === (m.inst.key || 'C') })), y);
+          y += 130;
+        }
+        items.push(label('Sound', y));
+        across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), y);
+        y += 130;
+        if (pitched) {
+          items.push(label('Pitch', y));
+          across([{ id: 'oct:-1', label: 'Lower', on: false, off: m.inst.oct <= -1 }, { id: 'oct:+1', label: 'Higher', on: false, off: m.inst.oct >= 1 }], y);
+        }
       }
-      const so = row(d.sounds.length, 260, W - 24, 14);
-      d.sounds.forEach((s, i) => items.push({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound, kind: 'chip', x: so[i].x, y: soundY, w: so[i].w, h: 140 }));
-      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: 24, y: BOT.y, w: W - 48, h: BOT.h });
+      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: 24, y: 700, w: W - 48, h: 180 });
       return { id: 'inst', title: `${m.inst.name}`, line: '', items };
     }
     case 'songs': {
@@ -167,12 +183,12 @@ export function buildPage(m: MenuInput): Page {
       return { id: 'tune', title: m.line, line: m.sub, items: labels.map((l, i) => ({ id: `key:${['prev', 'play', 'next', 'jam', 'loop'][i]}`, label: l, kind: 'button' as const, off: !l, x: c[i].x, y: 590, w: c[i].w, h: 180 })) };
     }
     case 'free': {
-      // (the drums have no notes or sounds to pick: no button for it)
+      // its settings: the kit's kind and pieces, or an instrument's notes, key and sound
       const drums = m.inst.id === 'drums';
-      const c = row(drums ? 2 : 3, 24, W - 24, 18);
+      const c = row(3, 24, W - 24, 18);
       const items: Item[] = [{ id: 'nav:instruments', label: 'Instruments', kind: 'button', x: c[0].x, y: BOT.y, w: c[0].w, h: BOT.h }];
-      if (!drums) items.push({ id: 'nav:inst', label: m.inst.scale ? 'Notes &\nsound' : 'Sound', sub: m.inst.scale ? `${m.inst.scale}, ${m.inst.sound.toLowerCase()}` : m.inst.sound, kind: 'button', x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h });
-      items.push({ id: 'nav:songs', label: 'Songs', kind: 'play', x: c[drums ? 1 : 2].x, y: BOT.y, w: c[drums ? 1 : 2].w, h: BOT.h });
+      items.push({ id: 'nav:inst', label: drums ? 'Kit' : 'Settings', sub: drums ? m.inst.sound : m.inst.scale ? `${m.inst.scale} in ${m.inst.key || 'C'}` : m.inst.sound, kind: 'button', x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h });
+      items.push({ id: 'nav:songs', label: 'Songs', kind: 'play', x: c[2].x, y: BOT.y, w: c[2].w, h: BOT.h });
       items.push(corner('nav:main', 'Menu'));
       // how to play it, large, in the body (or what the game has to say)
       return { id: 'free', title: m.inst.name, line: m.line || (m.inst.id === 'drums' || m.inst.id === 'congas' ? 'Hit anything. It all sounds right.' : 'Play anything. Every note fits.'), items, body: 'how', how: m.inst.how ?? '' };

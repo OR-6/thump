@@ -6,6 +6,16 @@ export type HandPref = 'auto' | 'left' | 'right';
 /** How much of a song is yours: the main line, more, or all of it. */
 export type Level = 'easy' | 'normal' | 'hard';
 
+/** An instrument's own settings: its scale, sound, octave, key (pitch class of its lowest note) and, for the
+ * drums, which pieces are out. */
+export interface ShelfCfg {
+  scale: string;
+  sound: string;
+  oct?: number;
+  key?: number;
+  pieces?: 'small' | 'full';
+}
+
 export interface Settings {
   highContrast: boolean;
   /** Calm motion; undefined: follow the system's reduced-motion preference. */
@@ -34,7 +44,7 @@ export interface Settings {
   tune: StrikeTune;
   /** The instrument on the desk in free play, and each instrument's scale and sound. */
   inst: string;
-  shelf: Record<string, { scale: string; sound: string; oct?: number }>;
+  shelf: Record<string, ShelfCfg>;
   /** Songs: Easy or Normal. */
   level: Level;
 }
@@ -66,13 +76,14 @@ export function loadSettings(): Settings {
   };
 }
 
-function readShelf(v: unknown): Record<string, { scale: string; sound: string; oct?: number }> {
-  const out: Record<string, { scale: string; sound: string; oct?: number }> = {};
+function readShelf(v: unknown): Record<string, ShelfCfg> {
+  const out: Record<string, ShelfCfg> = {};
   if (!v || typeof v !== 'object') return out;
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
     if (!/^[a-z]{1,12}$/.test(k) || !x || typeof x !== 'object') continue;
-    const { scale, sound, oct } = x as { scale?: unknown; sound?: unknown; oct?: unknown };
-    if (typeof scale === 'string' && typeof sound === 'string' && scale.length < 16 && sound.length < 16) out[k] = { scale, sound, ...(oct === -1 || oct === 1 ? { oct } : {}) };
+    const { scale, sound, oct, key, pieces } = x as { scale?: unknown; sound?: unknown; oct?: unknown; key?: unknown; pieces?: unknown };
+    if (typeof scale === 'string' && typeof sound === 'string' && scale.length < 16 && sound.length < 16)
+      out[k] = { scale, sound, ...(oct === -1 || oct === 1 ? { oct } : {}), ...(typeof key === 'number' && Number.isInteger(key) && key >= 0 && key < 12 ? { key } : {}), ...(pieces === 'small' || pieces === 'full' ? { pieces } : {}) };
   }
   return out;
 }

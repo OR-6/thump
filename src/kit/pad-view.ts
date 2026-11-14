@@ -20,7 +20,7 @@ import {
   TorusGeometry,
 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
-import { DRUM_H, buildDrum, buildHiHat, buildKick, drumStand } from '../scene-assets/lib/drums.js';
+import { DRUM_H, buildCymbal, buildDrum, buildFloorDrum, buildHiHat, drumStand, type DrumLook, type KitStyle } from '../scene-assets/lib/drums.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
 import { contactShadow } from '../art/lighting.js';
@@ -28,29 +28,37 @@ import { contactShadow } from '../art/lighting.js';
 /** Low on the table: the real wood stops your hand, a centimetre and a half under the head. */
 const HEIGHT = DRUM_H;
 /**
- * Real drums, cut to a desk: the snare on a short stand with its head 13 cm up, the tom 15 cm, the hi-hat's top
- * cymbal 17 cm on its rod, the kick on its side with its front head facing you.
+ * Real drums, cut to a desk, every head facing up for your hands: the snare on a short stand with its head 13 cm up,
+ * the rack tom 18 cm, the hi-hat's top cymbal 17 cm on its rod, the bass drum lying flat on its feet (10 cm), the
+ * floor tom 12 cm, the crash 23 cm and the ride 21 cm on their stands.
  */
-export const HEAD_Y: Record<Lane, number> = { snare: 0.13, tom: 0.15, hat: 0.17, kick: 0.18, gong: 0.02 };
+export const HEAD_Y: Record<Lane, number> = { snare: 0.13, tom: 0.18, hat: 0.17, kick: 0.1, floor: 0.12, crash: 0.23, ride: 0.21, gong: 0.02 };
+/** (kept for anything still reading the old kick's depth) */
 export const KICK_DEPTH = 0.14;
-const DEPTH: Partial<Record<Lane, number>> = { snare: 0.055, tom: 0.08 };
-function buildLane(lane: Lane, size: number): Group {
-  if (lane === 'hat') return buildHiHat(size, HEAD_Y.hat - 0.006);
-  if (lane === 'kick') return buildKick(size, KICK_DEPTH, SHELL.kick);
+const DEPTH: Partial<Record<Lane, number>> = { snare: 0.055, tom: 0.08, kick: 0.088, floor: 0.108 };
+/** Each drum's look in a kit style: its shell, head and hardware. */
+function lookFor(lane: Lane, style: KitStyle): DrumLook {
+  if (style === 'electronic') return { shell: 0x1b1b1e, finish: 'matte', skin: 'mesh', black: true };
+  if (style === 'jazz') return { shell: lane === 'snare' ? 0x2a1d14 : 0xb07a45, finish: 'natural', skin: 'calf', throwOff: lane === 'snare' };
+  return { shell: lane === 'snare' ? 0x16161a : 0x7a1d14, throwOff: lane === 'snare' };
+}
+function buildLane(lane: Lane, size: number, style: KitStyle): Group {
+  if (lane === 'hat') return buildHiHat(size, HEAD_Y.hat - 0.006, style);
+  if (lane === 'crash' || lane === 'ride') return buildCymbal(size, HEAD_Y[lane], lane === 'crash' ? 0.24 : 0.12, lane, style);
   const depth = DEPTH[lane] ?? 0.05;
+  const look = { ...lookFor(lane, style), depth };
+  if (lane === 'kick' || lane === 'floor') return buildFloorDrum(size, look);
   const g = new Group();
   const stand = drumStand(HEAD_Y[lane] - depth, size / 2);
-  const drum = buildDrum(size, { ...SHELL[lane], depth });
+  const drum = buildDrum(size, look);
   drum.position.y = HEAD_Y[lane] - depth;
   g.add(stand, drum);
   return g;
 }
-/** Each drum's lacquer (and the kick's dark front head). */
-const SHELL: Record<Lane, { shell: number; head?: number; throwOff?: boolean; port?: boolean; chromeShell?: boolean }> = { kick: { shell: 0x7a1d14, head: 0x1c1b1f, port: true }, snare: { shell: 0x16161a, throwOff: true }, hat: { shell: 0 }, tom: { shell: 0x7a1d14 }, gong: { shell: 0x3a2a18 } };
 const SQUASH_S = 0.14;
 
 /** Each drum's LED colour. */
-export const LED: Record<Lane, number> = { kick: 0xff4a3a, snare: 0xf4f1ea, hat: 0x5cd6ff, tom: 0xffa630, gong: 0xfff1d0 };
+export const LED: Record<Lane, number> = { kick: 0xff4a3a, snare: 0xf4f1ea, hat: 0x5cd6ff, tom: 0xffa630, floor: 0x7aa8ff, crash: 0xffd76a, ride: 0xffe9b0, gong: 0xfff1d0 };
 
 let meshTex: CanvasTexture | null = null;
 /** The mesh head: charcoal with a fine woven dot pattern and a soft sheen. */
@@ -133,17 +141,20 @@ export class PadView {
   headY = 0;
   private topCymbal: import('@iwsdk/core').Object3D | null = null;
   private wobble = 0;
+  private cymRX = 0;
+  private cymRZ = 0;
   private wobbleT = 0;
 
-  constructor(readonly lane: Lane, hc = false) {
+  constructor(readonly lane: Lane, hc = false, readonly style: KitStyle = 'acoustic') {
     const spec = PADS[lane];
     this.radius = spec.size / 2;
     const R = this.radius;
     this.group.name = `Pad-${lane}`;
     this.base.setHex(LED[lane]);
     // the drum itself (the hat: a hi-hat), its head the part a hit dents
-    const model = buildLane(lane, spec.size);
-    const headMesh = model.getObjectByName(lane === 'hat' ? 'Top' : 'Head') as Mesh | undefined;
+    const model = buildLane(lane, spec.size, style);
+    const cym = lane === 'hat' || lane === 'crash' || lane === 'ride';
+    const headMesh = model.getObjectByName(cym ? 'Top' : 'Head') as Mesh | undefined;
     this.head = (headMesh?.material as MeshStandardMaterial | undefined) ?? new MeshStandardMaterial();
     this.hoopMat = ((model.getObjectByName('Hoop') ?? model.getObjectByName('Clutch')) as Mesh | undefined)?.material as MeshStandardMaterial | undefined;
     this.body.add(model);
@@ -151,7 +162,9 @@ export class PadView {
     // (a hit squashes the drum, not its stand)
     this.squashed = model.getObjectByName('Drum') ?? model.getObjectByName('Cymbals') ?? model;
     this.headY = HEAD_Y[lane];
-    this.topCymbal = lane === 'hat' ? (model.getObjectByName('Top') ?? null) : null;
+    this.topCymbal = cym ? (model.getObjectByName(lane === 'hat' ? 'Top' : 'Cymbals') ?? null) : null;
+    this.cymRX = this.topCymbal?.rotation.x ?? 0;
+    this.cymRZ = this.topCymbal?.rotation.z ?? 0;
     // it sits on the desk: a soft shadow under it
     this.group.add(contactShadow(spec.size * 1.5, spec.size * 1.5, 0.9));
     // the LED ring round the base, and its glow on the table
@@ -171,11 +184,6 @@ export class PadView {
       const rp = new Mesh(ringGeo, asLight(new MeshBasicMaterial({ color: this.base.clone(), transparent: true, opacity: 0, depthWrite: false, toneMapped: false })));
       rp.rotation.x = -Math.PI / 2;
       rp.position.y = HEAD_Y[lane] + 0.0008;
-      // (the kick's head faces you: its ripple stands up on it)
-      if (lane === 'kick') {
-        rp.rotation.x = 0;
-        rp.position.set(0, spec.size / 2 + 0.004, KICK_DEPTH / 2 + 0.003);
-      }
       rp.renderOrder = 4;
       rp.visible = false;
       this.ripples.push(rp);
@@ -267,7 +275,7 @@ export class PadView {
       const r = 1 - Math.pow(1 - u, 2);
       rp.scale.setScalar(this.radius * (0.15 + 0.85 * r));
       (rp.material as MeshBasicMaterial).opacity = 0.6 * (1 - 0.3 * k) * (0.4 + 0.6 * this.squashK) * Math.pow(1 - u, 2);
-      if (this.lane !== 'kick') rp.position.y = this.headY + 0.0008;
+      rp.position.y = this.headY + 0.0008;
     }
     this.flash = Math.max(0, this.flash - dt * 4);
     this.white = Math.max(0, this.white - dt * 3);
@@ -290,9 +298,10 @@ export class PadView {
     if (this.topCymbal && this.wobble > 0.001) {
       this.wobbleT += dt;
       this.wobble *= Math.exp(-dt * 5);
-      const a = this.wobble * Math.sin(this.wobbleT * 34);
-      this.topCymbal.rotation.x = Math.PI - 0.035 + a;
-      this.topCymbal.rotation.z = 0.02 + a * 0.6;
+      // (a crash swings wider and slower than the hat's tight pair)
+      const a = this.wobble * Math.sin(this.wobbleT * (this.lane === 'hat' ? 34 : 22)) * (this.lane === 'crash' ? 2.2 : this.lane === 'ride' ? 1.2 : 1);
+      this.topCymbal.rotation.x = this.cymRX + a;
+      this.topCymbal.rotation.z = this.cymRZ + a * 0.6;
     }
   }
 

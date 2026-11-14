@@ -130,6 +130,9 @@ export interface ShelfView {
   sound: string;
   /** Octaves up or down from its own register. */
   oct?: number;
+  /** Its key's name ('C', 'D'...; '' for the drums), and the drums' pieces. */
+  key?: string;
+  pieces?: 'small' | 'full';
 }
 
 export interface MoteView {
@@ -2250,7 +2253,7 @@ export class Game {
       line: pageId === 'free' ? (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try Songs' : '') : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Tap the desk to start') : d.line,
       // (the songs page's line: your turn after a listen, or the band being asked)
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
-      inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how },
+      inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full' },
       songs: this.tracks.map((t, i) => ({ name: t.name, meta: this.songLocked(i) ? `After ${this.tracks[i - 1].name}` : i === 0 && !this.performed(t.id) ? 'Start here' : `${t.bpm < 85 ? 'Slow' : t.bpm < 100 ? 'Steady' : 'Quick'}, ${t.minor ? 'moody' : 'bright'}`, stars: this.progress.stars[t.id] ?? 0, locked: this.songLocked(i) })),
       songSel: this.songSel,
       level: this.level,
