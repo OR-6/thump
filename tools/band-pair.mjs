@@ -25,9 +25,11 @@ export default async function run({ page }) {
     out.join = await b.textContent('#band-status');
     // a pad on each page: the other hears it
     const heard = (p) => p.evaluate(() => window.__thump?.debug?.friendNotes ?? 0);
-    await b.dispatchEvent('.pad[data-k="p"]', 'pointerdown');
-    await b.dispatchEvent('.pad[data-k="d"]', 'pointerdown');
-    await a.dispatchEvent('.pad[data-k="h"]', 'pointerdown');
+    // (the page's desk drawing: tap parts of the drum kit drawn on it, which plays them for the band too)
+    const tap = (p, part) => p.locator(`.part[data-part="${part}"]`).first().dispatchEvent('pointerdown', { bubbles: true });
+    await tap(b, 'snare');
+    await tap(b, 'kick');
+    await tap(a, 'hat');
     await a.waitForTimeout(2500);
     out.aHeard = await heard(a);
     out.bHeard = await heard(b);
