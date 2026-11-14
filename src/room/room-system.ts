@@ -2695,7 +2695,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const c = this.settings.shelf[id] ?? { scale: SCALES[0].id, sound: d.sounds[0].id };
     // inside a track the instruments play its notes (its major or minor), with your sound
     const h = this.game.harmony();
-    return h?.song ? { scale: h.minor ? 'sad' : 'happy', sound: c.sound, oct: c.oct } : c;
+    return h?.song ? { scale: h.scale ?? (h.minor ? 'sad' : 'happy'), sound: c.sound, oct: c.oct } : c;
   }
   /** Lowest notes: the piano round middle C, the handpan and guitar an octave down, all in the song's key. */
   private instRoot(id: InstId): number {

@@ -44,6 +44,22 @@ describe('the panel pages', () => {
     expect(p.items.find((i) => i.id === 'level')?.label).toBe('Easy');
     expect(p.items.some((i) => i.id === 'play')).toBe(true);
   });
+  it('songs: six to a page; with more, the corner turns the page, and nothing overlaps', () => {
+    const songs = Array.from({ length: 9 }, (_, i) => ({ name: `Song ${i}`, meta: 'Traditional', stars: 0, locked: i > 1 }));
+    const first = buildPage({ ...base('songs'), songs });
+    expect(first.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:0', 'song:1', 'song:2', 'song:3', 'song:4', 'song:5']);
+    expect(first.items.find((i) => i.id === 'songs:more')?.label).toBe('More songs');
+    const second = buildPage({ ...base('songs'), songs, songPage: 1 });
+    expect(second.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:6', 'song:7', 'song:8']);
+    expect(second.items.find((i) => i.id === 'songs:more')?.label).toBe('First songs');
+    for (const p of [first, second])
+      for (const a of p.items) {
+        expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);
+        for (const b of p.items) if (a !== b) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+      }
+    // (six or fewer: no corner button)
+    expect(buildPage(base('songs')).items.some((i) => i.id === 'songs:more')).toBe(false);
+  });
   it('in a song: switch instrument, or stop', () => {
     const p = buildPage({ ...base('song'), line: 'Kick Start' });
     expect(p.items.map((i) => i.id)).toEqual(['inst:drums', 'inst:piano', 'inst:guitar', 'stop']);

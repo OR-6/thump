@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TRACKS } from '../src/play/build.js';
+import { SONG_TRACKS } from '../src/play/build.js';
 import { Game, type GameStage, type Room } from '../src/play/game.js';
 import { freshProgress } from '../src/persistence/progress.js';
 import type { RoomInstrument } from '../src/songs/cast.js';
@@ -424,7 +424,7 @@ describe('the game', () => {
       useInstrument: (id: string | null) => used.push(id),
     };
     const p = freshProgress();
-    p.stars['kick-start'] = 2;
+    p.stars.mary = 2;
     const g = new Game(st, p, room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
@@ -438,12 +438,12 @@ describe('the game', () => {
     g.tick(2);
     g.key('jam');
     expect(g.display.inst?.detail).toBe('Notes: Sad');
-    // the song card: < > browse what's open (Kick Start played, so Two Step is open too)
-    expect(g.display.songCard?.name).toBe('Kick Start');
+    // the song card: < > browse what's open (Mary's Lamb played, so Twinkle Twinkle is open too)
+    expect(g.display.songCard?.name).toBe("Mary's Lamb");
     g.key('next');
-    expect(g.display.songCard?.name).toBe('Two Step');
+    expect(g.display.songCard?.name).toBe('Twinkle Twinkle');
     g.key('prev');
-    expect(g.display.songCard?.name).toBe('Kick Start');
+    expect(g.display.songCard?.name).toBe("Mary's Lamb");
     g.tick(45);
     g.beginBuild(0);
     expect(g.mode).toBe('build');
@@ -589,12 +589,12 @@ describe('the game', () => {
     expect(after).toBeGreaterThan(n);
   });
 
-  it('play a song: ▶ plays Kick Start as written on the drums; > after it makes it your own', () => {
+  it('play a song: ▶ plays the first song on the drums; the results offer it again, the next song, or the menu', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
-    expect(g.display.sub).toBe('Kick Start: tap ▶');
+    expect(g.display.sub).toBe("Mary's Lamb: tap ▶");
     g.key('play');
     expect(g.mode).toBe('count');
     let t = 45;
@@ -611,10 +611,86 @@ describe('the game', () => {
     expect(due.every((k) => k.startsWith('kit:'))).toBe(true);
     expect(g.last!.stars).toBe(3);
     g.tick((t += 8));
-    // the results: again, the next song, or make this one your own
-    expect(g.display.page?.items.map((i) => i.id)).toEqual(['again', 'next', 'make', 'nav:main']);
-    g.act('make');
+    // the results: again, the next song, or the menu (a familiar tune has no loop of its own to build)
+    expect(g.display.page?.items.map((i) => i.id)).toEqual(['again', 'next', 'nav:main']);
+    g.act('next');
+    expect(g.mode).toBe('count');
+    expect(g.song?.name).toBe('Twinkle Twinkle');
+    // Make a track still builds the loop tracks, the first first
+    g.stop();
+    g.act('nav:build');
     expect(g.mode).toBe('build');
+    expect(g.display.line).toMatch(/BOOM/);
+  });
+
+  it("a song on the piano: Easy is the tune's notes on 1 and 3, and the band plays the rest of it", () => {
+    const band: { voice: string; beat: number; midi: number }[] = [];
+    const st = { ...stage([]), band: (e: { voice: string; beat: number; midi: number }) => band.push(e), shelf: () => ({ id: 'piano', name: 'Piano', how: '', scale: 'Major', sound: 'Grand' }) };
+    const g = new Game(st, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.act('nav:songs');
+    g.act('play');
+    // the instruments play the song's own scale, the full major
+    expect(g.harmony()?.scale).toBe('major');
+    let t = 0;
+    const due: { key: string; beat: number }[] = [];
+    for (let k = 0; k < 6000 && g.mode !== 'results'; k++) {
+      t += 1 / 30;
+      g.tick(t);
+      g.dueBetween(t - 1 / 30, t, (kk) => {
+        due.push({ key: kk, beat: g.clock.beatAt(t) });
+        g.hit(kk, t, 0.8);
+      });
+      if (g.display.line === 'Bring it home') g.hit('piano:5', t, 0.8);
+    }
+    expect(g.mode).toBe('results');
+    expect(due.length).toBeGreaterThan(30);
+    expect(due.every((d) => d.key.startsWith('piano:'))).toBe(true);
+    // (Mary's Lamb: E D C D; you play the E and the C, the band plucks the D's)
+    const lead = band.filter((e) => e.voice === 'pluck' && e.beat < 4).map((e) => e.beat);
+    expect(lead).toEqual([1, 3]);
+    expect(band.some((e) => e.voice === 'bass' && e.beat === 0)).toBe(true);
+  });
+
+  it('a song puts its instrument out in its own key and scale (Ode to Joy: D major)', () => {
+    const seen: string[] = [];
+    const p = freshProgress();
+    p.stars.mary = 1;
+    p.stars.twinkle = 1;
+    let g: Game;
+    const st = { ...stage([]), useInstrument: (id: string | null) => seen.push(`${id} ${g.keyPc} ${g.harmony()?.scale}`), shelf: () => ({ id: 'marimba', name: 'Marimba', how: '', scale: 'Major', sound: 'Marimba' }) };
+    g = new Game(st, p, room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.act('nav:songs');
+    g.act('song:2');
+    g.act('play');
+    expect(g.song?.name).toBe('Ode to Joy');
+    expect(seen[seen.length - 1]).toBe('marimba 2 major');
+  });
+
+  it('the songs page: six to a page, the corner turns it; the first says start here, the next what opens it', () => {
+    const g = new Game(stage([]), freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.act('nav:songs');
+    const tiles = () => (g.display.page?.items ?? []).filter((i) => i.id.startsWith('song:'));
+    expect(tiles().map((i) => i.label)).toEqual(SONG_TRACKS.slice(0, 6).map((t) => t.name));
+    expect(tiles()[0].sub).toBe('Start here');
+    expect(tiles()[1].sub).toBe("After Mary's Lamb");
+    expect(tiles()[1].off).toBe(true);
+    g.act('songs:more');
+    expect(tiles().map((i) => i.id)).toEqual(['song:6', 'song:7', 'song:8']);
+    // today's song is always open
+    expect(tiles()[2].off).toBe(false);
+    expect(tiles()[2].sub).toBe('New every day');
+    g.act('song:8');
+    expect(g.songSel).toBe(8);
+    g.act('song:7');
+    expect(g.songSel).toBe(8);
+    g.act('songs:more');
+    expect(tiles()[0].id).toBe('song:0');
   });
 
   it('listen first: the song plays itself (your part too), nothing scored, then straight into your turn', () => {
@@ -660,7 +736,8 @@ describe('the game', () => {
 
   it("a friend playing the tune live in the same song: this headset's band leaves out just that part", () => {
     const voiced: string[] = [];
-    const g = new Game({ ...stage([]), voice: (k: string) => voiced.push(k) }, freshProgress(), room([]));
+    const band: { voice: string }[] = [];
+    const g = new Game({ ...stage([]), voice: (k: string) => voiced.push(k), band: (e: { voice: string }) => band.push(e) }, freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.friendParts.add('KEYS');
@@ -668,19 +745,18 @@ describe('the game', () => {
     g.act('play');
     let t = 0;
     for (let k = 0; k < 900; k++) g.tick((t += 1 / 30));
-    // (Kick Start: KEYS is the friend's; the bass, also on the piano, still plays here)
-    expect(voiced.some((k) => k.startsWith('piano:') && Number(k.slice(6)) < 10)).toBe(false);
-    expect(voiced.some((k) => k.startsWith('piano:') && Number(k.slice(6)) >= 10)).toBe(true);
+    // (the tune is the friend's: no lead here; the bass and the congas still play)
+    expect(band.some((e) => e.voice === 'pluck')).toBe(false);
+    expect(band.some((e) => e.voice === 'bass')).toBe(true);
+    expect(voiced.some((k) => k.startsWith('congas:'))).toBe(true);
   });
 
-  it('the second half changes chords (IV–ii in a major song) and comes home; its bass follows', () => {
-    const band: { voice: string; midi: number; beat: number }[] = [];
-    const g = new Game({ ...stage([]), band: (e: { voice: string; midi: number; beat: number }) => band.push(e) }, freshProgress(), room([]));
+  it("a song's chords follow it bar by bar, and the solo holds the five", () => {
+    const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.act('nav:songs');
     g.act('play');
-    const tr = TRACKS[0];
     let t = 0;
     const chordAt: number[] = [];
     for (let k = 0; k < 2400 && g.mode !== 'results'; k++) {
@@ -688,12 +764,33 @@ describe('the game', () => {
       const b = Math.floor(g.clock.beatAt(t) / 4);
       if (b >= 0 && chordAt[b] === undefined && g.mode === 'play') chordAt[b] = g.harmony()!.chord;
     }
-    expect(chordAt[8]).toBe(tr.chords[0] + 5);
-    expect(chordAt[9]).toBe(tr.chords[0] + 2);
+    // Mary's Lamb in C: C C G C C C G C, then the solo bar on G
+    expect(chordAt.slice(0, 9)).toEqual([60, 60, 67, 60, 60, 60, 67, 60, 67]);
+  });
+
+  it("today's song (a loop track): its second half changes chords (IV–ii in major, VI–VII in minor) and comes home", () => {
+    const band: { voice: string; midi: number; beat: number }[] = [];
+    const g = new Game({ ...stage([]), band: (e: { voice: string; midi: number; beat: number }) => band.push(e) }, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.act('nav:songs');
+    g.act('song:8');
+    g.act('play');
+    const tr = g.tracks[8];
+    const up = tr.minor ? [8, 10] : [5, 2];
+    let t = 0;
+    const chordAt: number[] = [];
+    for (let k = 0; k < 2400 && g.mode !== 'results'; k++) {
+      g.tick((t += 1 / 30));
+      const b = Math.floor(g.clock.beatAt(t) / 4);
+      if (b >= 0 && chordAt[b] === undefined && g.mode === 'play') chordAt[b] = g.harmony()!.chord;
+    }
+    expect(chordAt[8]).toBe(tr.chords[0] + up[0]);
+    expect(chordAt[9]).toBe(tr.chords[0] + up[1]);
     expect(chordAt[12]).toBe(tr.chords[0]);
-    // the bed's chord and its bass in bar 9 are the four chord
-    expect(band.some((e) => e.voice === 'chord' && e.beat === 32 && e.midi === tr.chords[0] + 5)).toBe(true);
-    expect(band.some((e) => e.voice === 'bass' && e.beat === 32 && e.midi === tr.chords[0] + 5 - 24)).toBe(true);
+    // the bed's chord and its bass in bar 9 are its first change
+    expect(band.some((e) => e.voice === 'chord' && e.beat === 32 && e.midi === tr.chords[0] + up[0])).toBe(true);
+    expect(band.some((e) => e.voice === 'bass' && e.beat === 32 && e.midi === tr.chords[0] + up[0] - 24)).toBe(true);
   });
 
   it('learns a steady lateness', () => {

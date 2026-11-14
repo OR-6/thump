@@ -46,6 +46,8 @@ export interface MenuInput {
   inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string };
   songs: { name: string; meta: string; stars: number; locked: boolean }[];
   songSel: number;
+  /** Which six songs show (more than six: a button in the corner turns the page). */
+  songPage?: number;
   level: 'easy' | 'normal' | 'hard';
   band: { state: string; code: string; players: number; message?: string };
   settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean };
@@ -125,7 +127,15 @@ export function buildPage(m: MenuInput): Page {
       // the songs as tiles, two across; what you'll play down the right
       const items: Item[] = [back()];
       const tw = (956 - 24 - 24 - 16) / 2;
-      m.songs.forEach((s, i) => items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24 + (i % 2) * (tw + 16), y: 170 + Math.floor(i / 2) * 236, w: tw, h: 220 }));
+      // six to a page; more than six and the corner turns the page
+      const pages = Math.ceil(m.songs.length / 6);
+      const pg = Math.max(0, Math.min(pages - 1, m.songPage ?? 0));
+      if (pages > 1) items.push(corner('songs:more', pg < pages - 1 ? 'More songs' : 'First songs'));
+      m.songs.forEach((s, i) => {
+        const k = i - pg * 6;
+        if (k < 0 || k >= 6) return;
+        items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24 + (k % 2) * (tw + 16), y: 170 + Math.floor(k / 2) * 236, w: tw, h: 220 });
+      });
       const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';
       items.push({ id: 'level', label: lv, sub: m.level === 'hard' ? 'Tap for easy' : 'Tap for harder', kind: 'button', x: 956, y: 170, w: 380, h: 150 });
       items.push({ id: 'nav:instruments', label: m.inst.name, sub: 'Tap to change', kind: 'button', x: 956, y: 336, w: 380, h: 150 });
