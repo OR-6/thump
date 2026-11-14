@@ -13,6 +13,9 @@ export const PAGE_ROOT = { piano: 60, marimba: 60, handpan: 48, guitar: 48 } as 
 
 /** The drawing's window onto the desk, in cm (the same for every instrument, so they compare at one scale). */
 export const VIEW = { x: -32, y: -18, w: 64, h: 34 } as const;
+/** The full drum kit needs a desk, not a tray. */
+const DESK = { x: -62, y: -32, w: 124, h: 58 } as const;
+export const viewFor = (id: InstId): { x: number; y: number; w: number; h: number } => (id === 'drums' ? DESK : VIEW);
 
 const cm = (m: number) => +(m * 100).toFixed(2);
 const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`;
@@ -43,30 +46,41 @@ function lugs(x: number, y: number, r: number, n: number, size: number, fill: st
 }
 
 function drums(): string {
-  const k = PADS.kick, sn = PADS.snare, h = PADS.hat;
-  const kx = cm(k.x), ky = -cm(k.z), kr = cm(k.size / 2);
-  const sx = cm(sn.x), sy = -cm(sn.z), sr = cm(sn.size / 2);
-  const hx = cm(h.x), hy = -cm(h.z), hr = cm(h.size / 2);
-  const kick = part({
-    id: 'kick', label: 'Kick drum', light: hex(k.color),
-    body: lugs(kx, ky, kr + 0.35, 10, 0.45, '#8c9297') + circle(kx, ky, kr + 0.1, 'fill="#9aa1a6"') + circle(kx, ky, kr - 0.45, 'fill="#2a2626"') +
-      circle(kx, ky, kr - 1.6, 'fill="none" stroke="#3a3434" stroke-width="0.25"') + circle(kx + 2.6, ky + 2.9, 1.5, 'fill="#141212" stroke="#4a4444" stroke-width="0.25"'),
-    glow: circle(kx, ky, kr + 0.1),
-  });
-  const snare = part({
-    id: 'snare', label: 'Snare drum', light: hex(sn.color),
-    body: lugs(sx, sy, sr + 0.35, 8, 0.4, '#8c9297') + circle(sx, sy, sr + 0.1, 'fill="#a3a9ad"') + circle(sx, sy, sr - 0.4, 'fill="url(#coated)"') +
-      rect(sx + sr - 0.2, sy - 0.9, 1.2, 1.8, 'rx="0.3" fill="#6f767b"'),
-    glow: circle(sx, sy, sr + 0.1),
-  });
-  let rings = '';
-  for (let i = 1; i <= 7; i++) rings += circle(hx, hy, +(hr * (0.3 + i * 0.095)).toFixed(2), 'fill="none" stroke="#8a6424" stroke-opacity="0.45" stroke-width="0.12"');
-  const hat = part({
-    id: 'hat', label: 'Hi-hat', light: hex(h.color),
-    body: circle(hx, hy, hr, 'fill="url(#brass)"') + rings + circle(hx, hy, hr * 0.27, 'fill="#c99a48" stroke="#8a6424" stroke-width="0.15"') + circle(hx, hy, 0.45, 'fill="#55575a"'),
-    glow: circle(hx, hy, hr),
-  });
-  return kick + snare + hat;
+  // the whole kit from above, every piece where the game puts it: the drums' coated heads in their hoops and lugs,
+  // the three cymbals in brass
+  const DRUM: { lane: 'kick' | 'snare' | 'tom' | 'floor'; label: string; lugs: number }[] = [
+    { lane: 'kick', label: 'Bass drum', lugs: 10 },
+    { lane: 'snare', label: 'Snare drum', lugs: 8 },
+    { lane: 'tom', label: 'Rack tom', lugs: 6 },
+    { lane: 'floor', label: 'Floor tom', lugs: 8 },
+  ];
+  const CYM: { lane: 'hat' | 'crash' | 'ride'; label: string }[] = [
+    { lane: 'hat', label: 'Hi-hat' },
+    { lane: 'crash', label: 'Crash' },
+    { lane: 'ride', label: 'Ride' },
+  ];
+  let s = '';
+  for (const c of DRUM) {
+    const p = PADS[c.lane];
+    const x = cm(p.x), y = -cm(p.z), r = cm(p.size / 2);
+    s += part({
+      id: c.lane, label: c.label, light: hex(p.color),
+      body: lugs(x, y, r + 0.35, c.lugs, 0.45, '#8c9297') + circle(x, y, r + 0.1, 'fill="#9aa1a6"') + circle(x, y, r - 0.45, 'fill="url(#coated)"'),
+      glow: circle(x, y, r + 0.1),
+    });
+  }
+  for (const c of CYM) {
+    const p = PADS[c.lane];
+    const x = cm(p.x), y = -cm(p.z), r = cm(p.size / 2);
+    let rings = '';
+    for (let i = 1; i <= 7; i++) rings += circle(x, y, +(r * (0.3 + i * 0.095)).toFixed(2), 'fill="none" stroke="#8a6424" stroke-opacity="0.45" stroke-width="0.12"');
+    s += part({
+      id: c.lane, label: c.label, light: hex(p.color),
+      body: circle(x, y, r, 'fill="url(#brass)"') + rings + circle(x, y, r * 0.27, 'fill="#c99a48" stroke="#8a6424" stroke-width="0.15"') + circle(x, y, 0.45, 'fill="#55575a"'),
+      glow: circle(x, y, r),
+    });
+  }
+  return s;
 }
 
 function piano(): string {
@@ -231,7 +245,7 @@ const DRAW: Record<InstId, () => string> = { drums, piano, marimba, guitar, cong
 
 /** The whole drawing: the tray, then the instrument on it. `.inst-pos` is centred on the tray once it's on the page. */
 export function deskSvg(id: InstId, title: string): string {
-  const v = VIEW;
+  const v = viewFor(id);
   return `<svg class="desk-svg" viewBox="${v.x} ${v.y} ${v.w} ${v.h}" role="group" aria-label="${title}, seen from above">${DEFS}
   ${rect(v.x + 0.3, v.y + 0.3, v.w - 0.6, v.h - 0.6, 'rx="2.4" fill="var(--tray)"')}
   ${rect(v.x + 1.3, v.y + 1.3, v.w - 2.6, v.h - 3.6, 'rx="1.6" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.14"')}
@@ -245,7 +259,7 @@ export function centreOnTray(svg: SVGSVGElement): void {
   if (!g) return;
   const b = g.getBBox();
   if (!b.width) return;
-  const v = VIEW;
+  const v = DESK.w === Number(svg.getAttribute('viewBox')?.split(' ')[2]) ? DESK : VIEW;
   const tx = v.x + v.w / 2 - (b.x + b.width / 2);
   const ty = v.y + (v.h - 1.5) / 2 - (b.y + b.height / 2);
   g.setAttribute('transform', `translate(${tx.toFixed(2)} ${ty.toFixed(2)})`);

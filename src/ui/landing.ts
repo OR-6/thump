@@ -12,16 +12,16 @@ import { asPlayer } from '../net/band.js';
 import { PADS } from '../config.js';
 import { CONGA, SHELF, handpanZones, marimbaZones, percVoice, pianoBlacks, pianoZones, strumNotes, type InstId } from '../kit/shelf.js';
 import { TRACKS, dailyTrack, songDay } from '../play/build.js';
-import { PAGE_ROOT, PAGE_SCALE, VIEW, centreOnTray, deskSvg } from './landing-drawing.js';
+import { PAGE_ROOT, PAGE_SCALE, VIEW, centreOnTray, deskSvg, viewFor } from './landing-drawing.js';
 
 const LIVE_URL = 'or-6.github.io/thump';
 
 /** What each instrument is, in a sentence or two, from how the game builds it. */
 const ABOUT: Record<InstId, string> = {
-  drums: 'A kick, a snare and a hi-hat, 15, 13 and 12 cm across. The heads sit just above the desk, so what you hit is the real desk. A tom joins after your first song.',
-  piano: 'Two octaves at real key size, 41 cm across. Every white key is a note of the scale. The red button plays a chord, and outside a song a black key plays the white keys either side of it.',
-  marimba: 'Eight rosewood bars, the low, long ones on the left. Pinch and a mallet appears in your hand, or play with your fingers.',
-  guitar: 'It lies flat on the desk. Your left hand holds one of three chords on the neck and your right strums over the soundhole. Tap a chord, then the strings.',
+  drums: 'A full kit for your hands: hi-hat, snare, a rack tom, a floor tom, a bass drum lying flat, crash and ride. Acoustic, jazz or electronic. Slap the heads, or make fists and sticks appear.',
+  piano: 'A compact keyboard at real key size: two octaves, every white key a note of the scale. The square to the left of the keys plays three notes at once. Set its key, scale and sound.',
+  marimba: 'Eight rosewood bars on a maple box, long and low on the left. Make fists and mallets appear, or tap with your fingers.',
+  guitar: 'It lies flat on the desk. One hand holds one of three chords on the neck, the other sweeps the strings.',
   congas: 'Two hand drums, the low one on the left. The middle of a head is an open tone, the edge a slap.',
   handpan: 'A low note in the middle and eight around it. Alternate hands round the rim and you walk up the scale.',
 };
@@ -319,6 +319,9 @@ function mountDesk(el: HTMLElement): void {
     const d = SHELF.find((x) => x.id === id)!;
     stage.innerHTML = deskSvg(id, d.name);
     centreOnTray(stage.querySelector('svg')!);
+    // (the scale bar follows: the drums are drawn on a desk, the rest on a tray)
+    const bar = document.querySelector<HTMLElement>('#landing .scale-bar');
+    if (bar) bar.style.width = `${((10 / viewFor(id).w) * 100).toFixed(2)}%`;
     about.textContent = ABOUT[id];
     for (const b of picks) b.setAttribute('aria-pressed', String(b.dataset.inst === id));
     if (id === 'guitar') stage.querySelector(`.part[data-part="g${chord}"]`)?.classList.add('on');
