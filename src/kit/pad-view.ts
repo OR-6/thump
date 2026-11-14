@@ -20,7 +20,7 @@ import {
   TorusGeometry,
 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
-import { DRUM_H, buildCymbal, buildDrum, buildFloorDrum, buildHiHat, drumStand, type DrumLook, type KitStyle } from '../scene-assets/lib/drums.js';
+import { DRUM_H, blackMetal, buildCymbal, buildDrum, buildECymbal, buildEPad, buildFloorDrum, buildHiHat, drumStand, tripod, type DrumLook, type KitStyle } from '../scene-assets/lib/drums.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
 import { contactShadow } from '../art/lighting.js';
@@ -42,7 +42,31 @@ function lookFor(lane: Lane, style: KitStyle): DrumLook {
   if (style === 'jazz') return { shell: lane === 'snare' ? 0x2a1d14 : 0xb07a45, finish: 'natural', skin: 'calf', throwOff: lane === 'snare' };
   return { shell: lane === 'snare' ? 0x16161a : 0x7a1d14, throwOff: lane === 'snare' };
 }
+/** An e-kit pad's depth (its top is the head, at HEAD_Y). */
+export const EPAD_DEPTH: Partial<Record<Lane, number>> = { kick: 0.045, floor: 0.04 };
+function buildELane(lane: Lane, size: number): Group {
+  const g = new Group();
+  if (lane === 'hat' || lane === 'crash' || lane === 'ride') {
+    // rubber cymbal pads: the hi-hat on its own stand, the crash and ride held by the rack's arms
+    const c = buildECymbal(size, lane === 'crash' ? 0.24 : lane === 'ride' ? 0.12 : 0.04);
+    c.position.y = HEAD_Y[lane] - 0.009;
+    if (lane === 'hat') {
+      const m = blackMetal();
+      const rod = new Mesh(new CylinderGeometry(0.0026, 0.0026, HEAD_Y.hat - 0.012, 12), m);
+      rod.position.y = (HEAD_Y.hat - 0.012) / 2;
+      g.add(tripod(0.06, m), rod);
+    }
+    g.add(c);
+    return g;
+  }
+  const depth = EPAD_DEPTH[lane] ?? 0.035;
+  const pad = buildEPad(size, depth);
+  pad.position.y = HEAD_Y[lane] - depth;
+  g.add(pad);
+  return g;
+}
 function buildLane(lane: Lane, size: number, style: KitStyle): Group {
+  if (style === 'electronic') return buildELane(lane, size);
   if (lane === 'hat') return buildHiHat(size, HEAD_Y.hat - 0.006, style);
   if (lane === 'crash' || lane === 'ride') return buildCymbal(size, HEAD_Y[lane], lane === 'crash' ? 0.24 : 0.12, lane, style);
   const depth = DEPTH[lane] ?? 0.05;

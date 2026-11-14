@@ -1172,6 +1172,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       p.x = s.x;
       p.z = s.z;
     }
+    // (an electronic kit's rack follows its pads)
+    this.kit.fitRack(this.lanes());
   }
 
   // ------------------------------------------------------------------ frame

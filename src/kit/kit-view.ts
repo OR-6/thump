@@ -3,12 +3,13 @@
  * toward the player): the drum pads, the table keys (a slim row of light bars that plays any melody
  * your room has no instrument for), the module at the back, and your hands' shadows on the table.
  */
-import { DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture, SRGBColorSpace } from '@iwsdk/core';
+import { BoxGeometry, DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture, SRGBColorSpace } from '@iwsdk/core';
 import { FONT } from '../ui/fonts.js';
 import { castShadows, contactShadow, shadowCatcher } from '../art/lighting.js';
 import { LANES, PADS, type Lane } from '../config.js';
 import { PadView } from './pad-view.js';
-import type { KitStyle } from '../scene-assets/lib/drums.js';
+import { blackMetal, buildModule, tube, type KitStyle } from '../scene-assets/lib/drums.js';
+import { EPAD_DEPTH, HEAD_Y } from './pad-view.js';
 import { Panel } from '../ui/panel.js';
 import { Overlay } from '../room/overlay.js';
 import { zonesFor, type Zone } from '../room/zones.js';
@@ -234,6 +235,7 @@ export class KitView {
   }
   /** A different kit (acoustic, jazz, electronic): every piece rebuilt in its look, where it stood, as it was. */
   setKitStyle(style: KitStyle): void {
+    this.style = style;
     for (const [lane, old] of this.pads) {
       const p = new PadView(lane, false, style);
       p.x = old.x;
@@ -251,6 +253,54 @@ export class KitView {
       this.padRoot.add(p.group);
     }
     castShadows(this.padRoot);
+  }
+  /**
+   * An electronic kit stands on a rack: a black tube frame behind the kit, an arm from it to each pad and cymbal (the
+   * hi-hat has its own stand), and the drum module clamped at its left. Refitted when the pads move.
+   */
+  private rack: Group | null = null;
+  private style: KitStyle = 'acoustic';
+  fitRack(lanes: readonly Lane[]): void {
+    if (this.rack) {
+      this.padRoot.remove(this.rack);
+      this.rack.traverse((o) => (o as Mesh).geometry?.dispose());
+      this.rack = null;
+    }
+    if (this.style !== 'electronic') return;
+    const pads = lanes.map((l) => [l, this.pads.get(l)] as const).filter(([l, p]) => p && l !== 'hat' && l !== 'gong');
+    if (!pads.length) return;
+    const m = blackMetal();
+    const rack = new Group();
+    rack.name = 'Rack';
+    const xs = pads.map(([, p]) => p!.x);
+    const x0 = Math.min(...xs) - 0.05;
+    const x1 = Math.max(...xs) + 0.05;
+    const zr = Math.min(...pads.map(([, p]) => p!.z)) - 0.1;
+    const yb = 0.12;
+    const r = 0.007;
+    const v = (x: number, y: number, z: number) => new Vector3(x, y, z);
+    // two legs with feet, the bar across the back
+    for (const x of [x0, x1]) {
+      rack.add(tube(v(x, 0, zr), v(x, yb + 0.02, zr), r, m), tube(v(x, 0.004, zr - 0.06), v(x, 0.004, zr + 0.06), r * 0.9, m));
+    }
+    rack.add(tube(v(x0, yb, zr), v(x1, yb, zr), r, m));
+    // an arm from the bar to the underside of each pad, with a clamp on the bar
+    for (const [lane, p] of pads) {
+      const under = HEAD_Y[lane] - (lane === 'crash' || lane === 'ride' ? 0.012 : (EPAD_DEPTH[lane] ?? 0.035));
+      const cx = Math.max(x0 + 0.02, Math.min(x1 - 0.02, p!.x));
+      rack.add(tube(v(cx, yb, zr), v(p!.x, under, p!.z), r * 0.75, m));
+      const clamp = new Mesh(new BoxGeometry(0.022, 0.022, 0.022), m);
+      clamp.position.set(cx, yb, zr);
+      rack.add(clamp);
+    }
+    // the module, on a short arm at the left end, its screen toward you
+    const mod = buildModule();
+    mod.position.set(x0 + 0.08, yb + 0.07, zr + 0.01);
+    mod.rotation.x = -0.35;
+    rack.add(tube(v(x0 + 0.08, yb, zr), v(x0 + 0.08, yb + 0.04, zr), r * 0.7, m), mod);
+    castShadows(rack);
+    this.rack = rack;
+    this.padRoot.add(rack);
   }
   /** Only these pieces of the kit out (the rest put away). */
   showLanes(lanes: readonly Lane[]): void {

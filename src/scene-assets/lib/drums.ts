@@ -5,7 +5,7 @@
  * tripod). Deterministic and parentless: built the same in the app and the editor. Drum-local: origin on the desk at
  * the drum's centre, +Y up; sizes in metres.
  */
-import { BoxGeometry, CylinderGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, Vector2 } from '@iwsdk/core';
+import { BoxGeometry, CylinderGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, TorusGeometry, Vector2, Vector3 } from '@iwsdk/core';
 import { cymbalRings, fineNormal, headCoat, meshWeave, woodGrain } from './surfaces.js';
 
 /** The old low drums' head height (still the default shell depth for anything flat). */
@@ -45,7 +45,7 @@ export function cymbalMat(style: KitStyle): MeshStandardMaterial {
 }
 
 const chrome = () => new MeshStandardMaterial({ name: 'Chrome', color: 0xe8eaee, metalness: 1, roughness: 0.14 });
-const blackMetal = () => new MeshStandardMaterial({ name: 'BlackHardware', color: 0x2a2b30, metalness: 0.85, roughness: 0.35 });
+export const blackMetal = () => new MeshStandardMaterial({ name: 'BlackHardware', color: 0x2a2b30, metalness: 0.85, roughness: 0.35 });
 
 function named<T extends Object3D>(o: T, name: string): T {
   o.name = name;
@@ -241,6 +241,88 @@ export function buildFloorDrum(d: number, look: DrumLook): Group {
     const f = named(new Mesh(foot, rubber()), 'Foot');
     f.position.set(Math.cos(a) * d * 0.36, 0.003, Math.sin(a) * d * 0.36);
     g.add(f);
+  }
+  return g;
+}
+
+/**
+ * An electronic kit's pad, as on a real e-kit: a shallow black plastic shell 3.5 cm deep, a grey mesh head inside a
+ * thick rubber rim, a jack on the side. No lugs, no hoop. Its top is at `depth` above its origin. Named Drum and Head.
+ */
+export function buildEPad(d: number, depth = 0.035): Group {
+  const g = named(new Group(), 'EPad');
+  const R = d / 2;
+  const drum = named(new Group(), 'Drum');
+  const plastic = new MeshStandardMaterial({ name: 'Plastic', color: 0x1d1d20, roughness: 0.55, metalness: 0.05 });
+  const shell = named(new Mesh(new CylinderGeometry(R * 0.97, R * 0.9, depth - 0.006, 48), plastic), 'Shell');
+  shell.position.y = (depth - 0.006) / 2;
+  const rubber = new MeshStandardMaterial({ name: 'Rim', color: 0x141416, roughness: 0.9 });
+  const rim = named(new Mesh(new TorusGeometry(R * 0.955, 0.0065, 12, 64), rubber), 'Rim');
+  rim.rotation.x = -Math.PI / 2;
+  rim.position.y = depth - 0.004;
+  const weave = meshWeave().clone();
+  weave.repeat.set(d * 60, d * 60);
+  weave.needsUpdate = true;
+  const head = named(new Mesh(new CylinderGeometry(R * 0.9, R * 0.9, 0.0015, 48), new MeshStandardMaterial({ name: 'Head', color: 0xf2f2f8, map: weave, roughness: 0.68 })), 'Head');
+  head.position.y = depth - 0.003;
+  const jack = named(new Mesh(new BoxGeometry(0.012, 0.012, 0.016), plastic), 'Jack');
+  jack.position.set(R * 0.9, depth * 0.4, 0);
+  drum.add(shell, rim, head, jack);
+  g.add(drum);
+  return g;
+}
+
+/**
+ * An electronic cymbal pad: a flat rubber disc 7 mm thick with a raised bell, a grey edge where the cymbal's edge zone
+ * is, on a short black post with a wing nut. Named Cymbals (the pivot that swings) and Top.
+ */
+export function buildECymbal(d: number, tilt: number): Group {
+  const g = named(new Group(), 'ECymbal');
+  const R = d / 2;
+  const cymbals = named(new Group(), 'Cymbals');
+  cymbals.rotation.x = tilt;
+  const black = new MeshStandardMaterial({ name: 'RubberPad', color: 0x18181b, roughness: 0.82, normalMap: fineNormal(3, 18) });
+  const pts = [new Vector2(0.001, 0.009), new Vector2(R * 0.22, 0.009), new Vector2(R * 0.3, 0.0045), new Vector2(R, 0.0035), new Vector2(R, -0.0035), new Vector2(0.001, -0.0035)];
+  const top = named(new Mesh(new LatheGeometry(pts, 64), black), 'Top');
+  const edge = named(new Mesh(new TorusGeometry(R * 0.985, 0.0035, 8, 64), new MeshStandardMaterial({ name: 'EdgeZone', color: 0x4a4a50, roughness: 0.8 })), 'Edge');
+  edge.rotation.x = -Math.PI / 2;
+  const nut = named(new Mesh(new BoxGeometry(0.014, 0.004, 0.004), blackMetal()), 'WingNut');
+  nut.position.y = 0.012;
+  cymbals.add(top, edge, nut);
+  g.add(cymbals);
+  return g;
+}
+
+/** A tube from `a` to `b` (radius r): a rack bar or a pad's arm. */
+export function tube(a: Vector3, b: Vector3, r: number, mat: MeshStandardMaterial): Mesh {
+  const len = a.distanceTo(b);
+  const m = new Mesh(new CylinderGeometry(r, r, Math.max(0.001, len), 10), mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), new Vector3().subVectors(b, a).normalize());
+  return m;
+}
+
+/** The e-kit's drum module (its brain): a dark box with a small lit screen, knobs and a row of buttons. */
+export function buildModule(): Group {
+  const g = named(new Group(), 'DrumModule');
+  const body = named(new Mesh(new BoxGeometry(0.11, 0.07, 0.03), new MeshStandardMaterial({ name: 'ModuleBody', color: 0x202024, roughness: 0.5 })), 'Body');
+  const screen = named(new Mesh(new BoxGeometry(0.05, 0.022, 0.002), new MeshStandardMaterial({ name: 'Screen', color: 0x0c1418, emissive: 0x2a6a8a, emissiveIntensity: 0.6, roughness: 0.2 })), 'Screen');
+  screen.position.set(-0.018, 0.012, 0.0155);
+  g.add(body, screen);
+  const knob = new CylinderGeometry(0.0055, 0.006, 0.006, 20);
+  const kmat = new MeshStandardMaterial({ name: 'Knob', color: 0x3a3a40, roughness: 0.4, metalness: 0.3 });
+  for (const [x, y] of [[0.03, 0.014], [0.03, -0.012]] as const) {
+    const k = new Mesh(knob, kmat);
+    k.rotation.x = Math.PI / 2;
+    k.position.set(x, y, 0.018);
+    g.add(k);
+  }
+  const btn = new BoxGeometry(0.008, 0.005, 0.003);
+  const bmat = new MeshStandardMaterial({ name: 'Button', color: 0x4a4a52, roughness: 0.6 });
+  for (let i = 0; i < 5; i++) {
+    const b = new Mesh(btn, bmat);
+    b.position.set(-0.04 + i * 0.011, -0.02, 0.0165);
+    g.add(b);
   }
   return g;
 }
