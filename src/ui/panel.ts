@@ -23,7 +23,8 @@ import { motion } from './motion.js';
  * The display: standing on the desk behind the instruments on two thin uprights, its bottom edge clear of the
  * keyboard's case (9 cm), tilted back 25°.
  */
-export const PANEL = { y: 0.28, z: -0.25, w: 0.33, h: 0.22, lean: 0.44 } as const;
+// (15 % larger than it was: a screen you glance at mid-song has to be read in that glance)
+export const PANEL = { y: 0.28, z: -0.25, w: 0.38, h: 0.2533, lean: 0.44 } as const;
 /** Canvas pixels (4.12 per millimetre). */
 const CW = 1360;
 const CH = 907;
@@ -547,7 +548,11 @@ export class Panel {
     if (this.userAt) {
       this.baseY = Math.max(this.userAt.y, this.clear + 0.04 + (PANEL.h / 2) * Math.cos(lean));
       this.root.position.set(this.userAt.x, this.baseY, this.userAt.z);
-      this.root.rotation.set(-lean, Math.atan2(-this.userAt.x, this.ahead - this.userAt.z), 0);
+      // (turned and tipped to your eyes from wherever it went: higher or nearer, it leans back less or more)
+      const dx = -this.userAt.x;
+      const dz = this.ahead - this.userAt.z;
+      const tilt = Math.atan2(this.eye - this.baseY, Math.max(0.05, Math.hypot(dx, dz)));
+      this.root.rotation.set(-Math.max(0.05, Math.min(1.25, tilt)), Math.atan2(dx, dz), 0);
     }
     this.fitStand();
   }
@@ -707,7 +712,8 @@ export class Panel {
     this.bar.visible = song && d.progress !== undefined && d.progress >= 0;
     if (this.bar.visible) this.bar.scale.x = Math.max(0.0001, this.barW * Math.min(1, d.progress ?? 0));
     const digit = p.body === 'song' && d.count > 0 ? d.count : 0;
-    this.countMesh.visible = digit > 0;
+    // (the count-in is the HUD's now, on the desk where you're looking: the screen only keeps its place)
+    this.countMesh.visible = false;
     if (digit !== this.lastDigit) {
       this.lastDigit = digit;
       if (digit > 0) this.drawCount(digit);

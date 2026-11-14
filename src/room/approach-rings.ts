@@ -101,17 +101,20 @@ export class ApproachRings {
       const count = Math.min(feed.moteCount, feed.motes.length);
       for (let i = 0; i < count && s < SLOTS; i++) {
         const n = feed.motes[i];
-        if (n.grade || n.faint || n.ahead > LEAD_BEATS || n.ahead < -0.25) continue;
+        // (a miss: its ring goes grey and sinks inside the part as it fades; any other grade, it's done)
+        const miss = n.grade === 'miss';
+        if ((n.grade && !miss) || n.faint || n.ahead > LEAD_BEATS || n.ahead < (miss ? -0.6 : -0.25)) continue;
         if (!shapeOf(n.key, this.shape, _c)) continue;
         if (n.gold) _c.lerp(GOLD, 0.85);
+        if (miss) _c.setRGB(0.55, 0.52, 0.6);
         const sh = this.shape;
         const u = Math.max(0, n.ahead) / LEAD_BEATS;
         // (closing: steady in speed, so its last beat reads like a count; past due it holds on the outline and fades)
-        const grow = 1 + (START - 1) * u;
+        const grow = miss && n.ahead < 0 ? Math.max(0.55, 1 + n.ahead * 0.6) : 1 + (START - 1) * u;
         const hw = (sh.w / 2) * grow;
         const hd = ((sh.round ? sh.w : sh.d) / 2) * grow;
         const r = sh.round ? hw : Math.min(hw, hd) * 0.35;
-        const a = n.ahead < 0 ? Math.max(0, 1 + n.ahead / 0.25) : 0.3 + 0.7 * (1 - u) * (1 - u * 0.3);
+        const a = n.ahead < 0 ? Math.max(0, 1 + n.ahead / (miss ? 0.6 : 0.25)) * (miss ? 0.8 : 1) : 0.3 + 0.7 * (1 - u) * (1 - u * 0.3);
         // thicker as it lands (5.5 → 7 mm), so the moment it meets the edge is the thing you see
         const w = (calm ? 0.005 : 0.0055) + 0.0015 * (1 - u);
         this.band(s, 0, sh, hw, hd, r, -0.0015, w + 0.0015, EDGE, a * 0.6);

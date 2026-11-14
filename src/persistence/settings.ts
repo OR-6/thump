@@ -53,6 +53,12 @@ export interface Settings {
   level: Level;
   /** Where you moved the panel to (kit-local, m); unset: where it stands by itself. */
   panelAt?: { x: number; y: number; z: number };
+  /** How far the first steps have got (0: play it, 1: poke the screen, 2: start a lesson, 3: done). */
+  coach?: number;
+  /** The instruments whose how-to the HUD has shown. */
+  taught?: string[];
+  /** Where you moved the instruments to, from where they'd stand by themselves (m: further ahead, to the right). */
+  kitNudge?: { a: number; l: number };
 }
 
 const KEY = 'settings.v1';
@@ -82,6 +88,11 @@ export function loadSettings(): Settings {
     level: s.level === 'normal' || s.level === 'hard' ? s.level : 'easy',
     ...(s.panelAt && typeof s.panelAt === 'object' && [s.panelAt.x, s.panelAt.y, s.panelAt.z].every((v) => typeof v === 'number' && Number.isFinite(v))
       ? { panelAt: { x: num(s.panelAt.x, -0.8, 0.8, 0), y: num(s.panelAt.y, 0.1, 0.8, 0.3), z: num(s.panelAt.z, -0.8, 0.5, -0.2) } }
+      : {}),
+    ...(typeof s.coach === 'number' && Number.isFinite(s.coach) ? { coach: Math.max(0, Math.min(3, Math.round(s.coach))) } : {}),
+    ...(Array.isArray(s.taught) ? { taught: s.taught.filter((x): x is string => typeof x === 'string' && /^[a-z]{1,12}$/.test(x)).slice(0, 12) } : {}),
+    ...(s.kitNudge && typeof s.kitNudge === 'object' && [s.kitNudge.a, s.kitNudge.l].every((v) => typeof v === 'number' && Number.isFinite(v))
+      ? { kitNudge: { a: num(s.kitNudge.a, -0.3, 0.3, 0), l: num(s.kitNudge.l, -0.5, 0.5, 0) } }
       : {}),
   };
 }

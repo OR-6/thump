@@ -14,7 +14,10 @@
 import { reportFrameError } from '../app/safe.js';
 import {
   createSystem,
+  CanvasTexture,
   Color,
+  PlaneGeometry,
+  SRGBColorSpace,
   Group,
   InstancedMesh,
   Matrix4,
@@ -78,6 +81,7 @@ import { KICK_DEPTH } from '../kit/pad-view.js';
 import { INST_LIGHT } from '../ui/theme.js';
 import { HitFx, type PartShape } from './hit-fx.js';
 import { ApproachRings } from './approach-rings.js';
+import { Hud, type HudSay } from './hud.js';
 import { GuitarHands, HG, heldMatrix, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
@@ -151,6 +155,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private head = new Vector3();
   private hitFx: HitFx | null = null;
   private approach: ApproachRings | null = null;
+  private hud: Hud | null = null;
   /** The part last judged, its shape for the hit flash (and the streak's ring). */
   private lastPart: PartShape = { at: new Vector3(), q: new Quaternion(), w: 0, d: 0, round: true };
   private fxKey = '';
@@ -211,6 +216,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.hitFx?.flash('perfect', s, c);
       this.hitFx?.flash('inner', s, 0xffffff, 0.07);
     } else this.hitFx?.flash('good', s, c);
+    // (the streak warms every hit: from ×3 a third ring, in gold)
+    if ((this.game.display.mult ?? 1) >= 3) this.hitFx?.flash('inner', s, 0xffd23f, 0.14);
   }
   private fwd = new Vector3();
   private tmp = new Vector3();
@@ -296,6 +303,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // what you hit answers in its own shape (src/room/hit-fx.ts)
     this.hitFx = new HitFx(this.worldRoot);
     this.approach = new ApproachRings(this.worldRoot);
+    this.hud = new Hud(this.kit.root);
+    this.buildMovePuck();
     this.hitWords.onShow = (g, at) => this.partFx(g, at);
     this.hint = new Tag(0.36, 0.05);
     this.worldRoot.add(this.hint.mesh);
@@ -455,6 +464,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     shelfSet: (which) => this.shelfChange(which),
     // the game's moments, said over the panel and in the room (soft: success louder than failure)
     multUp: (m) => {
+      this.hudMult = m;
+      this.hudMultT = this.uiT;
       this.kit.module.say(`×${m}`, m >= 4 ? 'gold' : 'white');
       if (this.lastPart.w > 0) this.hitFx?.flash('mult', this.lastPart, m >= 4 ? 0xffd23f : 0xffffff);
       audio.ui('multup', 1, 0.9 + 0.1 * m);
@@ -463,6 +474,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     milestone: (run) => {
       this.kit.module.say(`${run} combo`, run >= 100 ? 'gold' : 'white');
+      this.hudStreak = run;
+      this.hudStreakT = this.uiT;
       audio.ui('milestone');
       audio.cheer(Math.min(1, 0.4 + run / 200), run >= 100);
       this.kit.module.burst('milestone', 200, 300);
@@ -911,6 +924,199 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private later(at: number, fn: () => void): void {
     this.timed.push({ at, fn });
   }
+  // ------------------------------------------------------------------ moving the instruments
+
+  /** Where the instruments stand by themselves (world x, z, yaw) and which way was ahead then. */
+  private kitBase = new Vector3();
+  private kitBaseFwd = new Vector3(0, 0, -1);
+  /** The move handle: a puck on the desk at the front left; pinch it and the whole setup follows your hand. */
+  private movePuck: Mesh | null = null;
+  private moveHand = -1;
+  private moveOff = new Vector3();
+  private moveAt = new Vector3();
+  private moveK = 0;
+  private buildMovePuck(): void {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d')!;
+    // a disc with four short arrows: move me
+    // (the screen's plate: its indigo, its solid edge, its ink)
+    g.fillStyle = 'rgba(26,13,56,0.94)';
+    g.beginPath();
+    g.arc(64, 64, 60, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = '#3b2670';
+    g.lineWidth = 5;
+    g.beginPath();
+    g.arc(64, 64, 57, 0, Math.PI * 2);
+    g.stroke();
+    g.strokeStyle = '#fbf7ff';
+    g.lineWidth = 7;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    for (let k = 0; k < 4; k++) {
+      g.save();
+      g.translate(64, 64);
+      g.rotate((k * Math.PI) / 2);
+      g.beginPath();
+      g.moveTo(0, -12);
+      g.lineTo(0, -38);
+      g.moveTo(-10, -28);
+      g.lineTo(0, -38);
+      g.lineTo(10, -28);
+      g.stroke();
+      g.restore();
+    }
+    const t = new CanvasTexture(c);
+    t.colorSpace = SRGBColorSpace;
+    const m = new Mesh(new PlaneGeometry(0.04, 0.04), new MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false }));
+    m.name = 'MoveHandle';
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(-0.27, 0.003, 0.22);
+    m.renderOrder = 8;
+    this.kit.root.add(m);
+    this.movePuck = m;
+  }
+  /** Pinch the puck: the instruments (and the screen with them) follow your hand across the desk, turned to you. */
+  private kitHandle(): void {
+    const puck = this.movePuck;
+    if (!puck) return;
+    const placed = this.placement.phase === 'placed';
+    const inSong = this.game.mode === 'play' || this.game.mode === 'count';
+    puck.visible = placed && !inSong;
+    if (!puck.visible) {
+      this.moveHand = -1;
+      return;
+    }
+    const root = this.kit.root;
+    puck.getWorldPosition(this.moveAt);
+    let near = 0;
+    for (let i = 0; i < 2; i++) {
+      const h = i === 0 ? hands.left : hands.right;
+      if (!h.tracked || h.controller) {
+        if (this.moveHand === i) this.moveHand = -1;
+        continue;
+      }
+      if (this.moveHand === i) {
+        if (!h.pinch.pinching) {
+          // let go: the surfaces refit where it stands, and the move is kept (from where it stood by itself)
+          this.moveHand = -1;
+          const dx = root.position.x - this.kitBase.x;
+          const dz = root.position.z - this.kitBase.y;
+          const f = this.kitBaseFwd;
+          const a = dx * f.x + dz * f.z;
+          const l = dx * -f.z + dz * f.x;
+          this.settings = { ...this.settings, kitNudge: { a: Math.max(-0.3, Math.min(0.3, a)), l: Math.max(-0.5, Math.min(0.5, l)) } };
+          saveSettings(this.settings);
+          audio.ui('drop', 0.8);
+          this.placeKit(true);
+          continue;
+        }
+        // (the pinch carries it in x and z only: it stays on the desk; and it turns to face you as it goes)
+        const p = root.parent;
+        this.moveAt.copy(h.pinchPoint).add(this.moveOff);
+        if (p) p.worldToLocal(this.moveAt);
+        root.position.x = this.moveAt.x;
+        root.position.z = this.moveAt.z;
+        root.getWorldPosition(this.moveAt);
+        root.rotation.y = Math.atan2(-(this.moveAt.x - this.head.x), -(this.moveAt.z - this.head.z));
+        root.updateMatrixWorld(true);
+        near = 1;
+        continue;
+      }
+      const d = h.pinchPoint.distanceTo(this.moveAt);
+      near = Math.max(near, 1 - Math.min(1, d / 0.08));
+      if (this.moveHand < 0 && h.edge === 'start' && d < 0.045 && !this.dragging[0] && !this.dragging[1]) {
+        this.moveHand = i;
+        root.getWorldPosition(this.moveOff).sub(h.pinchPoint);
+        this.moveOff.y = 0;
+        audio.ui('press', 0.7);
+      }
+    }
+    this.moveK += (near - this.moveK) * 0.25;
+    puck.scale.setScalar(1 + 0.25 * this.moveK);
+    (puck.material as MeshBasicMaterial).opacity = 0.65 + 0.35 * this.moveK;
+  }
+
+  // ------------------------------------------------------------------ the HUD and the first steps
+
+  /** The streak's last step up (for the HUD), and when (panel time). */
+  private hudMult = 0;
+  private hudStreak = 0;
+  private hudStreakT = -9;
+  private hudMultT = -9;
+  /** When the count-in ended (panel time): GO shows a moment. */
+  private hudGoT = -9;
+  private hudWasCount = false;
+  /** The instrument whose how-to is showing, and since when. */
+  private hudHowInst = '';
+  private hudHowT = -9;
+  private hudHitsAt = -1;
+  private hudSay: HudSay = { kind: 'none' };
+  private hudCalcT = -9;
+  /** Where the HUD stands (kit-local): on the desk on your side of the instrument, clear of the kick's front. */
+  private hudAt = new Vector3(0, 0.05, 0.24);
+  private coachTo(n: number): void {
+    if ((this.settings.coach ?? 0) >= n) return;
+    this.settings = { ...this.settings, coach: n };
+    saveSettings(this.settings);
+  }
+  /** What the HUD says now: the count-in, the one thing to do, the streak; else the first steps; else nothing. */
+  private hudTick(dt: number): void {
+    const hud = this.hud;
+    if (!hud) return;
+    // (what it says is worked out 20 times a second, not every frame: it's words, and nothing here needs a frame)
+    if (this.uiT - this.hudCalcT < 0.05) {
+      hud.update(dt, this.hudAt, this.head, motion.calm);
+      return;
+    }
+    this.hudCalcT = this.uiT;
+    const placed = this.placement.phase === 'placed';
+    const mode = this.game.mode;
+    const d = this.game.display;
+    const inSong = mode === 'play' || mode === 'count';
+    let say: HudSay = { kind: 'none' };
+    if (placed) {
+      const ctl = (hands.left.tracked && hands.left.controller) || (hands.right.tracked && hands.right.controller);
+      if (inSong && this.hudWasCount && !(mode === 'count' && d.count > 0)) this.hudGoT = this.uiT;
+      this.hudWasCount = mode === 'count' && d.count > 0;
+      const step = this.game.lessonStepNow();
+      const beat = this.game.songBeat;
+      if (ctl && !inSong) say = { kind: 'tip', big: 'Put the controllers down', small: 'You play Thump with your bare hands' };
+      else if (inSong && this.game.paused) say = { kind: 'none' };
+      else if (d.count > 0 && (mode === 'count' || this.game.looper.state === 'count')) say = { kind: 'count', n: d.count };
+      else if (inSong && this.uiT - this.hudGoT < 0.6) say = { kind: 'go' };
+      else if (inSong && d.spot?.ready && !d.spot.active) say = { kind: 'tip', big: 'Hands up!', small: 'Raise both hands for double points', gold: true };
+      else if (inSong && this.uiT - this.hudMultT < 1.5 && this.hudMult > 1) say = { kind: 'mult', n: this.hudMult };
+      else if (inSong && this.uiT - this.hudStreakT < 1.5 && this.hudStreak > 0) say = { kind: 'streak', n: this.hudStreak };
+      else if (step) say = { kind: 'tip', big: step.title, small: step.say };
+      else if (inSong && beat >= 0 && beat < 8 && (this.settings.coach ?? 0) < 3) say = { kind: 'tip', big: 'Hit as the ring closes', small: 'Each note is a ring shrinking onto what plays it' };
+      else if (mode === 'discover' && !this.game.paused) {
+        const inst = this.kit.inst;
+        const coach = this.settings.coach ?? 0;
+        // a new instrument out: how to play it, for 7 s, the first time
+        if (inst !== this.hudHowInst) {
+          this.hudHowInst = inst;
+          this.hudHowT = (this.settings.taught ?? []).includes(inst) ? -99 : this.uiT;
+          if (this.hudHowT > 0) this.settings = { ...this.settings, taught: [...(this.settings.taught ?? []), inst] };
+          if (this.hudHowT > 0) saveSettings(this.settings);
+        }
+        if (this.uiT - this.hudHowT < 7) say = { kind: 'tip', big: instDef(inst).name, small: instDef(inst).how };
+        else if (coach === 0) {
+          // the first steps: play it (a few hits), then the screen, then a lesson
+          if (this.hudHitsAt < 0) this.hudHitsAt = this.debug.hits;
+          if (this.debug.hits - this.hudHitsAt >= 6) this.coachTo(1);
+          say = { kind: 'tip', big: inst === 'drums' ? 'Slap a drum' : `Play the ${instDef(inst).name.toLowerCase()}`, small: inst === 'drums' ? 'Flat hands on the white heads, or fists for sticks' : instDef(inst).how };
+        } else if (coach === 1) say = { kind: 'tip', big: 'Poke the screen', small: 'The screen behind the instrument is your menu' };
+        else if (coach === 2) say = { kind: 'tip', big: 'Press Songs', small: 'Then start with the first lesson' };
+      }
+      if (inSong) this.coachTo(3);
+    }
+    hud.set(say);
+    this.hudSay = say;
+    hud.update(dt, this.hudAt, this.head, motion.calm);
+  }
+
   /** The panel's clock (real time, never paused) and what's waiting on it. */
   private uiT = 0;
   private uiTimed: { at: number; fn: () => void }[] = [];
@@ -1470,12 +1676,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.showFriends();
     this.hitWords?.update(dt);
     this.hitFx?.update(dt);
+    this.hudTick(dt);
     if (this.seats.size) {
       // the band's players leave when the song's over
       if (this.game.mode === 'discover' || this.game.mode === 'build') this.dropSeats(true);
       for (const s of this.seats.values()) s.update(dt, this.head);
     }
     this.panelHandle();
+    this.kitHandle();
     if (!this.kit.module.hidden) this.panelHover();
     else this.kit.module.hover(-1, 0, 0, 0);
     this.tickBand(dt);
@@ -3190,6 +3398,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if ((k === this.panelPressK && this.uiT - this.panelPressT < 0.15) || this.uiT - this.panelPressT < 0.08 || this.uiT - this.pageT < 0.45) return;
     this.panelPressT = this.uiT;
     this.panelPressK = k;
+    if ((this.settings.coach ?? 0) === 1) this.coachTo(2);
     this.kit.module.pressKey(k);
     audio.ui(it.id === 'back' || it.id === 'nav:main' ? 'back' : it.id.startsWith('set:') ? 'toggle' : 'press');
     if (it.id.startsWith('nav:') || it.id === 'play' || it.id === 'learn') this.uiLater(0.05, () => audio.ui('open', 0.8));
@@ -4275,6 +4484,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.forwardFlat(this.fwd);
       const palm = this.placement.source === 'palm' || (this.placement.source === 'plane' && this.placement.palmX !== 0) ? { x: this.placement.palmX, z: this.placement.palmZ } : null;
       const pose = kitPose(this.head, this.fwd, this.placement.deskY!, palm);
+      // (where it stands by itself, kept: a move of yours is saved from there)
+      this.kitBase.set(pose.x, pose.z, pose.yaw);
+      this.kitBaseFwd.set(this.fwd.x, 0, this.fwd.z);
+      const nu = this.settings.kitNudge;
+      if (nu) {
+        pose.x += this.fwd.x * nu.a - this.fwd.z * nu.l;
+        pose.z += this.fwd.z * nu.a + this.fwd.x * nu.l;
+        // turned to face you from there
+        pose.yaw = Math.atan2(-(pose.x - this.head.x), -(pose.z - this.head.z));
+      }
       root.position.set(pose.x, pose.y, pose.z);
       root.rotation.set(0, pose.yaw, 0);
       root.updateMatrixWorld(true);

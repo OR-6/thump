@@ -1,6 +1,6 @@
 /**
- * The word for a hit in a song, over what you hit (each word its own colour, stamped with a plum outline so it reads
- * on a white head): it stamps in 5 cm above, rises a little, and is gone half a second later. Never in the middle of
+ * The word for a hit in a song, over what you hit (each word its own neon, as the screen draws judgements, with a dark
+ * outline so it reads on a white head): it stamps in 5 cm above, rises a little, and is gone half a second later. Never in the middle of
  * the view.
  * A small pool of planes, each a word drawn once.
  */
@@ -23,28 +23,24 @@ function wordTexture(word: string): CanvasTexture {
     g.clearRect(0, 0, 512, 144);
     g.font = `italic 900 92px ${FONT}`;
     g.textBaseline = 'middle';
-    const [, b] = INK[word] ?? ['#ffffff', '#ffffff'];
     const w = g.measureText(word).width;
     const x = (512 - w) / 2;
     const y = 70;
-    // stamped like the wordmark: a hard plum shadow, a thick plum outline, then a solid fill in its colour with a
-    // light top edge (it has to read over a white drum head and a bright room, not glow into them)
+    // the screen's own look (src/ui/theme.ts): the judgement's colour as a light-to-colour gradient, a dark outline so
+    // it reads over a bright desk, a glow in its colour
     g.lineJoin = 'round';
-    g.fillStyle = '#1d0b2c';
-    g.strokeStyle = '#1d0b2c';
+    g.strokeStyle = '#1a0b2e';
     g.lineWidth = 18;
-    g.strokeText(word, x + 5, y + 6);
-    g.fillText(word, x + 5, y + 6);
     g.strokeText(word, x, y);
-    g.fillStyle = b;
+    const [a, b] = INK[word] ?? ['#ffffff', '#ffffff'];
+    const gr = g.createLinearGradient(0, y - 46, 0, y + 46);
+    gr.addColorStop(0, a);
+    gr.addColorStop(1, b);
+    g.shadowColor = b;
+    g.shadowBlur = 20;
+    g.fillStyle = gr;
     g.fillText(word, x, y);
-    g.save();
-    g.beginPath();
-    g.rect(0, 0, 512, y - 14);
-    g.clip();
-    g.fillStyle = 'rgba(255,255,255,0.55)';
-    g.fillText(word, x, y);
-    g.restore();
+    g.shadowBlur = 0;
     tex.needsUpdate = true;
   };
   draw();

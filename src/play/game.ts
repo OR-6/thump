@@ -2404,6 +2404,14 @@ export class Game {
 
   /** The lesson's step now (-1: none, or not a lesson). */
   private lessonIdx = -1;
+  /** The lesson's step now, for the HUD (null: not a lesson, or not playing). */
+  lessonStepNow(): { title: string; say: string } | null {
+    return this.mode === 'play' || this.mode === 'count' ? this.lessonNow() : null;
+  }
+  /** Beats into the song (NaN outside one). */
+  get songBeat(): number {
+    return this.mode === 'play' || this.mode === 'count' ? this.clock.beatAt(this.t) : Number.NaN;
+  }
   private lessonNow(): { title: string; say: string } | null {
     const ls = this.perf?.track.score?.tune.lesson;
     return ls && this.lessonIdx >= 0 ? (ls.steps[this.lessonIdx] ?? null) : null;
