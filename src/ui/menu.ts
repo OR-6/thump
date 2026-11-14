@@ -5,7 +5,7 @@
  */
 import { KEYS, SCALES, SHELF, instDef } from '../kit/shelf.js';
 
-export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'settings' | 'song' | 'build' | 'results' | 'tune';
+export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
 
 export interface Item {
   id: string;
@@ -225,10 +225,22 @@ function buildPageFor(m: MenuInput): Page {
       return { id: 'build', title: m.line, line: m.sub, items, body: 'song' };
     }
     case 'song': {
+      // pause in the corner, always in the same place; the instruments you can switch to along the bottom, then stop
       const c = row(Math.max(1, m.switchable.length) + 1, 24, W - 24, 18);
       const items: Item[] = m.switchable.map((id, i) => ({ id: `inst:${id}`, label: instDef(id as never).name, icon: id, on: id === m.inst.id, color: instDef(id as never).color, kind: 'card' as const, x: c[i].x, y: BOT.y, w: c[i].w, h: BOT.h }));
       items.push({ id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'button', x: c[c.length - 1].x, y: BOT.y, w: c[c.length - 1].w, h: BOT.h });
+      items.push(corner('pause', 'Pause'));
       return { id: 'song', title: m.line, line: m.sub, items, body: 'song' };
+    }
+    case 'pause': {
+      // everything stopped where it was; resume counts you back in
+      const c = row(3, 24, W - 24, 18);
+      const items: Item[] = [
+        { id: 'pause:songs', label: 'Songs', kind: 'button', x: c[0].x, y: BOT.y, w: c[0].w, h: BOT.h },
+        { id: 'pause:restart', label: 'Restart', kind: 'button', x: c[1].x, y: BOT.y, w: c[1].w, h: BOT.h },
+        { id: 'resume', label: 'Resume', kind: 'play', x: c[2].x, y: BOT.y, w: c[2].w, h: BOT.h },
+      ];
+      return { id: 'pause', title: 'Paused', line: m.line, items, body: 'how', how: 'Resume counts you back in' };
     }
     case 'results': {
       const c = row(m.make ? 4 : 3, 24, W - 24, 18);

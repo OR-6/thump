@@ -1202,7 +1202,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (this.paused) return;
     const dt = Math.min(delta, 0.1);
     this.watchFrames(delta);
-    this.clock.tick(Math.min(dt, 0.05), audio.running, audio.now());
+    // (paused by you: the song's clock holds still; you can still use the panel)
+    if (!this.userPaused) this.clock.tick(Math.min(dt, 0.05), audio.running, audio.now());
     this.debug.audio = audio.running;
     if (this.resumePending && audio.running) {
       this.resumePending = false;
@@ -1253,7 +1254,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.partFailed(1, e);
     }
     try {
-      this.game.tick(this.clock.t);
+      if (!this.userPaused) this.game.tick(this.clock.t);
       this.showBeat();
     } catch (e) {
       this.partFailed(2, e);
@@ -2469,6 +2470,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     return (h.indexTip.distanceTo(h.palm) + h.middleTip.distanceTo(h.palm) + h.ringTip.distanceTo(h.palm)) / 3;
   }
   private airTick(dt: number, inv: Matrix4): void {
+    // (paused: nothing you hit plays or counts)
+    if (this.userPaused) return;
     if (this.kitOutT < 0 && this.game.found.includes('kit')) this.kitOutT = this.clock.t;
     const out = this.kitOutT >= 0 && this.placement.phase === 'placed';
     const drums = out && this.kit.inst === 'drums';
@@ -3053,6 +3056,22 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (kind === 'scale' || kind === 'sound' || kind === 'oct' || kind === 'key' || kind === 'pieces') {
       this.setShelf(kind, arg);
+      this.game.refreshDisplay();
+      return;
+    }
+    if (id === 'pause' || id === 'resume') {
+      this.setUserPaused(id === 'pause');
+      return;
+    }
+    if (id === 'pause:restart') {
+      this.setUserPaused(false);
+      this.game.restartSong();
+      return;
+    }
+    if (id === 'pause:songs') {
+      this.setUserPaused(false);
+      this.game.stop();
+      this.game.menu = 'songs';
       this.game.refreshDisplay();
       return;
     }
@@ -4178,10 +4197,25 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   // ------------------------------------------------------------------ session, pause, frames
 
+  /** Paused by you: the song, the band and scoring hold still; resuming counts you back in. */
+  private userPaused = false;
+  private setUserPaused(p: boolean): void {
+    if (p === this.userPaused) return;
+    const playing = this.game.mode === 'play' || this.game.mode === 'count';
+    if (p && !playing) return;
+    this.userPaused = p;
+    this.game.paused = p;
+    audio.setPaused(p || this.paused);
+    if (!p) this.resumePending = true;
+    // (the panel comes back if you'd hidden it: it's how you resume)
+    if (p) this.kit.module.setHidden(false);
+    this.game.refreshDisplay();
+  }
+
   private setPaused(p: boolean): void {
     if (p === this.paused) return;
     this.paused = p;
-    audio.setPaused(p);
+    audio.setPaused(p || this.userPaused);
     // the count-in waits until the audio is really running again
     if (!p) this.resumePending = true;
   }

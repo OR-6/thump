@@ -62,15 +62,20 @@ describe('the panel pages', () => {
   });
   it('in a song: switch instrument, or stop', () => {
     const p = buildPage({ ...base('song'), line: 'Kick Start' });
-    expect(p.items.map((i) => i.id)).toEqual(['inst:drums', 'inst:piano', 'inst:guitar', 'stop']);
+    expect(p.items.map((i) => i.id)).toEqual(['inst:drums', 'inst:piano', 'inst:guitar', 'stop', 'pause']);
     expect(p.body).toBe('song');
   });
   it('results: three stars on Easy and AGAIN goes up to Normal', () => {
     expect(buildPage({ ...base('results'), harder: 'NORMAL' }).items.find((i) => i.id === 'again')?.label).toBe('Again on\nnormal');
     expect(buildPage(base('results')).items.find((i) => i.id === 'again')?.label).toBe('Again');
   });
+  it('paused: songs, restart, and resume to the front', () => {
+    const p = buildPage({ ...base('pause'), line: 'Ode to Joy' });
+    expect(p.items.map((i) => i.id)).toEqual(['pause:songs', 'pause:restart', 'resume']);
+    expect(p.items.find((i) => i.id === 'resume')?.kind).toBe('play');
+  });
   it('nothing on any page overlaps, and everything is on the panel', () => {
-    for (const id of ['main', 'instruments', 'inst', 'songs', 'band', 'settings', 'free', 'build', 'song', 'results'] as PageId[]) {
+    for (const id of ['main', 'instruments', 'inst', 'songs', 'band', 'settings', 'free', 'build', 'song', 'results', 'pause'] as PageId[]) {
       const items = buildPage(base(id)).items;
       for (const a of items) {
         expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);

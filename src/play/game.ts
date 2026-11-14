@@ -1835,6 +1835,16 @@ export class Game {
   }
 
   /** Stop the song now (no stars). */
+  /** You paused the song (the panel's Pause): the panel shows Resume, Restart and Songs. */
+  paused = false;
+  /** The song now, from its start again. */
+  restartSong(): void {
+    const i = this.machine ? this.tracks.indexOf(this.machine.track) : this.songSel;
+    if (i < 0) return;
+    this.stop();
+    this.playSong(i);
+  }
+
   stop(): void {
     this.stage.lightsDown?.(false);
     this.listening = false;
@@ -2333,7 +2343,7 @@ export class Game {
     }
     // the page
     const v = this.stage.shelf?.(0) ?? { id: 'drums', name: 'Drums', how: '', scale: '', sound: '', oct: 0 };
-    const pageId: PageId = this.tuneOpen ? 'tune' : this.settingsOpen ? 'settings' : this.mode === 'discover' ? this.menu : this.mode === 'build' ? 'build' : this.mode === 'results' ? 'results' : 'song';
+    const pageId: PageId = this.tuneOpen ? 'tune' : this.settingsOpen ? 'settings' : this.mode === 'discover' ? this.menu : this.mode === 'build' ? 'build' : this.mode === 'results' ? 'results' : this.paused && (this.mode === 'play' || this.mode === 'count') ? 'pause' : 'song';
     const band = this.stage.bandState?.() ?? { state: 'idle', players: 1 };
     const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
