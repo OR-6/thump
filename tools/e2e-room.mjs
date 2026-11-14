@@ -176,7 +176,7 @@ shot('room-04-module', look);
   s = state();
 }
 
-// tap PLAY on the module: a song starts (Kick Start, as written), the band in, your part on the drums
+// tap PLAY on the module: the first song starts (Mary's Lamb), the band in, your part on the drums
 // SONGS on the panel, then PLAY
 if (!s.targets['ui:nav:songs']) {
   await slapAt(s.targets['ui:nav:main'], s.targets.panelNormal, { speed: 0.5, from: 0.05 });
@@ -186,7 +186,7 @@ await slapAt(s.targets['ui:nav:songs'], s.targets.panelNormal, { speed: 0.5, fro
 s = state();
 await slapAt(s.targets['ui:play'], s.targets.panelNormal, { speed: 0.5, from: 0.05 });
 s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 3000);
-check('SONGS, then PLAY, plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && /Kick Start/.test(s.game.display.line), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
+check('SONGS, then PLAY, plays a song', (s.game.mode === 'count' || s.game.mode === 'play') && /Mary's Lamb/.test(s.game.display.line), `${s.game.mode} / ${s.game.display.line} / ${s.game.display.sub}`);
 s = await until((x) => x.game.motes > 0, 8000);
 check("the song's notes fly to the drums", s.game.motes > 0, `motes=${s.game.motes} ${s.game.display.line} / ${s.game.display.sub}`);
 shot('room-05-song', look);
@@ -203,11 +203,11 @@ if (SONG) {
   s = await until((x) => x.game.display.line !== 'That was you', 30000, 500);
   check('then the score: the song and its %', /: \d+%$/.test(s.game.display.line), s.game.display.line);
   shot('room-07-results', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
-  // > on the results: make it your own (Build), and the autoplayer builds it
+  // then Make a track (a familiar song has no loop of its own: it starts the first loop track), and the autoplayer builds it
   await wait(8000);
   run('tools/press-next.mjs');
   s = await until((x) => x.game.mode === 'build', 5000, 250);
-  check('MAKE IT YOURS after a song builds it', s.game.mode === 'build', s.game.mode);
+  check('Make a track after a song builds the first loop track', s.game.mode === 'build', s.game.mode);
   s = await until((x) => (x.progress.built ?? []).includes('kick-start'), 150000, 1000);
   check('six parts later your machine runs', (s.progress.built ?? []).includes('kick-start'), `${s.game.display.line} / ${s.game.display.sub}`);
   s = await until((x) => (x.game.display.page?.items ?? []).some((i) => i.id === 'key:play'), 15000, 500);

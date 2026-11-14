@@ -5,6 +5,8 @@
  * broken, and it loops. When every part is in, the desk plays the track by itself. Pure logic, unit-tested.
  */
 
+import { SCORES, chordMidi, type Score } from '../songs/score.js';
+
 export type PartName = 'KICK' | 'SNARE' | 'HAT' | 'PERC' | 'PERC 2' | 'CLAP' | 'KEYS' | 'KEYS 2' | 'BASS';
 
 export interface PartDef {
@@ -32,6 +34,8 @@ export interface TrackDef {
   minor?: boolean;
   /** Swing: where the off-beat eighth falls between two beats (0.5 straight, 0.58 a lazy shuffle). */
   swing?: number;
+  /** A song written out bar by bar (src/songs/score.ts) rather than a two-bar loop: it has no parts to build. */
+  score?: Score;
 }
 
 /** Beats in the loop: two bars. */
@@ -139,6 +143,24 @@ export const TRACKS: readonly TrackDef[] = [
   },
 ];
 
+/**
+ * The songs to play: familiar tunes, written out bar by bar (src/songs/tunes.ts), in their order (each opens after the
+ * one before). The loop tracks above are what Make a track builds.
+ */
+export const SONG_TRACKS: readonly TrackDef[] = SCORES.map((s) => ({
+  id: s.tune.id,
+  name: s.tune.name,
+  bpm: s.tune.bpm,
+  key: s.tune.key,
+  parts: [],
+  needs: 0,
+  // (the home chord: the band's held five at the end, and where your last hit lands)
+  chords: [chordMidi(s.home, s.tune.key)],
+  minorChords: s.home.minor ? [0] : [],
+  minor: s.tune.scale === 'minor',
+  score: s,
+}));
+
 export interface Step {
   beat: number;
   degree: number;
@@ -182,6 +204,10 @@ export interface MachineNote {
   filled: boolean;
   /** The pattern step it belongs to, when your timing moved it off it (the pocket). */
   at?: number;
+  /** A band line in a written-out song (its melody, its bass): played by the band's own voice at this MIDI note. */
+  midi?: number;
+  /** Its length in beats. */
+  len?: number;
 }
 
 /** How far your own timing may move a recorded note off the grid (beats: a 32nd). */
