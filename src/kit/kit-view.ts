@@ -223,6 +223,13 @@ export class KitView {
     if (this.inst === 'piano') this.models.get('piano')?.struck(30 + j, gain);
   }
 
+  /** Light zone i of the instrument out at k: on the model itself if it lights itself (the handpan), else its overlay. */
+  instLight(i: number, k: number): void {
+    const m = this.models.get(this.inst);
+    if (m?.light) m.light(i, k);
+    else this.instOverlay()?.light(i, k);
+  }
+
   /** The overlay of the instrument on the desk (null for the drums). */
   instOverlay(): Overlay | null {
     return this.inst === 'drums' ? null : (this.shelf.get(this.inst) ?? null);

@@ -6,11 +6,11 @@
  * when strummed. A handpan: a nitrided steel shell with its tone fields and raised ding. A marimba: rosewood bars
  * that bounce, on a frame. Deterministic: the same in the app and the editor.
  */
-import { BoxGeometry, CircleGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
+import { BoxGeometry, CircleGeometry, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
-import { CONGA, KEYBOARD, PIANO_CHORD } from '../../kit/shelf.js';
+import { CONGA, HANDPAN, KEYBOARD, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
-import { fineNormal, woodGrain } from './surfaces.js';
+import { fineNormal, hammered, woodGrain } from './surfaces.js';
 
 const mat = (name: string, color: number, roughness: number, metalness = 0) => new MeshStandardMaterial({ name, color, roughness, metalness });
 const named = <T extends { name: string }>(o: T, n: string): T => {
@@ -23,6 +23,8 @@ export interface DeskModel {
   readonly root: Group;
   layout(zones: readonly Zone[]): void;
   struck(i: number, gain: number): void;
+  /** Light part i at k (0..1) when a song asks for it, if it lights itself (else the overlay does). */
+  light?(i: number, k: number): void;
   update(dt: number): void;
 }
 
@@ -233,51 +235,67 @@ export class HandpanModel implements DeskModel {
   readonly root = named(new Group(), 'Handpan');
   private fields: Mesh[] = [];
   private spring = new Springs(10);
-  private shell: Mesh | null = null;
-  // (both sides drawn: the lathe's faces turn inward, and from above the shell vanished)
-  private readonly steel = new MeshStandardMaterial({ name: 'Steel', color: 0x4a3a2c, roughness: 0.32, metalness: 0.85, side: DoubleSide });
-  private readonly field = mat('Field', 0x5c4a38, 0.22, 0.9);
   private glow: number[] = [];
+  // nitrided steel: warm bronze, hammered all over
+  private readonly steel = (() => {
+    const n = hammered().clone();
+    n.needsUpdate = true;
+    n.repeat.set(9, 9);
+    return new MeshStandardMaterial({ name: 'Steel', color: 0x8a6a4c, roughness: 0.28, metalness: 1, normalMap: n, side: DoubleSide });
+  })();
+  private readonly rim = new MeshStandardMaterial({ name: 'Rim', color: 0x8a6a4c, roughness: 0.2, metalness: 1 });
+  private readonly fieldMat = new MeshStandardMaterial({ name: 'Field', color: 0x4a3828, roughness: 0.45, metalness: 1 });
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
     this.fields = [];
     if (!zones.length) return;
-    const ding = zones[0];
-    let R = 0;
-    for (const q of zones) R = Math.max(R, Math.hypot(q.x - ding.x, q.z - ding.z) + q.w);
-    R += 0.012;
-    // the shell: a low steel dome with a rolled rim (a handpan's lens shape, seen from above)
-    // (low: your hand lands on the real desk under it, so it stays a lens, not a dome)
-    const H = 0.016;
-    const pts: Vector2[] = [];
-    for (let k = 0; k <= 16; k++) {
-      const a = (k / 16) * (Math.PI / 2);
-      pts.push(new Vector2(Math.cos(a) * R + 0.0001, 0.006 + Math.sin(a) * H * Math.cos(a * 0.3)));
+    const { x: cx, z: cz, R } = handpanShape(zones);
+    // the lens: a top shell rising to the ding, a shallower bottom shell down to the desk (its port underneath),
+    // joined at a rolled rim
+    const top: Vector2[] = [];
+    for (let k = 0; k <= 24; k++) {
+      const r = R * (1 - k / 24);
+      top.push(new Vector2(Math.max(0.0005, r), handpanY(r, R)));
     }
-    pts.reverse();
-    pts.push(new Vector2(R + 0.004, 0.004), new Vector2(R + 0.002, 0));
-    this.shell = named(new Mesh(new LatheGeometry(pts, 64), this.steel), 'Shell');
-    this.shell.position.set(ding.x, 0, -ding.z);
-    this.root.add(this.shell);
-    // tone fields: shallow dimples on the shell, the ding raised in the middle
+    const shell = named(new Mesh(new LatheGeometry(top.reverse(), 72), this.steel), 'Shell');
+    const bottom: Vector2[] = [];
+    for (let k = 0; k <= 12; k++) {
+      const t = k / 12;
+      bottom.push(new Vector2(R * (1 - 0.45 * t), HANDPAN.rim * (1 - t * t) + 0.001));
+    }
+    const under = named(new Mesh(new LatheGeometry(bottom, 72), this.steel), 'Bottom');
+    const band = named(new Mesh(new TorusGeometry(R, 0.0028, 10, 96), this.rim), 'Rim');
+    band.rotation.x = -Math.PI / 2;
+    band.position.y = HANDPAN.rim;
+    for (const m of [shell, under, band]) m.position.set(cx, m.position.y, -cz);
+    this.root.add(shell, under, band);
+    // the ding: a raised dome; the tone fields: sunken ovals (longer along the radius) with a dimple, on the shell
     zones.forEach((q, i) => {
-      const r = q.w;
-      const d = Math.hypot(q.x - ding.x, q.z - ding.z) / R;
-      const y = 0.006 + H * Math.sqrt(Math.max(0, 1 - d * d)) * 0.98;
-      const g = i === 0 ? new CylinderGeometry(r * 0.75, r, 0.006, 40) : new TorusGeometry(r * 0.82, 0.0022, 8, 40);
-      // (each field its own material, so a struck one can glow)
-      const m = named(new Mesh(g, this.field.clone()), i === 0 ? 'Ding' : `Field${i}`);
-      if (i !== 0) m.rotation.x = -Math.PI / 2;
-      m.position.set(q.x, y + (i === 0 ? 0.003 : 0.001), -q.z);
-      // tilted with the dome under it
-      if (i !== 0) {
-        // tilted with the dome under it
-        m.rotation.z = -((q.x - ding.x) / R) * 0.25;
-        m.rotation.x = -Math.PI / 2 - ((q.z - ding.z) / R) * 0.25;
-      }
-      this.fields.push(m);
-      this.root.add(m);
+      const dx = q.x - cx;
+      const dz = q.z - cz;
+      const d = Math.hypot(dx, dz);
+      const y = handpanY(d, R);
+      const g = new Group();
+      g.name = i === 0 ? 'Ding' : `Field${i}`;
+      g.position.set(q.x, y, -q.z);
+      // tip it with the dome under it
+      const slope = (HANDPAN.dome * d) / (R * R * Math.sqrt(Math.max(0.05, 1 - (d / R) * (d / R))));
+      // (turned to face out from the centre, in the scene's own axes: z toward you is the zones' −z; then tipped
+      // outward with the dome)
+      g.rotation.order = 'YXZ';
+      g.rotation.y = Math.atan2(dx, -dz);
+      g.rotation.x = Math.atan(slope);
+      const mat = this.fieldMat.clone();
+      const oval = new Mesh(new CircleGeometry(q.w * 0.92, 40), mat);
+      oval.rotation.x = -Math.PI / 2;
+      oval.scale.set(1, i === 0 ? 1 : 1.3, 1);
+      oval.position.y = 0.0006;
+      const dome = new Mesh(new SphereGeometry(q.w * (i === 0 ? 0.62 : 0.42), 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+      dome.scale.y = i === 0 ? 0.32 : 0.16;
+      g.add(oval, dome);
+      this.fields.push(oval);
+      this.root.add(g);
     });
   }
 
@@ -286,15 +304,25 @@ export class HandpanModel implements DeskModel {
     this.glow[i] = 0.6 + 0.6 * gain;
   }
 
+  /** A field asked for by a song glows on the shell itself. */
+  private asked: number[] = [];
+  light(i: number, k: number): void {
+    this.asked[i] = Math.max(this.asked[i] ?? 0, k);
+  }
+
   update(dt: number): void {
     this.spring.step(dt, 1400, 18);
-    this.fields.forEach((m, i) => {
-      // a struck field rings: it swells and glows warm, fading in about a sixth of a second
-      const s = 1 + Math.abs(this.spring.x[i]) * 12;
-      m.scale.set(s, i === 0 ? 1 : s, s);
+    for (let i = 0; i < this.fields.length; i++) {
+      const ask = this.asked[i] ?? 0;
+      this.asked[i] = 0;
+      if (ask > (this.glow[i] ?? 0)) this.glow[i] = ask * 0.9;
+      const m = this.fields[i];
+      // a struck field rings: it swells a touch and glows warm, fading in about a sixth of a second
+      const s = 1 + Math.abs(this.spring.x[i]) * 6;
+      m.parent!.scale.setScalar(s);
       const g = (this.glow[i] = Math.max(0, (this.glow[i] ?? 0) - dt * 6));
       (m.material as MeshStandardMaterial).emissive.setHex(0xffc27a).multiplyScalar(g);
-    });
+    }
   }
 }
 
@@ -308,12 +336,13 @@ export class MarimbaModel implements DeskModel {
     map.needsUpdate = true;
     map.repeat.set(18, 5);
     map.rotation = Math.PI / 2;
-    return new MeshPhysicalMaterial({ name: 'Rosewood', color: 0x8a3f20, map, roughness: 0.45, clearcoat: 0.6, clearcoatRoughness: 0.22 });
+    return new MeshPhysicalMaterial({ name: 'Rosewood', color: 0x5e2a1a, map, roughness: 0.38, clearcoat: 0.5, clearcoatRoughness: 0.22 });
   })();
   private readonly frame = new MeshPhysicalMaterial({ name: 'Frame', color: 0x3b2416, map: woodGrain(43), roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.3 });
   private readonly cord = mat('Cord', 0x26211c, 0.9);
   private readonly brass = mat('Brass', 0xc8a050, 0.3, 1);
   private readonly chrome = mat('Chrome', 0xe2e5ea, 0.16, 1);
+  private readonly gold = mat('Anodised', 0xb8955a, 0.3, 1);
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -379,8 +408,8 @@ export class MarimbaModel implements DeskModel {
       bar.position.set(q.x, this.barY, -q.z);
       this.bars.push(bar);
       // its resonator: a chrome tube lying behind it, longer for the low bars, capped
-      const tl = 0.024 + 0.026 * (1 - i / Math.max(1, zones.length - 1));
-      const tube = named(new Mesh(new CylinderGeometry(0.0075, 0.0075, tl, 20, 1, false), this.chrome), `Resonator${i}`);
+      const tl = 0.06 + 0.08 * (1 - i / Math.max(1, zones.length - 1));
+      const tube = named(new Mesh(new CylinderGeometry(0.008, 0.008, tl, 20, 1, false), this.gold), `Resonator${i}`);
       tube.rotation.x = Math.PI / 2;
       tube.position.set(q.x, 0.0078, -(q.z + q.h / 2 + 0.012 + tl / 2));
       this.root.add(bar, tube);

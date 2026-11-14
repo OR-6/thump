@@ -216,6 +216,22 @@ export function congaZones(): Zone[] {
   return out;
 }
 
+/** The handpan's lens: its rim this high off the desk, its top shell rising this much more to the ding. */
+export const HANDPAN = { rim: 0.026, dome: 0.05 } as const;
+/** The handpan's centre and outer radius (from its zones: the ding first, the fields round it). */
+export function handpanShape(zones: readonly Zone[]): { x: number; z: number; R: number } {
+  const ding = zones[0];
+  if (!ding) return { x: 0, z: 0, R: 0.15 };
+  let R = 0;
+  for (const q of zones) R = Math.max(R, Math.hypot(q.x - ding.x, q.z - ding.z) + q.w);
+  return { x: ding.x, z: ding.z, R: R + 0.012 };
+}
+/** The top shell's height above the desk at distance `d` from the centre. */
+export function handpanY(d: number, R: number): number {
+  const k = Math.min(1, d / R);
+  return HANDPAN.rim + HANDPAN.dome * Math.sqrt(Math.max(0, 1 - k * k));
+}
+
 /** The handpan: a low ding in the middle (9 cm), eight notes round it (6 cm), climbing in a zig-zag left and right. */
 export function handpanZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [{ i: 0, shape: 'disc', x: 0, z: 0.02, w: 0.045, h: 0, degree: 0, midi: scaleMidi(root, scale, 0) }];

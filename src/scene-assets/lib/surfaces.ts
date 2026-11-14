@@ -99,3 +99,37 @@ export function cymbalRings(): { map: DataTexture; rough: DataTexture } {
   );
   return { map, rough };
 }
+
+/**
+ * Hammered steel (a normal map): shallow round dimples about 8 mm across, packed unevenly, the way a handpan's shell
+ * is hammered. Tiles; repeat it to the size wanted.
+ */
+export function hammered(): DataTexture {
+  return once('hammered', () => {
+    const r = rng(23);
+    const N = 128;
+    const cells = Array.from({ length: 70 }, () => ({ x: r() * N, y: r() * N }));
+    return tex(N, N, (x, y) => {
+      // the nearest dimple's centre (wrapping), and the slope toward it
+      let best = 1e9;
+      let dx = 0;
+      let dy = 0;
+      for (const c of cells)
+        for (const ox of [-N, 0, N])
+          for (const oy of [-N, 0, N]) {
+            const ex = x - (c.x + ox);
+            const ey = y - (c.y + oy);
+            const d = ex * ex + ey * ey;
+            if (d < best) {
+              best = d;
+              dx = ex;
+              dy = ey;
+            }
+          }
+      const k = Math.sqrt(best) / 9;
+      const s = Math.min(1, k) * 20;
+      const len = Math.sqrt(best) || 1;
+      return [128 + (dx / len) * s, 128 + (dy / len) * s, 245];
+    }, false);
+  });
+}
