@@ -59,3 +59,27 @@ export function wordmarkSvg(fill = 'currentColor', label = 'Thump'): string {
   const aria = label ? `role="img" aria-label="${label}"` : 'aria-hidden="true"';
   return `<svg class="wordmark-svg" viewBox="-18 0 438 100" ${aria}><g transform="skewX(-10)" fill="${fill}" fill-rule="evenodd">${LETTERS.map((d) => `<path d="${d}"/>`).join('')}</g></svg>`;
 }
+
+/**
+ * Thump's mark (the icon, tools/icon-hit.mjs, the same geometry): a solid core and three broken rings spreading from
+ * it, each turned a little differently. `simple` is the favicon's two heavier rings, for small sizes. The view box is
+ * centred on the core, and each ring sits in its own `.ring` group so the page can turn them.
+ */
+const RINGS = [
+  { r: 150, w: 56, dash: [760, 180], rot: -20 },
+  { r: 270, w: 34, dash: [520, 160, 260, 300], rot: 40 },
+  { r: 390, w: 18, dash: [300, 220, 480, 520], rot: 10 },
+];
+const RINGS_SIMPLE = [
+  { r: 170, w: 92, dash: [800, 270], rot: -20 },
+  { r: 330, w: 64, dash: [700, 240, 600, 540], rot: 30 },
+];
+export function ringMarkSvg(opts: { simple?: boolean; className?: string; label?: string } = {}): string {
+  const rings = opts.simple ? RINGS_SIMPLE : RINGS;
+  const half = opts.simple ? 372 : 400;
+  const aria = opts.label ? `role="img" aria-label="${opts.label}"` : 'aria-hidden="true" focusable="false"';
+  const body = rings
+    .map((g, i) => `<g class="ring ring-${i + 1}"><circle r="${g.r}" fill="none" stroke="var(--hot, #ff4b2b)" stroke-width="${g.w}" stroke-dasharray="${g.dash.join(' ')}" transform="rotate(${g.rot})"/></g>`)
+    .join('');
+  return `<svg class="${opts.className ?? 'mark'}" viewBox="${-half} ${-half} ${half * 2} ${half * 2}" ${aria}>${body}<circle class="core" r="${opts.simple ? 84 : 70}" fill="var(--ink, #f6efe4)"/></svg>`;
+}
