@@ -37,6 +37,8 @@ export interface Page {
   body?: 'song' | 'results' | 'how';
   /** The how-to line for a 'how' body. */
   how?: string;
+  /** The colour of the instrument that's out: the page's accent. */
+  accent?: number;
 }
 
 export interface MenuInput {
@@ -80,14 +82,20 @@ function row(n: number, x0: number, x1: number, gap: number): { x: number; w: nu
 }
 
 export function buildPage(m: MenuInput): Page {
+  const p = buildPageFor(m);
+  p.accent = SHELF.find((d) => d.id === m.inst.id)?.color;
+  return p;
+}
+
+function buildPageFor(m: MenuInput): Page {
   switch (m.page) {
     case 'main': {
       const c = row(2, 24, W - 24, 24);
       const items: Item[] = [
         { id: 'nav:instruments', label: 'Instruments', sub: 'Swap it', icon: m.inst.id, kind: 'big', x: c[0].x, y: 170, w: c[0].w, h: 340 },
-        { id: 'nav:songs', label: 'Songs', sub: 'Play along', kind: 'big', x: c[1].x, y: 170, w: c[1].w, h: 340 },
-        { id: 'nav:build', label: 'Make a track', sub: 'Part by part', kind: 'big', x: c[0].x, y: 534, w: c[0].w, h: 340 },
-        { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', kind: 'big', x: c[1].x, y: 534, w: c[1].w, h: 340 },
+        { id: 'nav:songs', label: 'Songs', sub: 'Play along', icon: 'menu:songs', kind: 'big', x: c[1].x, y: 170, w: c[1].w, h: 340 },
+        { id: 'nav:build', label: 'Make a track', sub: 'Part by part', icon: 'menu:build', kind: 'big', x: c[0].x, y: 534, w: c[0].w, h: 340 },
+        { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', icon: 'menu:band', kind: 'big', x: c[1].x, y: 534, w: c[1].w, h: 340 },
         corner('nav:settings', 'Settings'),
       ];
       return { id: 'main', title: 'Thump', line: m.line || 'Pick something to play', items };

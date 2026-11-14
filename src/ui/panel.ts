@@ -51,6 +51,57 @@ function rounded(g: CanvasRenderingContext2D, x: number, y: number, w: number, h
   g.closePath();
 }
 
+/** The bottom row's top (canvas px): the glass stage behind a page's body ends above it. */
+const BOT_Y = 680;
+const lighten = (c: number, k: number) => {
+  const ch = (v: number) => Math.round(v + (255 - v) * k);
+  return (ch((c >> 16) & 255) << 16) | (ch((c >> 8) & 255) << 8) | ch(c & 255);
+};
+/** The main menu's own pictures: thin white line drawings. */
+const MENU_ICON: Record<string, (g: CanvasRenderingContext2D, S: number, c: string) => void> = {
+  'menu:songs': (g, S, c) => {
+    // two quavers on a beam
+    g.strokeStyle = c;
+    g.lineWidth = S * 0.05;
+    g.lineCap = 'round';
+    for (const [x, y] of [[0.3, 0.74], [0.72, 0.64]]) {
+      g.beginPath();
+      g.ellipse(S * x, S * y, S * 0.1, S * 0.075, -0.4, 0, Math.PI * 2);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(S * (x + 0.095), S * (y - 0.02));
+      g.lineTo(S * (x + 0.095), S * (y - 0.5));
+      g.stroke();
+    }
+    g.beginPath();
+    g.moveTo(S * 0.395, S * 0.24);
+    g.lineTo(S * 0.815, S * 0.14);
+    g.stroke();
+  },
+  'menu:build': (g, S, c) => {
+    // a track's parts, stacked
+    g.strokeStyle = c;
+    g.lineWidth = S * 0.05;
+    [0.72, 0.5, 0.28].forEach((y, k) => {
+      rounded(g, S * (0.14 + k * 0.06), S * y, S * (0.72 - k * 0.12), S * 0.13, S * 0.04);
+      g.stroke();
+    });
+  },
+  'menu:band': (g, S, c) => {
+    // two people side by side
+    g.strokeStyle = c;
+    g.lineWidth = S * 0.05;
+    for (const x of [0.34, 0.66]) {
+      g.beginPath();
+      g.arc(S * x, S * 0.34, S * 0.11, 0, Math.PI * 2);
+      g.stroke();
+      g.beginPath();
+      g.arc(S * x, S * 0.86, S * 0.2, Math.PI * 1.08, Math.PI * 1.92);
+      g.stroke();
+    }
+  },
+};
+
 function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: number, min: number, room: number): number {
   min = Math.max(MIN_PX, min, Math.min(px, MIN_PX));
   g.font = `${weight} ${px}px ${FONT}`;
@@ -101,7 +152,7 @@ export class Panel {
     const slab = new Mesh(new BoxGeometry(PANEL.w + 0.008, PANEL.h + 0.008, 0.006), new MeshStandardMaterial({ name: 'Slab', color: 0x111113, roughness: 0.5, metalness: 0.2 }));
     slab.name = 'Slab';
     slab.position.z = -0.0035;
-    this.faceMat = new MeshBasicMaterial({ map: this.tex, toneMapped: false, transparent: true });
+    this.faceMat = new MeshBasicMaterial({ map: this.tex, toneMapped: false, transparent: true, depthWrite: false });
     const face = new Mesh(new PlaneGeometry(PANEL.w, PANEL.h), this.faceMat);
     face.name = 'Face';
     this.face = face;
@@ -433,7 +484,9 @@ export class Panel {
       const p = want ? 0.5 + 0.5 * Math.sin(this.pulseT * 5) : 0;
       const h = i === this.hoverI ? this.hoverShown : 0;
       const m = this.glows[i];
-      const op = Math.max(this.press[i] * 0.55, p * 0.12, h * 0.28) * te;
+      // (the white primary button carries no glow: light added over it would grey its black type)
+      const solid = items[i]?.kind === 'play' && !items[i]?.off;
+      const op = (solid ? this.press[i] * 0.2 : Math.max(this.press[i] * 0.55, p * 0.12, h * 0.28)) * te;
       (m.material as MeshBasicMaterial).opacity = op;
       // (an unlit glow isn't drawn at all)
       m.visible = !!items[i] && op > 0.002;
@@ -451,32 +504,39 @@ export class Panel {
         this.cardS[i] += (target - this.cardS[i]) * Math.min(1, dt / tau);
         const s = this.cardS[i];
         q.scale.set(z.w * s, z.h * s, 1);
-        q.position.z = 0.0006 + (s - 1) * 0.01;
+        // (just in front of the page, which draws the same card under it)
+        q.position.z = 0.0012 + (s - 1) * 0.01;
         m.scale.set(z.w * 0.97 * s, z.h * 0.94 * s, 1);
       }
     }
   }
 
+  /** The page's accent: the colour of the instrument that's out. */
+  private accent = 0x5ac8ff;
   private draw(d: Display, p: Page): void {
     const g = this.canvas.getContext('2d')!;
     g.clearRect(0, 0, CW, CH);
-    rounded(g, 0, 0, CW, CH, 36);
-    g.fillStyle = '#0d0d0f';
+    // one quiet surface: translucent near-black, a hairline edge, a hairline under the header; nothing else
+    this.accent = p.accent ?? 0xffffff;
+    rounded(g, 4, 4, CW - 8, CH - 8, 40);
+    g.fillStyle = 'rgba(18,18,20,0.88)';
     g.fill();
-    g.lineWidth = 3;
-    g.strokeStyle = '#2b2a28';
+    g.lineWidth = 2;
+    g.strokeStyle = 'rgba(255,255,255,0.12)';
     g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.08)';
+    g.fillRect(40, 160, CW - 80, 2);
     g.textBaseline = 'alphabetic';
     // the header: the title, and the line under it
     const hasBack = p.items.some((i) => i.id === 'back' && i.y < 120);
     const tx = hasBack ? 220 : 40;
     const right = p.items.some((i) => i.y < 120 && i.x > CW / 2) ? CW - 280 : CW - 40;
     g.fillStyle = INK;
-    fit(g, p.title, '700', p.id === 'main' ? 76 : 66, 36, right - tx);
+    fit(g, p.title, '600', p.id === 'main' ? 72 : 64, 48, right - tx);
     g.fillText(p.title, tx, 84);
     if (p.line) {
-      g.fillStyle = SOFT;
-      fit(g, p.line, '500', 48, 48, right - tx);
+      g.fillStyle = '#8e8e94';
+      fit(g, p.line, '400', 48, 48, right - tx);
       g.fillText(p.line, tx, 140);
     }
     if (d.code && p.id !== 'band') {
@@ -600,38 +660,56 @@ export class Panel {
    * accent bar down its left and a lighter tile; a locked one is dim.
    */
   private drawRow(g: CanvasRenderingContext2D, it: Item): void {
-    rounded(g, it.x, it.y, it.w, it.h, 14);
-    g.fillStyle = it.off ? '#111113' : it.on ? '#2a2a2f' : '#18181b';
+    // a song: its name, who wrote it in grey beneath, its stars as three small dots; chosen, a white ring
+    rounded(g, it.x, it.y, it.w, it.h, 22);
+    g.fillStyle = it.off ? 'rgba(255,255,255,0.025)' : it.on ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)';
     g.fill();
     if (it.on) {
-      g.fillStyle = ACCENT;
-      rounded(g, it.x, it.y + 10, 8, it.h - 20, 4);
-      g.fill();
+      g.lineWidth = 3;
+      g.strokeStyle = 'rgba(255,255,255,0.85)';
+      g.stroke();
     }
-    // a tile: the name, the line under it, the stars along the bottom
-    const ink = it.off ? DIMI : INK;
-    g.fillStyle = ink;
-    fit(g, it.label, '600', 56, 48, it.w - 60);
-    g.fillText(it.label, it.x + 30, it.y + 70);
+    g.fillStyle = it.off ? DIMI : INK;
+    fit(g, it.label, '600', 54, 48, it.w - 60);
+    g.fillText(it.label, it.x + 30, it.y + 82);
     if (it.sub) {
-      g.fillStyle = it.off ? DIMI : SOFT;
+      g.fillStyle = it.off ? DIMI : '#8e8e94';
       fit(g, it.sub, '400', 48, 48, it.w - 60);
-      g.fillText(it.sub, it.x + 30, it.y + 132);
+      g.fillText(it.sub, it.x + 30, it.y + 144);
     }
-    if (it.stars !== undefined && !it.off) for (let i = 0; i < 3; i++) star(g, it.x + 58 + i * 64, it.y + it.h - 42, 26, i < it.stars);
+    if (it.stars !== undefined && !it.off)
+      for (let i = 0; i < 3; i++) {
+        g.beginPath();
+        g.arc(it.x + 40 + i * 30, it.y + it.h - 30, 8, 0, Math.PI * 2);
+        if (i < it.stars) {
+          g.fillStyle = '#f4f4f2';
+          g.fill();
+        } else {
+          g.lineWidth = 2.5;
+          g.strokeStyle = 'rgba(255,255,255,0.35)';
+          g.stroke();
+        }
+      }
   }
 
   private drawItem(g: CanvasRenderingContext2D, it: Item): void {
     if (it.kind === 'row') return this.drawRow(g, it);
     // (one accent: the picked and the go buttons in it; everything else white on near-black)
-    const accent = ACCENT;
-    const r = it.kind === 'chip' || it.kind === 'button' ? 22 : 28;
+    const r = 22;
     rounded(g, it.x, it.y, it.w, it.h, r);
-    g.fillStyle = it.off ? '#111113' : it.on ? '#26262a' : it.kind === 'play' ? '#0e2533' : '#1a1a1d';
-    g.fill();
-    g.lineWidth = it.on ? 8 : 3;
-    g.strokeStyle = it.off ? '#1e1e20' : it.on || it.kind === 'play' ? accent : '#38372f';
-    g.stroke();
+    if (it.kind === 'play' && !it.off) {
+      // the one thing to press next: solid white, black type
+      g.fillStyle = '#f4f4f2';
+      g.fill();
+    } else {
+      g.fillStyle = it.off ? 'rgba(255,255,255,0.025)' : it.on ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)';
+      g.fill();
+      if (it.on) {
+        g.lineWidth = 3;
+        g.strokeStyle = 'rgba(255,255,255,0.85)';
+        g.stroke();
+      }
+    }
     const ink = it.off ? DIMI : INK;
     g.fillStyle = ink;
     if (it.kind === 'card' || it.icon) {
@@ -647,7 +725,8 @@ export class Panel {
       // the instrument itself, pictured (its line drawing until the pictures are made)
       // (on the Instruments screen the miniatures stand there instead)
       const pic = it.icon && !(this.noPics && it.kind === 'card') ? thumb(it.icon) : undefined;
-      if (pic) g.drawImage(pic, -S * 0.08, -S * 0.08, S * 1.16, S * 1.16);
+      if (it.icon && MENU_ICON[it.icon]) MENU_ICON[it.icon](g, S, 'rgba(255,255,255,0.78)');
+      else if (pic) g.drawImage(pic, -S * 0.08, -S * 0.08, S * 1.16, S * 1.16);
       else if (it.icon && !(this.noPics && it.kind === 'card')) ICON[it.icon]?.(g, S);
       g.restore();
       g.fillStyle = ink;
@@ -663,18 +742,19 @@ export class Panel {
       }
     }
     if (it.kind === 'big') {
-      fit(g, it.label, '700', 72, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+      fit(g, it.label, '600', 64, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
       g.fillText(it.label, it.x + 34, it.y + it.h / 2 + 4);
       if (it.sub) {
-        g.fillStyle = it.off ? DIMI : SOFT;
-        fit(g, it.sub, '500', 48, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+        g.fillStyle = it.off ? DIMI : '#8e8e94';
+        fit(g, it.sub, '400', 48, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
         g.fillText(it.sub, it.x + 34, it.y + it.h / 2 + 66);
       }
       return;
     }
     // chip, button, play: the label in the middle (a second line under it)
     const lines = it.label.split('\n');
-    const px = fit(g, lines.reduce((a, b) => (a.length > b.length ? a : b)), '700', it.kind === 'play' ? 72 : 54, 48, it.w - (it.icon ? it.h * 0.7 : 0) - 30);
+    if (it.kind === 'play' && !it.off) g.fillStyle = '#0b0b0d';
+    const px = fit(g, lines.reduce((a, b) => (a.length > b.length ? a : b)), '600', it.kind === 'play' ? 64 : 52, 48, it.w - (it.icon ? it.h * 0.7 : 0) - 30);
     const cx = it.x + (it.w - (it.icon ? it.h * 0.55 : 0)) / 2;
     // the block (label lines, then the sub under the last of them) centred in the item
     const lh = px * 1.1;
@@ -682,8 +762,8 @@ export class Panel {
     const top = it.y + (it.h - (lines.length - 1) * lh - subH) / 2 + px * 0.35;
     lines.forEach((t, j) => g.fillText(t, cx - g.measureText(t).width / 2, top + j * lh));
     if (it.sub) {
-      g.fillStyle = it.off ? DIMI : SOFT;
-      fit(g, it.sub, '500', 48, 48, it.w - 30);
+      g.fillStyle = it.off ? DIMI : it.kind === 'play' ? '#3a3a3e' : '#8e8e94';
+      fit(g, it.sub, '400', 48, 48, it.w - 30);
       g.fillText(it.sub, cx - g.measureText(it.sub).width / 2, top + (lines.length - 1) * lh + subH);
     }
   }
