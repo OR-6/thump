@@ -2465,7 +2465,7 @@ export class Game {
     }
     if (!this.judge) return;
     // (performing: the autoplayer fills on the eighths when a fill window is open)
-    if (this.perf) {
+    if (this.perf && this.perf.live.size) {
       const live = [...this.perf.live];
       for (const [fa, fz] of this.perf.fills)
         for (let x = fa; x < fz; x += 0.5) {

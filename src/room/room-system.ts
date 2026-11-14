@@ -1046,6 +1046,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** Resolve a target key ("surface:zone"), cached. */
   private ref(key: string): KeyRef | null {
+    // (a note with no key, from a part nothing on the desk plays: nothing to point at)
+    if (!key) return null;
     let r = this.keyRefs.get(key);
     if (r) return r;
     const i = key.indexOf(':');
