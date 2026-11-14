@@ -37,8 +37,64 @@ export class Sampler {
     for (const k of ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:rim', 'keys']) for (const s of SAMPLES[k] ?? []) this.prefetched.set(s.file, fetch(BASE + s.file).catch(() => new Response(null, { status: 404 })));
   }
 
+  /** The context clips are decoded with: the real one once audio has started, an offline one before that. */
+  private ctx: BaseAudioContext | null = null;
+  private offline: BaseAudioContext | null = null;
+  /** Clips being fetched and decoded now (so a clip asked for twice is decoded once). */
+  private decoding = new Map<string, Promise<void>>();
+
+  private decode(ctx: BaseAudioContext, f: string): Promise<void> {
+    if (this.buffers.has(f)) return Promise.resolve();
+    let p = this.decoding.get(f);
+    if (p) return p;
+    p = (async () => {
+      try {
+        const res = await (this.prefetched.get(f) ?? fetch(BASE + f));
+        if (!res.ok) return;
+        const buf = await ctx.decodeAudioData(await res.clone().arrayBuffer());
+        this.buffers.set(f, buf);
+        // that instrument's grouping includes it from now on
+        const k = this.keyOfFile.get(f);
+        if (k) this.groups.delete(k);
+      } catch {
+        /* that clip stays synthesised */
+      } finally {
+        this.decoding.delete(f);
+      }
+    })();
+    this.decoding.set(f, p);
+    return p;
+  }
+
+  /**
+   * Have these instruments' clips ready now, ahead of the rest (the page's drawing of the instrument on show). Before
+   * audio has started they're decoded offline, so the very first tap already plays the recording. Resolves once
+   * they're in.
+   */
+  warm(keys: readonly string[]): Promise<void> {
+    if (typeof fetch === 'undefined') return Promise.resolve();
+    let ctx = this.ctx ?? this.offline;
+    if (!ctx) {
+      const Off = globalThis.OfflineAudioContext ?? (globalThis as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+      if (!Off) return Promise.resolve();
+      try {
+        ctx = this.offline = new Off(1, 1, 48000);
+      } catch {
+        return Promise.resolve();
+      }
+    }
+    const jobs: Promise<void>[] = [];
+    for (const k of keys)
+      for (const s of SAMPLES[k] ?? []) {
+        this.keyOfFile.set(s.file, k);
+        jobs.push(this.decode(ctx, s.file));
+      }
+    return Promise.all(jobs).then(() => {});
+  }
+
   /** Fetch and decode every clip (about 5 MB), a few at a time. */
   load(ctx: BaseAudioContext): void {
+    this.ctx = ctx;
     if (this.loading) return;
     this.loading = true;
     // what you hear first loads first: the kit, the desk's bars, the band, the guitar, then the rest of the room
@@ -53,18 +109,7 @@ export class Sampler {
     let next = 0;
     const worker = async (): Promise<void> => {
       while (next < files.length) {
-        const f = files[next++];
-        try {
-          const res = await (this.prefetched.get(f) ?? fetch(BASE + f));
-          if (!res.ok) continue;
-          const buf = await ctx.decodeAudioData(await res.clone().arrayBuffer());
-          this.buffers.set(f, buf);
-          // that instrument's grouping includes it from now on
-          const k = this.keyOfFile.get(f);
-          if (k) this.groups.delete(k);
-        } catch {
-          /* that clip stays synthesised */
-        }
+        await this.decode(ctx, files[next++]);
       }
     };
     for (let i = 0; i < 6; i++) void worker();
