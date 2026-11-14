@@ -44,7 +44,7 @@ export const KIT_STYLES: readonly KitStyle[] = ['acoustic', 'jazz', 'electronic'
 export function cymbalMat(style: KitStyle): MeshStandardMaterial {
   if (style === 'electronic') return new MeshStandardMaterial({ name: 'RubberPad', color: 0x1c1c1f, roughness: 0.85, normalMap: fineNormal(3, 18) });
   const rings = cymbalRings();
-  return new MeshStandardMaterial({ name: 'Bronze', color: style === 'jazz' ? 0xa98a52 : 0xd9b25e, map: rings.map, roughnessMap: rings.rough, metalness: 1, roughness: style === 'jazz' ? 1 : 0.85 });
+  return new MeshStandardMaterial({ name: 'Bronze', color: style === 'jazz' ? 0xa98a52 : 0xd9b25e, map: rings.map, roughnessMap: rings.rough, metalness: 1, roughness: style === 'jazz' ? 1.3 : 1 });
 }
 
 const chrome = () => new MeshStandardMaterial({ name: 'Chrome', color: 0xe8eaee, metalness: 1, roughness: 0.14 });

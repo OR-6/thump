@@ -48,9 +48,9 @@ export const PADS: Record<Lane, PadSpec> = {
   snare: { lane: 'snare', size: 0.2, x: -0.12, z: 0.06, color: PALETTE.mustard, mark: 'stripe' },
   hat: { lane: 'hat', size: 0.15, x: -0.36, z: -0.02, color: PALETTE.teal, mark: 'notch' },
   tom: { lane: 'tom', size: 0.15, x: 0.0, z: -0.17, color: PALETTE.plum, mark: 'ring' },
-  floor: { lane: 'floor', size: 0.19, x: 0.44, z: -0.03, color: PALETTE.navy, mark: 'ring' },
-  crash: { lane: 'crash', size: 0.19, x: -0.4, z: -0.24, color: PALETTE.brass, mark: 'brass' },
-  ride: { lane: 'ride', size: 0.23, x: 0.3, z: -0.27, color: PALETTE.brass, mark: 'brass' },
+  floor: { lane: 'floor', size: 0.19, x: 0.4, z: 0.0, color: PALETTE.navy, mark: 'ring' },
+  crash: { lane: 'crash', size: 0.19, x: -0.3, z: -0.25, color: PALETTE.brass, mark: 'brass' },
+  ride: { lane: 'ride', size: 0.23, x: 0.27, z: -0.25, color: PALETTE.brass, mark: 'brass' },
   // the gong goes on a real wall within reach when there is one; this is the table-edge fallback
   gong: { lane: 'gong', size: 0.12, x: 0.29, z: -0.08, color: PALETTE.brass, mark: 'brass' },
 };

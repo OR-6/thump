@@ -214,7 +214,14 @@ export function marimbaZones(root: number, scale: Scale): Zone[] {
 
 /** The congas: two drums side by side (the low one left, 15 cm and 13 cm across). Zones 0/1 the low drum's middle and
  * edge, 2/3 the high drum's (a hit lands on whichever its distance from the centre says). */
-export const CONGA = { x: [-0.11, 0.105], z: 0.02, r: [0.085, 0.075], open: 0.6, top: 0.26 } as const;
+export const CONGA = { x: [-0.11, 0.105], z: 0.02, r: [0.085, 0.075], open: 0.6, top: 0.26, lift: 0.03, tilt: 0.14 } as const;
+/** Where the player's eyes are, kit-local z (instruments that lean toward you lean toward this). */
+export const PLAYER_AT_Z = 0.36;
+/** A conga's lean: tipped toward you by CONGA.tilt, turned to face you; its head's normal (scene axes, z toward you). */
+export function congaNormal(x: number, zScene: number): { nx: number; ny: number; nz: number; yaw: number } {
+  const yaw = Math.atan2(-x, PLAYER_AT_Z - zScene);
+  return { nx: Math.sin(CONGA.tilt) * Math.sin(yaw), ny: Math.cos(CONGA.tilt), nz: Math.sin(CONGA.tilt) * Math.cos(yaw), yaw };
+}
 export function congaZones(): Zone[] {
   const out: Zone[] = [];
   for (let d = 0; d < 2; d++) {

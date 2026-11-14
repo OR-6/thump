@@ -87,14 +87,15 @@ export function cymbalRings(): { map: DataTexture; rough: DataTexture } {
       const v = y / 1023;
       const groove = Math.sin(v * 600) * (v > 0.22 ? 1 : 0.15);
       // (fine and faint: real lathe rings are a sheen, not stripes)
-      const g = 222 + groove * 14;
+      const g = 228 + groove * 3;
       return [g, g * 0.9, g * 0.68];
     }, true),
   );
   const rough = once('ringsR', () =>
     tex(4, 1024, (_x, y) => {
       const v = y / 1023;
-      const g = 85 + 10 * Math.sin(v * 600) * (v > 0.22 ? 1 : 0.3);
+      // (the lathe rings live in the sheen: the metal about 0.3 rough, the grooves a little rougher)
+      const g = 77 + 16 * Math.sin(v * 600) * (v > 0.22 ? 1 : 0.3);
       return [g, g, g];
     }, false),
   );

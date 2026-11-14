@@ -60,7 +60,7 @@ export class KitView {
     ['congas', new Overlay('congas', 4)],
   ]);
   /** The instrument's contact shadow on the desk (sized to it when it comes out). */
-  private instShadow = contactShadow(1, 1, 0.85);
+  private instShadow = contactShadow(1, 1, 1);
   /** The guitar's neck lies off the desk: its own soft shadow under it. */
   private neckShadow = contactShadow(0.3, 0.07, 0.6);
   /** The zones of the instrument on the desk (none for the drums: they have pads). */
@@ -199,7 +199,7 @@ export class KitView {
     this.neckShadow.visible = id === 'guitar';
     if (id === 'guitar') this.neckShadow.position.set((NECK.x[0] + NECK.x[2]) / 2 - 0.05, 0.0007, -NECK.z);
     if (this.instShadow.visible) {
-      this.instShadow.scale.set((x1 - x0) * 1.35 + 0.06, (z1 - z0) * 1.5 + 0.06, 1);
+      this.instShadow.scale.set((x1 - x0) * 1.15 + 0.05, (z1 - z0) * 1.25 + 0.05, 1);
       this.instShadow.position.set((x0 + x1) / 2, 0.0006, -(z0 + z1) / 2 - 0.01);
     }
     // (no light at rest: the instrument is the instrument; its notes light when a song asks, and when hit)

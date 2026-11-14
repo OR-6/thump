@@ -8,7 +8,7 @@
  */
 import { BoxGeometry, CircleGeometry, PlaneGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2, Vector3 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
-import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, PIANO_CHORD, congaNormal, handpanShape, handpanY } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
 import { fineNormal, hammered, rawhide, straightGrain, tortoiseShell, woodGrain } from './surfaces.js';
 
@@ -338,9 +338,14 @@ export class GuitarModel implements DeskModel {
       this.pads.push(m);
     });
     // the headstock, tipped back 13° toward the desk, three tuners a side
+    // (its face continues the fretboard's top, angled back 8 degrees, with a volute under the nut joining it to the neck)
     const head = named(new Group(), 'Headstock');
-    head.position.set(nx0, B - 0.003, -zc);
-    head.rotation.z = -0.23;
+    head.position.set(nx0, B - 0.0015, -zc);
+    head.rotation.z = -0.14;
+    const volute = named(new Mesh(new BoxGeometry(0.022, 0.016, wN - 0.004), this.side), 'Volute');
+    volute.position.set(nx0 - 0.004, B - 0.012, -zc);
+    volute.rotation.z = -0.07;
+    this.neck.add(volute);
     // (11 cm long, flaring from the nut's 42 mm to 50, 9 mm thick, a shallow V at its top)
     const hs = new Shape();
     hs.moveTo(0, -0.021);
@@ -352,7 +357,7 @@ export class GuitarModel implements DeskModel {
     const hg = new ExtrudeGeometry(hs, { depth: 0.009, bevelEnabled: true, bevelSize: 0.0012, bevelThickness: 0.0012, bevelSegments: 2 });
     hg.rotateX(-Math.PI / 2);
     const plate = new Mesh(hg, this.side);
-    plate.position.y = -0.0045;
+    plate.position.y = -0.009;
     head.add(plate);
     const post = new CylinderGeometry(0.0022, 0.0022, 0.01, 10);
     const shaft = new CylinderGeometry(0.0015, 0.0015, 0.008, 8);
@@ -704,8 +709,8 @@ export class CongaModel implements DeskModel {
   private readonly seam = mat('Seam', 0x4a2412, 0.5);
   private readonly lug = mat('Lug', 0xcfd3d8, 0.2, 1);
   private readonly wrapHide = mat('HideEdge', 0xa88456, 0.8);
-  /** The heads' height: a conga's barrel, cut down to a desk, still a barrel (22 cm). */
-  static readonly H = CONGA.top;
+  /** The barrel's height (the head is CONGA.top up: the drum stands in a low stand, CONGA.lift off the desk). */
+  static readonly H = CONGA.top - CONGA.lift;
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -715,8 +720,15 @@ export class CongaModel implements DeskModel {
     for (let d = 0; d * 2 + 1 < zones.length; d++) {
       const inner = zones[d * 2];
       const R = zones[d * 2 + 1].w;
-      const drum = named(new Group(), d === 0 ? 'Tumba' : 'Quinto');
-      drum.position.set(inner.x, 0, -inner.z);
+      // (the drum hangs from a pivot at its head's centre, tipped toward you: the head stays where you strike it)
+      const pivot = named(new Group(), d === 0 ? 'Tumba' : 'Quinto');
+      pivot.position.set(inner.x, CONGA.top, -inner.z);
+      const lean = congaNormal(inner.x, -inner.z);
+      pivot.rotation.order = 'YXZ';
+      pivot.rotation.set(CONGA.tilt, lean.yaw, 0);
+      const drum = named(new Group(), 'Drum');
+      drum.position.y = -H;
+      pivot.add(drum);
       // the shell: a conga's barrel, narrow at the foot, swelling to its belly a third of the way up, in to the head
       const rAt = (y: number) => {
         const t = Math.max(0, Math.min(1, y / (H - 0.004)));
@@ -772,36 +784,59 @@ export class CongaModel implements DeskModel {
       skirt.position.y = H - 0.008;
       // side plates and lugs: four on the low drum, four on the high, each a plate on the shell with a rod to the rim
       const lugs = named(new Group(), 'Lugs');
-      // (chrome side plates 35 mm tall, each with its rod up to the crown)
-      // chrome side plates from 62 % to 85 % of the height, each with an L-hook up over the crown and a hex nut
-      const plate = new BoxGeometry(0.003, H * 0.23, 0.006);
-      const hookUp = new CylinderGeometry(0.0022, 0.0022, 1, 8);
-      const hookBend = new TorusGeometry(0.004, 0.0022, 6, 10, Math.PI / 2);
-      const nut = new CylinderGeometry(0.003, 0.003, 0.004, 6);
+      // the hardware, as on a real conga: six short chrome side plates curved to the shell just under the crown, a
+      // hex nut on each, and from it a short tension hook up over the crown
+      const py = H * 0.8;
+      const pr = rAt(py) + 0.0012;
+      const pw = 0.026 / pr;
+      const plate = new CylinderGeometry(pr, pr, 0.042, 4, 1, true, Math.PI / 2 - pw / 2, pw);
+      const nut = new CylinderGeometry(0.0035, 0.0035, 0.005, 6);
+      const rod = new CylinderGeometry(0.002, 0.002, 1, 8);
+      const lip = new BoxGeometry(0.014, 0.003, 0.004);
       for (let i = 0; i < 6; i++) {
         const a = ((i + 0.5) / 6) * Math.PI * 2;
         const l = named(new Group(), `Lug${i}`);
         const p = new Mesh(plate, this.lug);
-        p.position.set(rAt(H * 0.735) + 0.0018, H * 0.735, 0);
-        const ny = H * 0.85 + 0.002;
+        p.position.y = py;
+        const ny = py + 0.024;
         const nt = new Mesh(nut, this.lug);
-        nt.position.set(rAt(H * 0.85) + 0.004, ny, 0);
-        const up = new Mesh(hookUp, this.lug);
-        const x = R + 0.0105;
-        up.scale.y = H - 0.004 - ny;
-        up.position.set(x, (ny + H - 0.004) / 2, 0);
-        const r = new Mesh(hookBend, this.lug);
-        r.rotation.set(Math.PI / 2, 0, 0);
-        r.position.set(x - 0.004, H - 0.004, 0);
-        l.add(nt, up);
-        l.add(p, r);
+        nt.position.set(rAt(ny) + 0.0045, ny, 0);
+        const x = R + 0.011;
+        const up = new Mesh(rod, this.lug);
+        up.scale.y = H + 0.003 - ny;
+        up.position.set(x, (ny + H + 0.003) / 2, 0);
+        const hook = new Mesh(lip, this.lug);
+        hook.position.set(x - 0.006, H + 0.004, 0);
+        l.add(p, nt, up, hook);
         l.rotation.y = a;
         lugs.add(l);
       }
       // (the seams are fine detail: they cast no shadow of their own)
       staves.traverse((o) => (o.userData.noShadow = true));
       drum.add(shell, band, staves, head, ring, crown, skirt, lugs);
-      this.root.add(drum);
+      this.root.add(pivot);
+      // its stand: a level chrome ring round the foot, three short splayed legs to rubber feet on the desk
+      const base = new Vector3(0, 0, 0);
+      drum.updateMatrix();
+      pivot.updateMatrix();
+      base.applyMatrix4(drum.matrix).applyMatrix4(pivot.matrix);
+      const standY = base.y + 0.012;
+      const ringR = rAt(0.012) + 0.007;
+      const ringM = named(new Mesh(new TorusGeometry(ringR, 0.0032, 10, 48), this.lug), 'StandRing');
+      ringM.rotation.x = -Math.PI / 2;
+      ringM.position.set(base.x, standY, base.z);
+      this.root.add(ringM);
+      for (let k = 0; k < 3; k++) {
+        const a = (k / 3) * Math.PI * 2 + Math.PI / 2;
+        const top = new Vector3(base.x + Math.cos(a) * ringR, standY, base.z + Math.sin(a) * ringR);
+        const foot = new Vector3(base.x + Math.cos(a) * (ringR + 0.02), 0.003, base.z + Math.sin(a) * (ringR + 0.02));
+        const leg = new Mesh(new CylinderGeometry(0.0025, 0.0025, top.distanceTo(foot), 8), this.lug);
+        leg.position.copy(top).add(foot).multiplyScalar(0.5);
+        leg.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), foot.clone().sub(top).normalize());
+        const f = new Mesh(new CylinderGeometry(0.0045, 0.005, 0.005, 12), mat('Rubber', 0x111111, 0.9));
+        f.position.copy(foot);
+        this.root.add(leg, f);
+      }
       this.heads.push(head);
       this.marks.push(ring);
     }

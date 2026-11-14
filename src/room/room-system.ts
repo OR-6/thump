@@ -59,7 +59,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { CONGA, GUITAR, HANDPAN, KEYBOARD, KEYS as KEY_NAMES, MARIMBA, NECK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, KEYS as KEY_NAMES, MARIMBA, NECK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, congaNormal, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -2524,6 +2524,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
             s.z = -q.z;
             s.r = q.w + (pass ? 0.006 : 0);
             s.w = undefined;
+            // (each head tipped toward you, as the drum leans in its stand)
+            const cn = congaNormal(q.x, -q.z);
+            s.nx = cn.nx;
+            s.ny = cn.ny;
+            s.nz = cn.nz;
           }
     if (drums)
       for (const lane of AIR_LANES) {

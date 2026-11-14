@@ -32,7 +32,7 @@ const HEIGHT = DRUM_H;
  * the rack tom 18 cm, the hi-hat's top cymbal 17 cm on its rod, the bass drum lying flat on its feet (10 cm), the
  * floor tom 12 cm, the crash 23 cm and the ride 21 cm on their stands.
  */
-export const HEAD_Y: Record<Lane, number> = { snare: 0.12, tom: 0.18, hat: 0.16, kick: 0.12, floor: 0.13, crash: 0.24, ride: 0.22, gong: 0.02 };
+export const HEAD_Y: Record<Lane, number> = { snare: 0.12, tom: 0.18, hat: 0.16, kick: 0.12, floor: 0.13, crash: 0.22, ride: 0.2, gong: 0.02 };
 /** How far each piece tips toward the player (rad), as a drummer sets a kit: the rack tom and the crash most, the
  * snare a little, the bass drum and floor tom flat. */
 export const TILT: Record<Lane, number> = { snare: 0.08, tom: 0.3, hat: 0.05, kick: 0, floor: 0.04, crash: 0.3, ride: 0.15, gong: 0 };
@@ -248,7 +248,9 @@ export class PadView {
     this.cymRX = this.topCymbal?.rotation.x ?? 0;
     this.cymRZ = this.topCymbal?.rotation.z ?? 0;
     // it sits on the desk: a soft shadow under it
-    this.group.add(contactShadow(spec.size * 1.5, spec.size * 1.5, 0.9));
+    // (the drums that stand on the desk itself, the bass drum and floor tom, sit in a tighter, darker shadow)
+    const onDesk = lane === 'kick' || lane === 'floor';
+    this.group.add(contactShadow(spec.size * (onDesk ? 1.2 : 1.5), spec.size * (onDesk ? 1.2 : 1.5), onDesk ? 1 : 0.9));
     // the LED ring round the base, and its glow on the table
     // (the ring at its foot is off at rest: it lights only when a song asks for this drum)
     this.led = new MeshBasicMaterial({ color: 0x000000, toneMapped: false, transparent: true, opacity: 0 });
