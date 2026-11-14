@@ -54,7 +54,7 @@ export interface MenuInput {
   songPage?: number;
   /** The songs the filter lets through (indices into `songs`; all of them when not given), and the filter. */
   songShown?: number[];
-  songFilter?: 'all' | 'classics' | 'originals';
+  songFilter?: 'all' | 'classics' | 'originals' | 'lessons';
   level: 'easy' | 'normal' | 'hard';
   band: { state: string; code: string; players: number; message?: string };
   settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean };
@@ -155,7 +155,9 @@ function buildPageFor(m: MenuInput): Page {
           across([{ id: 'oct:-1', label: 'Lower', on: false, off: m.inst.oct <= -1 }, { id: 'oct:+1', label: 'Higher', on: false, off: m.inst.oct >= 1 }], y);
         }
       }
-      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: 24, y: 700, w: W - 48, h: 180 });
+      // (learn it: its lesson, a short song that teaches it one move at a time)
+      items.push({ id: 'learn', label: 'Learn it', sub: 'A short lesson', kind: 'button', x: 24, y: 700, w: (W - 64) / 2, h: 180 });
+      items.push({ id: 'nav:free', label: 'Play it', kind: 'play', x: 40 + (W - 64) / 2, y: 700, w: (W - 64) / 2, h: 180 });
       return { id: 'inst', title: `${m.inst.name}`, line: '', items };
     }
     case 'songs': {
@@ -168,7 +170,7 @@ function buildPageFor(m: MenuInput): Page {
       const pages = Math.max(1, Math.ceil(shown.length / 6));
       const pg = Math.max(0, Math.min(pages - 1, m.songPage ?? 0));
       if (pages > 1) items.push({ id: 'songs:more', label: `More, ${pg + 1} of ${pages}`, kind: 'button', x: 956, y: 24, w: 380, h: 96 });
-      if (m.songFilter) items.push({ id: 'songs:filter', label: m.songFilter === 'all' ? 'All songs' : m.songFilter === 'classics' ? 'Classics' : 'Originals', kind: 'button', x: 600, y: 24, w: 340, h: 96 });
+      if (m.songFilter) items.push({ id: 'songs:filter', label: m.songFilter === 'all' ? 'All songs' : m.songFilter === 'classics' ? 'Classics' : m.songFilter === 'lessons' ? 'Lessons' : 'Originals', kind: 'button', x: 600, y: 24, w: 340, h: 96 });
       shown.slice(pg * 6, pg * 6 + 6).forEach((i, k) => {
         const s = m.songs[i];
         items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', x: 24 + (k % 2) * (tw + 16), y: 170 + Math.floor(k / 2) * 236, w: tw, h: 220 });

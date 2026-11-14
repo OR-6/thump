@@ -11,7 +11,7 @@
  */
 import { PIANO_BLACK, PIANO_CHORD, instZones, pianoBlacks, scaleById, scaleMidi, type InstId } from '../kit/shelf.js';
 import type { BedEvent } from './chart.js';
-import { TUNES, type Style, type Tune } from './tunes.js';
+import { LESSONS, TUNES, type Style, type Tune } from './tunes.js';
 
 export type Level = 'easy' | 'normal' | 'hard';
 
@@ -209,7 +209,8 @@ export function scoreOf(tune: Tune): Score {
 }
 
 /** The songs, easiest first. */
-export const SCORES: readonly Score[] = TUNES.map(scoreOf).sort((a, b) => a.rating - b.rating);
+/** (the lessons first, one per instrument, then the songs) */
+export const SCORES: readonly Score[] = [...LESSONS.map(scoreOf), ...TUNES.map(scoreOf).sort((a, b) => a.rating - b.rating)];
 
 /** MIDI of the melody's tonic: where the piano's tune sits (its root between F4 and E5, as the room sets it). */
 export function melodyRoot(key: number): number {
@@ -491,6 +492,26 @@ function padsFor(s: Score): (c: Chord) => number {
  * closer than EASY_GAP.
  */
 export function scoreChart(s: Score, inst: string, level: Level, from: number, to: number, fills: readonly (readonly [number, number])[], opts: { tom?: boolean } = {}): ScoreChart {
+  // a lesson on its own instrument: each step its own level (and maybe only some targets), whatever level is set
+  const ls = s.tune.lesson;
+  if (!ls || ls.inst !== inst) return chartAt(s, inst, level, from, to, fills, opts);
+  const out: ScoreChart = { notes: [], live: [], cover: new Map() };
+  ls.steps.forEach((st, i) => {
+    const a = s.starts[0] + st.bar * s.meter;
+    const b = i + 1 < ls.steps.length ? s.starts[0] + ls.steps[i + 1].bar * s.meter : Infinity;
+    const c = chartAt(s, inst, st.level, Math.max(from, a), Math.min(to, b), fills, opts);
+    for (const n of c.notes) if (!st.only || st.only.includes(n.key)) out.notes.push(n);
+    for (const l of c.live) if (!out.live.includes(l)) out.live.push(l);
+    for (const [k, set] of c.cover) {
+      let o = out.cover.get(k);
+      if (!o) out.cover.set(k, (o = new Set()));
+      for (const x of set) o.add(x);
+    }
+  });
+  return out;
+}
+
+function chartAt(s: Score, inst: string, level: Level, from: number, to: number, fills: readonly (readonly [number, number])[], opts: { tom?: boolean } = {}): ScoreChart {
   const t = s.tune;
   const out: (ChartNote & { rank: number; covers?: string })[] = [];
   const live: string[] = [];

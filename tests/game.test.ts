@@ -681,9 +681,12 @@ describe('the game', () => {
     const items = () => g.display.page?.items ?? [];
     const tiles = () => items().filter((i) => i.id.startsWith('song:'));
     const n = g.tracks.length;
-    const pages = Math.ceil(n / 6);
-    expect(tiles().map((i) => i.label)).toEqual(SONG_TRACKS.slice(0, 6).map((t) => t.name));
-    expect(tiles()[0].sub).toBe('Start here');
+    // (All songs: the drums' lesson first, then every song; the other lessons on their own page)
+    const songs = g.tracks.map((t, i) => (t.score?.tune.lesson ? -1 : i)).filter((i) => i >= 0);
+    const all = [0, ...songs];
+    const pages = Math.ceil(all.length / 6);
+    expect(tiles().map((i) => i.label)).toEqual(all.slice(0, 6).map((i) => SONG_TRACKS[i].name));
+    expect(tiles()[0].sub).toBe('Lesson · start here');
     expect(tiles()[1].sub).toMatch(/^(Easy|Medium|Hard) · /);
     expect(tiles().some((i) => i.off)).toBe(false);
     expect(items().find((i) => i.id === 'songs:more')?.label).toBe(`More, 1 of ${pages}`);
@@ -693,7 +696,7 @@ describe('the game', () => {
       seen.push(...tiles().map((i) => i.id));
       g.act('songs:more');
     }
-    expect(seen).toEqual(Array.from({ length: n }, (_, i) => `song:${i}`));
+    expect(seen).toEqual(all.map((i) => `song:${i}`));
     expect(tiles()[0].id).toBe('song:0');
     // any song can be picked, the hardest too
     g.act(`song:${n - 2}`);
@@ -704,6 +707,9 @@ describe('the game', () => {
     g.act('songs:filter');
     expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('Originals');
     expect(tiles().map((i) => g.tracks[Number(i.id.slice(5))].score?.tune.original)).toEqual(tiles().map(() => true));
+    g.act('songs:filter');
+    expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('Lessons');
+    expect(tiles().length).toBe(6);
     g.act('songs:filter');
     expect(items().find((i) => i.id === 'songs:filter')?.label).toBe('All songs');
   });

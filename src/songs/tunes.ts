@@ -37,7 +37,136 @@ export interface Tune {
   solo?: string;
   /** Written for the game. */
   original?: boolean;
+  /**
+   * A lesson: the instrument it teaches, and its steps from a bar on: a word for the moment, what to do, the level its
+   * notes are written at, and (optionally) only these targets.
+   */
+  lesson?: { inst: string; steps: readonly { bar: number; title: string; say: string; level: 'easy' | 'normal' | 'hard'; only?: readonly string[] }[] };
 }
+
+/** One lesson per instrument: a slow original, its moves one at a time (bars 0, 4, 8, 12). */
+const C_TUNE = 'C2 E2 G2 E2 | F2 A2 G4 | E2 G2 c2 G2 | F2 E2 D4 | C2 E2 G2 E2 | F2 A2 c4 | B2 G2 A2 B2 | c8 | ';
+const C_CHORDS = 'C | F | C | G | C | F | G | C | ';
+const KEYS_TUNE = 'C8 | E8 | G8 | c8 | C2 D2 E2 F2 | G2 F2 E2 D2 | C2 D2 E2 F2 | G8 | E2 E2 F2 G2 | G2 F2 E2 D2 | C2 C2 D2 E2 | E4 D4 | E2 E2 F2 G2 | G2 F2 E2 D2 | C2 C2 D2 E2 | D4 C4';
+const KEYS_CHORDS = 'C | C | C | C | C | G | C | G | C | G | C | G | C | G | C | C';
+const keysSteps = (first: string) => [
+  { bar: 0, title: 'One note', say: first, level: 'normal' as const },
+  { bar: 4, title: 'Walk up', say: 'Walk up the notes, then back down', level: 'normal' as const },
+  { bar: 8, title: 'A tune', say: 'A tune you know: Ode to Joy', level: 'normal' as const },
+  { bar: 12, title: 'Your turn', say: 'All of it: keep with the band', level: 'normal' as const },
+];
+export const LESSONS: readonly Tune[] = [
+  {
+    id: 'learn-drums',
+    name: 'Learn drums',
+    by: 'Lesson',
+    bpm: 80,
+    key: 'C',
+    style: 'rock',
+    passes: 1,
+    original: true,
+    melody: C_TUNE + C_TUNE.trimEnd().replace(/\|\s*$/, ''),
+    chords: C_CHORDS + C_CHORDS.trimEnd().replace(/\|\s*$/, ''),
+    lesson: {
+      inst: 'drums',
+      steps: [
+        { bar: 0, title: 'Snare', say: 'Hit the snare in the middle as it lights', level: 'normal', only: ['kit:snare'] },
+        { bar: 4, title: 'Kick', say: 'Now the big drum in front: the kick', level: 'normal', only: ['kit:kick'] },
+        { bar: 8, title: 'Kick, snare', say: 'Both now: kick, snare, kick, snare', level: 'easy' },
+        { bar: 12, title: 'Add the hat', say: 'Add the hi-hat with your other hand', level: 'normal' },
+      ],
+    },
+  },
+  {
+    id: 'learn-piano',
+    name: 'Learn keys',
+    by: 'Lesson',
+    bpm: 76,
+    key: 'C',
+    style: 'ballad',
+    passes: 1,
+    original: true,
+    melody: KEYS_TUNE,
+    chords: KEYS_CHORDS,
+    lesson: { inst: 'piano', steps: keysSteps('Press the lit key with one fingertip') },
+  },
+  {
+    id: 'learn-marimba',
+    name: 'Learn marimba',
+    by: 'Lesson',
+    bpm: 76,
+    key: 'C',
+    style: 'ballad',
+    passes: 1,
+    original: true,
+    melody: KEYS_TUNE,
+    chords: KEYS_CHORDS,
+    lesson: { inst: 'marimba', steps: keysSteps('Make fists: they are your mallets. Hit the lit bar') },
+  },
+  {
+    id: 'learn-guitar',
+    name: 'Learn guitar',
+    by: 'Lesson',
+    bpm: 80,
+    key: 'G',
+    style: 'ballad',
+    passes: 1,
+    original: true,
+    melody: 'G2 B2 d2 B2 | c2 e2 d4 | A2 c2 B2 A2 | G8 | G2 B2 d2 B2 | c2 e2 d4 | A2 c2 B2 A2 | G8 | B2 d2 g2 d2 | e2 c2 d4 | c2 B2 A2 F2 | G8 | B2 d2 g2 d2 | e2 c2 d4 | c2 B2 A2 F2 | G8',
+    chords: 'G | C | D | G | G | C | D | G | G | C | D | G | G | C | D | G',
+    lesson: {
+      inst: 'guitar',
+      steps: [
+        { bar: 0, title: 'Strum', say: 'Brush down across the strings as they light', level: 'easy' },
+        { bar: 4, title: 'Change chord', say: 'Left hand: move to the lit chord on the neck', level: 'normal' },
+        { bar: 8, title: 'Down and up', say: 'Follow the arrows: down, and back up', level: 'hard' },
+        { bar: 12, title: 'Your turn', say: 'All of it: strum and change with the band', level: 'hard' },
+      ],
+    },
+  },
+  {
+    id: 'learn-handpan',
+    name: 'Learn handpan',
+    by: 'Lesson',
+    bpm: 76,
+    key: 'Dm',
+    style: 'ballad',
+    passes: 1,
+    original: true,
+    melody: 'D2 F2 A2 F2 | G2 F2 E4 | D2 F2 A2 c2 | A8 | D2 F2 A2 F2 | B2 A2 G4 | F2 E2 D2 E2 | D8 | A2 c2 d2 c2 | B2 A2 G4 | F2 G2 A2 E2 | D8 | A2 c2 d2 c2 | B2 A2 G4 | F2 E2 C2 E2 | D8',
+    chords: 'Dm | C | Dm | Dm | Dm | Bb | C | Dm | Dm | Bb | C | Dm | Dm | Bb | C | Dm',
+    lesson: {
+      inst: 'handpan',
+      steps: [
+        { bar: 0, title: 'The middle', say: 'Tap the deep note in the middle', level: 'easy' },
+        { bar: 4, title: 'The rim', say: 'Now the notes around the rim', level: 'normal' },
+        { bar: 8, title: 'The tune', say: 'Fingertips on the lit notes: the tune', level: 'hard' },
+        { bar: 12, title: 'Your turn', say: 'All of it, softly', level: 'hard' },
+      ],
+    },
+  },
+  {
+    id: 'learn-congas',
+    name: 'Learn congas',
+    by: 'Lesson',
+    bpm: 84,
+    key: 'C',
+    style: 'funk',
+    passes: 1,
+    original: true,
+    melody: C_TUNE + C_TUNE.trimEnd().replace(/\|\s*$/, ''),
+    chords: C_CHORDS + C_CHORDS.trimEnd().replace(/\|\s*$/, ''),
+    lesson: {
+      inst: 'congas',
+      steps: [
+        { bar: 0, title: 'Two sounds', say: 'Palm in the middle, fingers on the edge', level: 'easy' },
+        { bar: 4, title: 'Both drums', say: 'Now both drums, as they light', level: 'normal' },
+        { bar: 8, title: 'All four', say: 'Middle and edge of each drum', level: 'hard' },
+        { bar: 12, title: 'Your turn', say: 'All of it: keep the groove', level: 'hard' },
+      ],
+    },
+  },
+];
 
 export const TUNES: readonly Tune[] = [
   // ---------------------------------------------------------------- the classics

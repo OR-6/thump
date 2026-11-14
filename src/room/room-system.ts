@@ -406,6 +406,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (fullCombo) this.later(this.clock.t + 0.5, () => this.kit.module.say('Full combo', 'gold'));
     },
     countTick: () => audio.tick(0.07),
+    lessonStep: (title) => {
+      this.kit.module.say(title);
+      audio.chime([76, 79], 0.08, 0.35);
+    },
     starLanded: (i, of) => {
       // each star lands as a note of the song's own chord on its melody instrument (tonic, third, fifth; the ninth
       // after a third)

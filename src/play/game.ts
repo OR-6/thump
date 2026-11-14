@@ -50,6 +50,8 @@ export interface GameStage {
   gradeStamp?(letter: string, fullCombo: boolean): void;
   /** The results' score ticking as it counts up. */
   countTick?(): void;
+  /** A lesson's next step began. */
+  lessonStep?(title: string): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
   retune(keyPc: number, minor?: boolean): void;
   save(p: Progress): void;
@@ -916,7 +918,8 @@ export class Game {
       parts.push({ def, surface: key.slice(0, key.indexOf(':')), key, notes });
     }
     this.machine = { track, parts, written: true, len: track.score ? track.score.end + 4 : LOOP_BEATS };
-    const out = this.stage.shelf?.(0).id ?? 'drums';
+    // (a lesson puts out the instrument it teaches)
+    const out = track.score?.tune.lesson?.inst ?? this.stage.shelf?.(0).id ?? 'drums';
     this.beginPerform(out, beat0);
     // (listening is this headset's own: it doesn't start the band's song)
     if (!this.listening) this.stage.songStarted?.(i, this.clock.start);
@@ -995,9 +998,16 @@ export class Game {
   private shownSongs(): number[] {
     const f = this.songFilter;
     const out: number[] = [];
+    // (the lessons: all of them on their own page; in All songs, the one for the instrument that's out, first)
+    const inst = this.stage.shelf?.(0).id ?? 'drums';
     this.tracks.forEach((t, i) => {
+      const ls = t.score?.tune.lesson;
+      if (ls) {
+        if (f === 'lessons' || (f === 'all' && ls.inst === inst)) out.push(i);
+        return;
+      }
       const orig = !!t.score?.tune.original;
-      if (f === 'all' || (t.score && (f === 'originals') === orig)) out.push(i);
+      if (f === 'all' || (t.score && f !== 'lessons' && (f === 'originals') === orig)) out.push(i);
     });
     return out;
   }
@@ -1027,6 +1037,7 @@ export class Game {
     this.bestRun = 0;
     this.scorer.reset();
     this.lastScore = null;
+    this.lessonIdx = -1;
     this.finalWait = -1;
     this.domSent = false;
     const t = m.track;
@@ -1217,7 +1228,7 @@ export class Game {
     const hidden = j.notes.filter((n) => n.beat >= p.holdFrom);
     const held = hidden.length ? hidden.filter((n) => n.grade === 'perfect' || n.grade === 'good').length / hidden.length : 1;
     let stars = s.stars;
-    if (stars === 3 && (p.goodFills < 1 || held < 0.6)) stars = 2;
+    if (stars === 3 && ((p.fills.length > 0 && p.goodFills < 1) || held < 0.6)) stars = 2;
     const tight = tightPercent(j.notes.filter((n) => n.grade === 'perfect' || n.grade === 'good').map((n) => n.offset));
     this.last = { ...s, stars };
     this.lastTight = tight;
@@ -2055,6 +2066,7 @@ export class Game {
     // the progress bar and the run of notes move every frame (the rest of the panel only when it changes)
     this.display.progress = Math.max(0, beat / (song.bars * 4));
     this.display.combo = this.combo;
+    this.lessonTick(beat);
     this.display.score = this.scorer.score;
     this.display.mult = this.scorer.mult;
     this.display.acc = this.scorer.accuracy;
@@ -2273,13 +2285,32 @@ export class Game {
   readonly scorer = new ScoreKeeper();
   lastScore: (ScoreSummary & { better: boolean; hook: string; t: number }) | null = null;
   private stamped = false;
+  /** The lesson's step now (-1: none, or not a lesson). */
+  private lessonIdx = -1;
+  private lessonNow(): { title: string; say: string } | null {
+    const ls = this.perf?.track.score?.tune.lesson;
+    return ls && this.lessonIdx >= 0 ? (ls.steps[this.lessonIdx] ?? null) : null;
+  }
+  /** A lesson's steps: the word over the panel as each begins, what to do on the panel's line. */
+  private lessonTick(beat: number): void {
+    const s = this.perf?.track.score;
+    const ls = s?.tune.lesson;
+    if (!s || !ls || this.listening) return;
+    const bar = Math.floor((beat - s.starts[0]) / s.meter);
+    let i = 0;
+    while (i + 1 < ls.steps.length && ls.steps[i + 1].bar <= bar) i++;
+    if (i === this.lessonIdx) return;
+    this.lessonIdx = i;
+    this.stage.lessonStep?.(ls.steps[i].title);
+    this.refreshDisplay();
+  }
   private tickAt = 0;
   /** The song the panel's card shows (◀ ▶ browse; PLAY plays it). */
   songSel = 0;
   /** The page of songs on the panel (six to a page), or −1: the page with the one picked. */
   private songPage = -1;
   /** Which songs the page shows. */
-  songFilter: 'all' | 'classics' | 'originals' = 'all';
+  songFilter: 'all' | 'classics' | 'originals' | 'lessons' = 'all';
   /** The gear on the panel: the settings page. */
   openSettings(): void {
     if (this.mode !== 'discover' && this.mode !== 'results') return;
@@ -2336,7 +2367,7 @@ export class Game {
     }
     if (id === 'songs:filter') {
       // all of them, the classics, the originals
-      this.songFilter = this.songFilter === 'all' ? 'classics' : this.songFilter === 'classics' ? 'originals' : 'all';
+      this.songFilter = this.songFilter === 'all' ? 'classics' : this.songFilter === 'classics' ? 'originals' : this.songFilter === 'originals' ? 'lessons' : 'all';
       this.songPage = 0;
       this.refreshDisplay();
       return;
@@ -2349,6 +2380,16 @@ export class Game {
       return;
     }
     if (id === 'play') return this.playSong(this.songSel);
+    // the instrument's lesson
+    if (id === 'learn') {
+      const inst = this.stage.shelf?.(0).id ?? 'drums';
+      const i = this.tracks.findIndex((t) => t.score?.tune.lesson?.inst === inst);
+      if (i >= 0) {
+        this.songSel = i;
+        return this.playSong(i);
+      }
+      return;
+    }
     if (id === 'listen') return this.listenSong(this.songSel);
     if (id === 'stop') {
       // two presses: a stray arm in a fill never ends the song
@@ -2440,6 +2481,8 @@ export class Game {
     const v = this.stage.shelf?.(0) ?? { id: 'drums', name: 'Drums', how: '', scale: '', sound: '', oct: 0 };
     const pageId: PageId = this.tuneOpen ? 'tune' : this.settingsOpen ? 'settings' : this.mode === 'discover' ? this.menu : this.mode === 'build' ? 'build' : this.mode === 'results' ? 'results' : this.paused && (this.mode === 'play' || this.mode === 'count') ? 'pause' : 'song';
     const band = this.stage.bandState?.() ?? { state: 'idle', players: 1 };
+    const step = this.mode === 'play' || this.mode === 'count' ? this.lessonNow() : null;
+    if (step) d.sub = step.say;
     const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
       page: pageId,
@@ -2448,7 +2491,7 @@ export class Game {
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
       // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
-      songs: this.tracks.map((t, i) => ({ name: t.name, meta: i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false, grade: this.progress.top?.[`${t.id}:${this.level}`]?.letter })),
+      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson · done' : 'Lesson · start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false, grade: this.progress.top?.[`${t.id}:${this.level}`]?.letter })),
       songSel: this.songSel,
       songShown: this.shownSongs(),
       songPage: this.shownPage(),

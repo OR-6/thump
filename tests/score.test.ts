@@ -4,6 +4,8 @@ import { SONG_TRACKS } from '../src/play/build.js';
 import { EASY_GAP, SCORES, beatKey, chordAt, chordMidi, keyOf, parseChords, parseMelody, pianoKey, scoreBed, scoreChart, scoreParts, zoneOf, type Level, type Score } from '../src/songs/score.js';
 import { TUNES } from '../src/songs/tunes.js';
 
+/** The songs (the lessons have their own test). */
+const SONGS = SCORES.filter((x) => !x.tune.lesson);
 const INSTS = ['drums', 'piano', 'marimba', 'guitar', 'congas', 'handpan'];
 const LEVELS: Level[] = ['easy', 'normal', 'hard'];
 const chart = (s: Score, inst: string, level: Level) => scoreChart(s, inst, level, 0, 1e9, s.solos, { tom: true });
@@ -29,10 +31,10 @@ function pianoMidi(scale: string, zone: number): number {
 describe('the songs: classics with modern grooves, and originals', () => {
   it('a library of about twenty, easiest first, the classics and the originals', () => {
     expect(SCORES.length).toBeGreaterThanOrEqual(18);
-    expect(SCORES.filter((s) => s.tune.original).length).toBe(6);
+    expect(SONGS.filter((s) => s.tune.original).length).toBe(6);
     expect(new Set(TUNES.map((t) => t.id)).size).toBe(TUNES.length);
     expect(SONG_TRACKS.map((t) => t.id)).toEqual(SCORES.map((s) => s.tune.id));
-    for (let i = 1; i < SCORES.length; i++) expect(SCORES[i].rating).toBeGreaterThanOrEqual(SCORES[i - 1].rating);
+    for (let i = 1; i < SONGS.length; i++) expect(SONGS[i].rating).toBeGreaterThanOrEqual(SONGS[i - 1].rating);
     // each difficulty has songs in it, in order
     const d = SCORES.map((s) => s.difficulty);
     expect(d[0]).toBe('Easy');
@@ -58,7 +60,7 @@ describe('the songs: classics with modern grooves, and originals', () => {
     expect(() => parseMelody('C2 D2 E2 | C2', 'C')).toThrow(/beats/);
     expect(() => parseMelody('C2 D2 E2 F2 | C2 Q2 C4', 'C')).toThrow();
     expect(() => parseChords('C | H', 'C')).toThrow();
-    for (const s of SCORES) {
+    for (const s of SONGS) {
       expect(s.chords[s.chords.length - 1].beat + s.chords[s.chords.length - 1].len).toBe(s.bars * s.meter);
       expect(s.bars).toBeGreaterThanOrEqual(8);
     }
@@ -85,7 +87,7 @@ describe('the songs: classics with modern grooves, and originals', () => {
   });
 
   it('every note is on the keyboard; a note outside the scale is a black key, at its own pitch', () => {
-    for (const s of SCORES) {
+    for (const s of SONGS) {
       for (const n of s.melody) {
         const z = pianoKey(s.scale, n.degree, n.acc, false);
         expect(z, `${s.tune.id} ${n.degree} ${n.acc}`).toBeGreaterThanOrEqual(0);
@@ -100,7 +102,7 @@ describe('the songs: classics with modern grooves, and originals', () => {
   });
 
   it('every song ends on its home chord, its last note that chord’s root; a solo between each time through', () => {
-    for (const s of SCORES) {
+    for (const s of SONGS) {
       const last = s.melody[s.melody.length - 1];
       expect(((last.degree % 7) + 7) % 7, s.tune.id).toBe(s.home.degree);
       expect(last.acc).toBe(0);
@@ -120,7 +122,7 @@ describe('the songs: classics with modern grooves, and originals', () => {
   });
 
   it('a part for every instrument at every level, on zones it has: two notes at once at most, never two on one zone', () => {
-    for (const s of SCORES)
+    for (const s of SONGS)
       for (const inst of INSTS)
         for (const lv of LEVELS) {
           const c = chart(s, inst, lv);
@@ -143,7 +145,7 @@ describe('the songs: classics with modern grooves, and originals', () => {
   });
 
   it('Easy is never busier than Normal, nor Normal than Hard; Easy is never too quick for a beginner', () => {
-    for (const s of SCORES)
+    for (const s of SONGS)
       for (const inst of INSTS) {
         const [e, n, h] = LEVELS.map((lv) => chart(s, inst, lv).notes);
         expect(e.length, `${s.tune.id} ${inst}`).toBeLessThanOrEqual(n.length);
@@ -169,7 +171,7 @@ describe('the songs: classics with modern grooves, and originals', () => {
   });
 
   it("the band plays the tune's notes you don't, the ones outside the marimba's scale included", () => {
-    for (const s of SCORES) {
+    for (const s of SONGS) {
       const keys = scoreParts(s).find((p) => p.name === 'KEYS')!.notes;
       const tune = new Set(keys.map((n) => beatKey(n.beat)));
       for (const inst of ['piano', 'marimba'])
@@ -213,14 +215,35 @@ describe('the songs: classics with modern grooves, and originals', () => {
   });
 
   it('the marimba plays every note of the scale it can reach, folding the rest an octave in', () => {
-    for (const s of SCORES)
+    for (const s of SONGS)
       for (const n of s.melody) if (n.acc === 0) expect(zoneOf('marimba', s.scale, n.degree), s.tune.id).toBeGreaterThanOrEqual(0);
   });
 
   it('names and tile lines fit their tiles', () => {
-    for (const s of SCORES) {
+    for (const s of SONGS) {
       expect(s.tune.name.length).toBeLessThanOrEqual(16);
       expect(`${s.difficulty} · ${s.tune.by}`.length, s.tune.id).toBeLessThanOrEqual(18);
+    }
+  });
+
+  it('a lesson for every instrument: each step its own notes, on that instrument only, slow enough to learn', () => {
+    const lessons = SCORES.filter((x) => x.tune.lesson);
+    expect(lessons.map((x) => x.tune.lesson!.inst).sort()).toEqual([...INSTS].sort());
+    for (const s of lessons) {
+      const ls = s.tune.lesson!;
+      const c = scoreChart(s, ls.inst, 'hard', 0, s.end + 1, s.solos);
+      const prefix = ls.inst === 'drums' ? 'kit:' : `${ls.inst}:`;
+      expect(c.notes.every((n) => n.key.startsWith(prefix)), s.tune.id).toBe(true);
+      ls.steps.forEach((st, i) => {
+        const a = s.starts[0] + st.bar * s.meter;
+        const b = i + 1 < ls.steps.length ? s.starts[0] + ls.steps[i + 1].bar * s.meter : Infinity;
+        const mine = c.notes.filter((n) => n.beat >= a && n.beat < b);
+        expect(mine.length, `${s.tune.id} step ${i}`).toBeGreaterThanOrEqual(3);
+        if (st.only) expect(mine.every((n) => st.only!.includes(n.key)), `${s.tune.id} step ${i}`).toBe(true);
+        expect(st.say.length).toBeLessThanOrEqual(52);
+      });
+      expect(s.tune.name.length).toBeLessThanOrEqual(16);
+      expect(s.tune.bpm).toBeLessThanOrEqual(84);
     }
   });
 });
