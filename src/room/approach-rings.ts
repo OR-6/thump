@@ -95,7 +95,7 @@ export class ApproachRings {
     }
   }
 
-  update(feed: ApproachFeed, shapeOf: ShapeOf, calm: boolean): void {
+  update(feed: ApproachFeed, shapeOf: ShapeOf, calm: boolean, waitKey = '', t = 0): void {
     let s = 0;
     if (feed.mode === 'play' || feed.mode === 'count') {
       const count = Math.min(feed.moteCount, feed.motes.length);
@@ -116,7 +116,9 @@ export class ApproachRings {
         const r = sh.round ? hw : Math.min(hw, hd) * 0.35;
         const a = n.ahead < 0 ? Math.max(0, 1 + n.ahead / (miss ? 0.6 : 0.25)) * (miss ? 0.8 : 1) : 0.3 + 0.7 * (1 - u) * (1 - u * 0.3);
         // thicker as it lands (5.5 → 7 mm), so the moment it meets the edge is the thing you see
-        const w = (calm ? 0.005 : 0.0055) + 0.0015 * (1 - u);
+        let w = (calm ? 0.005 : 0.0055) + 0.0015 * (1 - u);
+        // (the note a lesson is waiting on: its ring sits on the edge and beats, so it's plainly the one)
+        if (waitKey && n.key === waitKey && n.ahead <= 0.05) w *= 1.3 + 0.35 * Math.sin(t * 9);
         this.band(s, 0, sh, hw, hd, r, -0.0015, w + 0.0015, EDGE, a * 0.6);
         this.band(s, 1, sh, hw, hd, r, 0, w, _c, a);
         s++;

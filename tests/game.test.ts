@@ -594,6 +594,34 @@ describe('the game', () => {
     expect(after).toBeGreaterThan(n);
   });
 
+  it('a lesson holds still for you: each step to read (any hit goes on, unscored), then its first notes at their moment (their own hit, right on time)', () => {
+    const holds: boolean[] = [];
+    const g = new Game({ ...stage([]), holdSong: (on) => holds.push(on) }, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    expect(g.tracks[0].id).toBe('learn-drums');
+    g.key('play');
+    // (the room holds the clock while held: here, the test does)
+    let t = 45;
+    for (let k = 0; k < 600 && !g.hold; k++) g.tick((t += 1 / 30));
+    expect(g.hold?.kind).toBe('read');
+    expect(holds).toEqual([true]);
+    expect(g.hit('kit:kick', t, 0.8)).toBeNull();
+    expect(g.hold).toBeNull();
+    expect(holds).toEqual([true, false]);
+    // the first note's moment: it waits for the snare; another drum doesn't let it go
+    for (let k = 0; k < 900 && !g.hold; k++) g.tick((t += 1 / 30));
+    expect(g.hold?.kind).toBe('note');
+    expect(g.hold?.key).toBe('kit:snare');
+    const held = t;
+    for (let k = 0; k < 10; k++) g.tick(held);
+    expect(g.hit('kit:kick', held, 0.8)).toBeNull();
+    expect(g.hold).not.toBeNull();
+    expect(g.hit('kit:snare', held, 0.8)).toBe('perfect');
+    expect(g.hold).toBeNull();
+  });
+
   it('play a song: ▶ plays the first song on the drums; the results offer it again, the next song, or the menu', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);

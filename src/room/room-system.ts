@@ -58,7 +58,7 @@ import { Game, type GameStage, type Room, type Unlock } from '../play/game.js';
 import { Surface, isGlass, surfaceName, swappable } from './surface.js';
 import { SurfaceBuilder, insidePolygon, tuneStrike } from './surface-builder.js';
 import { GameClock } from './game-clock.js';
-import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M, URL_STRIKE } from './params.js';
+import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEATED_M, STRIKE_CFG, SWAP_NEAR_M, URL_STRIKE, NO_COACH } from './params.js';
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
@@ -141,6 +141,18 @@ export interface RoomDebug {
   seats?: number;
 }
 
+/** What to call the part a note key plays, in a sentence ("Hit the snare"). */
+function partName(key: string): string {
+  const [kind, z] = key.split(':');
+  if (kind === 'kit') return z === 'hat' ? 'hi-hat' : z === 'tom' ? 'tom' : z ?? 'drum';
+  if (kind === 'piano' || kind === 'keys') return 'key';
+  if (kind === 'marimba') return 'bar';
+  if (kind === 'congas') return 'conga';
+  if (kind === 'handpan') return 'note';
+  if (kind === 'guitar') return Number(z) >= 3 ? 'strings' : 'chord';
+  return 'drum';
+}
+
 export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, meshes: { required: [XRMesh] } }) {
   kit!: KitView;
   game!: Game;
@@ -212,6 +224,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     const spot = this.game.display.spot?.active;
     const c = spot ? 0xffd23f : this.partCol.getHex();
+    if (g === 'perfect' && !(this.settings.taught ?? []).includes('perfect')) {
+      // your first Perfect ever: a moment
+      this.settings = { ...this.settings, taught: [...(this.settings.taught ?? []), 'perfect'] };
+      saveSettings(this.settings);
+      this.hudFirstT = this.uiT;
+      audio.cheer(0.7, false);
+      audio.ui('fullcombo', 0.7);
+      this.dimmer.hit(0xffd36a, 0.9);
+      this.kit.module.burst('milestone', 200, 300);
+      this.hitFx?.flash('mult', s, 0xffd23f);
+    }
     if (g === 'perfect') {
       this.hitFx?.flash('perfect', s, c);
       this.hitFx?.flash('inner', s, 0xffffff, 0.07);
@@ -463,6 +486,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     useInstrument: (id) => this.useInstrument(id as InstId | null),
     shelfSet: (which) => this.shelfChange(which),
     // the game's moments, said over the panel and in the room (soft: success louder than failure)
+    holdSong: (on) => {
+      this.lessonHold = on;
+      if (on) audio.ui('open', 0.6);
+    },
     multUp: (m) => {
       this.hudMult = m;
       this.hudMultT = this.uiT;
@@ -1054,6 +1081,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private hudHitsAt = -1;
   private hudSay: HudSay = { kind: 'none' };
   private hudCalcT = -9;
+  private hudFirstT = -9;
+  private hudSticksT = -9;
+  private coachKitT = -1;
+  private coachSkip = 0;
   /** Where the HUD stands (kit-local): on the desk on your side of the instrument, clear of the kick's front. */
   private hudAt = new Vector3(0, 0.05, 0.24);
   private coachTo(n: number): void {
@@ -1082,18 +1113,48 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.hudWasCount = mode === 'count' && d.count > 0;
       const step = this.game.lessonStepNow();
       const beat = this.game.songBeat;
+      const coach = NO_COACH ? 3 : (this.settings.coach ?? 0);
       if (ctl && !inSong) say = { kind: 'tip', big: 'Put the controllers down', small: 'You play Thump with your bare hands' };
       else if (inSong && this.game.paused) say = { kind: 'none' };
+      else if (inSong && this.game.hold?.kind === 'read') {
+        const h = this.game.hold;
+        say = { kind: 'tip', big: h.title, small: h.say, foot: h.key ? `Hit the ${partName(h.key)} to go on` : 'Hit anything to go on', icon: this.kit.inst === 'drums' || this.kit.inst === 'marimba' ? 'stick' : undefined };
+      } else if (this.uiT - this.hudFirstT < 1.1) say = { kind: 'tip', big: 'First Perfect!', small: 'Right on the beat. Keep doing that', gold: true };
+      else if (this.uiT - this.hudSticksT < 1.4) say = { kind: 'tip', big: 'Sticks!', small: 'Open your hand to let go', icon: 'stick' };
+      else if (inSong && this.game.hold?.kind === 'note') say = { kind: 'tip', big: 'Now!', small: `The ring is on the ${partName(this.game.hold.key)}: hit it`, gold: true };
       else if (d.count > 0 && (mode === 'count' || this.game.looper.state === 'count')) say = { kind: 'count', n: d.count };
       else if (inSong && this.uiT - this.hudGoT < 0.6) say = { kind: 'go' };
       else if (inSong && d.spot?.ready && !d.spot.active) say = { kind: 'tip', big: 'Hands up!', small: 'Raise both hands for double points', gold: true };
       else if (inSong && this.uiT - this.hudMultT < 1.5 && this.hudMult > 1) say = { kind: 'mult', n: this.hudMult };
       else if (inSong && this.uiT - this.hudStreakT < 1.5 && this.hudStreak > 0) say = { kind: 'streak', n: this.hudStreak };
       else if (step) say = { kind: 'tip', big: step.title, small: step.say };
-      else if (inSong && beat >= 0 && beat < 8 && (this.settings.coach ?? 0) < 3) say = { kind: 'tip', big: 'Hit as the ring closes', small: 'Each note is a ring shrinking onto what plays it' };
+      else if (inSong && beat >= 0 && beat < 8 && coach < 3) say = { kind: 'tip', big: 'Hit as the ring closes', small: 'Each note is a ring shrinking onto what plays it' };
+      else if (coach === 0 && mode === 'discover' && !this.game.paused) {
+        // the welcome: tap the desk and the drums arrive, then the first lesson starts by itself
+        if (!this.game.found.includes('kit'))
+          say = { kind: 'tip', big: 'Welcome to Thump', small: 'Played before? Pinch and hold to skip', foot: 'Tap the desk to begin' };
+        else {
+          say = { kind: 'tip', big: 'Your drums', small: 'Make fists: they are your sticks', icon: 'stick' };
+          if (this.coachKitT < 0) this.coachKitT = this.uiT;
+          if (this.uiT - this.coachKitT > 1.6) {
+            const i = this.game.tracks.findIndex((t) => t.id === 'learn-drums');
+            if (i >= 0) {
+              this.coachTo(1);
+              this.game.menu = 'songs';
+              this.game.refreshDisplay();
+              this.panelAction(`song:${i}`);
+              this.panelAction('play');
+            } else this.coachTo(3);
+          }
+        }
+        // (played before: a pinch held most of a second skips it all)
+        for (const h of [hands.left, hands.right]) if (h.tracked && !h.controller && h.pinch.pinching) this.coachSkip += 0.05;
+        if (!(hands.left.pinch.pinching || hands.right.pinch.pinching)) this.coachSkip = 0;
+        if (this.coachSkip >= 0.8) this.coachTo(3);
+      } else if (coach === 1 && !inSong) this.coachTo(2);
+      else if (coach === 2 && !inSong) say = { kind: 'tip', big: mode === 'results' ? 'Poke Next on the screen' : 'Poke Songs on the screen', small: 'The screen behind the drums is your menu: poke it with a fingertip' };
       else if (mode === 'discover' && !this.game.paused) {
         const inst = this.kit.inst;
-        const coach = this.settings.coach ?? 0;
         // a new instrument out: how to play it, for 7 s, the first time
         if (inst !== this.hudHowInst) {
           this.hudHowInst = inst;
@@ -1101,16 +1162,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           if (this.hudHowT > 0) this.settings = { ...this.settings, taught: [...(this.settings.taught ?? []), inst] };
           if (this.hudHowT > 0) saveSettings(this.settings);
         }
-        if (this.uiT - this.hudHowT < 7) say = { kind: 'tip', big: instDef(inst).name, small: instDef(inst).how };
-        else if (coach === 0) {
-          // the first steps: play it (a few hits), then the screen, then a lesson
-          if (this.hudHitsAt < 0) this.hudHitsAt = this.debug.hits;
-          if (this.debug.hits - this.hudHitsAt >= 6) this.coachTo(1);
-          say = { kind: 'tip', big: inst === 'drums' ? 'Slap a drum' : `Play the ${instDef(inst).name.toLowerCase()}`, small: inst === 'drums' ? 'Flat hands on the white heads, or fists for sticks' : instDef(inst).how };
-        } else if (coach === 1) say = { kind: 'tip', big: 'Poke the screen', small: 'The screen behind the instrument is your menu' };
-        else if (coach === 2) say = { kind: 'tip', big: 'Press Songs', small: 'Then start with the first lesson' };
+        if (this.uiT - this.hudHowT < 7) say = { kind: 'tip', big: instDef(inst).name, small: instDef(inst).how, icon: inst === 'drums' || inst === 'marimba' ? 'stick' : undefined };
       }
-      if (inSong) this.coachTo(3);
+      // the button a newcomer is shown next pulses on the screen
+      this.game.coachFocus = coach === 2 ? (mode === 'results' ? 'next' : 'nav:songs') : null;
+      if (inSong && coach !== 1 && coach !== 0) this.coachTo(3);
     }
     hud.set(say);
     this.hudSay = say;
@@ -1572,7 +1628,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const dt = Math.min(delta, 0.1);
     this.watchFrames(delta);
     // (paused by you: the song's clock holds still; you can still use the panel)
-    if (!this.userPaused) this.clock.tick(Math.min(dt, 0.05), audio.running, audio.now());
+    if (!this.userPaused && !this.lessonHold) this.clock.tick(Math.min(dt, 0.05), audio.running, audio.now());
     else this.clock.hold();
     // the panel's own time: it runs while the song is paused (the song's clock stands still then, and a press timed on
     // it would never count)
@@ -1628,7 +1684,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     try {
       this.watchSwaps();
       this.brushShakers(delta);
-      if (AUTOPLAY) this.autoplay();
+      if (this.autoOn) this.autoplay();
     } catch (e) {
       this.partFailed(1, e);
     }
@@ -1729,7 +1785,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.module.root.localToWorld(this.tmp2);
     // the song's notes fall onto what plays them
     this.waterfall.update(dt, this.game, this.kit.root, this.resolveNote);
-    this.approach?.update(this.game, this.shapeOf, motion.calm);
+    this.approach?.update(this.game, this.shapeOf, motion.calm, this.game.hold?.kind === 'note' ? this.game.hold.key : '', this.uiT);
     this.dimmer.update(dt, this.head, motion.calm);
     audio.idle();
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
@@ -1891,7 +1947,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.malletTip[i].copy(this.stickTip[i]);
         this.sample.pinching = false;
       }
-      this.handMallets[i].set(this.malletOn[i], h.palm, this.malletTip[i], delta);
+      this.handMallets[i].set(this.malletOn[i], this.malletOn[i] ? this.stickButt[i] : h.palm, this.malletTip[i], delta);
       if (pinched && !this.pinchWas[i]) {
         this.pinchStand(h.pinchPoint);
         // with the guitar out, a pinch on the neck holds that chord (the left hand's grip)
@@ -2803,6 +2859,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** A fist holds a stick (a mallet with the marimba): per hand, with hysteresis. */
   private fist = [false, false];
   private stickTip = [new Vector3(), new Vector3()];
+  private stickGrip = [new Vector3(), new Vector3()];
+  private stickButt = [new Vector3(), new Vector3()];
+  private stickSide = new Vector3();
   private stickDir = [new Vector3(0, -0.3, -1).normalize(), new Vector3(0, -0.3, -1).normalize()];
   private airP = new Vector3();
   private airStrike: Strike = { kind: 'stop', speed: 0, gain: 0, point: 0, height: 0, t: 0 };
@@ -2985,17 +3044,26 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (this.fistHold[i] >= 0.08) {
           this.fist[i] = want;
           this.fistHold[i] = 0;
+          if (want && (this.kit.inst === 'drums' || this.kit.inst === 'marimba') && !(this.settings.taught ?? []).includes('sticks')) {
+            this.settings = { ...this.settings, taught: [...(this.settings.taught ?? []), 'sticks'] };
+            saveSettings(this.settings);
+            this.hudSticksT = this.uiT;
+          }
           this.forgetPt(i * AIR_PTS + 4);
           this.stickSnap[i] = true;
         }
       } else this.fistHold[i] = 0;
       if (this.fist[i]) {
-        // along the hand from the wrist through the middle knuckle (a long, steady line), a little down; filtered,
-        // so it has a little weight; snapped to the hand the moment the fist closes
+        // held as a stick is held: gripped between the thumb and the index finger, at the top of the fist, it runs
+        // forward and across the hand toward the thumb (about 40 degrees in, as a matched grip angles toward the
+        // middle), a little down; filtered, so it has a little weight; snapped to the hand the moment the fist closes
         this.airP.subVectors(h.knuckleMiddle, h.wrist);
-        if (this.airP.lengthSq() > 1e-8) {
+        this.stickSide.subVectors(h.knuckleIndex, h.knucklePinky);
+        if (this.airP.lengthSq() > 1e-8 && this.stickSide.lengthSq() > 1e-8) {
           this.airP.normalize();
-          this.airP.y -= 0.25;
+          this.stickSide.normalize();
+          this.airP.multiplyScalar(0.77).addScaledVector(this.stickSide, 0.64);
+          this.airP.y -= 0.22;
           this.airP.normalize();
           if (this.stickSnap[i]) {
             this.stickDir[i].copy(this.airP);
@@ -3004,7 +3072,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           } else this.stickFilt[i].filter(this.airP, dt, this.stickDir[i]);
           this.stickDir[i].normalize();
         }
-        this.stickTip[i].copy(h.knuckleMiddle).addScaledVector(this.stickDir[i], STICK_LEN);
+        // the grip: past the index knuckle on the thumb's side; the butt comes out under the heel of the hand
+        this.stickSide.subVectors(h.knuckleIndex, h.knucklePinky);
+        this.stickGrip[i].copy(h.knuckleIndex).addScaledVector(this.stickSide, 0.3);
+        this.stickGrip[i].y -= 0.01;
+        this.stickButt[i].copy(this.stickGrip[i]).addScaledVector(this.stickDir[i], -0.06);
+        this.stickTip[i].copy(this.stickGrip[i]).addScaledVector(this.stickDir[i], STICK_LEN);
       }
       if (!drums && !piano && !congas && !guitar && !marimba) continue;
       // a hand at the panel (its fingertip within 6 cm of the face) is pressing a button, not playing what's under it
@@ -3398,7 +3471,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if ((k === this.panelPressK && this.uiT - this.panelPressT < 0.15) || this.uiT - this.panelPressT < 0.08 || this.uiT - this.pageT < 0.45) return;
     this.panelPressT = this.uiT;
     this.panelPressK = k;
-    if ((this.settings.coach ?? 0) === 1) this.coachTo(2);
+    if ((this.settings.coach ?? 0) === 2) {
+      this.coachTo(3);
+      this.game.coachFocus = null;
+    }
     this.kit.module.pressKey(k);
     audio.ui(it.id === 'back' || it.id === 'nav:main' ? 'back' : it.id.startsWith('set:') ? 'toggle' : 'press');
     if (it.id.startsWith('nav:') || it.id === 'play' || it.id === 'learn') this.uiLater(0.05, () => audio.ui('open', 0.8));
@@ -4726,6 +4802,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private autoRunAt = -1;
   private autoNext = 0;
   /** ?autoplay=1: discovers each surface in reach in turn, presses play when offered, hits every note on time. */
+  private autoHoldT = -1;
+  /** The autoplayer on (?autoplay=1; a test can turn it on later, after what it wants to see by hand). */
+  autoOn = AUTOPLAY;
   private autoplay(): void {
     const t = this.clock.t;
     const from = this.autoT || t;
@@ -4759,6 +4838,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
       }
     }
+    // (a lesson holding: answered after half a second, the held note itself or, to read on, the snare)
+    const hold = this.game.hold;
+    if (hold) {
+      if (this.autoHoldT < 0) this.autoHoldT = this.uiT;
+      if (this.uiT - this.autoHoldT > 0.5) {
+        this.autoHoldT = -1;
+        if (hold.kind === 'note') this.autoHit(hold.key, t);
+        else this.hitGame(hold.key || 'kit:snare', t, 0.8);
+      }
+      return;
+    }
+    this.autoHoldT = -1;
+    // (a lesson's first notes wait for you: the autoplayer lets them, as a newcomer would)
+    if (this.game.lessonWaits > 0 && this.game.mode === 'play') return;
     if (this.game.mode === 'play' || this.game.mode === 'count' || this.game.mode === 'jam' || this.game.mode === 'build') {
       this.game.dueBetween(from, t, (key) => this.autoHit(key, t));
     }
@@ -4831,6 +4924,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** Paused by you: the song, the band and scoring hold still; resuming counts you back in. */
   private userPaused = false;
+  /** A lesson holding the song still for you (its clock stands; your hits still play). */
+  private lessonHold = false;
   private setUserPaused(p: boolean): void {
     if (p === this.userPaused) return;
     const playing = this.game.mode === 'play' || this.game.mode === 'count';

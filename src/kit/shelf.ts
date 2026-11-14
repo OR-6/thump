@@ -32,7 +32,7 @@ export interface InstDef {
 }
 
 export const SHELF: readonly InstDef[] = [
-  { id: 'drums', name: 'Drums', how: 'Slap the drum tops, or make fists for sticks', sounds: [{ id: 'acoustic', name: 'Acoustic' }, { id: 'jazz', name: 'Jazz' }, { id: 'electronic', name: 'Electronic' }], scales: false, color: 0xff5a3c },
+  { id: 'drums', name: 'Drums', how: 'Make fists for sticks, or slap with flat hands', sounds: [{ id: 'acoustic', name: 'Acoustic' }, { id: 'jazz', name: 'Jazz' }, { id: 'electronic', name: 'Electronic' }], scales: false, color: 0xff5a3c },
   {
     id: 'piano',
     name: 'Piano',

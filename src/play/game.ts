@@ -60,6 +60,8 @@ export interface GameStage {
   overtake?(): void;
   /** A lesson's next step began. */
   lessonStep?(title: string): void;
+  /** A lesson holds the song still for you (true) or lets it go on (false). */
+  holdSong?(on: boolean): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
   retune(keyPc: number, minor?: boolean): void;
   save(p: Progress): void;
@@ -1048,6 +1050,9 @@ export class Game {
     this.scorer.reset();
     this.lastScore = null;
     this.lessonIdx = -1;
+    this.setHold(null);
+    this.readDone = -1;
+    this.waitsLeft = 0;
     this.spotMeter = 0;
     this.spotUntil = -1;
     this.spotBars.clear();
@@ -1930,6 +1935,18 @@ export class Game {
     if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return null;
     // listening: you can play along, nothing's scored
     if (this.listening) return null;
+    // a lesson holding for you: a step to read goes on with any hit (not scored); a note waits for its own hit
+    if (this.hold) {
+      if (gain < 0.15) return null;
+      if (this.hold.kind === 'read') {
+        this.setHold(null);
+        this.waitsLeft = 3;
+        return null;
+      }
+      if (key !== this.hold.key) return null;
+      this.setHold(null);
+      this.waitsLeft--;
+    }
     // the band's waiting for your last hit
     if (this.finalWait >= 0 && this.perf) {
       if (gain < 0.2) return null;
@@ -1971,6 +1988,8 @@ export class Game {
 
   tick(t: number): void {
     this.t = t;
+    // (a lesson's hold ends with the song)
+    if (this.hold && this.mode !== 'play' && this.mode !== 'count') this.setHold(null);
     if (this.pad.until > 0 && t >= this.pad.until) {
       this.pad.until = -1;
       this.refreshDisplay();
@@ -2081,6 +2100,7 @@ export class Game {
     this.display.progress = Math.max(0, beat / (song.bars * 4));
     this.display.combo = this.combo;
     this.lessonTick(beat);
+    this.holdTick(t, beat);
     this.spotTick(beat);
     this.display.score = this.scorer.score;
     this.display.mult = this.scorer.mult;
@@ -2404,6 +2424,56 @@ export class Game {
 
   /** The lesson's step now (-1: none, or not a lesson). */
   private lessonIdx = -1;
+  /**
+   * A lesson holding still for you (the room stops the song's clock): `read`, a step's first beat is one away and it
+   * says what to do (any hit goes on, unscored); `note`, a note's moment has come and the ring sits on it (its own hit
+   * goes on, right on time). The first three notes of each step wait like that; then it plays.
+   */
+  hold: { kind: 'read' | 'note'; key: string; title: string; say: string } | null = null;
+  /** The button a newcomer is shown next (it pulses); null: the usual one. */
+  coachFocus: string | null = null;
+  private readDone = -1;
+  private waitsLeft = 0;
+  /** How many of this step's notes will still wait for you (0: it plays on). */
+  get lessonWaits(): number {
+    return this.hold?.kind === 'read' ? 3 : this.waitsLeft;
+  }
+  private setHold(h: Game['hold']): void {
+    const was = !!this.hold;
+    this.hold = h;
+    if (was !== !!h) {
+      this.stage.holdSong?.(!!h);
+      this.refreshDisplay();
+    }
+  }
+  private holdTick(t: number, beat: number): void {
+    const s = this.perf?.track.score;
+    const ls = s?.tune.lesson;
+    // (only where the song can be held still: the room does that)
+    if (!s || !ls || this.listening || this.hold || this.paused || !this.stage.holdSong) return;
+    // a new step, one beat before its first bar: hold and say it
+    // (the first step before the count-in: read it, hit, then 4 3 2 1)
+    const due = (bar: number) => s.starts[0] + bar * s.meter - (bar === 0 ? 4.5 : 1);
+    const next = ls.steps.findIndex((st, i) => i > this.readDone && beat >= due(st.bar));
+    if (next >= 0) {
+      // (only the newest one due: a step jumped over isn't read out late)
+      let i = next;
+      while (i + 1 < ls.steps.length && beat >= due(ls.steps[i + 1].bar)) i++;
+      this.readDone = i;
+      const st = ls.steps[i];
+      this.setHold({ kind: 'read', key: st.only?.[0] ?? '', title: st.title, say: st.say });
+      return;
+    }
+    // a note's moment, in the first three of a step: wait for its hit (heard as you'll play it: the latency offset in)
+    if (this.waitsLeft <= 0 || !this.judge || this.mode !== 'play') return;
+    const now = this.clock.beatAt(t - this.opts.offset);
+    for (const n of this.judge.notes) {
+      if (n.grade !== null) continue;
+      if (n.beat > now) break;
+      if (n.beat > now - 0.2) this.setHold({ kind: 'note', key: n.lane, title: '', say: '' });
+      break;
+    }
+  }
   /** The lesson's step now, for the HUD (null: not a lesson, or not playing). */
   lessonStepNow(): { title: string; say: string } | null {
     return this.mode === 'play' || this.mode === 'count' ? this.lessonNow() : null;
@@ -2646,7 +2716,7 @@ export class Game {
       switchable: sw,
       tune: d.keyLabels ?? undefined,
     });
-    d.focus = pageId === 'songs' ? 'play' : (pageId === 'main' || pageId === 'free') && this.found.includes('kit') && this.offered ? 'nav:songs' : pageId === 'results' && this.resultsStage >= 4 ? 'again' : undefined;
+    d.focus = this.coachFocus ? this.coachFocus : pageId === 'songs' ? 'play' : (pageId === 'main' || pageId === 'free') && this.found.includes('kit') && this.offered ? 'nav:songs' : pageId === 'results' && this.resultsStage >= 4 ? 'again' : undefined;
   }
 
   private fillDisplay(): void {

@@ -6,6 +6,8 @@ export const params = new URLSearchParams(typeof location === 'undefined' ? '' :
 export const DEBUG = params.get('debug') === '1';
 /** `?autoplay=1`: a player that discovers your surfaces and hits every note on time (tests and filming only). */
 export const AUTOPLAY = params.get('autoplay') === '1';
+/** `?nocoach=1`: no first-time guide (the E2E suites test what comes after it; tools/e2e-onboard.mjs tests it). */
+export const NO_COACH = params.get('nocoach') === '1';
 /** `?desk=<y>`: a fixed table height (E2E, filming). */
 export const FIXED_DESK = params.get('desk');
 /** Surfaces within this of the head are played (stand up and walk to the far ones). */

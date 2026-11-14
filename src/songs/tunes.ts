@@ -73,7 +73,7 @@ export const LESSONS: readonly Tune[] = [
     lesson: {
       inst: 'drums',
       steps: [
-        { bar: 0, title: 'Snare', say: 'Hit the snare as its ring closes', level: 'normal', only: ['kit:snare'] },
+        { bar: 0, title: 'Snare', say: 'Fists for sticks: hit the snare as its ring closes', level: 'normal', only: ['kit:snare'] },
         { bar: 4, title: 'Kick', say: 'Now the big drum in front: the kick', level: 'normal', only: ['kit:kick'] },
         { bar: 8, title: 'Kick, snare', say: 'Both now: kick, snare, kick, snare', level: 'easy' },
         { bar: 12, title: 'Add the hat', say: 'Add the hi-hat with your other hand', level: 'normal' },

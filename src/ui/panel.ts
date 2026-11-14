@@ -343,6 +343,11 @@ function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: numb
 export const OVERFLOW = new Map<string, { text: string; room: number; width: number }>();
 (globalThis as { __thumpOverflow?: typeof OVERFLOW }).__thumpOverflow = OVERFLOW;
 
+/** How deep a page sits (the main page 0, its sections 1, what's inside them 2): which way it slides in. */
+function pageDepth(id: string): number {
+  return id === 'main' || id === '' ? 0 : id === 'free' || id === 'instruments' || id === 'songs' || id === 'band' || id === 'settings' || id === 'song' ? 1 : 2;
+}
+
 export class Panel {
   readonly root = new Group();
   /** The pressable face's frame: +Y out of the panel toward you, +X right, −Z up the panel (for the hit surface). */
@@ -372,6 +377,13 @@ export class Panel {
   private turn = 1;
   private grow = 0;
   private pageId = '';
+  private ghostCanvas = document.createElement('canvas');
+  private ghostTex!: CanvasTexture;
+  private ghost!: Mesh;
+  /** Which way pages move: deeper in from the right, back out to the left (+1 / −1). */
+  private turnDir = 1;
+  /** Each control's entrance after a page change (s; it starts below 0, a little later each). */
+  private cardIn: number[] = [];
   /** The item a fingertip is close to, and how close (0 far … 1 touching). */
   private hoverI = -1;
   private hoverK = 0;
@@ -391,6 +403,17 @@ export class Panel {
     face.name = 'Face';
     this.face = face;
     this.root.add(slab, face);
+    // the page that's leaving: a copy of the face that slides off and fades as the new page slides in
+    this.ghostCanvas.width = CW;
+    this.ghostCanvas.height = CH;
+    this.ghostTex = new CanvasTexture(this.ghostCanvas);
+    this.ghostTex.colorSpace = SRGBColorSpace;
+    this.ghost = new Mesh(new PlaneGeometry(PANEL.w, PANEL.h), new MeshBasicMaterial({ map: this.ghostTex, toneMapped: false, transparent: true, depthWrite: false, opacity: 0 }));
+    this.ghost.name = 'FaceLeaving';
+    this.ghost.position.z = 0.0006;
+    this.ghost.renderOrder = 6;
+    this.ghost.visible = false;
+    this.root.add(this.ghost);
     const quad = new PlaneGeometry(1, 1);
     for (let i = 0; i < MAX_ITEMS; i++) {
       const m = new Mesh(quad, new MeshBasicMaterial({ color: 0xfff2dc, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
@@ -729,6 +752,16 @@ export class Panel {
     if (sig === this.sig) return;
     this.sig = sig;
     if (p.id !== this.pageId) {
+      // the page leaving: copied as it was, to slide off (not on the first page)
+      if (this.pageId) {
+        const gg = this.ghostCanvas.getContext('2d')!;
+        gg.clearRect(0, 0, CW, CH);
+        gg.drawImage(this.canvas, 0, 0);
+        this.ghostTex.needsUpdate = true;
+        this.ghost.visible = !motion.calm;
+      }
+      this.turnDir = pageDepth(p.id) >= pageDepth(this.pageId) ? 1 : -1;
+      for (let i = 0; i < MAX_ITEMS; i++) this.cardIn[i] = -i * 0.035;
       this.pageId = p.id;
       this.fx.sweep();
       this.turn = 0;
@@ -931,10 +964,21 @@ export class Panel {
       q.scale.setScalar((q.userData.size as number) * s);
       (q.material as MeshBasicMaterial).opacity = Math.min(1, this.starAge[i] / 0.06) * (this.starAge[i] > 0.4 ? Math.max(0, 1 - (this.starAge[i] - 0.4) / 0.2) : 1);
     }
-    if (this.turn < 1) this.turn = Math.min(1, this.turn + dt / 0.18);
+    // a new page slides in from the side it lies on (deeper from the right, back from the left) as the old one slides
+    // off the other way and fades (280 ms, eased out; under calm motion, only a fade)
+    if (this.turn < 1) this.turn = Math.min(1, this.turn + dt / 0.28);
     const te = 1 - Math.pow(1 - this.turn, 3);
-    this.faceMat.opacity = (0.25 + 0.75 * te) * e;
-    this.face.position.y = -0.008 * (1 - te);
+    const slide = motion.calm ? 0 : 0.045;
+    this.faceMat.opacity = (0.15 + 0.85 * te) * e;
+    this.face.position.x = this.turnDir * slide * (1 - te);
+    this.face.position.y = 0;
+    this.face.scale.setScalar(0.97 + 0.03 * te);
+    if (this.ghost.visible) {
+      (this.ghost.material as MeshBasicMaterial).opacity = Math.max(0, 1 - te * 1.4) * e;
+      this.ghost.position.x = -this.turnDir * slide * te;
+      this.ghost.scale.setScalar(1 - 0.04 * te);
+      if (this.turn >= 1) this.ghost.visible = false;
+    }
     const items = this.page?.items ?? [];
     for (let i = 0; i < MAX_ITEMS; i++) {
       // a press flashes and the light pops out a little, then settles
@@ -961,7 +1005,12 @@ export class Panel {
         const target = this.press[i] > 0.7 ? 0.97 : i === this.hoverI && this.hoverK > 0.05 ? 1.04 : 1;
         const tau = target < this.cardS[i] ? 0.02 : target > 1 ? 0.04 : 0.05;
         this.cardS[i] += (target - this.cardS[i]) * Math.min(1, dt / tau);
-        const s = this.cardS[i];
+        // (after a page change each control pops in a moment after the one before: 0.9 → 1, eased out with a little
+        // overshoot)
+        this.cardIn[i] = (this.cardIn[i] ?? 1) + dt;
+        const ci = Math.max(0, Math.min(1, this.cardIn[i] / 0.16));
+        const pop = motion.calm ? 1 : this.cardIn[i] < 0 ? 0.9 : 0.9 + 0.1 * ci + 0.04 * Math.sin(Math.PI * ci);
+        const s = this.cardS[i] * pop;
         q.scale.set(z.w * s, z.h * s, 1);
         // (just in front of the page, which draws the same card under it)
         q.position.z = 0.0012 + (s - 1) * 0.01;

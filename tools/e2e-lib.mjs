@@ -124,7 +124,9 @@ export async function goto(query = '', { clear = true } = {}) {
   }
   if (clear) run('tools/clear-storage.mjs');
   // the app runs in a frame of the managed window: navigate the frame itself
-  writeFileSync('tools/.goto.mjs', `export default async function run({ page, frame }) { const f = frame ?? page; return await f.evaluate((q) => { const u = new URL(location.href); u.search = q; u.hash = ''; setTimeout(() => (location.href = u.toString()), 50); return u.toString(); }, ${JSON.stringify(query)}); }\n`);
+  // (the first-time guide is off unless a suite asks for it: ?coach=1)
+  const q = /(^|&)coach=1(&|$)/.test(query) ? query.replace(/(^|&)coach=1/, '') : [query, 'nocoach=1'].filter(Boolean).join('&');
+  writeFileSync('tools/.goto.mjs', `export default async function run({ page, frame }) { const f = frame ?? page; return await f.evaluate((q) => { const u = new URL(location.href); u.search = q; u.hash = ''; setTimeout(() => (location.href = u.toString()), 50); return u.toString(); }, ${JSON.stringify(q)}); }\n`);
   run('tools/.goto.mjs');
   await wait(3000);
   if (run('tools/unblock-storage.mjs') === 'unblocked') console.log('note: storage unblocked after goto');
