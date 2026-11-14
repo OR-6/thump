@@ -1146,7 +1146,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** The kit's pieces that are out: the full kit (the default), or a small one (kick, snare, hat). */
   private lanes(): Lane[] {
     const l: Lane[] = ['kick', 'snare', 'hat'];
-    if (this.settings.shelf.drums?.pieces === 'small') return l;
+    // (at a tray, with no table found, the small kit unless you asked for the full one: the full one is a metre wide)
+    const pieces = this.settings.shelf.drums?.pieces ?? (this.placement.phase === 'placed' && !this.tableOutline ? 'small' : 'full');
+    if (pieces === 'small') return l;
     l.push('tom', 'floor', 'crash', 'ride');
     return l;
   }
@@ -2715,7 +2717,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const d = instDef(id);
     const c = this.shelfCfg(id);
     const kc = this.settings.shelf[id]?.key ?? 0;
-    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name, oct: c.oct ?? 0, key: id === 'drums' ? '' : (KEY_NAMES.find((k) => k.pc === kc)?.name ?? 'C'), pieces: this.settings.shelf.drums?.pieces ?? 'full' };
+    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name, oct: c.oct ?? 0, key: id === 'drums' ? '' : (KEY_NAMES.find((k) => k.pc === kc)?.name ?? 'C'), pieces: this.lanes().length > 3 ? 'full' : 'small' };
   }
   /** A song or a build wants this instrument out (null: the one you chose in free play). Not saved. */
   private useInstrument(id: InstId | null): void {
@@ -3741,6 +3743,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.fitToTable();
       // (no table found: a tray, most likely; the panel and the friends' seats come in close)
       this.kit.module.compact(!this.tableOutline);
+      this.applyKit();
       // the display stands within reach of where you sit
       this.kit.module.seat(Math.hypot(pose.x - this.head.x, pose.z - this.head.z), this.head.y - pose.y);
     }

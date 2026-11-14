@@ -4,7 +4,8 @@
  * piano on the desk, then a guitar, then a handpan, then the drums again. Each one plays where you hit it: a piano key
  * sounds its note, a guitar chord pad then the strum band strum, a handpan note rings. NOTES changes the scale.
  */
-import { xr, state, wait, check, done, shot, goto, placeKit, until, HAND, DESK_Y } from './e2e-lib.mjs';
+import { xr, state, wait, check, done, shot, goto, placeKit, until, run, HAND, DESK_Y } from './e2e-lib.mjs';
+import { writeFileSync } from 'node:fs';
 
 const FLAT = { pitch: 0, yaw: 0, roll: 0 };
 async function slapAt(at, n = [0, 1, 0], { speed = 1.0, from = 0.08, pose = FLAT } = {}) {
@@ -68,6 +69,12 @@ hits0 = s.debug.hits;
 await slapAt(s.targets.kick.map((v, i) => v - (i === 1 ? 0.02 : 0)), [0, 1, 0], { from: 0.1 });
 s = state();
 check('a hand down on the bass drum (flat, 10 cm up) plays the kick', s.debug.hits > hits0 && s.debug.lastHit?.family === 'kick', JSON.stringify(s.debug.lastHit));
+// (no table in the emulator: it's a tray, so the small kit comes out; ask for the full one, as the Kit page does)
+writeFileSync('tools/.full.mjs', `export default async function run({ page, frame }) { return await (frame ?? page).evaluate(() => { window.__thump.game.setShelf('pieces', 'full'); return true; }); }\n`);
+run('tools/.full.mjs');
+await wait(600);
+s = state();
+check('the Kit page asks for the full kit: the crash comes out', !!s.targets.crash, Object.keys(s.targets).join(','));
 hits0 = s.debug.hits;
 await slapAt(s.targets.crash.map((v, i) => v - (i === 1 ? 0.02 : 0)), [0, 1, 0], { from: 0.1 });
 s = state();
