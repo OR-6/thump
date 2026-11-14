@@ -127,6 +127,10 @@ export const SCALES: readonly Scale[] = [
   { id: 'bluesy', name: 'Bluesy', steps: [0, 2, 3, 4, 7, 9], chords: [[0, 4, 7, 10], [5, 9, 12, 15], [7, 11, 14, 17]] },
   // lydian; Imaj7 II vi
   { id: 'dreamy', name: 'Dreamy', steps: [0, 2, 4, 6, 7, 9, 11], chords: [[0, 4, 7, 11], [2, 6, 9, 12], [9, 12, 16, 19]] },
+  // the full major scale (on the piano in C: the white keys); I IV V. Every familiar tune in a major key fits it
+  { id: 'major', name: 'Major', steps: [0, 2, 4, 5, 7, 9, 11], chords: [[0, 4, 7], [5, 9, 12], [7, 11, 14]] },
+  // the natural minor (in A: the white keys again); i iv v... with the V major, as songs in minor have it
+  { id: 'minor', name: 'Minor', steps: [0, 2, 3, 5, 7, 8, 10], chords: [[0, 3, 7], [5, 8, 12], [7, 11, 14]] },
 ];
 
 export function scaleById(id: string | undefined): Scale {

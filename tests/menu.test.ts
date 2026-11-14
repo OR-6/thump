@@ -32,7 +32,7 @@ describe('the panel pages', () => {
   });
   it("an instrument's settings: its scales, its sounds, an octave down or up", () => {
     const p = buildPage(base('inst'));
-    expect(p.items.filter((i) => i.id.startsWith('scale:')).map((i) => i.label)).toEqual(['Happy', 'Sad', 'Bluesy', 'Dreamy']);
+    expect(p.items.filter((i) => i.id.startsWith('scale:')).map((i) => i.label)).toEqual(['Happy', 'Sad', 'Bluesy', 'Dreamy', 'Major', 'Minor']);
     expect(p.items.find((i) => i.id.startsWith('scale:') && i.on)?.label).toBe('Happy');
     expect(p.items.find((i) => i.id === 'sound:piano')?.on).toBe(true);
     expect(p.items.some((i) => i.id === 'oct:+1')).toBe(true);
