@@ -1,7 +1,8 @@
 /**
- * The 2D page shown outside the headset: what Thump is, a drawing of the desk from above that plays the instruments
- * you'll have on it (the headset's own sounds), one button to enter mixed reality, playing together (start a band or
- * type a friend's code), and the settings folded away. On a laptop or phone it says how to play on a Quest instead.
+ * The 2D page shown outside the headset: Thump's site. The key art and the one button that starts mixed reality,
+ * the six instruments in real captures, a drawing of the desk that plays the headset's own sounds, the song list,
+ * how scoring works, three steps to start, playing together (start a band or type a friend's code), the specs and
+ * the settings. On a laptop or phone the button becomes the address to open on a Quest.
  */
 import { VisibilityState, type World } from '@iwsdk/core';
 import { audio, type Voice } from '../audio/engine.js';
@@ -11,114 +12,213 @@ import { coop, normaliseCode, type CoopStatus } from '../net/coop.js';
 import { asPlayer } from '../net/band.js';
 import { PADS } from '../config.js';
 import { CONGA, SHELF, handpanZones, marimbaZones, percVoice, pianoBlacks, pianoZones, strumNotes, type InstId } from '../kit/shelf.js';
-import { TRACKS, dailyTrack, songDay } from '../play/build.js';
+import { LESSONS, TUNES } from '../songs/tunes.js';
+import { INST_LIGHT } from './theme.js';
+import { stampSvg, wordmarkSvg } from './brand.js';
 import { PAGE_ROOT, PAGE_SCALE, VIEW, centreOnTray, deskSvg, viewFor } from './landing-drawing.js';
 
 const LIVE_URL = 'or-6.github.io/thump';
+const REPO_URL = 'https://github.com/OR-6/thump';
 
-/** What each instrument is, in a sentence or two, from how the game builds it. */
+const lightOf = (id: InstId) => `#${(INST_LIGHT[id] ?? 0xffffff).toString(16).padStart(6, '0')}`;
+
+/** Each instrument on the page: a capture from the game, what it is, and the alt text for the capture. */
+const INSTRUMENTS: { id: InstId; line: string; alt: string }[] = [
+  { id: 'drums', line: 'A full kit: hi-hat, snare, two toms, the kick, crash and ride. Slap the heads, or make fists and sticks appear.', alt: 'The drums mid-song: rings closing onto the snare and the kick, Perfect on both heads, the score panel behind.' },
+  { id: 'piano', line: 'A compact keyboard with real-size keys. Every white key is in the scale, and the pad on the left plays chords.', alt: 'The keyboard in Für Elise: a note landing on a key, the Spotlight meter filling over the score.' },
+  { id: 'guitar', line: 'A full-size acoustic you hold. Strings sound as your fingertips cross them; the neck picks chords, or real frets.', alt: 'The acoustic guitar held at the edge of the desk, chord names on the neck, the score panel behind.' },
+  { id: 'marimba', line: 'Eight rosewood bars on a maple box. Make a fist and a mallet appears in it.', alt: 'The marimba in Canon in D, one bar lit gold as it is hit.' },
+  { id: 'congas', line: 'Two hand drums. Palm in the middle for an open tone, fingers on the edge for a slap.', alt: 'Two congas in Can-can, a ring closing onto the right-hand drum.' },
+  { id: 'handpan', line: 'A deep note in the middle and eight around it. Go round the rim and you walk up the scale.', alt: 'The handpan in Amazing Grace, the score panel behind it.' },
+];
+
+/** What the drawing of each instrument does, under it. */
 const ABOUT: Record<InstId, string> = {
-  drums: 'A full kit for your hands: hi-hat, snare, a rack tom, a floor tom, a bass drum lying flat, crash and ride. Acoustic, jazz or electronic. Slap the heads, or make fists and sticks appear.',
-  piano: 'A compact keyboard at real key size: two octaves, every white key a note of the scale. The square to the left of the keys plays three notes at once. Set its key, scale and sound.',
-  marimba: 'Eight rosewood bars on a maple box, long and low on the left. Make fists and mallets appear, or tap with your fingers.',
-  guitar: 'It lies flat on the desk. One hand holds one of three chords on the neck, the other sweeps the strings.',
-  congas: 'Two hand drums, the low one on the left. The middle of a head is an open tone, the edge a slap.',
-  handpan: 'A low note in the middle and eight around it. Alternate hands round the rim and you walk up the scale.',
+  drums: 'The whole kit from above: hi-hat, snare, rack tom, floor tom, the kick lying flat, crash and ride.',
+  piano: 'Two octaves of real-size keys. A black key plays the two notes either side of it; the red button plays a chord.',
+  marimba: 'Eight bars, long and low on the left.',
+  guitar: 'In the headset you hold it. Here, pick a chord on the neck, then tap the strings.',
+  congas: 'The low drum on the left. The middle of a head is an open tone, the edge a slap.',
+  handpan: 'A low note in the middle and eight around it.',
 };
 
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+const word = (n: number) => WORDS[n] ?? String(n);
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const STYLE: Record<string, string> = { shufflehop: 'Shuffle', hiphop: 'Hip-hop', synthpop: 'Synth-pop', three: 'Waltz' };
+
 export function mountLanding(world: World): void {
-  const today = dailyTrack(songDay());
+  const classics = TUNES.filter((t) => !t.original);
+  const originals = TUNES.filter((t) => t.original);
+  const songRow = (t: (typeof TUNES)[number]) =>
+    `<li><span class="song">${esc(t.name)}</span><span class="by">${esc(t.original ? (STYLE[t.style] ?? cap(t.style)) : t.by)}</span><span class="bpm">${t.bpm}<abbr title="beats per minute">bpm</abbr></span></li>`;
+  const name = (id: InstId) => SHELF.find((d) => d.id === id)?.name ?? id;
+
   const el = document.createElement('div');
   el.id = 'landing';
   el.innerHTML = `
-    <div class="page">
-      <header class="mast">
-        <span class="wordmark">Thump</span>
-        <span class="for">For Meta Quest 3</span>
-      </header>
+    <a class="skip" href="#main">Skip to the page</a>
+    <header class="bar">
+      <div class="wrap bar-in">
+        <a class="brand" href="#top"><img src="./favicon.svg" width="32" height="32" alt="" />${wordmarkSvg('currentColor', 'Thump')}</a>
+        <nav class="nav" aria-label="On this page">
+          <a href="#instruments">Instruments</a><a href="#songs">Songs</a><a href="#how">How it works</a><a href="#together">Play together</a><a href="#specs">Specs</a>
+        </nav>
+        <button type="button" class="btn btn-2 btn-s" id="bar-play"><span>Play now</span></button>
+      </div>
+    </header>
 
-      <main>
-        <section class="hero">
-          <div class="pitch">
-            <h1>A band on your desk.</h1>
-            <p class="lede">A music game for Meta Quest 3, played sitting down. Tap your desk or a tray table and a drum kit comes up under your hands. Swap it for a piano, a marimba, a guitar, congas or a handpan. Every note is in the scale, so there's no wrong one.</p>
+    <main id="main" tabindex="-1">
+      <section class="hero" id="top" aria-labelledby="hero-h">
+        <img class="hero-art" src="./site/keyart.webp" width="1920" height="1080" fetchpriority="high"
+          alt="Thump's drum kit on a dark plum stage: rings of amber and magenta light burst off the snare as it is struck, sparks thrown up past the cymbals." />
+        <div class="wrap hero-in">
+          <div class="hero-copy">
+            <div class="hero-stamp">${stampSvg('hero', undefined, { label: 'Thump' })}</div>
+            <h1 id="hero-h">A band on your desk.</h1>
+            <p class="lede">Hit a full drum kit in the air. Play real keys, a marimba, congas and a handpan, or hold a guitar and strum it. Bare hands, mixed reality, on Meta Quest 3. It runs in the browser: nothing to install.</p>
             <div class="go">
-              <button id="enter-xr" class="enter" type="button">Enter mixed reality</button>
+              <div class="cta">
+                <button id="enter-xr" class="btn btn-1" type="button"><span>Enter mixed reality</span></button>
+                <a class="btn btn-3" href="#songs"><span>See the songs</span></a>
+              </div>
               <p class="go-note">Put the controllers down first. It's hands only.</p>
               <p class="xr-fail" role="alert" hidden>It didn't start. Say yes to Quest's prompts and try again.</p>
             </div>
             <div class="nohead" id="xr-unsupported" hidden>
-              <p class="quest">It plays on a Meta Quest 3. In the Quest's browser, go to</p>
-              <p class="url-line"><strong class="url">${LIVE_URL}</strong> <button type="button" id="copy-link" class="plain">Copy the link</button></p>
+              <p class="quest">Play it on a Meta Quest 3. In the Quest's browser, go to</p>
+              <p class="url">${LIVE_URL}</p>
+              <div class="cta">
+                <button type="button" id="copy-link" class="btn btn-1"><span>Copy the link</span></button>
+                <a class="btn btn-3" href="#hear"><span>Hear it here</span></a>
+              </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <figure class="desk">
+      <section class="sec" id="instruments" aria-labelledby="inst-h">
+        <div class="wrap">
+          <div class="head">
+            <h2 id="inst-h">Six instruments, one desk</h2>
+            <p>Each is a model of the real thing, and it moves when you play it. Swap from the panel at the back of the desk, even halfway through a song.</p>
+          </div>
+          <ul class="kit-grid">
+            ${INSTRUMENTS.map((it) => `
+            <li class="inst-card" style="--light:${lightOf(it.id)}">
+              <img src="./site/${it.id}.webp" width="720" height="540" loading="lazy" alt="${esc(it.alt)}" />
+              <div class="inst-txt">
+                <h3>${name(it.id)}</h3>
+                <p>${it.line}</p>
+                <button type="button" class="hear" data-hear="${it.id}">Hear the ${name(it.id).toLowerCase()}</button>
+              </div>
+            </li>`).join('')}
+          </ul>
+          <p class="fine">Captures from the game, running in the WebXR emulator. In the headset, the room around the instruments is your own.</p>
+        </div>
+      </section>
+
+      <section class="sec alt" id="hear" aria-labelledby="hear-h">
+        <div class="wrap hear-in">
+          <div class="hear-words">
+            <h2 id="hear-h">Hear them now</h2>
+            <p>The same sounds the headset plays. Pick an instrument and tap the drawing. With a mouse, hold the button down and drag across for a run.</p>
             <div class="picker" role="group" aria-label="Instruments">
-              ${SHELF.map((d) => `<button type="button" class="pick" data-inst="${d.id}" style="--light:#${d.color.toString(16).padStart(6, '0')}" aria-pressed="false">${d.name}</button>`).join('')}
+              ${SHELF.map((d) => `<button type="button" class="pick" data-inst="${d.id}" style="--light:${lightOf(d.id)}" aria-pressed="false">${d.name}</button>`).join('')}
             </div>
+          </div>
+          <figure class="desk">
             <div class="stage"></div>
             <div class="desk-foot" aria-hidden="true">
-              <span class="your-side">Your side of the desk</span>
+              <span>Your side of the desk</span>
               <span class="scale"><span class="scale-bar" style="width:${((10 / VIEW.w) * 100).toFixed(2)}%"></span>10 cm</span>
             </div>
-            <figcaption>
-              <p class="about"></p>
-              <p class="try">Tap the drawing to play it. These are the sounds the headset plays.</p>
-            </figcaption>
+            <figcaption class="about" aria-live="polite"></figcaption>
           </figure>
-        </section>
+        </div>
+      </section>
 
-        <section class="row" id="together" aria-labelledby="together-h">
-          <div class="row-words">
-            <h2 id="together-h">Play together</h2>
-            <p>One of you starts a band and gets a four-letter code. The others type it here and press Join, then everyone enters mixed reality. Up to four headsets, wherever you all are.</p>
+      <section class="sec" id="songs" aria-labelledby="songs-h">
+        <div class="wrap">
+          <div class="head">
+            <h2 id="songs-h">${cap(word(TUNES.length))} songs. <span class="lv-easy">Easy</span>, <span class="lv-normal">Normal</span>, <span class="lv-hard">Hard</span>.</h2>
+            <p>${cap(word(classics.length))} classics you can already hum, set to modern grooves, and ${word(originals.length)} written for Thump. The notes fall onto the exact key or drum that plays them while the band plays the rest.</p>
           </div>
-          <div class="row-body">
+          <div class="sets">
+            <div class="set"><h3>Classics</h3><ol class="setlist two">${classics.map(songRow).join('')}</ol></div>
+            <div class="set"><h3>Written for Thump</h3><ol class="setlist">${originals.map(songRow).join('')}</ol>
+              <p class="lessons"><span class="k">And a lesson for each instrument</span>A slow tune that teaches it one move at a time: ${LESSONS.map((l) => esc(l.name.replace(/^Learn /, ''))).join(', ')}.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec alt" id="score" aria-labelledby="score-h">
+        <div class="wrap score-in">
+          <div class="shots">
+            <figure class="shot shot-a"><img src="./site/hud.webp" width="620" height="465" loading="lazy" alt="The panel during Ode to Joy: a 110-note streak at times four, 100 percent accuracy, 60 points behind your best run, and Hands up for the Spotlight." /><figcaption>Mid-song: the streak, your ghost, the Spotlight</figcaption></figure>
+            <figure class="shot shot-b"><img src="./site/results.webp" width="620" height="465" loading="lazy" alt="The results for Ode to Joy on Normal: grade S with three stars, 95,100 points, 252 perfect and no misses, All perfect." /><figcaption>The results: grade S, all perfect</figcaption></figure>
+          </div>
+          <div class="score-words">
+            <h2 id="score-h">Go for the S</h2>
+            <dl class="rules">
+              <div><dt>Streak</dt><dd>Ten notes in a row doubles your points, and it climbs to ×4.</dd></div>
+              <div><dt>Spotlight</dt><dd>The last bar of every four is gold. Play gold bars clean to fill the meter, then raise both hands for ×2 on top.</dd></div>
+              <div><dt>Your ghost</dt><dd>Your best run is kept bar by bar and raced live. The panel says how far ahead or behind you are.</dd></div>
+              <div><dt>Grades</dt><dd>S to D for every song and level, with Full Combo and All Perfect when you earn them.</dd></div>
+            </dl>
+            <p class="judges" aria-label="Every hit is judged Perfect, Good or Miss"><span class="j-p">Perfect</span><span class="j-g">Good</span><span class="j-m">Miss</span></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec" id="how" aria-labelledby="how-h">
+        <div class="wrap">
+          <div class="head"><h2 id="how-h">How it works</h2></div>
+          <ol class="steps">
+            <li><span class="n" aria-hidden="true">1</span><h3>Open the link</h3><p>In the Quest browser, go to <strong>${LIVE_URL}</strong> and press Enter mixed reality. It asks once to see your room. Nothing to install.</p></li>
+            <li><span class="n" aria-hidden="true">2</span><h3>Sit at a desk</h3><p>Put the controllers down. Tap the desk, or rest a palm flat on it, and the drums come up under your hands. A tray table works too.</p></li>
+            <li><span class="n" aria-hidden="true">3</span><h3>Play</h3><p>Poke the panel at the back of the desk to pick a song or an instrument. Or just play: free play has a four-bar looper to layer parts on.</p></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="sec alt" id="together" aria-labelledby="together-h">
+        <div class="wrap together-in">
+          <div class="together-words">
+            <h2 id="together-h">Play together</h2>
+            <p>Up to four headsets, wherever you all are. One of you starts a band and gets a four-letter code. The others type it here and press Join, then everyone enters mixed reality. Play a song together or jam in free play, on the same beat.</p>
+          </div>
+          <div class="band-box">
             <div class="band">
-              <button type="button" id="band-start" class="plain">Start a band</button>
+              <button type="button" id="band-start" class="btn btn-2"><span>Start a band</span></button>
               <span class="or">or</span>
               <span class="join">
                 <input id="band-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="A friend's 4-letter code" />
-                <button type="button" id="band-join" class="plain">Join</button>
+                <button type="button" id="band-join" class="btn btn-3"><span>Join</span></button>
               </span>
             </div>
             <p id="band-status" aria-live="polite"></p>
           </div>
-        </section>
-
-        <div class="trio">
-        <section class="col" aria-labelledby="desk-h">
-          <h2 id="desk-h">At the desk</h2>
-          <div class="col-body">
-            <p>Tap the desk and the drums come out. A screen floats over the back of the desk: poke it with a fingertip to swap instruments, pick a song or start a track. Your first few notes bring in a soft backing band at your tempo, and it drops out when you stop.</p>
-          </div>
-        </section>
-
-        <section class="col" aria-labelledby="songs-h">
-          <h2 id="songs-h">Songs</h2>
-          <div class="col-body">
-            <p>Five songs, and a sixth that changes every day. Pick Easy, Normal or Hard. The notes fall onto the exact key or drum that plays them while a band plays the rest, and each song has two one-bar solos where anything you hit counts. Switch instruments halfway through if you like.</p>
-            <ol class="setlist">
-              ${[...TRACKS, today].map((t) => `<li><span class="song">${t.name}</span><span class="bpm">${t.bpm} bpm</span></li>`).join('')}
-            </ol>
-          </div>
-        </section>
-
-        <section class="col" aria-labelledby="track-h">
-          <h2 id="track-h">Make a track</h2>
-          <div class="col-body">
-            <p>Build a song one part at a time: Boom, Smack, Tick, Extra, Tune, Bass. For a bar the lights show you a pattern, then for a bar you play anything and it's kept, snapped to the beat. When the last part is in, everything drops in at once and you play it like a song.</p>
-          </div>
-        </section>
         </div>
+      </section>
 
-        <section class="row" aria-labelledby="prep-h">
-          <div class="row-words">
-            <h2 id="prep-h">Before you start</h2>
-            <p>Sit at a desk or a tray table with the Quest on. It asks once to see your desk. Nothing leaves the headset unless you play together, and then only the notes you play.</p>
+      <section class="sec" id="specs" aria-labelledby="specs-h">
+        <div class="wrap specs-in">
+          <div>
+            <h2 id="specs-h">Specs</h2>
+            <dl class="spec">
+              <div><dt>Headset</dt><dd>Meta Quest 3, in the Quest browser (WebXR)</dd></div>
+              <div><dt>Where</dt><dd>Seated at a desk or a tray table, in passthrough mixed reality</dd></div>
+              <div><dt>Input</dt><dd>Hand tracking. Hands only</dd></div>
+              <div><dt>Players</dt><dd>1 to 4, online with a code</dd></div>
+              <div><dt>Songs</dt><dd>${TUNES.length} (${classics.length} classics, ${originals.length} originals) on Easy, Normal and Hard, plus ${LESSONS.length} lessons</dd></div>
+              <div><dt>Price</dt><dd>Free. Nothing to install</dd></div>
+              <div><dt>Privacy</dt><dd>Nothing leaves the headset unless you play together, and then only the notes you play</dd></div>
+              <div><dt>Status</dt><dd>Built and checked in the WebXR emulator. Testing on a Quest 3 comes next</dd></div>
+            </dl>
           </div>
-          <div class="row-body">
+          <div class="prep-col">
             <details class="prep">
               <summary>Settings</summary>
               <p class="small-print">Change these in the Quest's browser before you enter. They're saved there.</p>
@@ -137,11 +237,16 @@ export function mountLanding(world: World): void {
               <p class="small-print">Timing: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
             </details>
           </div>
-        </section>
-      </main>
+        </div>
+      </section>
+    </main>
 
-      <footer class="foot">Sounds from the Versilian Community Sample Library (CC0). Code under the MIT licence.</footer>
-    </div>`;
+    <footer class="foot">
+      <div class="wrap foot-in">
+        <div class="foot-brand">${wordmarkSvg('currentColor', '')}<p>An entry in the Meta VR Start Developer Competition 2026, Gaming.</p></div>
+        <p class="credits">Instrument sounds from the Versilian Community Sample Library (CC0). Interface sounds and particles by Kenney (CC0). Code under the MIT licence, on <a href="${REPO_URL}">GitHub</a>.</p>
+      </div>
+    </footer>`;
   document.body.appendChild(el);
   // (index.html paints the top of the page while the game loads; this replaces it)
   document.getElementById('landing-boot')?.remove();
@@ -164,15 +269,42 @@ export function mountLanding(world: World): void {
   });
   // a laptop or phone browser can't enter mixed reality: say how to play on a Quest instead
   // (world.xrEnabled is the project's config, true everywhere; the browser itself is what decides)
+  const go = el.querySelector<HTMLElement>('.go')!;
   const noHeadset = () => {
-    el.querySelector<HTMLElement>('.go')!.hidden = true;
+    go.hidden = true;
     el.querySelector<HTMLElement>('#xr-unsupported')!.hidden = false;
   };
   const xrApi = (navigator as Navigator & { xr?: { isSessionSupported(mode: string): Promise<boolean> } }).xr;
   if (!world.xrEnabled || !xrApi || new URLSearchParams(location.search).has('jam')) noHeadset();
   else void xrApi.isSessionSupported('immersive-ar').then((ok) => ok || noHeadset(), noHeadset);
 
-  mountDesk(el);
+  // the bar's Play now: on a Quest it starts, anywhere else it goes to the address
+  el.querySelector<HTMLButtonElement>('#bar-play')!.addEventListener('click', () => {
+    if (!go.hidden) btn.click();
+    else {
+      el.scrollTo({ top: 0, behavior: smooth() });
+      el.querySelector<HTMLButtonElement>('#copy-link')!.focus({ preventScroll: true });
+    }
+  });
+  // in-page links scroll the page (it's its own scroller), without touching the address
+  el.addEventListener('click', (e) => {
+    const a = (e.target as Element).closest<HTMLAnchorElement>('a[href^="#"]');
+    if (!a) return;
+    const target = el.querySelector<HTMLElement>(a.getAttribute('href')!);
+    if (!target) return;
+    e.preventDefault();
+    target.scrollIntoView({ behavior: smooth(), block: 'start' });
+    if (target.id === 'main') target.focus({ preventScroll: true });
+  });
+
+  const desk = mountDesk(el);
+  for (const b of el.querySelectorAll<HTMLButtonElement>('.hear')) {
+    b.addEventListener('click', () => {
+      desk.pick(b.dataset.hear as InstId);
+      el.querySelector('#hear')!.scrollIntoView({ behavior: smooth(), block: 'start' });
+      el.querySelector<HTMLButtonElement>(`.pick[data-inst="${b.dataset.hear}"]`)?.focus({ preventScroll: true });
+    });
+  }
 
   // playing together: start a band (a code for friends) or join one, then everyone enters
   const bandStart = el.querySelector<HTMLButtonElement>('#band-start')!;
@@ -208,11 +340,12 @@ export function mountLanding(world: World): void {
     if (e.key === 'Enter') join();
   });
   const copyBtn = el.querySelector<HTMLButtonElement>('#copy-link')!;
+  const copyLabel = copyBtn.querySelector('span')!;
   copyBtn.addEventListener('click', () => {
     const url = location.origin + location.pathname;
     void navigator.clipboard?.writeText(url).then(
-      () => (copyBtn.textContent = 'Copied'),
-      () => (copyBtn.textContent = url),
+      () => (copyLabel.textContent = 'Copied'),
+      () => (copyLabel.textContent = url),
     );
   });
 
@@ -259,8 +392,11 @@ export function mountLanding(world: World): void {
   });
 }
 
+/** Smooth scrolling, unless the reader asked for less movement. */
+const smooth = (): ScrollBehavior => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
+
 /** The drawing of the desk: pick an instrument, tap its parts, hear the headset's sounds. */
-function mountDesk(el: HTMLElement): void {
+function mountDesk(el: HTMLElement): { pick(id: InstId): void } {
   const stage = el.querySelector<HTMLElement>('.stage')!;
   const about = el.querySelector<HTMLElement>('.about')!;
   const picks = [...el.querySelectorAll<HTMLButtonElement>('.pick')];
@@ -318,11 +454,12 @@ function mountDesk(el: HTMLElement): void {
     inst = id;
     const d = SHELF.find((x) => x.id === id)!;
     stage.innerHTML = deskSvg(id, d.name);
+    stage.style.setProperty('--light', lightOf(id));
     centreOnTray(stage.querySelector('svg')!);
     // (the scale bar follows: the drums are drawn on a desk, the rest on a tray)
-    const bar = document.querySelector<HTMLElement>('#landing .scale-bar');
+    const bar = el.querySelector<HTMLElement>('.scale-bar');
     if (bar) bar.style.width = `${((10 / viewFor(id).w) * 100).toFixed(2)}%`;
-    about.textContent = ABOUT[id];
+    about.textContent = `${d.name}. ${ABOUT[id]}`;
     for (const b of picks) b.setAttribute('aria-pressed', String(b.dataset.inst === id));
     if (id === 'guitar') stage.querySelector(`.part[data-part="g${chord}"]`)?.classList.add('on');
     if (animate) {
@@ -358,4 +495,5 @@ function mountDesk(el: HTMLElement): void {
   stage.addEventListener('animationend', (e) => (e.target as Element).closest('.part')?.classList.remove('lit'));
 
   show(inst, false);
+  return { pick: (id) => id !== inst && show(id, true) };
 }
