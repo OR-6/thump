@@ -68,6 +68,12 @@ export interface Display {
   map?: { beats: number; wild: readonly (readonly [number, number])[]; second: readonly [number, number] } | null;
   /** Results: the song, your longest run of notes, and whether the stars beat your best. */
   best?: { song: string; run: number; better: boolean; perfect: number; good: number } | null;
+  /** Playing: the score, the streak's multiplier, accuracy so far (0..1). */
+  score?: number;
+  mult?: number;
+  acc?: number;
+  /** Results: the run, a line to beat, and seconds since the results began counting (they animate on it). */
+  result?: (import('../songs/scoring.js').ScoreSummary & { better: boolean; hook: string; t: number }) | null;
   /** The panel's page (src/ui/menu.ts), and the item that pulses for attention. */
   page?: import('./menu.js').Page;
   focus?: string;

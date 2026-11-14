@@ -11,6 +11,7 @@ import { PIANO_CHORD, PIANO_LOW } from '../kit/shelf.js';
 import { oneHanded, secPerBeat, type BedEvent, type Note, type Song, bed as chordBed } from '../songs/chart.js';
 import { EventCursor, SongClock } from '../songs/sequencer.js';
 import { NoteJudge, windows, type Grade, type JudgeNote, type Summary } from '../songs/judge.js';
+import { ScoreKeeper, hookFor, keepBest, type ScoreSummary } from '../songs/scoring.js';
 import { SONGS, dailySong } from '../songs/songs.js';
 import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/cast.js';
 import { bed } from '../songs/chart.js';
@@ -42,6 +43,13 @@ export interface GameStage {
   celebrate(stars: number): void;
   /** Star `i` (0-based) of `of` just landed on the results. */
   starLanded?(i: number, of: number): void;
+  /** The streak's multiplier went up (2–4); a run milestone was reached; a long run broke; the results' grade landed. */
+  multUp?(mult: number): void;
+  milestone?(run: number): void;
+  comboBroke?(run: number): void;
+  gradeStamp?(letter: string, fullCombo: boolean): void;
+  /** The results' score ticking as it counts up. */
+  countTick?(): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
   retune(keyPc: number, minor?: boolean): void;
   save(p: Progress): void;
@@ -1017,6 +1025,8 @@ export class Game {
     this.stage.useInstrument?.(inst);
     this.combo = 0;
     this.bestRun = 0;
+    this.scorer.reset();
+    this.lastScore = null;
     this.finalWait = -1;
     this.domSent = false;
     const t = m.track;
@@ -1225,6 +1235,15 @@ export class Game {
     pr.best ??= {};
     const before = pr.best[bk];
     pr.best[bk] = Math.max(before ?? 0, pct);
+    // the score: kept per song and level, with the line that makes you want another go
+    const sc = this.scorer.summary(s.total);
+    pr.top ??= {};
+    const prevTop = pr.top[bk];
+    const kb = keepBest(prevTop, sc);
+    pr.top[bk] = kb.best;
+    this.lastScore = { ...sc, better: kb.better, hook: hookFor(sc, prevTop, kb.better), t: 0 };
+    this.stamped = false;
+    this.tickAt = 0;
     this.lastBest = { run: this.bestRun, better: before !== undefined && pct > before, song: p.track.name, pct, perfect: s.perfect, good: s.good, wasEasy3: this.level !== 'hard' && stars === 3 };
     this.resultsT0 = this.t;
     pr.stars[p.track.id] = Math.max(pr.stars[p.track.id] ?? 0, stars);
@@ -1929,6 +1948,10 @@ export class Game {
     }
     this.graded[r.grade === 'perfect' ? 'perfect' : 'good']++;
     this.combo++;
+    // the points: more in a streak; the multiplier's step and a run's milestone are moments
+    const se = this.scorer.hit(r.grade === 'perfect' ? 'perfect' : 'good');
+    if (se.multUp) this.stage.multUp?.(se.mult);
+    if (se.milestone) this.stage.milestone?.(se.milestone);
     if (this.combo > this.bestRun) this.bestRun = this.combo;
     this.offsets.push(r.offset);
     // what you played, kept for the encore (the beat as you played it, a little loose like a person)
@@ -1985,13 +2008,29 @@ export class Game {
       if (this.replaying || this.resultsT0 < this.modeT) this.resultsT0 = t;
       const el = t - this.resultsT0;
       const c = this.fromPerform && this.carried ? 2.5 : 0;
-      const stage = el < 1.3 ? 0 : el < 4 ? 1 : el < 4 + c ? 2 : el < 7 + c && this.newUnlocks.length ? 3 : 4;
+      // (a scored song: the score counts up, the ring fills, the grade lands at 1.8 s, then the stars)
+      const sc = this.fromPerform ? this.lastScore : null;
+      const g0 = sc ? 2.1 : 0;
+      const stage = el < 1.3 + g0 ? 0 : el < 4 + g0 ? 1 : el < 4 + g0 + c ? 2 : el < 7 + g0 + c && this.newUnlocks.length ? 3 : 4;
+      if (sc) {
+        sc.t = this.replaying ? 0 : el;
+        this.display.result = sc;
+        // (ticks as it counts up, slowing as it settles)
+        if (!this.replaying && el > 0.2 && el < 1.6 && el - this.tickAt > 0.05 + 0.1 * ((el - 0.2) / 1.4)) {
+          this.tickAt = el;
+          this.stage.countTick?.();
+        }
+        if (!this.stamped && !this.replaying && el >= 1.8) {
+          this.stamped = true;
+          this.stage.gradeStamp?.(sc.letter, sc.fullCombo);
+        }
+      }
       if (stage !== this.resultsStage) {
         this.resultsStage = stage;
         this.refreshDisplay();
       }
       // the stars land one by one, 200 ms apart, each with its note (after your replay)
-      const lit = this.replaying ? -1 : Math.min(this.last?.stars ?? 0, Math.floor(el / 0.2));
+      const lit = this.replaying ? -1 : Math.min(this.last?.stars ?? 0, Math.max(0, Math.floor((el - g0) / (sc ? 0.28 : 0.2))));
       // (every star that landed since the last frame: a slow frame mustn't swallow one's note)
       if (lit > this.display.stars && lit > 0) for (let s = Math.max(0, this.display.stars); s < lit; s++) this.stage.starLanded?.(s, this.last?.stars ?? 0);
       this.display.stars = lit;
@@ -2016,6 +2055,9 @@ export class Game {
     // the progress bar and the run of notes move every frame (the rest of the panel only when it changes)
     this.display.progress = Math.max(0, beat / (song.bars * 4));
     this.display.combo = this.combo;
+    this.display.score = this.scorer.score;
+    this.display.mult = this.scorer.mult;
+    this.display.acc = this.scorer.accuracy;
     this.bedCursor?.pull(beat + TIMING.lookAheadS / spb, this.onBed);
     if (this.mode === 'count' && beat >= 0) {
       this.mode = 'play';
@@ -2142,6 +2184,8 @@ export class Game {
   private onMiss = (n: { lane: string }): void => {
     if (this.listening) return;
     this.combo = 0;
+    const se = this.scorer.missed();
+    if (se.broke) this.stage.comboBroke?.(se.broke);
     this.energy = Math.max(0.15, this.energy - 0.05);
     this.stage.missed(n.lane);
   };
@@ -2225,6 +2269,11 @@ export class Game {
   /** The module's display for the current state (≤ 6 words a line). */
   /** Notes hit in a row (a miss starts it again). */
   private combo = 0;
+  /** The song's points, and the last scored song's result (null: none, or not a scored song). */
+  readonly scorer = new ScoreKeeper();
+  lastScore: (ScoreSummary & { better: boolean; hook: string; t: number }) | null = null;
+  private stamped = false;
+  private tickAt = 0;
   /** The song the panel's card shows (◀ ▶ browse; PLAY plays it). */
   songSel = 0;
   /** The page of songs on the panel (six to a page), or −1: the page with the one picked. */
@@ -2397,9 +2446,9 @@ export class Game {
       line: pageId === 'free' ? (this.loopLine() || (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try Songs' : '')) : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Tap the desk to start') : d.line,
       // (the songs page's line: your turn after a listen, or the band being asked)
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
-      inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full' },
+      inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
       // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
-      songs: this.tracks.map((t, i) => ({ name: t.name, meta: i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false })),
+      songs: this.tracks.map((t, i) => ({ name: t.name, meta: i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false, grade: this.progress.top?.[`${t.id}:${this.level}`]?.letter })),
       songSel: this.songSel,
       songShown: this.shownSongs(),
       songPage: this.shownPage(),

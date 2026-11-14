@@ -57,6 +57,106 @@ const lighten = (c: number, k: number) => {
   const ch = (v: number) => Math.round(v + (255 - v) * k);
   return (ch((c >> 16) & 255) << 16) | (ch((c >> 8) & 255) << 8) | ch(c & 255);
 };
+interface Quad {
+  c: HTMLCanvasElement;
+  g: CanvasRenderingContext2D;
+  tex: CanvasTexture;
+  mesh: Mesh;
+}
+/** A canvas on its own quad over the panel, at a page-pixel zone (drawn and uploaded apart from the page). */
+function overlayQuad(w: number, h: number, at: { x: number; y: number; w: number; h: number }): Quad {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  tex.generateMipmaps = false;
+  tex.minFilter = LinearFilter;
+  const z = itemZone(at);
+  const mesh = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false }));
+  mesh.scale.set(z.w, z.h, 1);
+  mesh.userData.size = z.w;
+  mesh.userData.y = z.z;
+  mesh.position.set(z.x, z.z, 0.0018);
+  mesh.renderOrder = 9;
+  mesh.visible = false;
+  return { c, g: c.getContext('2d')!, tex, mesh };
+}
+const fmt = (n: number) => n.toLocaleString('en-GB');
+const MULT_INK = ['#f4f4f2', '#f4f4f2', '#7fb4ff', '#7be0a0', '#ffd36a'];
+/** The score while you play: the number, the multiplier, accuracy. */
+function drawHud(g: CanvasRenderingContext2D, score: number, mult: number, acc: number): void {
+  g.clearRect(0, 0, 832, 400);
+  g.textAlign = 'right';
+  g.fillStyle = INK;
+  g.font = `700 150px ${FONT}`;
+  g.fillText(fmt(score), 820, 160);
+  g.font = `600 64px ${FONT}`;
+  g.fillStyle = '#a8a8ae';
+  g.fillText(`${(acc * 100).toFixed(1)}%`, 820, 270);
+  // the multiplier: a chip in its colour (×1: just quiet)
+  const t = `×${mult}`;
+  g.font = `800 72px ${FONT}`;
+  const w = g.measureText(t).width + 48;
+  const x = 820 - g.measureText(`${(acc * 100).toFixed(1)}%`).width * (64 / 72) - 40 - w;
+  rounded(g, x, 205, w, 92, 46);
+  g.fillStyle = mult > 1 ? MULT_INK[mult] : 'rgba(255,255,255,0.08)';
+  g.fill();
+  g.fillStyle = mult > 1 ? '#16140f' : '#a8a8ae';
+  g.textAlign = 'center';
+  g.fillText(t, x + w / 2, 276);
+  g.textAlign = 'left';
+}
+/** The results' score, as it counts up. */
+function drawCountUp(g: CanvasRenderingContext2D, score: number): void {
+  g.clearRect(0, 0, 1024, 192);
+  g.fillStyle = INK;
+  g.font = `700 150px ${FONT}`;
+  g.fillText(fmt(score), 0, 150);
+  const w = g.measureText(fmt(score)).width;
+  g.fillStyle = '#8e8e94';
+  g.font = `500 52px ${FONT}`;
+  g.fillText('points', w + 24, 150);
+}
+/** The accuracy ring, filled to `k` (0..1), the number under the grade. */
+function drawRing(g: CanvasRenderingContext2D, k: number, ink: string): void {
+  g.clearRect(0, 0, 512, 512);
+  g.lineCap = 'round';
+  g.lineWidth = 30;
+  g.strokeStyle = 'rgba(255,255,255,0.08)';
+  g.beginPath();
+  g.arc(256, 256, 224, 0, Math.PI * 2);
+  g.stroke();
+  if (k > 0.002) {
+    g.strokeStyle = ink;
+    g.beginPath();
+    g.arc(256, 256, 224, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
+    g.stroke();
+  }
+  g.fillStyle = '#c9c4bb';
+  g.font = `600 56px ${FONT}`;
+  g.textAlign = 'center';
+  g.fillText(`${(k * 100).toFixed(1)}%`, 256, 430);
+  g.textAlign = 'left';
+}
+/** The grade's letter, in its colour, with a glow. */
+function drawGrade(g: CanvasRenderingContext2D, letter: string): void {
+  g.clearRect(0, 0, 256, 256);
+  g.font = `800 200px ${FONT}`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.shadowColor = GRADE_INK[letter] ?? '#ffffff';
+  g.shadowBlur = 24;
+  g.fillStyle = GRADE_INK[letter] ?? '#ffffff';
+  g.fillText(letter, 128, 136);
+  g.shadowBlur = 0;
+  g.textAlign = 'left';
+  g.textBaseline = 'alphabetic';
+}
+
+/** Each grade's colour: S gold, A green, B blue, C and D quieter. */
+const GRADE_INK: Record<string, string> = { S: '#ffd36a', A: '#7be0a0', B: '#7fb4ff', C: '#c9c4bb', D: '#8e8e94' };
+
 /** The main menu's own pictures: thin white line drawings. */
 const MENU_ICON: Record<string, (g: CanvasRenderingContext2D, S: number, c: string) => void> = {
   'menu:songs': (g, S, c) => {
@@ -202,6 +302,15 @@ export class Panel {
     // (both change often: no mipmaps to rebuild on each upload)
     this.comboTex.generateMipmaps = false;
     this.comboTex.minFilter = LinearFilter;
+    // the score while you play (its own canvas: it changes on every hit), the results' ring, grade and score, and
+    // a callout that pops over the panel (×2, a run of 50, a run lost)
+    this.hud = overlayQuad(832, 400, { x: 560, y: 170, w: 520, h: 250 });
+    this.ring = overlayQuad(512, 512, { x: 60, y: 210, w: 400, h: 400 });
+    this.grade = overlayQuad(256, 256, { x: 115, y: 245, w: 290, h: 290 });
+    this.scoreQ = overlayQuad(1024, 192, { x: 520, y: 175, w: 800, h: 150 });
+    this.callout = overlayQuad(1024, 192, { x: CW / 2 - 450, y: -230, w: 900, h: 169 });
+    this.grade.mesh.userData.size = this.grade.mesh.scale.x;
+    for (const q of [this.hud, this.ring, this.grade, this.scoreQ, this.callout]) this.root.add(q.mesh);
     // the count-in's number, on its own: the page isn't redrawn on each beat just before the first note
     this.countCanvas.width = 256;
     this.countCanvas.height = 256;
@@ -352,6 +461,40 @@ export class Panel {
     const to = new Vector3(0, 0.03, 0.02).applyMatrix4(this.root.matrix.clone().invert());
     this.minis.fly(id, to);
   }
+  private hud: Quad;
+  private ring: Quad;
+  private grade: Quad;
+  private scoreQ: Quad;
+  private callout: Quad;
+  private hudShown = -1;
+  private hudKey = '';
+  private hudT = 0;
+  private hudPulse = 0;
+  private lastMult = 1;
+  private resKey = '';
+  private calloutAge = 9;
+  /** A moment worth saying over the panel: '×2', 'Run of 50', 'Run lost' (gold, white or grey). */
+  say(text: string, tone: 'gold' | 'white' | 'grey' = 'white'): void {
+    const g = this.callout.g;
+    g.clearRect(0, 0, 1024, 192);
+    g.font = `800 120px ${FONT}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = 16;
+    g.strokeStyle = 'rgba(0,0,0,0.55)';
+    g.strokeText(text, 512, 100);
+    g.fillStyle = tone === 'gold' ? '#ffd36a' : tone === 'grey' ? '#a8a8ae' : '#f4f4f2';
+    g.fillText(text, 512, 100);
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    this.callout.tex.needsUpdate = true;
+    this.calloutAge = 0;
+  }
+  /** The results' grade hit the panel: it shakes a little. */
+  private shake = 0;
+  stamp(): void {
+    this.shake = 1;
+  }
   private starQuads: Mesh[] = [];
   private starTex: CanvasTexture[] = [];
   private starAge = [9, 9, 9];
@@ -359,6 +502,11 @@ export class Panel {
   starLand(i: number, gold = false): void {
     const t = this.starTex[i];
     if (!t) return;
+    const q = this.starQuads[i];
+    const scored = !!this.shown?.result;
+    const z = itemZone(scored ? { x: 580 + i * 120 - 60, y: 480 - 60, w: 120, h: 120 } : { x: CW / 2 - 170 + i * 170 - 80, y: 300 - 80, w: 160, h: 160 });
+    q.position.set(z.x, z.z, 0.0016);
+    q.userData.size = z.w;
     const c = t.image as HTMLCanvasElement;
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, 160, 160);
@@ -373,6 +521,7 @@ export class Panel {
   private comboTex: CanvasTexture;
   private comboMesh: Mesh;
   private lastCombo = -1;
+  private lastHalf = false;
 
   set(d: Display): void {
     this.shown = d;
@@ -396,10 +545,12 @@ export class Panel {
     }
     // (the page object is rebuilt only when the display changes: the same one, the same count and stars, is no change)
     // (the count-in's number is its own: the page only cares whether there is one)
-    if (p === this.page && d.count > 0 === this.lastCount > 0 && d.stars === this.lastStars) return;
+    const half = !!d.result && d.result.t >= 2.1;
+    if (p === this.page && d.count > 0 === this.lastCount > 0 && d.stars === this.lastStars && half === this.lastHalf) return;
+    this.lastHalf = half;
     this.lastCount = d.count;
     this.lastStars = d.stars;
-    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}`).join(',')].join('~');
+    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, d.result ? `${d.result.t >= 2.1}|${d.result.hook}` : '', p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}|${i.grade ?? ''}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
     if (p.id !== this.pageId) {
@@ -591,6 +742,7 @@ export class Panel {
       const hi = this.hoverI >= 0 && this.hoverK > 0.05 ? (this.page?.items[this.hoverI]?.id ?? '') : '';
       this.minis.update(dt, hi.startsWith('inst:') ? hi.slice(5) : '', motion.calm);
     }
+    this.animateScore(dt);
     for (let i = 0; i < this.starQuads.length; i++) {
       const q = this.starQuads[i];
       q.visible = this.starAge[i] < 0.6 && this.page?.id === 'results';
@@ -761,7 +913,107 @@ export class Panel {
     this.comboTex.needsUpdate = true;
   }
 
+  /** The score while you play, the results' count-up, ring and grade, the callout: all animated here. */
+  private animateScore(dt: number): void {
+    const d = this.shown;
+    const pid = this.page?.id;
+    // playing: the number rolls up to the score, the multiplier pulses as it steps up
+    const playing = pid === 'song' && !!d && d.count <= 0 && d.score !== undefined && !this.hidden;
+    this.hud.mesh.visible = playing;
+    if (playing && d) {
+      const target = d.score ?? 0;
+      if (this.hudShown < 0 || target < this.hudShown) this.hudShown = target;
+      this.hudShown += (target - this.hudShown) * Math.min(1, dt * 14);
+      if (target - this.hudShown < 1) this.hudShown = target;
+      const mult = d.mult ?? 1;
+      if (mult > this.lastMult) this.hudPulse = 1;
+      this.lastMult = mult;
+      this.hudPulse = Math.max(0, this.hudPulse - dt * 3);
+      this.hudT -= dt;
+      const key = `${Math.round(this.hudShown)}|${mult}|${Math.round((d.acc ?? 1) * 1000)}`;
+      if (key !== this.hudKey && this.hudT <= 0) {
+        this.hudKey = key;
+        this.hudT = 0.05;
+        drawHud(this.hud.g, Math.round(this.hudShown), mult, d.acc ?? 1);
+        this.hud.tex.needsUpdate = true;
+      }
+      this.hud.mesh.scale.setScalar((this.hud.mesh.userData.size as number) * (1 + 0.06 * this.hudPulse));
+    } else this.hudShown = -1;
+    // the results: the score counts up, the ring fills to your accuracy, the grade stamps in at 1.8 s
+    const r = pid === 'results' ? d?.result : null;
+    const on = !!r && r.t > 0;
+    this.ring.mesh.visible = this.scoreQ.mesh.visible = on;
+    this.grade.mesh.visible = on && !!r && r.t >= 1.8;
+    if (on && r) {
+      const ease = (u: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
+      const ks = ease((r.t - 0.2) / 1.4);
+      const kr = ease((r.t - 0.4) / 1.3);
+      const key = `${Math.round(r.score * ks)}|${Math.round(r.accuracy * kr * 1000)}|${r.letter}`;
+      if (key !== this.resKey) {
+        this.resKey = key;
+        drawCountUp(this.scoreQ.g, Math.round(r.score * ks));
+        this.scoreQ.tex.needsUpdate = true;
+        drawRing(this.ring.g, r.accuracy * kr, GRADE_INK[r.letter] ?? '#f4f4f2');
+        this.ring.tex.needsUpdate = true;
+        drawGrade(this.grade.g, r.letter);
+        this.grade.tex.needsUpdate = true;
+      }
+      if (this.grade.mesh.visible) {
+        // (in from twice its size with a little overshoot, 250 ms: a stamp)
+        const u = Math.min(1, (r.t - 1.8) / 0.25);
+        const back = 1 + 2.2 * Math.pow(u - 1, 3) + 1.2 * Math.pow(u - 1, 2);
+        const sc = u < 1 ? 2.2 - 1.2 * back : 1;
+        this.grade.mesh.scale.setScalar((this.grade.mesh.userData.size as number) * sc);
+        (this.grade.mesh.material as MeshBasicMaterial).opacity = Math.min(1, u * 4);
+      }
+    } else this.resKey = '';
+    // the panel's own little jolt as the grade lands
+    if (this.shake > 0) {
+      this.shake = Math.max(0, this.shake - dt * 5);
+      this.root.position.x = 0.004 * this.shake * Math.sin(this.shake * 40);
+    }
+    // the callout: pops up, holds, floats off
+    this.callout.mesh.visible = this.calloutAge < 1.2 && !this.hidden;
+    if (this.callout.mesh.visible) {
+      this.calloutAge += dt;
+      const a = this.calloutAge;
+      const pop = a < 0.12 ? 0.6 + 0.5 * (a / 0.12) : a < 0.2 ? 1.1 - 0.1 * ((a - 0.12) / 0.08) : 1;
+      this.callout.mesh.scale.setScalar((this.callout.mesh.userData.size as number) * pop);
+      (this.callout.mesh.material as MeshBasicMaterial).opacity = a > 0.8 ? Math.max(0, 1 - (a - 0.8) / 0.4) : 1;
+      this.callout.mesh.position.y = (this.callout.mesh.userData.y as number) + 0.01 * Math.max(0, a - 0.5);
+    }
+  }
+
   private drawResults(g: CanvasRenderingContext2D, d: Display): void {
+    // a scored song: the ring and grade, the score, a line to beat, the stars, then what it was made of
+    const r = d.result;
+    if (r) {
+      if (r.t < 2.1) return;
+      g.font = `600 52px ${FONT}`;
+      if (r.better) {
+        const w = g.measureText(r.hook).width + 60;
+        rounded(g, 520, 345, w, 76, 38);
+        g.fillStyle = '#ffd36a';
+        g.fill();
+        g.fillStyle = '#16140f';
+        g.fillText(r.hook, 550, 400);
+      } else {
+        g.fillStyle = '#a8a8ae';
+        g.fillText(r.hook, 520, 400);
+      }
+      for (let i = 0; i < 3; i++) star(g, 580 + i * 120, 480, 46, i < Math.max(0, d.stars), d.gold);
+      const cols: [string, string][] = [[String(r.perfect), 'Perfect'], [String(r.good), 'Good'], [String(r.miss), 'Miss'], [String(r.maxCombo), 'Best run']];
+      cols.forEach(([v, l], i) => {
+        const x = 520 + i * 200;
+        g.fillStyle = INK;
+        g.font = `700 64px ${FONT}`;
+        g.fillText(v, x, 590);
+        g.fillStyle = '#8e8e94';
+        g.font = `500 48px ${FONT}`;
+        g.fillText(l, x, 645);
+      });
+      return;
+    }
     // (stars hidden while your replay plays)
     if (d.stars < 0) return;
     for (let i = 0; i < 3; i++) star(g, CW / 2 - 170 + i * 170, 300, 64, i < Math.max(0, d.stars), d.gold);
@@ -806,6 +1058,12 @@ export class Panel {
       g.fillStyle = it.off ? DIMI : '#8e8e94';
       fit(g, it.sub, '400', 48, 48, it.w - 60);
       g.fillText(it.sub, it.x + 30, it.y + 144);
+    }
+    // (its best grade at this level, in its colour, at the right)
+    if (it.grade && !it.off) {
+      g.font = `800 64px ${FONT}`;
+      g.fillStyle = GRADE_INK[it.grade] ?? INK;
+      g.fillText(it.grade, it.x + it.w - 30 - g.measureText(it.grade).width, it.y + it.h - 22);
     }
     if (it.stars !== undefined && !it.off)
       for (let i = 0; i < 3; i++) {

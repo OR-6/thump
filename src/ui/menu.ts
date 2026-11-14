@@ -20,6 +20,8 @@ export interface Item {
   /** Can't be pressed yet. */
   off?: boolean;
   stars?: number;
+  /** A song's best grade at this level (S–D). */
+  grade?: string;
   /** big: a main-menu tile; card: an instrument; row: a list row; chip: a small choice; button: a plain one. */
   kind: 'big' | 'card' | 'row' | 'chip' | 'button' | 'play';
   x: number;
@@ -46,7 +48,7 @@ export interface MenuInput {
   line: string;
   sub: string;
   inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full'; frets?: 'easy' | 'real' };
-  songs: { name: string; meta: string; stars: number; locked: boolean }[];
+  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string }[];
   songSel: number;
   /** Which six songs show (more than six: a button in the corner turns the page). */
   songPage?: number;
@@ -169,7 +171,7 @@ function buildPageFor(m: MenuInput): Page {
       if (m.songFilter) items.push({ id: 'songs:filter', label: m.songFilter === 'all' ? 'All songs' : m.songFilter === 'classics' ? 'Classics' : 'Originals', kind: 'button', x: 600, y: 24, w: 340, h: 96 });
       shown.slice(pg * 6, pg * 6 + 6).forEach((i, k) => {
         const s = m.songs[i];
-        items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, on: i === m.songSel, off: s.locked, kind: 'row', x: 24 + (k % 2) * (tw + 16), y: 170 + Math.floor(k / 2) * 236, w: tw, h: 220 });
+        items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', x: 24 + (k % 2) * (tw + 16), y: 170 + Math.floor(k / 2) * 236, w: tw, h: 220 });
       });
       const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';
       items.push({ id: 'level', label: lv, sub: m.level === 'hard' ? 'Tap for easy' : 'Tap for harder', kind: 'button', x: 956, y: 170, w: 380, h: 150 });

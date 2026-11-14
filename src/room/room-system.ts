@@ -379,6 +379,33 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     useInstrument: (id) => this.useInstrument(id as InstId | null),
     shelfSet: (which) => this.shelfChange(which),
+    // the game's moments, said over the panel and in the room (soft: success louder than failure)
+    multUp: (m) => {
+      this.kit.module.say(`×${m}`, m >= 4 ? 'gold' : 'white');
+      audio.chime(m >= 4 ? [72, 76, 79, 84] : m === 3 ? [72, 76, 79] : [72, 76], 0.06, 0.55);
+      this.dimmer.hit(m >= 4 ? 0xffd36a : 0xffffff, 0.6);
+    },
+    milestone: (run) => {
+      this.kit.module.say(`${run} in a row`, run >= 100 ? 'gold' : 'white');
+      audio.cheer(Math.min(1, 0.4 + run / 200), run >= 100);
+      this.dimmer.hit(0xffd36a, 0.8);
+    },
+    comboBroke: (run) => {
+      this.kit.module.say(`Run of ${run} ended`, 'grey');
+      audio.chime([60, 55], 0.09, 0.25);
+    },
+    gradeStamp: (letter, fullCombo) => {
+      this.kit.module.stamp();
+      const high = letter === 'S' || letter === 'A';
+      audio.drum('floor', high ? 0.8 : 0.5, 0, 0, 1.2);
+      if (high) {
+        audio.crash(0.55);
+        audio.cheer(letter === 'S' ? 1 : 0.7, letter === 'S');
+        this.dimmer.hit(letter === 'S' ? 0xffd36a : 0x7be0a0, 1);
+      }
+      if (fullCombo) this.later(this.clock.t + 0.5, () => this.kit.module.say('Full combo', 'gold'));
+    },
+    countTick: () => audio.tick(0.07),
     starLanded: (i, of) => {
       // each star lands as a note of the song's own chord on its melody instrument (tonic, third, fifth; the ninth
       // after a third)

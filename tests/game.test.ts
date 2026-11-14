@@ -115,10 +115,14 @@ describe('the game', () => {
     // your replay first; then the score, and it stays: the song and its %, then how it sat in time
     const songEnd = voiced.length;
     for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
+    // (the score counts up and the grade lands first: the stars after 2.1 s)
     g.tick((t += 1.6));
     expect(g.display.line).toMatch(/: \d+%$/);
     expect(g.display.sub).toMatch(/on the beat|ahead|behind|Listen first/);
+    g.tick((t += 1.6));
     expect(g.display.stars).toBe(3);
+    expect(g.display.result?.letter).toMatch(/[SABCD]/);
+    expect(g.display.result?.score).toBeGreaterThan(0);
     // the machine played under it: the parts you don't play live (perc, keys, bass), never the ones you do
     expect(voiced.slice(before, songEnd).some((k) => k.startsWith('keys:'))).toBe(true);
     expect(voiced.slice(before, songEnd).some((k) => k === 'kit:kick' || k.startsWith('t1:'))).toBe(false);
@@ -319,7 +323,7 @@ describe('the game', () => {
     expect(g.display.stars).toBe(-1);
     for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
     expect(g.display.line).toMatch(/: \d+%$/);
-    g.tick((t += 4.5));
+    g.tick((t += 6.6));
     expect(g.display.sub).toBe('The tick never missed');
     g.key('play');
     expect(g.mode).toBe('count');
