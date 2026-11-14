@@ -7,7 +7,7 @@ import { Box3, Group, Vector3 } from '@iwsdk/core';
 import { miniModel } from '../room/friend-seat.js';
 
 /** How wide a miniature is (m), and how far it stands off the panel's face. */
-const SIZE = 0.05;
+const SIZE = 0.027;
 const OFF = 0.022;
 
 interface Mini {

@@ -95,7 +95,7 @@ s = state();
 check("the piano's settings page: its notes and sounds", s.game.display.page?.id === 'inst' && !!s.targets['ui:scale:sad'], `${s.game.display.page?.id}`);
 await ui('scale:sad');
 s = state();
-check('Sad puts it in the sad notes', s.game.display.page?.items?.find((i) => i.id === 'scale:sad')?.on === true, JSON.stringify(s.game.display.page?.items?.filter((i) => i.on).map((i) => i.id)));
+check('the notes step on to Sad', s.game.display.page?.items?.find((i) => i.id.startsWith('value:scale:'))?.label === 'Sad', JSON.stringify(s.game.display.page?.items?.filter((i) => i.id.startsWith('value:')).map((i) => i.label)));
 await ui('nav:free');
 
 await tab('marimba');

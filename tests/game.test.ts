@@ -690,8 +690,9 @@ describe('the game', () => {
     const all = [0, ...songs];
     const pages = Math.ceil(all.length / 4);
     expect(tiles().map((i) => i.label)).toEqual(all.slice(0, 4).map((i) => SONG_TRACKS[i].name));
-    expect(tiles()[0].sub).toBe('Lesson · start here');
-    expect(tiles()[1].sub).toMatch(/^(Easy|Medium|Hard) · /);
+    // (each row is its name and best grade; what it is shows on the chosen one's card)
+    expect(g.display.page?.card?.meta).toBe('Start here');
+    expect(tiles()[1].grade).toBe('—');
     expect(tiles().some((i) => i.off)).toBe(false);
     expect(items().find((i) => i.id === 'songs:more')?.sub).toBe(`1 of ${pages}`);
     // every page in turn, then back to the first; every song on one of them, the last one today's

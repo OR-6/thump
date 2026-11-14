@@ -75,6 +75,7 @@ import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R, MALLET_LEN, STICK_LEN } from './hand-mallet.js';
 import { KICK_DEPTH } from '../kit/pad-view.js';
+import { INST_LIGHT } from '../ui/theme.js';
 import { GuitarHands, HG, heldMatrix, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
@@ -3664,6 +3665,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const f = s.features;
     this.hitLog.add({ t: st.t, speed: st.speed, kind: st.kind, heightMm: st.height * 1000, surface: s.id, side: this.lastSide });
     this.debug.lastHit = { surface: s.id, family: what || (s.voice?.family ?? 'module'), zone, gain: r3(gain), speed: r3(st.speed), kind: st.kind, grade };
+    // (the light on the panel comes from your playing: its edge flashes the instrument's colour)
+    this.kit.module.edgeFlash(INST_LIGHT[this.kit.inst] ?? 0xffffff, gain);
     if (DEBUG && f) {
       console.log(`[thump] hit ${s.id} '${s.label}' ${s.voice?.family ?? '-'} zone ${zone} · ${st.kind} ${st.speed.toFixed(2)} m/s gain ${gain.toFixed(2)} · area ${f.area.toFixed(2)} hollow ${f.hollow} glass ${f.glass} soft ${f.soft} · out ${Math.round(audio.outputLatency() * 1000)} ms`);
     }

@@ -87,7 +87,7 @@ export interface MenuInput {
 const W = 1360;
 const back = (): Item => ({ id: 'back', label: 'Back', kind: 'button', x: 32, y: 28, w: 96, h: 96 });
 /** The top-right corner button (beside the title). */
-const corner = (id: string, label: string): Item => ({ id, label, kind: 'button', x: 1104, y: 28, w: 224, h: 96 });
+const corner = (id: string, label: string): Item => ({ id, label, kind: 'button', x: 1068, y: 28, w: 260, h: 96 });
 /** The bottom row: where every screen keeps what you do next. */
 const BOT = { y: 680, h: 200 };
 
@@ -144,8 +144,8 @@ function buildPageFor(m: MenuInput): Page {
       };
       const stepper = (minus: string, plus: string, value: string, y: number, offMinus = false, offPlus = false) => {
         items.push({ id: minus, label: '‹', kind: 'chip', off: offMinus, x: 248, y, w: 96, h: 96 });
-        items.push({ id: `value:${minus}`, label: value, kind: 'text', x: 352, y, w: 240, h: 96 });
-        items.push({ id: plus, label: '›', kind: 'chip', off: offPlus, x: 600, y, w: 96, h: 96 });
+        items.push({ id: `value:${minus}`, label: value, kind: 'text', x: 352, y, w: 280, h: 96 });
+        items.push({ id: plus, label: '›', kind: 'chip', off: offPlus, x: 640, y, w: 96, h: 96 });
       };
       const ys = [176, 296, 416, 536];
       if (d.id === 'drums') {
@@ -158,8 +158,10 @@ function buildPageFor(m: MenuInput): Page {
         const pitched = d.scales !== false;
         let k = 0;
         if (pitched) {
+          // (the notes, stepped ‹ Happy ›: six names don't fit across at a readable size)
           items.push(label('Notes', ys[k]));
-          across(SCALES.map((s) => ({ id: `scale:${s.id}`, label: s.name, on: s.name === m.inst.scale })), ys[k++]);
+          const si = Math.max(0, SCALES.findIndex((s) => s.name === m.inst.scale));
+          stepper(`scale:${SCALES[(si + SCALES.length - 1) % SCALES.length].id}`, `scale:${SCALES[(si + 1) % SCALES.length].id}`, SCALES[si].name, ys[k++]);
           items.push(label('Key', ys[k]));
           const pc = KEYS.find((x) => x.name === (m.inst.key || 'C'))?.pc ?? 0;
           stepper(`key:${(pc + 11) % 12}`, `key:${(pc + 1) % 12}`, m.inst.key || 'C', ys[k++]);
@@ -196,18 +198,19 @@ function buildPageFor(m: MenuInput): Page {
           x += w + 8;
         }
       }
+      // (the songs by name, each with its best grade; more of them as the list's last row)
       shown.slice(pg * per, pg * per + per).forEach((i, k) => {
         const s = m.songs[i];
-        items.push({ id: `song:${i}`, label: s.name, sub: s.meta, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', x: 32, y: 176 + k * 122, w: C8, h: 112 });
+        items.push({ id: `song:${i}`, label: s.name, stars: s.stars, grade: s.grade ?? '—', on: i === m.songSel, off: s.locked, kind: 'row', x: 32, y: 176 + k * 96, w: C8, h: 88 });
       });
+      if (pages > 1) items.push({ id: 'songs:more', label: 'More songs ›', sub: `${pg + 1} of ${pages}`, kind: 'row', x: 32, y: 176 + 4 * 96, w: C8, h: 88 });
       const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';
       // the level as three tabs, each lit in its own colour
       void lv;
       (['easy', 'normal', 'hard'] as const).forEach((l, k) => items.push({ id: `level:${l}`, label: l.toUpperCase(), on: m.level === l, kind: 'chip', x: X3, y: 448 + k * 72, w: C4, h: 64 }));
-      items.push({ id: 'songs:more', label: 'More', sub: `${pg + 1} of ${pages}`, off: pages < 2, kind: 'button', x: 32, y: BOT.y, w: 260, h: BOT.h });
-      items.push({ id: 'nav:instruments', label: m.inst.name, sub: 'Change', kind: 'button', x: 308, y: BOT.y, w: 312, h: BOT.h });
-      items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 636, y: BOT.y, w: 312, h: BOT.h });
-      items.push({ id: 'play', label: 'Play', kind: 'play', x: 964, y: BOT.y, w: W - 32 - 964, h: BOT.h });
+      items.push({ id: 'nav:instruments', label: m.inst.name, sub: 'Change', kind: 'button', x: 32, y: BOT.y, w: 360, h: BOT.h });
+      items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 408, y: BOT.y, w: 360, h: BOT.h });
+      items.push({ id: 'play', label: 'Play', kind: 'play', x: 784, y: BOT.y, w: W - 32 - 784, h: BOT.h });
       const sel = m.songs[m.songSel];
       return { id: 'songs', title: 'Songs', line: m.sub, items, body: 'songs', card: sel ? { name: sel.name, meta: sel.meta, stars: sel.stars, grade: sel.grade ?? '', best: sel.best ?? -1 } : undefined };
     }
@@ -279,7 +282,7 @@ function buildPageFor(m: MenuInput): Page {
     case 'song': {
       // pause in the corner, always in the same place; the instruments you can switch to along the bottom, then stop
       const c = row(Math.max(1, m.switchable.length), 32, 1104 - 16, 16);
-      const items: Item[] = m.switchable.map((id, i) => ({ id: `inst:${id}`, label: instDef(id as never).name, icon: id, on: id === m.inst.id, color: instDef(id as never).color, kind: 'card' as const, x: c[i].x, y: BOT.y, w: c[i].w, h: BOT.h }));
+      const items: Item[] = m.switchable.map((id, i) => ({ id: `inst:${id}`, label: '', sub: instDef(id as never).name, icon: id, on: id === m.inst.id, color: instDef(id as never).color, kind: 'card' as const, x: c[i].x, y: BOT.y, w: c[i].w, h: BOT.h }));
       items.push({ id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'ghost', x: 1104, y: BOT.y, w: 224, h: BOT.h });
       items.push(corner('pause', 'Pause'));
       return { id: 'song', title: m.line, line: m.sub, items, body: 'song' };

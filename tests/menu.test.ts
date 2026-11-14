@@ -34,8 +34,9 @@ describe('the panel pages', () => {
   });
   it("an instrument's settings: its scales, its sounds, an octave down or up", () => {
     const p = buildPage(base('inst'));
-    expect(p.items.filter((i) => i.id.startsWith('scale:')).map((i) => i.label)).toEqual(['Happy', 'Sad', 'Bluesy', 'Dreamy', 'Major', 'Minor']);
-    expect(p.items.find((i) => i.id.startsWith('scale:') && i.on)?.label).toBe('Happy');
+    // (the notes stepped ‹ Happy ›: back to Minor, on to Sad)
+    expect(p.items.filter((i) => i.id.startsWith('scale:')).map((i) => i.id)).toEqual(['scale:minor', 'scale:sad']);
+    expect(p.items.find((i) => i.id === 'value:scale:minor')?.label).toBe('Happy');
     expect(p.items.find((i) => i.id === 'sound:piano')?.on).toBe(true);
     expect(p.items.some((i) => i.id === 'oct:+1')).toBe(true);
   });
@@ -59,14 +60,14 @@ describe('the panel pages', () => {
     const some = buildPage({ ...base('songs'), songs, songShown: [1, 4], songFilter: 'originals' });
     expect(some.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:1', 'song:4']);
     expect(some.items.find((i) => i.id.startsWith('songs:filter:') && i.on)?.label).toBe('Originals');
-    expect(some.items.find((i) => i.id === 'songs:more')?.off).toBe(true);
+    expect(some.items.some((i) => i.id === 'songs:more')).toBe(false);
     for (const p of [first, second])
       for (const a of p.items) {
         expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);
         for (const b of p.items) if (a !== b) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
       }
-    // (four or fewer: More can't be pressed)
-    expect(buildPage(base('songs')).items.find((i) => i.id === 'songs:more')?.off).toBe(true);
+    // (four or fewer: no More row)
+    expect(buildPage(base('songs')).items.some((i) => i.id === 'songs:more')).toBe(false);
   });
   it('in a song: switch instrument, or stop', () => {
     const p = buildPage({ ...base('song'), line: 'Kick Start' });

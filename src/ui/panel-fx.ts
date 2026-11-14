@@ -33,6 +33,9 @@ export class PanelFx {
   private next = 0;
   private tex: Texture[] = [];
   private sweepMesh: Mesh;
+  /** The panel's edge: dark at rest, lit in your instrument's colour as you play. */
+  private edge: Mesh;
+  private edgeK = 0;
   private sweepT = 9;
   private seed = 1;
 
@@ -75,6 +78,40 @@ export class PanelFx {
     this.sweepMesh.renderOrder = 11;
     this.sweepMesh.visible = false;
     this.root.add(this.sweepMesh);
+    // the edge: a soft rounded outline drawn once (white), tinted and faded per hit
+    const ec = document.createElement('canvas');
+    ec.width = 1024;
+    ec.height = Math.round((1024 * h) / w);
+    const eg = ec.getContext('2d')!;
+    const r = 30;
+    const line = (lw: number, a: number) => {
+      eg.beginPath();
+      const x = 16, y = 16, W = ec.width - 32, H = ec.height - 32;
+      eg.moveTo(x + r, y);
+      eg.arcTo(x + W, y, x + W, y + H, r);
+      eg.arcTo(x + W, y + H, x, y + H, r);
+      eg.arcTo(x, y + H, x, y, r);
+      eg.arcTo(x, y, x + W, y, r);
+      eg.closePath();
+      eg.lineWidth = lw;
+      eg.strokeStyle = `rgba(255,255,255,${a})`;
+      eg.stroke();
+    };
+    line(22, 0.12);
+    line(12, 0.3);
+    line(4, 1);
+    const et = new CanvasTexture(ec);
+    this.edge = new Mesh(new PlaneGeometry(w * 1.02, h * 1.02), new MeshBasicMaterial({ map: et, transparent: true, opacity: 0, depthWrite: false, blending: AdditiveBlending, toneMapped: false }));
+    this.edge.position.z = 0.0024;
+    this.edge.renderOrder = 11;
+    this.edge.visible = false;
+    this.root.add(this.edge);
+  }
+
+  /** A note played: the edge lights in the instrument's colour, harder for a harder hit, gone in a quarter second. */
+  flash(color: number, gain: number): void {
+    (this.edge.material as MeshBasicMaterial).color.setHex(color);
+    this.edgeK = Math.max(this.edgeK, 0.35 + 0.65 * Math.min(1, gain));
   }
 
   private rnd(): number {
@@ -121,6 +158,11 @@ export class PanelFx {
   }
 
   update(dt: number): void {
+    if (this.edgeK > 0) {
+      this.edgeK = Math.max(0, this.edgeK - dt / 0.25);
+      this.edge.visible = this.edgeK > 0;
+      (this.edge.material as MeshBasicMaterial).opacity = this.edgeK;
+    }
     for (let i = 0; i < N; i++) {
       if (this.age[i] >= this.life[i]) continue;
       this.age[i] += dt;

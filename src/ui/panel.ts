@@ -11,7 +11,7 @@ import { contactShadow } from '../art/lighting.js';
 import { thumb, whenThumbs } from '../art/thumbs.js';
 import { FONT, whenFonts } from './fonts.js';
 import { PanelFx, type FxKind } from './panel-fx.js';
-import { GRADE_PAIR, JUDGE, LEVEL_INK, MULT_PAIR, NEON, chroma, display, glowText, hgrad, pill, slant, stage, vgrad } from './theme.js';
+import { GRADE_PAIR, JUDGE, LEVEL_INK, MULT_PAIR, NEON, SECONDARY, body, chroma, display, glowText, hgrad, pill, slant, stage, vgrad } from './theme.js';
 import { star, type Display } from './module.js';
 import type { Item, Page } from './menu.js';
 import { ICON } from '../stand/stand.js';
@@ -120,13 +120,17 @@ function drawHud(g: CanvasRenderingContext2D, score: number, acc: number, ghost:
   g.clearRect(0, 0, 520, 260);
   g.textAlign = 'right';
   g.font = display(96, 900);
-  glowText(g, fmt(score), 512, 96, INK2, NEON.violet, 16);
+  g.fillStyle = INK2;
+  g.fillText(fmt(score), 512, 96);
   g.font = display(48, 700);
   g.fillStyle = MUTED;
   g.fillText(`${(acc * 100).toFixed(1)}%`, 512, 160);
   if (ghost !== null) {
     g.font = display(48, 800);
-    if (ghost >= 0) glowText(g, `+${fmt(ghost)} on best`, 512, 222, NEON.green, NEON.green, 10);
+    if (ghost >= 0) {
+      g.fillStyle = NEON.green;
+      g.fillText(`+${fmt(ghost)} on best`, 512, 222);
+    }
     else {
       g.fillStyle = MUTED;
       g.fillText(`${fmt(-ghost)} behind best`, 512, 222);
@@ -138,7 +142,10 @@ function drawHud(g: CanvasRenderingContext2D, score: number, acc: number, ghost:
 function drawSpot(g: CanvasRenderingContext2D, meter: number, active: boolean, ready: boolean): void {
   g.clearRect(0, 0, 820, 72);
   g.font = display(48, 900);
-  if (active || ready) glowText(g, active ? 'SPOTLIGHT ×2' : 'HANDS UP!', 0, 52, vgrad(g, 10, 56, '#fff1a8', '#ffb000'), NEON.gold, 14);
+  if (active || ready) {
+    g.fillStyle = NEON.gold;
+    g.fillText(active ? 'SPOTLIGHT ×2' : 'HANDS UP!', 0, 52);
+  }
   else {
     g.fillStyle = MUTED;
     g.fillText('SPOTLIGHT', 0, 52);
@@ -156,9 +163,7 @@ function drawSpot(g: CanvasRenderingContext2D, meter: number, active: boolean, r
       g.save();
       slant(g, x, 20, 100, 32, 12);
       g.clip();
-      g.shadowColor = NEON.gold;
-      g.shadowBlur = 12;
-      g.fillStyle = hgrad(g, x, x + 100, ['#ffd23f', '#ff3ea5']);
+      g.fillStyle = hgrad(g, x, x + 100, ['#ffd23f', '#ff9a3c']);
       g.fillRect(x, 20, 100 * f, 32);
       g.restore();
     }
@@ -168,7 +173,8 @@ function drawSpot(g: CanvasRenderingContext2D, meter: number, active: boolean, r
 function drawCountUp(g: CanvasRenderingContext2D, score: number): void {
   g.clearRect(0, 0, 752, 188);
   g.font = display(150, 900);
-  glowText(g, fmt(score), 8, 157, vgrad(g, 40, 160, '#ffffff', '#e2d6ff'), NEON.violet, 22);
+  g.fillStyle = NEON.ink;
+  g.fillText(fmt(score), 8, 157);
 }
 /** The medal's ring: a dark track with ticks where each grade begins, filled to `k` (in a grade's gradient once stamped). */
 function drawRing(g: CanvasRenderingContext2D, k: number, pair: [string, string] | null): void {
@@ -222,47 +228,57 @@ function drawGrade(g: CanvasRenderingContext2D, letter: string): void {
   g.textAlign = 'left';
   g.textBaseline = 'alphabetic';
 }
-/** Over the score: NEW RECORD! (a pink pill and by how much), else your best, else a first clear. */
-function drawBrow(g: CanvasRenderingContext2D, better: boolean, prev: number, score: number): void {
-  g.clearRect(0, 0, 752, 72);
+/** Over the score: a banner on a gold plate for a full combo, else NEW RECORD!, else your best (a first clear). */
+function drawBrow(g: CanvasRenderingContext2D, better: boolean, prev: number, score: number, banner = ''): void {
+  g.clearRect(0, 0, 752, 96);
+  if (banner) {
+    g.font = display(72, 900);
+    const w = Math.min(744, g.measureText(banner).width + 70);
+    slant(g, 4, 2, w, 92);
+    g.fillStyle = hgrad(g, 4, 4 + w, ['#ffd23f', '#ff9a3c']);
+    g.fill();
+    g.fillStyle = '#1a0b2e';
+    g.fillText(banner, 4 + Math.round(92 * 0.176) + 18, 74);
+    return;
+  }
   if (better && prev >= 0) {
     g.font = display(48, 900);
     const w = g.measureText('NEW RECORD!').width + 56;
-    pill(g, 4, 4, w, 64, hgrad(g, 4, 4 + w, ['#ff7ac8', '#ff3ea5']), 'NEW RECORD!', '#ffffff', display(48, 900), NEON.magenta);
+    pill(g, 4, 16, w, 64, hgrad(g, 4, 4 + w, ['#ff7ac8', '#ff3ea5']), 'NEW RECORD!', '#ffffff', display(48, 900));
     g.font = display(48, 800);
-    glowText(g, `+${fmt(score - prev)}`, w + 24, 54, NEON.ink, NEON.magenta, 10);
+    g.fillStyle = NEON.ink;
+    g.fillText(`+${fmt(score - prev)}`, w + 24, 66);
     return;
   }
   g.font = display(48, 800);
   g.fillStyle = MUTED;
-  g.fillText(prev >= 0 ? `BEST ${fmt(prev)}` : 'FIRST CLEAR', 4, 52);
+  g.fillText(prev >= 0 ? `BEST ${fmt(prev)}` : 'FIRST CLEAR', 4, 64);
 }
-/** What the run was: a banner (full combo, all perfect) or the next goal; each judgement's count in its colour. */
-function drawDetails(g: CanvasRenderingContext2D, r: { hook: string; letter: string; accuracy: number; fullCombo: boolean; allPerfect: boolean; maxCombo: number; perfect: number; good: number; miss: number }): void {
+/** What the run was: the record (if the banner took the brow) or the next goal; each judgement centred over its count. */
+function drawDetails(g: CanvasRenderingContext2D, r: { hook: string; letter: string; accuracy: number; fullCombo: boolean; allPerfect: boolean; maxCombo: number; perfect: number; good: number; miss: number; better?: boolean; prev?: number; score?: number }): void {
   g.clearRect(0, 0, 752, 236);
-  if (r.allPerfect || r.fullCombo) chroma(g, r.allPerfect ? 'ALL PERFECT!!' : 'FULL COMBO!', 8, 58, 60, r.allPerfect ? NEON.gold : NEON.cyan, NEON.magenta);
-  else {
-    g.font = display(52, 800);
-    fit(g, r.hook, '800', 52, 48, 744);
-    g.font = `italic ${g.font}`;
+  if ((r.fullCombo || r.allPerfect) && r.better && (r.prev ?? -1) >= 0) {
+    pill(g, 8, 4, 330, 64, hgrad(g, 8, 338, ['#ff7ac8', '#ff3ea5']), 'NEW RECORD!', '#ffffff', display(48, 900));
+    g.font = display(48, 800);
+    g.fillStyle = NEON.ink;
+    g.fillText(`+${fmt((r.score ?? 0) - (r.prev ?? 0))}`, 360, 54);
+  } else {
+    fit(g, r.hook, '700', 52, 48, 744);
     g.fillStyle = NEON.ink;
     g.fillText(r.hook, 8, 54);
   }
-  const cols: [string, string, string][] = [['PERFECT', String(r.perfect), JUDGE.perfect], ['GOOD', String(r.good), JUDGE.good], ['MISS', String(r.miss), JUDGE.miss], ['MAX COMBO', String(r.maxCombo), NEON.violet]];
-  // (each column as wide as its word, the gaps sharing what's left)
-  g.font = display(48, 900);
-  const names = cols.map(([l]) => (l === 'MAX COMBO' ? 'COMBO' : l));
-  const widths = names.map((n) => g.measureText(n).width);
-  const gap = Math.max(16, (744 - widths.reduce((a, b) => a + b, 0)) / (cols.length - 1));
-  let x = 8;
-  cols.forEach(([, v, c], i) => {
-    g.font = display(48, 900);
-    glowText(g, names[i], x, 128, c, c, 8);
+  const cols: [string, string, string][] = [['PERFECT', String(r.perfect), JUDGE.perfect], ['GOOD', String(r.good), JUDGE.good], ['MISS', String(r.miss), JUDGE.miss], ['COMBO', String(r.maxCombo), '#d9cfff']];
+  g.textAlign = 'center';
+  cols.forEach(([l, v, c], i) => {
+    const cx = 8 + 93 + i * 186;
+    g.font = body(46, 800);
+    g.fillStyle = c;
+    g.fillText(l, cx, 128);
     g.font = display(64, 900);
     g.fillStyle = NEON.ink;
-    g.fillText(v, x, 202);
-    x += widths[i] + gap;
+    g.fillText(v, cx, 202);
   });
+  g.textAlign = 'left';
 }
 
 /** Each grade's colour: S gold, A green, B blue, C and D quieter. */
@@ -317,8 +333,14 @@ function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: numb
   min = Math.max(MIN_PX, min, Math.min(px, MIN_PX));
   g.font = `${weight} ${px}px ${FONT}`;
   while (g.measureText(text).width > room && px > min) g.font = `${weight} ${--px}px ${FONT}`;
+  // (still too wide at the smallest size: noted, so a layout check can find every clash)
+  const w = g.measureText(text).width;
+  if (w > room + 1) OVERFLOW.set(`${text}|${Math.round(room)}`, { text, room: Math.round(room), width: Math.round(w) });
   return px;
 }
+/** Text that didn't fit its room at the smallest size (read by the layout check). */
+export const OVERFLOW = new Map<string, { text: string; room: number; width: number }>();
+(globalThis as { __thumpOverflow?: typeof OVERFLOW }).__thumpOverflow = OVERFLOW;
 
 export class Panel {
   readonly root = new Group();
@@ -422,7 +444,7 @@ export class Panel {
     this.spotQ = overlayQuad(820, 72, { x: 32, y: 516, w: 820, h: 72 });
     this.ring = overlayQuad(480, 480, { x: 48, y: 172, w: 480, h: 480 });
     this.grade = overlayQuad(300, 300, { x: 138, y: 222, w: 300, h: 300 });
-    this.brow = overlayQuad(752, 72, { x: 576, y: 176, w: 752, h: 72 });
+    this.brow = overlayQuad(752, 96, { x: 576, y: 160, w: 752, h: 96 });
     this.scoreQ = overlayQuad(752, 188, { x: 576, y: 240, w: 752, h: 188 });
     this.details = overlayQuad(752, 236, { x: 576, y: 420, w: 752, h: 236 });
     this.callout = overlayQuad(1000, 150, { x: CW / 2 - 500, y: -210, w: 1000, h: 150 });
@@ -599,6 +621,10 @@ export class Panel {
   private callout: Quad;
   private shock: Mesh;
   private fx: PanelFx;
+  /** A note played: the panel's edge lights in the instrument's colour. */
+  edgeFlash(color: number, gain: number): void {
+    if (!this.hidden) this.fx.flash(color, gain);
+  }
   /** A burst of particles at a page-pixel point (the medal, the score, the run). */
   burst(kind: FxKind, px = CW / 2, py = 400): void {
     const z = itemZone({ x: px, y: py, w: 0, h: 0 });
@@ -947,8 +973,8 @@ export class Panel {
     this.accent = p.accent ?? 0xffffff;
     // a night stage: deep indigo to plum, a faint floor grid, a neon edge with corner brackets
     stage(g, CW, CH, 40);
-    g.fillStyle = hgrad(g, 32, CW - 32, ['rgba(51,225,255,0.55)', 'rgba(138,92,255,0.35)', 'rgba(255,62,165,0.55)']);
-    g.fillRect(32, 152, CW - 64, 3);
+    g.fillStyle = 'rgba(90,69,150,0.55)';
+    g.fillRect(32, 166, CW - 64, 2);
     g.textBaseline = 'alphabetic';
     // the header: the title, and the line under it
     const hasBack = p.items.some((i) => i.id === 'back' && i.y < 120);
@@ -956,7 +982,8 @@ export class Panel {
     const right = Math.min(CW - 32, ...p.items.filter((i) => i.y < 140 && i.x > 300).map((i) => i.x - 16));
     fit(g, p.title, '900', p.id === 'main' ? 76 : 64, 48, right - tx);
     g.font = `italic ${g.font}`;
-    glowText(g, p.id === 'main' ? p.title.toUpperCase() : p.title, tx, 88, NEON.ink, NEON.magenta, 14);
+    g.fillStyle = NEON.ink;
+    g.fillText(p.id === 'main' ? p.title.toUpperCase() : p.title, tx, 88);
     if (p.line) {
       g.fillStyle = MUTED;
       fit(g, p.line, '400', 48, 48, right - tx);
@@ -974,7 +1001,7 @@ export class Panel {
       // how to play what's on the desk, large (two lines if it needs them)
       g.fillStyle = INK;
       const words = p.how.split(' ');
-      fit(g, p.how, '600', 56, 48, CW - 64);
+      g.font = `600 56px ${FONT}`;
       if (g.measureText(p.how).width > CW - 64) {
         const half = Math.ceil(words.length / 2);
         const a = words.slice(0, half).join(' ');
@@ -982,20 +1009,27 @@ export class Panel {
         fit(g, a.length > b.length ? a : b, '600', 56, 48, CW - 64);
         g.fillText(a, 32, 232);
         g.fillText(b, 32, 296);
-      } else g.fillText(p.how, 32, 262);
+      } else {
+        fit(g, p.how, '600', 56, 48, CW - 64);
+        g.fillText(p.how, 32, 262);
+      }
     }
     if (p.body === 'songs' && p.card) this.drawSongCard(g, p.card);
     if (p.body === 'pause') this.drawPause(g, d);
     if (p.body === 'band' && p.band) this.drawBand(g, p.band);
-    this.noPics = p.id === 'instruments';
+    // (the instruments' pictures are drawn on their cards: one fixed box each, never a 3D model standing off the panel)
+    this.noPics = false;
     p.items.forEach((it) => this.drawItem(g, it));
     this.tex.needsUpdate = true;
-    if (p.id === 'instruments') {
+    if (false as boolean) {
       const cards = p.items
         .filter((it) => it.kind === 'card' && it.id.startsWith('inst:'))
         .map((it) => {
-          const S = it.h * 0.78;
-          return { id: it.id.slice(5), x: ((it.x + 18 + S / 2) / CW - 0.5) * PANEL.w, y: (0.5 - (it.y + it.h / 2) / CH) * PANEL.h };
+          // (in the same box the card keeps for its picture: it never reaches the name or the card's edge)
+          // (centred over where the card keeps its picture, above its name)
+          const S = Math.min(it.h * 0.58, it.w * 0.8);
+          // (a little high: the model stands up off the tilted panel, so it reads lower than its footprint)
+          return { id: it.id.slice(5), x: ((it.x + it.w / 2) / CW - 0.5) * PANEL.w, y: (0.5 - (it.y + S * 0.42) / CH) * PANEL.h };
         });
       this.minis.layout(cards, -this.root.rotation.x);
     } else this.minis.hide();
@@ -1006,6 +1040,14 @@ export class Panel {
     const R = CW - 32;
     // (the count-in's number is drawn on its own canvas)
     if (d.count > 0) return;
+    // (the instrument that's out, named over its picture in the strip)
+    const out = this.page?.items.find((i) => i.kind === 'card' && i.on && i.sub);
+    if (out?.sub) {
+      g.font = body(48, 700);
+      g.fillStyle = NEON.ink;
+      const w = g.measureText(out.sub).width;
+      g.fillText(out.sub, Math.max(X, Math.min(1088 - w, out.x + (out.w - w) / 2)), 666);
+    }
     // the progress track (its fill is a mesh); each solo a red stretch on it, named above
     g.fillStyle = '#2a2927';
     rounded(g, X, 488, R - X, 16, 8);
@@ -1143,17 +1185,18 @@ export class Panel {
         this.ring.mesh.scale.set((this.ring.mesh.userData.size as number) * pulse, (this.ring.mesh.userData.h as number) * pulse, 1);
       }
       // the line over the score at 2.05 s, the details at 2.15 (the new best chip pops at 2.65)
-      const browKey = `${r.better}|${r.prev}|${r.score}|${r.t >= 2.65}`;
+      const banner = r.allPerfect ? 'ALL PERFECT!!' : r.fullCombo ? 'FULL COMBO!' : '';
+      const browKey = `${r.better}|${r.prev}|${r.score}|${banner}`;
       if (browKey !== this.browKey) {
         this.browKey = browKey;
-        drawBrow(this.brow.g, r.better, r.prev, r.score);
+        drawBrow(this.brow.g, r.better && !banner, r.prev, r.score, banner);
         this.brow.tex.needsUpdate = true;
       }
       const pop = r.better && r.t >= 2.65 ? Math.min(1, (r.t - 2.65) / 0.24) : 1;
       const ps = r.better ? (pop < 0.6 ? 0.8 + (0.25 * pop) / 0.6 : 1.05 - 0.05 * ((pop - 0.6) / 0.4)) : 1;
       (this.brow.mesh.material as MeshBasicMaterial).opacity = r.better ? (r.t >= 2.65 ? Math.min(1, pop * 3) : 0) : Math.min(1, Math.max(0, (r.t - 2.05) / 0.2));
       this.brow.mesh.scale.set((this.brow.mesh.userData.size as number) * ps, (this.brow.mesh.userData.h as number) * ps, 1);
-      const dk = `${r.hook}|${r.letter}|${r.perfect}|${r.good}|${r.miss}|${r.maxCombo}`;
+      const dk = `${r.hook}|${r.letter}|${r.perfect}|${r.good}|${r.miss}|${r.maxCombo}|${r.better}`;
       if (dk !== this.detKey) {
         this.detKey = dk;
         drawDetails(this.details.g, r);
@@ -1231,93 +1274,99 @@ export class Panel {
    * accent bar down its left and a lighter tile; a locked one is dim.
    */
   private drawRow(g: CanvasRenderingContext2D, it: Item): void {
-    // a song: a slanted tile, its name, what it is (quiet, right), its best grade and stars at the end; the chosen
-    // one burns magenta into violet
-    slant(g, it.x, it.y, it.w, it.h, 22);
-    if (it.on && !it.off) {
-      g.shadowColor = NEON.magenta;
-      g.shadowBlur = 24;
-      g.fillStyle = hgrad(g, it.x, it.x + it.w, ['#ff3ea5', '#8a5cff', 'rgba(60,30,120,0.9)']);
+    // a song: a slanted row, its name, its best grade at the right; the chosen one white; More songs, quiet
+    const chosen = !!it.on && !it.off;
+    slant(g, it.x, it.y, it.w, it.h);
+    if (chosen) {
+      g.fillStyle = '#f6f2ff';
       g.fill();
-      g.shadowBlur = 0;
-      g.fillStyle = 'rgba(255,255,255,0.3)';
-      g.fillRect(it.x + 26, it.y + 3, it.w - 52, 3);
     } else {
-      g.fillStyle = it.off ? 'rgba(40,20,80,0.35)' : vgrad(g, it.y, it.y + it.h, 'rgba(52,24,96,0.85)', 'rgba(30,12,62,0.85)');
+      g.fillStyle = it.off ? 'rgba(40,20,80,0.3)' : 'rgba(52,26,98,0.7)';
       g.fill();
       g.lineWidth = 2;
-      g.strokeStyle = 'rgba(138,92,255,0.45)';
+      g.strokeStyle = 'rgba(90,69,150,0.6)';
       g.stroke();
     }
-    const right = it.x + it.w - 28;
+    const k = Math.round(it.h * 0.176);
+    const right = it.x + it.w - k - 24;
     let gx = right;
     if (it.grade && !it.off) {
-      g.font = display(68, 900);
+      g.font = display(52, 900);
       const gw = g.measureText(it.grade).width;
-      const [ga, gb] = GRADE_PAIR[it.grade] ?? GRADE_PAIR.D;
-      glowText(g, it.grade, right - gw, it.y + 72, vgrad(g, it.y + 14, it.y + 76, ga, gb), gb, 14);
-      gx = right - Math.max(gw, 70) - 24;
-    }
-    if (it.stars !== undefined && !it.off)
-      for (let i = 0; i < 3; i++) {
-        g.beginPath();
-        g.arc(right - 8 - (2 - i) * 22, it.y + 94, 7, 0, Math.PI * 2);
-        if (i < it.stars) {
-          g.fillStyle = NEON.gold;
-          g.fill();
-        } else {
-          g.lineWidth = 2;
-          g.strokeStyle = 'rgba(255,255,255,0.3)';
-          g.stroke();
-        }
+      if (it.grade === '—') g.fillStyle = chosen ? '#8a7fae' : NEON.dim;
+      else {
+        const [ga, gb] = GRADE_PAIR[it.grade] ?? GRADE_PAIR.D;
+        g.fillStyle = chosen ? gb : vgrad(g, it.y + 14, it.y + 70, ga, gb);
       }
-    let mw = 0;
-    if (it.sub) {
-      g.font = `400 48px ${FONT}`;
-      mw = Math.min(g.measureText(it.sub).width, (gx - it.x) * 0.45);
-      g.fillStyle = it.off ? NEON.dim : it.on ? 'rgba(255,255,255,0.85)' : MUTED;
-      fit(g, it.sub, '500', 48, 48, mw + 1);
-      g.fillText(it.sub, gx - mw, it.y + 72);
+      g.fillText(it.grade, right - gw, it.y + it.h / 2 + 19);
+      gx = right - gw - 24;
+    } else if (it.sub) {
+      g.font = body(48, 500);
+      const sw = g.measureText(it.sub).width;
+      g.fillStyle = MUTED;
+      g.fillText(it.sub, right - sw, it.y + it.h / 2 + 17);
+      gx = right - sw - 24;
     }
-    g.fillStyle = it.off ? NEON.dim : NEON.ink;
-    fit(g, it.label, '900', 56, 48, gx - mw - 24 - it.x - 40);
+    g.fillStyle = it.off ? NEON.dim : chosen ? '#1a0b2e' : NEON.ink;
+    fit(g, it.label, '800', 56, 48, gx - (it.x + k + 24));
     g.font = `italic ${g.font}`;
-    g.fillText(it.label, it.x + 40, it.y + 74);
+    g.fillText(it.label, it.x + k + 24, it.y + it.h / 2 + 19);
   }
 
-  /** The chosen song beside the list, in a neon frame: its name, what it is, your best and its grade, its stars. */
+
+  /** The chosen song beside the list: its name (two lines if it needs them), what it is, your best and its grade. */
   private drawSongCard(g: CanvasRenderingContext2D, c: { name: string; meta: string; stars: number; grade: string; best: number }): void {
     const x = 32 + 2 * (421.3 + 16);
     const w = 421.3;
+    const room = w - 44;
     rounded(g, x, 176, w, 256, 24);
-    g.fillStyle = vgrad(g, 176, 432, 'rgba(70,30,130,0.75)', 'rgba(26,10,56,0.85)');
+    g.fillStyle = 'rgba(52,26,98,0.7)';
     g.fill();
-    g.lineWidth = 3;
-    g.shadowColor = NEON.cyan;
-    g.shadowBlur = 16;
-    g.strokeStyle = NEON.cyan;
+    g.lineWidth = 2;
+    g.strokeStyle = 'rgba(90,69,150,0.6)';
     g.stroke();
-    g.shadowBlur = 0;
-    fit(g, c.name.toUpperCase(), '900', 56, 48, w - 56);
+    const name = c.name.toUpperCase();
+    g.font = display(52, 800);
+    let lines = [name];
+    if (g.measureText(name).width > room) {
+      const words = name.split(' ');
+      let best = 1;
+      let bw = Infinity;
+      for (let k = 1; k < words.length; k++) {
+        const a = g.measureText(words.slice(0, k).join(' ')).width;
+        const b = g.measureText(words.slice(k).join(' ')).width;
+        if (Math.max(a, b) < bw) {
+          bw = Math.max(a, b);
+          best = k;
+        }
+      }
+      lines = words.length > 1 ? [words.slice(0, best).join(' '), words.slice(best).join(' ')] : [name];
+    }
+    const longest = lines.reduce((a, b) => (g.measureText(a).width > g.measureText(b).width ? a : b));
+    fit(g, longest, '800', 52, 48, room);
     g.font = `italic ${g.font}`;
-    glowText(g, c.name.toUpperCase(), x + 28, 238, NEON.ink, NEON.magenta, 12);
+    g.fillStyle = NEON.ink;
+    lines.forEach((l, k) => g.fillText(l, x + 28, 236 + k * 52));
+    const my = lines.length > 1 ? 330 : 286;
     g.fillStyle = MUTED;
-    fit(g, c.meta, '500', 48, 48, w - 56);
-    g.fillText(c.meta, x + 28, 290);
+    fit(g, c.meta, '500', 48, 48, lines.length > 1 && c.grade ? room - 130 : room);
+    g.fillText(c.meta, x + 28, my);
     // your best, and its grade large at the right
     g.font = display(48, 800);
     g.fillStyle = MUTED;
-    g.fillText('BEST', x + 28, 352);
-    g.font = display(56, 900);
-    glowText(g, c.best >= 0 ? c.best.toLocaleString('en-GB') : '—', x + 28, 412, NEON.ink, NEON.violet, 10);
+    g.fillText('BEST', x + 28, 404);
+    const bw2 = g.measureText('BEST ').width;
+    g.font = display(52, 900);
+    g.fillStyle = NEON.ink;
+    g.fillText(c.best >= 0 ? c.best.toLocaleString('en-GB') : '—', x + 28 + bw2 + 6, 404);
     if (c.grade) {
       const [ga, gb] = GRADE_PAIR[c.grade] ?? GRADE_PAIR.D;
       g.font = display(110, 900);
       g.textAlign = 'right';
-      glowText(g, c.grade, x + w - 30, 414, vgrad(g, 330, 414, ga, gb), gb, 16);
+      g.fillStyle = vgrad(g, 330, 414, ga, gb);
+      g.fillText(c.grade, x + w - 30, 414);
       g.textAlign = 'left';
     }
-    for (let i = 0; i < 3; i++) star(g, x + 200 + i * 40, 344, 15, i < c.stars, true);
   }
 
   /** Paused: your score so far and where the song stopped. */
@@ -1387,23 +1436,30 @@ export class Panel {
     if (it.kind === 'row') return this.drawRow(g, it);
     // (words with no box: a value between a stepper's arrows; a row's name)
     if (it.kind === 'text') {
-      g.fillStyle = INK;
-      fit(g, it.label, '600', 56, 48, it.w);
+      g.fillStyle = NEON.ink;
+      fit(g, it.label, '700', 56, 48, it.w);
       g.fillText(it.label, it.x + (it.w - g.measureText(it.label).width) / 2, it.y + it.h / 2 + 20);
       return;
     }
     if (it.kind === 'label') {
       g.fillStyle = MUTED;
-      fit(g, it.label, '600', 48, 48, it.w);
-      g.fillText(it.label, it.x, it.y + 62);
+      fit(g, it.label, '700', 48, 48, it.w);
+      g.fillText(it.label, it.x, it.y + it.h / 2 + 17);
       return;
     }
-    // choices are pills; what you press is a slanted plate; the one to press next burns magenta into orange
-    const slanted = it.kind === 'button' || it.kind === 'play' || it.kind === 'ghost' || it.kind === 'card';
-    const path = () => (slanted ? slant(g, it.x, it.y, it.w, it.h, Math.min(26, it.h * 0.14)) : rounded(g, it.x, it.y, it.w, it.h, it.kind === 'chip' ? it.h / 2 : 24));
+    // the tiers: the one hot primary; white secondaries (back, menu, next); everything else outlined; choices slant
+    // the same 10 degrees and turn white when chosen; a level lights in its own colour
+    const level = it.id.startsWith('level:') ? LEVEL_INK[it.id.slice(6)] : undefined;
+    const secondary = it.kind === 'button' && SECONDARY.has(it.id);
+    const tertiary = (it.kind === 'button' && !secondary) || it.kind === 'ghost';
+    // (a switch shows its state on the switch, never as a white chosen plate)
+    const chosen = !!it.on && !it.off && it.kind !== 'toggle';
+    const rounded2 = it.kind === 'toggle' || it.kind === 'hero' || it.kind === 'tile';
+    const path = () => (rounded2 ? rounded(g, it.x, it.y, it.w, it.h, 24) : slant(g, it.x, it.y, it.w, it.h));
+    let ink: string = NEON.ink;
     // (the back tile: a white plate with a dark chevron)
     if (it.id === 'back' && it.w <= 100) {
-      slant(g, it.x, it.y, it.w, it.h, 14);
+      slant(g, it.x, it.y, it.w, it.h);
       g.fillStyle = it.off ? NEON.dim : '#f6f2ff';
       g.fill();
       g.strokeStyle = '#1a0b2e';
@@ -1420,82 +1476,80 @@ export class Panel {
     path();
     if (it.kind === 'play' && !it.off) {
       g.shadowColor = NEON.magenta;
-      g.shadowBlur = 26;
+      g.shadowBlur = 12;
       g.fillStyle = hgrad(g, it.x, it.x + it.w, ['#ff3ea5', '#ff6a6a', '#ff9a3c']);
       g.fill();
       g.shadowBlur = 0;
-      // (a bright edge along its top)
-      g.fillStyle = 'rgba(255,255,255,0.28)';
-      g.fillRect(it.x + 20, it.y + 4, it.w - 40, 4);
-    } else if (it.kind === 'ghost') {
+      ink = '#ffffff';
+    } else if (it.off) {
       g.lineWidth = 2;
-      g.strokeStyle = 'rgba(179,166,214,0.4)';
+      g.strokeStyle = 'rgba(90,69,150,0.45)';
       g.stroke();
-    } else if (it.kind === 'chip' && it.on && !it.off) {
-      // a chosen pill lights in its colour (a level in its own)
-      const c = it.id.startsWith('level:') ? (LEVEL_INK[it.id.slice(6)] ?? NEON.cyan) : NEON.cyan;
-      g.shadowColor = c;
-      g.shadowBlur = 18;
-      g.fillStyle = hgrad(g, it.x, it.x + it.w, [c, it.id.startsWith('level:') ? c : NEON.violet]);
+      ink = NEON.dim;
+    } else if (level) {
+      // a level: its colour at a fifth, or solid when it's the one
+      g.fillStyle = chosen ? level : `${level}2e`;
       g.fill();
-      g.shadowBlur = 0;
+      g.lineWidth = 2;
+      g.strokeStyle = level;
+      g.stroke();
+      ink = chosen ? '#12081f' : level;
+    } else if (secondary || chosen) {
+      g.fillStyle = '#f6f2ff';
+      g.fill();
+      ink = '#1a0b2e';
+    } else if (tertiary) {
+      g.lineWidth = 2;
+      g.strokeStyle = '#5a4596';
+      g.stroke();
+      ink = '#d9cfff';
     } else {
-      // a dark plum plate with a violet edge; chosen, a cyan edge that glows
-      const ring = it.on && it.kind !== 'toggle';
-      g.fillStyle = it.off ? 'rgba(40,20,80,0.35)' : vgrad(g, it.y, it.y + it.h, ring ? 'rgba(70,40,130,0.92)' : 'rgba(52,24,96,0.85)', ring ? 'rgba(40,18,90,0.92)' : 'rgba(30,12,62,0.85)');
+      // a plate: chips, cards, tiles, switches' rows
+      g.fillStyle = 'rgba(52,26,98,0.7)';
       g.fill();
-      g.lineWidth = ring ? 4 : 2;
-      g.strokeStyle = it.off ? 'rgba(138,92,255,0.18)' : ring ? NEON.cyan : 'rgba(138,92,255,0.5)';
-      if (ring) {
-        g.shadowColor = NEON.cyan;
-        g.shadowBlur = 16;
-      }
+      g.lineWidth = 2;
+      g.strokeStyle = 'rgba(90,69,150,0.6)';
       g.stroke();
-      g.shadowBlur = 0;
     }
-    const ink = it.off ? NEON.dim : it.kind === 'ghost' ? MUTED : it.kind === 'chip' && it.on ? '#1a0b2e' : NEON.ink;
     g.fillStyle = ink;
     // a switch: the setting's name, and its switch at the right
     if (it.kind === 'toggle') {
-      fit(g, it.label, '600', 56, 48, it.w - 180);
-      g.fillText(it.label, it.x + 28, it.y + 68);
+      fit(g, it.label, '700', 52, 48, it.w - 180);
+      g.fillStyle = NEON.ink;
+      g.fillText(it.label, it.x + 28, it.y + it.h / 2 + 18);
       const sx = it.x + it.w - 124;
-      rounded(g, sx, it.y + 26, 96, 52, 26);
-      if (it.on) {
-        g.shadowColor = NEON.magenta;
-        g.shadowBlur = 14;
-      }
-      g.fillStyle = it.on ? hgrad(g, sx, sx + 96, [NEON.violet, NEON.magenta]) : 'rgba(255,255,255,0.12)';
+      const sy = it.y + (it.h - 52) / 2;
+      rounded(g, sx, sy, 96, 52, 26);
+      g.fillStyle = it.on ? hgrad(g, sx, sx + 96, ['#ff3ea5', '#ff9a3c']) : 'rgba(255,255,255,0.12)';
       g.fill();
-      g.shadowBlur = 0;
       g.beginPath();
-      g.arc(it.on ? sx + 70 : sx + 26, it.y + 52, 20, 0, Math.PI * 2);
+      g.arc(it.on ? sx + 70 : sx + 26, sy + 26, 20, 0, Math.PI * 2);
       g.fillStyle = it.on ? '#ffffff' : MUTED;
       g.fill();
       return;
     }
-    // the songs, large: their picture to the right, the word and a line under it
+    // the songs, large: a quiet wash, its picture to the right, the word and a line under it
     if (it.kind === 'hero') {
       g.save();
       rounded(g, it.x, it.y, it.w, it.h, 24);
       g.clip();
       const wash = g.createLinearGradient(it.x, it.y + it.h, it.x + it.w, it.y);
-      wash.addColorStop(0, 'rgba(255,62,165,0.38)');
-      wash.addColorStop(0.55, 'rgba(138,92,255,0.22)');
-      wash.addColorStop(1, 'rgba(51,225,255,0.30)');
+      wash.addColorStop(0, 'rgba(255,62,165,0.30)');
+      wash.addColorStop(1, 'rgba(255,154,60,0.10)');
       g.fillStyle = wash;
       g.fillRect(it.x, it.y, it.w, it.h);
       g.restore();
       g.save();
-      g.translate(it.x + it.w - 320, it.y + 40);
+      g.translate(it.x + it.w - 330, it.y + 40);
       if (it.icon && MENU_ICON[it.icon]) MENU_ICON[it.icon](g, 280, 'rgba(255,255,255,0.85)');
       g.restore();
-      fit(g, it.label.toUpperCase(), '900', 96, 48, it.w - 80);
+      fit(g, it.label.toUpperCase(), '900', 96, 48, it.w - 420);
       g.font = `italic ${g.font}`;
-      glowText(g, it.label.toUpperCase(), it.x + 40, it.y + 384, NEON.ink, NEON.magenta, 20);
+      g.fillStyle = NEON.ink;
+      g.fillText(it.label.toUpperCase(), it.x + 40, it.y + 384);
       if (it.sub) {
         g.fillStyle = MUTED;
-        fit(g, it.sub, '400', 48, 48, it.w - 80);
+        fit(g, it.sub, '500', 48, 48, it.w - 80);
         g.fillText(it.sub, it.x + 40, it.y + 444);
       }
       return;
@@ -1503,85 +1557,91 @@ export class Panel {
     // the instrument that's out, pictured, named
     if (it.kind === 'tile') {
       const pic = it.icon ? thumb(it.icon) : undefined;
-      if (pic) g.drawImage(pic, it.x + (it.w - 300) / 2, it.y + 24, 300, 300);
-      g.fillStyle = ink;
-      fit(g, it.label, '600', 56, 48, it.w - 56);
-      g.fillText(it.label, it.x + 28, it.y + 404);
+      const S = Math.min(300, it.w - 56, it.h - 200);
+      if (pic) g.drawImage(pic, it.x + (it.w - S) / 2, it.y + 24, S, S);
+      g.fillStyle = NEON.ink;
+      fit(g, it.label, '700', 56, 48, it.w - 56);
+      g.fillText(it.label, it.x + 28, it.y + it.h - 76);
       if (it.sub) {
         g.fillStyle = MUTED;
-        fit(g, it.sub, '400', 48, 48, it.w - 56);
-        g.fillText(it.sub, it.x + 28, it.y + 460);
+        fit(g, it.sub, '500', 48, 48, it.w - 56);
+        g.fillText(it.sub, it.x + 28, it.y + it.h - 22);
       }
       return;
     }
     if (it.kind === 'card' || it.icon) {
-      // an instrument, pictured, with its name under it (or beside it, on a wide card)
-      const wide = it.kind === 'card' && it.w >= it.h * 1.4;
-      const S = wide ? it.h * 0.78 : Math.min(it.h * (it.kind === 'card' ? 0.62 : 0.55), it.w * 0.7);
+      // an instrument: its picture in a fixed box that never crosses the card's edge, its name beside it (a strip
+      // card in a song: the picture alone)
+      // (a card is a tile: its picture centred at the top, its name centred under it)
+      const wide = false;
+      const S = Math.min(it.h * (it.label ? 0.58 : 0.8), it.w * 0.8);
+      const px0 = it.x + (it.w - S) / 2;
+      const py0 = it.y + (it.label ? 14 : (it.h - S) / 2);
       g.save();
-      g.translate(it.x + (wide ? 18 : it.kind === 'card' ? (it.w - S) / 2 : it.w - S - 24), it.y + (wide ? (it.h - S) / 2 : it.kind === 'card' ? 10 : (it.h - S) / 2));
-      g.strokeStyle = it.on ? INK : SOFT;
-      g.fillStyle = it.on ? INK : SOFT;
+      g.translate(px0, py0);
+      g.strokeStyle = SOFT;
+      g.fillStyle = SOFT;
       g.lineWidth = 5;
       g.lineCap = 'round';
-      // the instrument itself, pictured (its line drawing until the pictures are made)
-      // (on the Instruments screen the miniatures stand there instead)
       const pic = it.icon && !(this.noPics && it.kind === 'card') ? thumb(it.icon) : undefined;
       if (it.icon && MENU_ICON[it.icon]) MENU_ICON[it.icon](g, S, 'rgba(255,255,255,0.78)');
-      else if (pic) g.drawImage(pic, -S * 0.08, -S * 0.08, S * 1.16, S * 1.16);
+      else if (pic) g.drawImage(pic, 0, 0, S, S);
       else if (it.icon && !(this.noPics && it.kind === 'card')) ICON[it.icon]?.(g, S);
       g.restore();
       g.fillStyle = ink;
       if (wide) {
-        fit(g, it.label, '600', 56, 48, it.w - S - 50);
-        g.fillText(it.label, it.x + S + 34, it.y + it.h / 2 + (it.sub ? -4 : 18));
-        if (it.sub) {
-          g.fillStyle = MUTED;
-          fit(g, it.sub, '400', 48, 48, it.w - S - 50);
-          g.fillText(it.sub, it.x + S + 34, it.y + it.h / 2 + 52);
-        }
+        const lx = px0 + S + 16;
+        // (on the desk: a small white tag at its top right)
+        if (it.sub === 'On the desk') pill(g, it.x + it.w - 200, it.y + 14, 176, 56, '#f6f2ff', 'ON DESK', '#1a0b2e', body(44, 800));
+        fit(g, it.label, '700', 52, 48, it.x + it.w - 22 - lx);
+        g.fillStyle = ink;
+        g.fillText(it.label, lx, it.y + it.h / 2 + 18);
         return;
       }
       if (it.kind === 'card') {
-        fit(g, it.label, '600', 52, 48, it.w - 16);
-        g.fillText(it.label, it.x + (it.w - g.measureText(it.label).width) / 2, it.y + it.h - 22);
+        if (!it.label) return;
+        fit(g, it.label, '700', 52, 48, it.w - Math.round(it.h * 0.176) * 2 - 16);
+        g.fillStyle = ink;
+        g.fillText(it.label, it.x + (it.w - g.measureText(it.label).width) / 2, it.y + it.h - 26);
         return;
       }
     }
     if (it.kind === 'big') {
-      fit(g, it.label, '600', 64, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+      fit(g, it.label, '700', 64, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
       g.fillText(it.label, it.x + 34, it.y + it.h / 2 + 4);
       if (it.sub) {
-        g.fillStyle = it.off ? DIMI : MUTED;
-        fit(g, it.sub, '400', 48, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+        g.fillStyle = it.off ? NEON.dim : MUTED;
+        fit(g, it.sub, '500', 48, 48, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
         g.fillText(it.sub, it.x + 34, it.y + it.h / 2 + 66);
       }
       return;
     }
-    // chip, button, play: the label in the middle (a second line under it)
+    // chip, button, play: the label in the middle (a second line under it); upright, except the primary
     const lines = it.label.split('\n');
-    if (it.kind === 'play' && !it.off) g.fillStyle = '#0b0b0d';
     // (record: a red dot before its word)
+    const dotW = it.dot ? 40 : 0;
+    const slack = Math.round(it.h * 0.176) * 2 + (it.kind === 'chip' ? 12 : 24);
+    const px = fit(g, lines.reduce((a, b) => (a.length > b.length ? a : b)), it.kind === 'play' ? '900' : '700', it.kind === 'play' ? 64 : 52, 48, it.w - slack - dotW);
+    if (it.kind === 'play') g.font = `italic ${g.font}`;
+    g.fillStyle = ink;
+    const cx = it.x + it.w / 2 + dotW / 2;
+    const lh = px * 1.1;
+    const subH = it.sub ? 62 : 0;
+    const top = it.y + (it.h - (lines.length - 1) * lh - subH) / 2 + px * 0.35;
     if (it.dot) {
+      const w0 = Math.max(...lines.map((t) => g.measureText(t).width));
       g.beginPath();
-      g.arc(it.x + 44, it.y + 48, 14, 0, Math.PI * 2);
+      g.arc(cx - w0 / 2 - 28, top - px * 0.32, 13, 0, Math.PI * 2);
       g.fillStyle = RED;
       g.fill();
       g.fillStyle = ink;
     }
-    const px = fit(g, lines.reduce((a, b) => (a.length > b.length ? a : b)), '800', it.kind === 'play' ? 64 : 52, 48, it.w - (it.icon ? it.h * 0.7 : 0) - 40);
-    g.font = `italic ${g.font}`;
-    if (it.kind === 'play' && !it.off) g.fillStyle = '#ffffff';
-    const cx = it.x + (it.w - (it.icon ? it.h * 0.55 : 0)) / 2;
-    // the block (label lines, then the sub under the last of them) centred in the item
-    const lh = px * 1.1;
-    const subH = it.sub ? 62 : 0;
-    const top = it.y + (it.h - (lines.length - 1) * lh - subH) / 2 + px * 0.35;
     lines.forEach((t, j) => g.fillText(t, cx - g.measureText(t).width / 2, top + j * lh));
     if (it.sub) {
-      g.fillStyle = it.off ? NEON.dim : it.kind === 'play' ? 'rgba(255,255,255,0.85)' : MUTED;
-      fit(g, it.sub, '400', 48, 48, it.w - 30);
+      g.fillStyle = it.off ? NEON.dim : it.kind === 'play' ? 'rgba(255,255,255,0.85)' : secondary || chosen ? '#4a3a6e' : MUTED;
+      fit(g, it.sub, '500', 48, 48, it.w - Math.round(it.h * 0.176) * 2 - 16);
       g.fillText(it.sub, cx - g.measureText(it.sub).width / 2, top + (lines.length - 1) * lh + subH);
     }
   }
+
 }

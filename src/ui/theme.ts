@@ -24,7 +24,7 @@ export const NEON = {
 /** Each judgement's colour. */
 export const JUDGE = { perfect: NEON.cyan, good: NEON.green, miss: NEON.red } as const;
 /** Each level's colour. */
-export const LEVEL_INK: Record<string, string> = { easy: NEON.cyan, normal: NEON.green, hard: NEON.magenta };
+export const LEVEL_INK: Record<string, string> = { easy: NEON.green, normal: NEON.gold, hard: NEON.red };
 /** Each grade's pair (a gradient, light to deep). */
 export const GRADE_PAIR: Record<string, [string, string]> = {
   S: ['#fff1a8', '#ffb000'],
@@ -33,6 +33,10 @@ export const GRADE_PAIR: Record<string, [string, string]> = {
   C: ['#e0ccff', '#8a5cff'],
   D: ['#d6cfe8', '#7a6f98'],
 };
+/** The three tiers of what you press: the one hot primary, white secondaries, outlined tertiaries. */
+export const SECONDARY = new Set(['back', 'nav:main', 'next', 'again:easy', 'pause', 'nav:settings']);
+/** Each instrument's own light (the panel's edge flashes it as you play). */
+export const INST_LIGHT: Record<string, number> = { drums: 0xffb347, piano: 0xf3ead8, guitar: 0xff7a2f, handpan: 0xc9a26b, marimba: 0xd0485a, congas: 0xe0b07a };
 /** The streak's ladder: ×2 cyan, ×3 green, ×4 gold. */
 export const MULT_PAIR: [string, string][] = [
   ['#ffffff', '#d9cfff'],
@@ -47,7 +51,10 @@ export const display = (px: number, weight = 800) => `italic ${weight} ${px}px $
 export const body = (px: number, weight = 600) => `${weight} ${px}px ${FONT}`;
 
 /** A slanted plate (a parallelogram leaning right by `k` px), as a path. */
-export function slant(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, k = 18): void {
+export function slant(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, _k?: number): void {
+  // (one angle everywhere: 10 degrees, whatever the height)
+  void _k;
+  const k = Math.round(h * 0.176);
   g.beginPath();
   g.moveTo(x + k, y);
   g.lineTo(x + w, y);
@@ -69,66 +76,15 @@ export function hgrad(g: CanvasRenderingContext2D, x0: number, x1: number, stops
   return gr;
 }
 
-/** The stage: a deep gradient, a faint perspective grid at the bottom, a vignette, a neon edge and corner brackets. */
+/** The panel: a deep indigo to plum, a plain solid edge. (No wallpaper: it floats over a real desk; light comes
+ * from your playing, see the edge flash.) */
 export function stage(g: CanvasRenderingContext2D, w: number, h: number, r = 40): void {
   rr(g, 4, 4, w - 8, h - 8, r);
-  g.fillStyle = vgrad(g, 0, h, 'rgba(21,10,48,0.95)', 'rgba(42,12,68,0.95)');
+  g.fillStyle = vgrad(g, 0, h, 'rgba(26,13,56,0.94)', 'rgba(36,16,70,0.94)');
   g.fill();
-  g.save();
-  rr(g, 4, 4, w - 8, h - 8, r);
-  g.clip();
-  // a horizon glow and a grid running to it (synth-stage floor), very faint
-  const hz = h * 0.62;
-  const glow = g.createRadialGradient(w / 2, hz, 10, w / 2, hz, w * 0.6);
-  glow.addColorStop(0, 'rgba(255,62,165,0.16)');
-  glow.addColorStop(1, 'rgba(255,62,165,0)');
-  g.fillStyle = glow;
-  g.fillRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(138,92,255,0.10)';
-  g.lineWidth = 2;
-  for (let i = -10; i <= 10; i++) {
-    g.beginPath();
-    g.moveTo(w / 2 + i * 40, hz);
-    g.lineTo(w / 2 + i * 220, h);
-    g.stroke();
-  }
-  for (let k = 1; k < 7; k++) {
-    const y = hz + ((h - hz) * k * k) / 36;
-    g.beginPath();
-    g.moveTo(0, y);
-    g.lineTo(w, y);
-    g.stroke();
-  }
-  // a few stars
-  g.fillStyle = 'rgba(255,255,255,0.35)';
-  for (let i = 0; i < 40; i++) {
-    const x = (i * 337) % w;
-    const y = (i * 151) % (hz - 40);
-    g.fillRect(x, y, i % 5 === 0 ? 3 : 2, i % 5 === 0 ? 3 : 2);
-  }
-  g.restore();
-  // the neon edge: cyan into magenta, glowing
-  rr(g, 4, 4, w - 8, h - 8, r);
-  g.lineWidth = 4;
-  g.strokeStyle = hgrad(g, 0, w, [NEON.cyan, NEON.violet, NEON.magenta]);
-  g.shadowColor = NEON.magenta;
-  g.shadowBlur = 18;
+  g.lineWidth = 3;
+  g.strokeStyle = '#3b2670';
   g.stroke();
-  g.shadowBlur = 0;
-  // corner brackets
-  g.strokeStyle = NEON.cyan;
-  g.lineWidth = 6;
-  g.lineCap = 'round';
-  const L = 60;
-  const m = 20;
-  for (const [cx, cy, sx, sy] of [[m, m, 1, 1], [w - m, m, -1, 1], [m, h - m, 1, -1], [w - m, h - m, -1, -1]] as const) {
-    g.beginPath();
-    g.moveTo(cx, cy + sy * L);
-    g.lineTo(cx, cy);
-    g.lineTo(cx + sx * L, cy);
-    g.stroke();
-  }
-  g.lineCap = 'butt';
 }
 
 /** Text with a neon glow, filled with a colour or a gradient. */
@@ -145,15 +101,16 @@ export function chroma(g: CanvasRenderingContext2D, text: string, x: number, y: 
   g.font = display(px, 900);
   g.globalAlpha = 0.85;
   g.fillStyle = a;
-  g.fillText(text, x - 4, y - 2);
+  g.fillText(text, x - 2, y - 1);
   g.fillStyle = b;
-  g.fillText(text, x + 4, y + 2);
+  g.fillText(text, x + 2, y + 1);
   g.globalAlpha = 1;
   const w = g.measureText(text).width;
   const gr = g.createLinearGradient(x, y - px, x, y);
   gr.addColorStop(0, '#ffffff');
   gr.addColorStop(1, '#ffd6f1');
-  glowText(g, text, x, y, gr, b, 14);
+  g.fillStyle = gr;
+  g.fillText(text, x, y);
   void w;
 }
 
