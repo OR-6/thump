@@ -218,7 +218,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kitEntity = this.world.createTransformEntity(this.kit.root);
     this.kit.root.add(this.stand.root);
     for (const m of this.handMallets) this.worldRoot.add(m.group);
-    this.worldRoot.add(this.waterfall.slabs, this.waterfall.discs, this.waterfall.beams, this.dimmer.mesh);
+    this.worldRoot.add(this.waterfall.root, this.dimmer.mesh);
     this.kitHome = this.kit.root.parent;
     this.worldRoot.name = 'RoomOverlays';
     this.world.createTransformEntity(this.worldRoot);
@@ -1344,8 +1344,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.tmp2.set(0, 0.13, -0.05);
     this.kit.module.root.localToWorld(this.tmp2);
     // the song's notes fall onto what plays them
-    this.kit.root.getWorldQuaternion(this.kitQ);
-    this.waterfall.update(this.game.motes, this.game.moteCount, this.kitQ, this.resolveNote, this.game.mode === 'count' ? this.game.display.count : 0);
+    this.waterfall.update(dt, this.game, this.kit.root, this.resolveNote);
     this.dimmer.update(dt, this.head, motion.calm);
     audio.idle();
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
@@ -1358,7 +1357,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   private waterfall = new Waterfall();
   private dimmer = new Dimmer();
-  private kitQ = new Quaternion();
   /** Where a note lands (world), its colour, and its target's size and shape. */
   private resolveNote = (key: string, out: Vector3, col: Color, t: NoteTarget): boolean => {
     const r = this.ref(key);
