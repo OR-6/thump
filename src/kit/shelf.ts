@@ -148,7 +148,7 @@ export function scaleMidi(root: number, scale: Scale, d: number): number {
  * The keyboard at real key size (src/scene-assets/lib/piano.ts): two octaves and a top C, fifteen white keys 23.5 mm
  * apart and 150 mm long, black keys 11 by 95 mm, the key tops 6 cm up in a deep case.
  */
-export const KEYBOARD = { whites: 15, pitch: 0.0235, gap: 0.001, len: 0.15, blackW: 0.011, blackLen: 0.095, front: -0.03, top: 0.042, blackTop: 0.0525, shift: 0.025 } as const;
+export const KEYBOARD = { whites: 15, pitch: 0.0235, gap: 0.0014, len: 0.15, blackW: 0.011, blackLen: 0.095, front: -0.03, top: 0.036, blackTop: 0.0465, shift: 0.025 } as const;
 /** Index of the piano's chord button (after its fifteen keys). */
 export const PIANO_CHORD = 15;
 /** A piano note's zone plus this is the same key two octaves down (the bass line). */
@@ -165,8 +165,11 @@ const KEYS_X0 = -(KEYBOARD.whites * KEYBOARD.pitch) / 2 + KEYBOARD.shift;
 export function pianoZones(root: number, scale: Scale): Zone[] {
   const out: Zone[] = [];
   const K = KEYBOARD;
+  // (a seven-note scale lies on the white keys as on a real piano: its tonic on a C, so in C major every key is the
+  // note printed on it, and in A minor too, from the A)
+  const at = scale.steps.length === 7 ? (scale.steps[2] === 3 ? 5 : 7) : TUNE_AT;
   for (let i = 0; i < K.whites; i++) {
-    const d = i - TUNE_AT;
+    const d = i - at;
     out.push({ i, shape: 'rect', x: KEYS_X0 + (i + 0.5) * K.pitch, z: K.front + K.len / 2, w: K.pitch - K.gap, h: K.len, degree: d, midi: scaleMidi(root, scale, d) });
   }
   out.push({ i: PIANO_CHORD, shape: 'disc', x: KEYS_X0 - 0.066, z: 0.03, w: 0.022, h: 0, degree: -1, midi: root - 12 });

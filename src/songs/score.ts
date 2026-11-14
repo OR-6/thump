@@ -213,7 +213,11 @@ export function zoneOf(inst: 'piano' | 'marimba' | 'handpan', scale: string, d: 
     degs = instZones(inst as InstId, 60, scaleById(scale)).map((z) => (z.i === PIANO_CHORD && inst === 'piano' ? -99 : z.degree));
     zoneCache.set(id, degs);
   }
-  return degs.indexOf(d);
+  // (a note past either end of the instrument folds an octave in, as a player would take it)
+  const i = degs.indexOf(d);
+  if (i >= 0) return i;
+  const lo = degs.indexOf(d - 7);
+  return lo >= 0 ? lo : degs.indexOf(d + 7);
 }
 
 /** The handpan's note for a degree: its ding for the tonic in the bass, else the rim note of that name nearest it. */

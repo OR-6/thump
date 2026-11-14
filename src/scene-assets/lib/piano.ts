@@ -11,7 +11,7 @@ import { woodGrain } from './surfaces.js';
 export const KEY = {
   /** White key pitch (centre to centre) and the gap between keys. */
   pitch: 0.0235,
-  gap: 0.001,
+  gap: 0.0014,
   /** Visible white key length and thickness. */
   length: 0.15,
   thick: 0.014,
@@ -20,7 +20,7 @@ export const KEY = {
   blackL: 0.095,
   blackH: 0.0105,
   /** Height of the white key tops above the desk (a slim compact keyboard's). */
-  top: 0.042,
+  top: 0.036,
   /** Full press: how far the front dips (radians about the back pivot). */
   press: 0.055,
 } as const;
@@ -52,7 +52,7 @@ function named<T extends Object3D>(o: T, name: string): T {
   return o;
 }
 
-const ivory = () => new MeshPhysicalMaterial({ name: 'Ivory', color: 0xf4eedf, roughness: 0.32, clearcoat: 0.6, clearcoatRoughness: 0.18 });
+const ivory = () => new MeshPhysicalMaterial({ name: 'Ivory', color: 0xf6f5f1, roughness: 0.32, clearcoat: 0.25, clearcoatRoughness: 0.2 });
 const ebony = () => new MeshPhysicalMaterial({ name: 'Ebony', color: 0x131315, roughness: 0.5, clearcoat: 0.35, clearcoatRoughness: 0.3 });
 const lacquer = () => new MeshPhysicalMaterial({ name: 'Lacquer', color: 0x0c0c0e, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 });
 const felt = () => new MeshStandardMaterial({ name: 'Felt', color: 0x8e1e26, roughness: 1 });
@@ -160,9 +160,9 @@ export function buildPiano(opts: PianoOptions = {}): PianoParts {
   const bodyW = width + L;
   const bx = -L / 2;
   const topY = KEY.top + 0.004;
-  const graphite = new MeshPhysicalMaterial({ name: 'Body', color: 0x232428, roughness: 0.55, metalness: 0.1, clearcoat: 0.25, clearcoatRoughness: 0.45 });
+  const graphite = new MeshPhysicalMaterial({ name: 'Body', color: 0x2b2d31, roughness: 0.55, metalness: 0.1, clearcoat: 0.25, clearcoatRoughness: 0.45 });
   const red = new MeshPhysicalMaterial({ name: 'EndCap', color: 0xc2271c, roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.2 });
-  const plate = new MeshStandardMaterial({ name: 'TopPlate', color: 0x17181b, roughness: 0.62 });
+  const plate = new MeshStandardMaterial({ name: 'TopPlate', color: 0x1a1b1e, roughness: 0.62 });
   const block = (name: string, m: MeshStandardMaterial, w: number, h: number, d: number, x: number, y: number, z: number, r = 0.003) => {
     const o = named(new Mesh(rounded(w, h, d, r), m), name);
     o.position.set(x, y, z);
@@ -207,39 +207,50 @@ export function buildPiano(opts: PianoOptions = {}): PianoParts {
   }
   // on the top panel, left to right: the screen, four knobs, the eight pads, the speaker grille; buttons along the front
   const px0 = bx - bodyW / 2 + 0.02;
-  const lcd = named(new Mesh(new BoxGeometry(0.06, 0.0012, 0.022), new MeshStandardMaterial({ name: 'Display', color: 0x0b1416, emissive: 0x123a4a, emissiveIntensity: 0.6, roughness: 0.15 })), 'Display');
+  const lcd = named(new Mesh(new BoxGeometry(0.06, 0.0012, 0.022), new MeshStandardMaterial({ name: 'Display', color: 0x0b1416, emissive: 0x1a5068, emissiveIntensity: 1.2, roughness: 0.15 })), 'Display');
   lcd.position.set(px0 + 0.035, topY + 0.0012, panZ - 0.012);
   root.add(lcd);
-  const knob = new CylinderGeometry(0.0065, 0.007, 0.011, 24);
+  // four knobs with brushed aluminium caps and a white pointer, a fine printed line under the row
+  const knob = new CylinderGeometry(0.009, 0.0095, 0.011, 28);
+  const cap = new CylinderGeometry(0.0072, 0.0072, 0.0015, 28);
   const knobMat = new MeshStandardMaterial({ name: 'Knob', color: 0x111113, roughness: 0.42 });
-  const markMat = new MeshStandardMaterial({ name: 'Mark', color: 0xf0f0f0, roughness: 0.5 });
-  const ringMat = new MeshStandardMaterial({ name: 'KnobRing', color: 0x2a1a08, emissive: 0xffa040, emissiveIntensity: 0.4 });
+  const capMat = new MeshStandardMaterial({ name: 'KnobCap', color: 0xb9bdc3, metalness: 1, roughness: 0.35 });
+  const markMat = new MeshStandardMaterial({ name: 'Mark', color: 0xf4f4f4, roughness: 0.5 });
+  const silk = new MeshStandardMaterial({ name: 'Print', color: 0xcfcfcf, roughness: 0.6 });
   for (let k = 0; k < 4; k++) {
-    const kx = px0 + 0.085 + k * 0.022;
+    const kx = px0 + 0.09 + k * 0.026;
     const kn = new Mesh(knob, knobMat);
-    kn.position.set(kx, topY + 0.0055, panZ - 0.014);
-    const mk = new Mesh(new BoxGeometry(0.0012, 0.0006, 0.005), markMat);
-    mk.position.set(kx, topY + 0.0113, panZ - 0.0155);
+    kn.position.set(kx, topY + 0.0055, panZ - 0.012);
+    const c = new Mesh(cap, capMat);
+    c.position.set(kx, topY + 0.0115, panZ - 0.012);
+    const mk = new Mesh(new BoxGeometry(0.0015, 0.0006, 0.0065), markMat);
+    mk.position.set(kx, topY + 0.0125, panZ - 0.0145);
     mk.rotation.y = (k * 0.9) % 1.8 - 0.9;
-    const ring = new Mesh(new CylinderGeometry(0.0085, 0.0085, 0.0008, 24, 1, true), ringMat);
-    ring.position.set(kx, topY + 0.0006, panZ - 0.014);
-    root.add(kn, mk, ring);
+    root.add(kn, c, mk);
   }
-  // the pads: soft rubber squares, backlit (named Pad0..7: they light in colour as you play)
-  const padGeo = rounded(0.017, 0.004, 0.017, 0.002);
+  const line = (x0: number, x1: number, z: number) => {
+    const l = new Mesh(new BoxGeometry(x1 - x0, 0.0004, 0.0006), silk);
+    l.position.set((x0 + x1) / 2, topY + 0.0003, z);
+    root.add(l);
+  };
+  line(px0 + 0.078, px0 + 0.18, panZ + 0.004);
+  // the pads: soft rubber squares, 24 mm, faintly lit in their colours at rest (named Pad0..7: they light up as you play)
+  const padGeo = rounded(0.024, 0.005, 0.024, 0.003);
   const pads = named(new Group(), 'Pads');
+  const pad0 = px0 + 0.2;
   for (let k = 0; k < 8; k++) {
-    const pad = named(new Mesh(padGeo, new MeshStandardMaterial({ name: `Pad${k}`, color: 0x2c2d31, roughness: 0.85, emissive: 0x000000 })), `Pad${k}`);
-    pad.position.set(px0 + 0.185 + (k % 4) * 0.021, topY + 0.002, panZ - 0.022 + Math.floor(k / 4) * 0.021);
+    const pad = named(new Mesh(padGeo, new MeshStandardMaterial({ name: `Pad${k}`, color: 0x4a4c52, roughness: 0.85, emissive: 0x000000 })), `Pad${k}`);
+    pad.position.set(pad0 + (k % 4) * 0.027, topY + 0.0025, panZ - 0.027 + Math.floor(k / 4) * 0.027);
     pads.add(pad);
   }
   root.add(pads);
+  line(pad0 - 0.014, pad0 + 3 * 0.027 + 0.014, panZ + 0.017);
   // the speaker grille: a field of slots at the right end
-  const slot = new BoxGeometry(0.03, 0.0008, 0.0022);
+  const slot = new BoxGeometry(0.02, 0.0008, 0.0022);
   const slotMat = new MeshStandardMaterial({ name: 'Grille', color: 0x050506, roughness: 0.9 });
-  const gx = bx + bodyW / 2 - 0.035;
+  const gx = bx + bodyW / 2 - 0.03;
   for (let k = 0; k < 11; k++) {
-    for (const dx of [-0.017, 0.017]) {
+    for (const dx of [-0.011, 0.011]) {
       const sl = new Mesh(slot, slotMat);
       sl.position.set(gx + dx, topY + 0.0004, panZ - panelD / 2 + 0.014 + k * 0.0065);
       root.add(sl);

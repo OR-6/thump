@@ -69,8 +69,8 @@ export class PianoModel implements DeskModel {
   private spring = new Springs(48);
   private readonly lacquer = new MeshPhysicalMaterial({ name: 'Lacquer', color: 0x0c0c0e, roughness: 0.32, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.08 });
   private readonly satin = new MeshStandardMaterial({ name: 'Satin', color: 0x111113, roughness: 0.55 });
-  private readonly wheelMat = new MeshStandardMaterial({ name: 'Wheel', color: 0x1c1c1f, roughness: 0.6 });
-  private readonly padMat = new MeshStandardMaterial({ name: 'ChordPad', color: 0x55575e, roughness: 0.8, emissive: 0xffe6b8, emissiveIntensity: 0 });
+  private readonly wheelMat = new MeshStandardMaterial({ name: 'Wheel', color: 0x26262a, roughness: 0.75, flatShading: true });
+  private readonly padMat = new MeshStandardMaterial({ name: 'ChordPad', color: 0x4a4c52, roughness: 0.85, emissive: 0xffe6b8, emissiveIntensity: 0.12 });
   private padGlow = 0;
 
   layout(zones: readonly Zone[]): void {
@@ -92,22 +92,37 @@ export class PianoModel implements DeskModel {
     this.pads = [];
     parts.root.getObjectByName('Pads')?.children.forEach((c) => this.pads.push((c as Mesh).material as MeshStandardMaterial));
     this.padK = this.pads.map(() => 0);
+    // (each pad faintly lit in its own colour at rest)
+    this.pads.forEach((m, k) => {
+      m.emissive.setHex(PAD_COLOURS[k % PAD_COLOURS.length]);
+      m.emissiveIntensity = 0.08;
+    });
     this.power = ((parts.root.getObjectByName('Power') as Mesh | undefined)?.material as MeshStandardMaterial | undefined) ?? null;
     const mids = [...parts.keys.keys()].sort((a, b) => a - b);
     for (const m of mids) (isBlack(m) ? this.blacks : this.keys).push(parts.keys.get(m)!);
     // on the end panel, as on a stage keyboard: pitch and mod wheels at the back, and in front of them the chord
     // pad, a square that lights when it plays a chord
     if (chord) {
-      const podH = KEYBOARD.top - 0.004;
-      const wheel = new CylinderGeometry(0.02, 0.02, 0.009, 32);
-      for (const dx of [-0.011, 0.011]) {
+      const podH = KEYBOARD.top - 0.003;
+      // the pitch and mod wheels, ribbed rubber with a white index line, standing in a dark well sunk in the panel
+      const well = named(new Mesh(new BoxGeometry(0.05, 0.002, 0.06), mat('Well', 0x0a0a0b, 0.9)), 'Well');
+      well.position.set(chord.x, podH - 0.0005, -chord.z - 0.075);
+      this.root.add(well);
+      const wheel = new CylinderGeometry(0.02, 0.02, 0.01, 24);
+      for (const dx of [-0.012, 0.012]) {
         const w = named(new Mesh(wheel, this.wheelMat), 'Wheel');
         w.rotation.z = Math.PI / 2;
-        w.position.set(chord.x + dx, podH - 0.008, -chord.z - 0.075);
-        this.root.add(w);
+        w.position.set(chord.x + dx, podH - 0.014, -chord.z - 0.075);
+        const idx = new Mesh(new BoxGeometry(0.0104, 0.0012, 0.0016), mat('Index', 0xf0f0f0, 0.5));
+        idx.position.set(chord.x + dx, podH + 0.006, -chord.z - 0.075);
+        this.root.add(w, idx);
       }
-      const pad = named(new Mesh(new BoxGeometry(chord.w * 1.7, 0.006, chord.w * 1.7), this.padMat), 'ChordPad');
-      this.buttonY = podH + 0.003;
+      // the chord pad: a 30 mm rubber pad, 4 mm proud in a darker frame, faintly lit at rest (one of the pads)
+      const frame = named(new Mesh(new BoxGeometry(0.035, 0.002, 0.035), mat('PadFrame', 0x141416, 0.8)), 'PadFrame');
+      frame.position.set(chord.x, podH + 0.001, -chord.z);
+      this.root.add(frame);
+      const pad = named(new Mesh(new BoxGeometry(0.03, 0.004, 0.03), this.padMat), 'ChordPad');
+      this.buttonY = podH + 0.004;
       pad.position.set(chord.x, this.buttonY, -chord.z);
       this.root.add(pad);
       this.button = pad;
@@ -120,10 +135,7 @@ export class PianoModel implements DeskModel {
     if (i === PIANO_CHORD) this.padGlow = 0.6 + 0.6 * gain;
     // (a key lights one of the panel's pads in its own colour, the way a controller echoes what you play)
     const k = this.pads.length ? i % this.pads.length : -1;
-    if (k >= 0) {
-      this.pads[k].emissive.setHex(PAD_COLOURS[i % PAD_COLOURS.length]);
-      this.padK[k] = 0.5 + 0.8 * gain;
-    }
+    if (k >= 0) this.padK[k] = 0.5 + 0.8 * gain;
   }
   private pads: MeshStandardMaterial[] = [];
   private padK: number[] = [];
@@ -141,14 +153,14 @@ export class PianoModel implements DeskModel {
     for (let k = 0; k < this.pads.length; k++) {
       if (this.padK[k] <= 0) continue;
       this.padK[k] = Math.max(0, this.padK[k] - dt * 2.5);
-      this.pads[k].emissiveIntensity = this.padK[k];
+      this.pads[k].emissiveIntensity = Math.max(0.08, this.padK[k]);
     }
     this.life += dt;
     if (this.power) this.power.emissiveIntensity = 0.45 + 0.35 * Math.sin(this.life * 1.3);
     // (it lights as it plays, 80 ms in, out over a quarter second)
     if (this.padGlow > 0) {
       this.padGlow = Math.max(0, this.padGlow - dt * 4);
-      this.padMat.emissiveIntensity = this.padGlow;
+      this.padMat.emissiveIntensity = Math.max(0.12, this.padGlow);
     }
   }
 }
