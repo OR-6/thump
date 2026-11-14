@@ -1175,6 +1175,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const p = this.kit.pad(s.lane)!;
       p.x = s.x;
       p.z = s.z;
+      // (turned to face you and tipped toward you)
+      p.aim();
     }
     // (an electronic kit's rack follows its pads)
     this.kit.fitRack(this.lanes());
@@ -2453,6 +2455,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (const q of this.airSurf) {
       q.along = undefined;
       q.rearm = undefined;
+      q.nx = q.ny = q.nz = undefined;
     }
     if (piano) n = this.pianoSurfaces();
     const marimba = out && this.kit.inst === 'marimba';
@@ -2529,12 +2532,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const s = this.airSurf[n++];
         s.id = AIR_LANES.indexOf(lane);
         const r = p.radius;
-        // (every head faces up now, the bass drum's too; a cymbal is struck where it sits, a little wider)
+        // (each head as it is aimed: tipped toward you; a cymbal is struck where it sits, a little wider)
         s.face = 'up';
         s.x = p.x;
         s.y = p.headY;
         s.z = p.z;
         s.r = r * (lane === 'crash' || lane === 'ride' ? 1.15 : 1.1);
+        if (p.tilt) {
+          s.nx = Math.sin(p.tilt) * Math.sin(p.yaw);
+          s.ny = Math.cos(p.tilt);
+          s.nz = Math.sin(p.tilt) * Math.cos(p.yaw);
+        }
       }
     this.airCount = n;
     // (the rest can't be struck: a radius nothing is inside)

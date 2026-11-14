@@ -44,13 +44,13 @@ export const PADS: Record<Lane, PadSpec> = {
   // front of you, the bass drum lying flat front right (the biggest, lowest head), a rack tom between them at the
   // back, a floor tom on the right, the crash and ride out to the sides where nothing else is under them; pieces at
   // least 4 cm apart seen from above, so a hand coming down on one never passes through another
-  kick: { lane: 'kick', size: 0.2, x: 0.15, z: 0.05, color: PALETTE.tomato, mark: 'none' },
-  snare: { lane: 'snare', size: 0.16, x: -0.08, z: 0.04, color: PALETTE.mustard, mark: 'stripe' },
-  hat: { lane: 'hat', size: 0.16, x: -0.28, z: -0.02, color: PALETTE.teal, mark: 'notch' },
-  tom: { lane: 'tom', size: 0.12, x: 0.0, z: -0.13, color: PALETTE.plum, mark: 'ring' },
-  floor: { lane: 'floor', size: 0.15, x: 0.37, z: 0.0, color: PALETTE.navy, mark: 'ring' },
-  crash: { lane: 'crash', size: 0.18, x: -0.45, z: -0.18, color: PALETTE.brass, mark: 'brass' },
-  ride: { lane: 'ride', size: 0.19, x: 0.46, z: -0.2, color: PALETTE.brass, mark: 'brass' },
+  kick: { lane: 'kick', size: 0.24, x: 0.15, z: 0.08, color: PALETTE.tomato, mark: 'none' },
+  snare: { lane: 'snare', size: 0.2, x: -0.12, z: 0.06, color: PALETTE.mustard, mark: 'stripe' },
+  hat: { lane: 'hat', size: 0.15, x: -0.36, z: -0.02, color: PALETTE.teal, mark: 'notch' },
+  tom: { lane: 'tom', size: 0.15, x: 0.0, z: -0.17, color: PALETTE.plum, mark: 'ring' },
+  floor: { lane: 'floor', size: 0.19, x: 0.44, z: -0.03, color: PALETTE.navy, mark: 'ring' },
+  crash: { lane: 'crash', size: 0.19, x: -0.4, z: -0.24, color: PALETTE.brass, mark: 'brass' },
+  ride: { lane: 'ride', size: 0.23, x: 0.3, z: -0.27, color: PALETTE.brass, mark: 'brass' },
   // the gong goes on a real wall within reach when there is one; this is the table-edge fallback
   gong: { lane: 'gong', size: 0.12, x: 0.29, z: -0.08, color: PALETTE.brass, mark: 'brass' },
 };

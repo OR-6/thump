@@ -20,7 +20,7 @@ import {
   TorusGeometry,
 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
-import { DRUM_H, blackMetal, buildCymbal, buildDrum, buildECymbal, buildEPad, buildFloorDrum, buildHiHat, drumStand, tripod, type DrumLook, type KitStyle } from '../scene-assets/lib/drums.js';
+import { DRUM_H, blackMetal, buildCymbal, buildDrum, buildECymbal, buildEPad, buildFloorDrum, buildFloorTom, buildHiHat, drumStand, tripod, type DrumLook, type KitStyle } from '../scene-assets/lib/drums.js';
 import { PADS, type Lane } from '../config.js';
 import { motion } from '../ui/motion.js';
 import { contactShadow } from '../art/lighting.js';
@@ -32,15 +32,22 @@ const HEIGHT = DRUM_H;
  * the rack tom 18 cm, the hi-hat's top cymbal 17 cm on its rod, the bass drum lying flat on its feet (10 cm), the
  * floor tom 12 cm, the crash 23 cm and the ride 21 cm on their stands.
  */
-export const HEAD_Y: Record<Lane, number> = { snare: 0.13, tom: 0.18, hat: 0.17, kick: 0.1, floor: 0.12, crash: 0.23, ride: 0.21, gong: 0.02 };
+export const HEAD_Y: Record<Lane, number> = { snare: 0.12, tom: 0.18, hat: 0.16, kick: 0.12, floor: 0.13, crash: 0.24, ride: 0.22, gong: 0.02 };
+/** How far each piece tips toward the player (rad), as a drummer sets a kit: the rack tom and the crash most, the
+ * snare a little, the bass drum and floor tom flat. */
+export const TILT: Record<Lane, number> = { snare: 0.08, tom: 0.3, hat: 0.05, kick: 0, floor: 0.04, crash: 0.3, ride: 0.15, gong: 0 };
+/** Where the player's eyes are, kit-local (the pieces turn to face them). */
+export const PLAYER_Z = 0.36;
 /** (kept for anything still reading the old kick's depth) */
 export const KICK_DEPTH = 0.14;
-const DEPTH: Partial<Record<Lane, number>> = { snare: 0.055, tom: 0.08, kick: 0.088, floor: 0.108 };
+const DEPTH: Partial<Record<Lane, number>> = { snare: 0.06, tom: 0.09, kick: 0.114, floor: 0.1 };
 /** Each drum's look in a kit style: its shell, head and hardware. */
 function lookFor(lane: Lane, style: KitStyle): DrumLook {
   if (style === 'electronic') return { shell: 0x1b1b1e, finish: 'matte', skin: 'mesh', black: true };
-  if (style === 'jazz') return { shell: lane === 'snare' ? 0x2a1d14 : 0xb07a45, finish: 'natural', skin: 'calf', throwOff: lane === 'snare' };
-  return { shell: lane === 'snare' ? 0x16161a : 0x7a1d14, throwOff: lane === 'snare' };
+  // a jazz kit: natural maple showing its grain, calf heads, black-nickel hardware
+  if (style === 'jazz') return { shell: 0x9a6a3e, finish: 'natural', skin: 'calf', blackNickel: true, throwOff: lane === 'snare', woodHoops: lane === 'kick' };
+  // the acoustic kit in wine-red lacquer with a chrome snare; the bass drum's hoops are wood
+  return { shell: 0x8e1a14, chromeShell: lane === 'snare', throwOff: lane === 'snare', woodHoops: lane === 'kick' };
 }
 /** An e-kit pad's depth (its top is the head, at HEAD_Y). */
 export const EPAD_DEPTH: Partial<Record<Lane, number>> = { kick: 0.045, floor: 0.04 };
@@ -71,7 +78,8 @@ function buildLane(lane: Lane, size: number, style: KitStyle): Group {
   if (lane === 'crash' || lane === 'ride') return buildCymbal(size, HEAD_Y[lane], lane === 'crash' ? 0.24 : 0.12, lane, style);
   const depth = DEPTH[lane] ?? 0.05;
   const look = { ...lookFor(lane, style), depth };
-  if (lane === 'kick' || lane === 'floor') return buildFloorDrum(size, look);
+  if (lane === 'floor') return buildFloorTom(size, look);
+  if (lane === 'kick') return buildFloorDrum(size, look);
   const g = new Group();
   const stand = drumStand(HEAD_Y[lane] - depth, size / 2);
   const drum = buildDrum(size, look);
@@ -165,6 +173,48 @@ export class PadView {
   headY = 0;
   private topCymbal: import('@iwsdk/core').Object3D | null = null;
   private wobble = 0;
+  private model: Group;
+  private depth = 0.05;
+  /** How it is aimed: turned to face the player (yaw) and tipped toward them (tilt), radians. */
+  yaw = 0;
+  tilt = 0;
+  /** Turn it to face the player at (0, PLAYER_Z) from where it stands, tipped by its own tilt, pivoting at the head's
+   * centre (the stand follows the drum's foot). */
+  aim(): void {
+    const lane = this.lane;
+    this.tilt = TILT[lane];
+    this.yaw = Math.atan2(-this.x, PLAYER_Z - this.z);
+    const t = this.tilt;
+    const ps = this.yaw;
+    // the ripple rings lie on the head as it is tipped
+    for (const rp of this.ripples) {
+      rp.rotation.order = 'YXZ';
+      rp.rotation.set(-Math.PI / 2 + t, ps, 0);
+    }
+    const cym = this.model.getObjectByName('Cymbals');
+    if (lane === 'hat' || lane === 'crash' || lane === 'ride') {
+      if (cym) {
+        cym.rotation.order = 'YXZ';
+        cym.rotation.set(t, ps, 0);
+        if (this.topCymbal === cym) {
+          this.cymRX = t;
+          this.cymRZ = 0;
+        }
+      }
+      return;
+    }
+    if (lane === 'kick' || lane === 'floor' || t === 0) return;
+    // the drum (or the e-kit pad): the model's child that holds the head
+    let node = this.model.getObjectByName('Drum') ?? null;
+    while (node && node.parent && node.parent !== this.model) node = node.parent;
+    if (!node) return;
+    const d = this.depth;
+    node.rotation.order = 'YXZ';
+    node.rotation.set(t, ps, 0);
+    node.position.set(-d * Math.sin(t) * Math.sin(ps), HEAD_Y[lane] - d * Math.cos(t), -d * Math.sin(t) * Math.cos(ps));
+    const stand = this.model.getObjectByName('Stand');
+    if (stand) stand.position.set(node.position.x, 0, node.position.z);
+  }
   private glowMats: MeshStandardMaterial[] = [];
   private cymRX = 0;
   private cymRZ = 0;
@@ -178,6 +228,8 @@ export class PadView {
     this.base.setHex(LED[lane]);
     // the drum itself (the hat: a hi-hat), its head the part a hit dents
     const model = buildLane(lane, spec.size, style);
+    this.model = model;
+    this.depth = style === 'electronic' ? (EPAD_DEPTH[lane] ?? 0.035) : (DEPTH[lane] ?? 0.05);
     const cym = lane === 'hat' || lane === 'crash' || lane === 'ride';
     const headMesh = model.getObjectByName(cym ? 'Top' : 'Head') as Mesh | undefined;
     this.head = (headMesh?.material as MeshStandardMaterial | undefined) ?? new MeshStandardMaterial();
@@ -324,7 +376,7 @@ export class PadView {
     if (this.glowMesh) this.glowMesh.visible = on;
     // the hoop glints on a hit
     if (this.hoopMat) this.hoopMat.emissive.setScalar(this.flash * 0.35);
-    for (const g of this.glowMats) g.emissiveIntensity = 0.7 + this.flash * 2.4;
+    for (const g of this.glowMats) g.emissiveIntensity = 0.3 + this.flash * 2.4;
     // a cymbal swings on its clutch and settles
     if (this.topCymbal && this.wobble > 0.001) {
       this.wobbleT += dt;

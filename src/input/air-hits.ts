@@ -22,6 +22,10 @@ export interface AirSurface {
   along?: number;
   /** How far back out a point must come before it can play it again (default AIR.rearm). */
   rearm?: number;
+  /** A disc tipped toward the player: its normal (unit; default straight up). Only for 'up' discs. */
+  nx?: number;
+  ny?: number;
+  nz?: number;
 }
 
 export interface AirHit {
@@ -46,15 +50,16 @@ export function airGain(speed: number, full: number = AIR.fullSpeed): number {
   return Math.max(0.15, Math.min(1, 0.15 + (0.85 * (speed - AIR.minSpeed)) / Math.max(0.1, full - AIR.minSpeed)));
 }
 
-function inside(s: AirSurface, a: number, b: number): boolean {
-  // (a, b): the crossing point in the surface's own two directions
-  const cb = s.face === 'up' ? s.z : s.y;
-  if (s.r !== undefined) return s.r >= 0 && Math.hypot(a - s.x, b - cb) <= s.r;
-  return Math.abs(a - s.x) <= (s.w ?? 0) / 2 && Math.abs(b - cb) <= (s.d ?? 0) / 2;
+function inside(s: AirSurface, x: number, y: number, z: number): boolean {
+  // (the crossing point, on the surface: a disc by its distance from the centre in its own plane)
+  if (s.r !== undefined) return s.r >= 0 && Math.hypot(x - s.x, y - s.y, z - s.z) <= s.r;
+  const b = s.face === 'up' ? z - s.z : y - s.y;
+  return Math.abs(x - s.x) <= (s.w ?? 0) / 2 && Math.abs(b) <= (s.d ?? 0) / 2;
 }
 
 /** The depth of a point through a surface (+: in front of or above it, −: through it). */
 function side(s: AirSurface, x: number, y: number, z: number): number {
+  if (s.face === 'up' && s.nx !== undefined) return (x - s.x) * s.nx + (y - s.y) * (s.ny ?? 1) + (z - s.z) * (s.nz ?? 0);
   return s.face === 'up' ? y - s.y : z - s.z;
 }
 
@@ -122,7 +127,7 @@ export class AirHits {
       const cx = px + (x - px) * f;
       const cy = py + (y - py) * f;
       const cz = pz + (z - pz) * f;
-      if (!inside(s, cx, s.face === 'up' ? cz : cy)) continue;
+      if (!inside(s, cx, cy, cz)) continue;
       this.through[t] = 1;
       // the speed into it over the last two frames; and most of the motion must be into it, not across
       const span = dt + qdt;

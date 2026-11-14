@@ -61,7 +61,7 @@ export function headCoat(): DataTexture {
       const dx = (x - 63.5) / 64;
       const dy = (y - 63.5) / 64;
       const d = Math.hypot(dx, dy);
-      const wear = Math.exp(-Math.pow((d - 0.22) / 0.12, 2)) * 14 + Math.exp(-Math.pow(d / 0.16, 2)) * 6;
+      const wear = Math.exp(-Math.pow((d - 0.22) / 0.12, 2)) * 6 + Math.exp(-Math.pow(d / 0.16, 2)) * 4;
       const g = 250 - wear + (r() - 0.5) * 9;
       return [g, g, g - 3];
     }, true, false);
@@ -87,7 +87,7 @@ export function cymbalRings(): { map: DataTexture; rough: DataTexture } {
       const v = y / 1023;
       const groove = Math.sin(v * 600) * (v > 0.22 ? 1 : 0.15);
       // (fine and faint: real lathe rings are a sheen, not stripes)
-      const g = 226 + groove * 4;
+      const g = 222 + groove * 14;
       return [g, g * 0.9, g * 0.68];
     }, true),
   );
@@ -154,6 +154,33 @@ export function carbonTwill(): DataTexture {
       const along = t % 2 === 0 ? (x % 8) / 8 : (y % 8) / 8;
       const g = 34 + 30 * Math.sin(along * Math.PI) + (t % 4 < 2 ? 6 : 0);
       return [g, g, g + 3];
+    }, true),
+  );
+}
+
+/** Rawhide (greyscale, multiplied into the hide's colour): fibrous mottle and a few darker blotches. */
+export function rawhide(): DataTexture {
+  return once('rawhide', () => {
+    const r = rng(31);
+    const spots = Array.from({ length: 9 }, () => ({ x: r() * 128, y: r() * 128, s: 6 + r() * 14 }));
+    return tex(128, 128, (x, y) => {
+      let g = 232 + (r() - 0.5) * 14 + Math.sin(x * 0.9 + Math.sin(y * 0.21) * 3) * 4;
+      for (const p of spots) {
+        const d = Math.hypot(x - p.x, y - p.y) / p.s;
+        if (d < 1) g -= 34 * (1 - d * d);
+      }
+      return [g, g, g];
+    }, true);
+  });
+}
+
+/** Tortoiseshell (colour): mottled amber and dark brown in soft drifting patches. */
+export function tortoiseShell(): DataTexture {
+  return once('tortoise', () =>
+    tex(128, 128, (x, y) => {
+      const n = Math.sin(x * 0.11 + Math.sin(y * 0.07) * 2.2) + Math.sin(y * 0.13 + Math.sin(x * 0.05) * 2.6) + 0.5 * Math.sin((x + y) * 0.31);
+      const k = Math.max(0, Math.min(1, (n + 1.2) / 2.6));
+      return [58 + k * 120, 24 + k * 60, 10 + k * 22];
     }, true),
   );
 }

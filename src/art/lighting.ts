@@ -7,6 +7,7 @@
 import {
   ACESFilmicToneMapping,
   BackSide,
+  DoubleSide,
   BoxGeometry,
   CanvasTexture,
   Mesh,
@@ -27,8 +28,9 @@ import {
 function roomEnvironment(renderer: WebGLRenderer): Texture {
   const scene = new Scene();
   const box = new BoxGeometry(1, 1, 1);
-  // (darker walls with bright panels: chrome and lacquer need dark to reflect as well as light)
-  const room = new Mesh(box, new MeshStandardMaterial({ color: 0x4a443e, side: BackSide, roughness: 1 }));
+  // (mid-grey walls with bright panels and a softbox strip all round: chrome, bronze and lacquer need a bright horizon
+  // line to read as metal and gloss, and some dark to show it against)
+  const room = new Mesh(box, new MeshStandardMaterial({ color: 0x8c857c, side: BackSide, roughness: 1 }));
   room.scale.set(8, 4, 8);
   room.position.y = 1.6;
   scene.add(room);
@@ -37,7 +39,7 @@ function roomEnvironment(renderer: WebGLRenderer): Texture {
   scene.add(light);
   // bright panels: a ceiling light, a window to one side, a softer one behind (what chrome and lacquer catch)
   const panel = (w: number, h: number, x: number, y: number, z: number, ry: number, rx: number, k: number, tint = 0xffffff) => {
-    const m = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ color: tint, side: BackSide }));
+    const m = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ color: tint, side: DoubleSide }));
     (m.material as MeshBasicMaterial).color.multiplyScalar(k);
     m.position.set(x, y, z);
     m.rotation.set(rx, ry, 0);
@@ -46,6 +48,11 @@ function roomEnvironment(renderer: WebGLRenderer): Texture {
   panel(2.4, 1.2, 0, 3.55, -0.4, 0, Math.PI / 2, 9);
   panel(2.2, 1.6, -3.9, 1.8, 0.4, Math.PI / 2, 0, 5, 0xe8f0ff);
   panel(1.6, 1.0, 2.6, 2.2, 3.9, Math.PI, 0, 3, 0xfff1dc);
+  // the softbox strip round the walls at eye height: every rim and edge catches a bright line
+  panel(6, 0.35, 0, 1.3, -3.95, 0, 0, 6);
+  panel(6, 0.35, 0, 1.3, 3.95, Math.PI, 0, 6);
+  panel(6, 0.35, -3.95, 1.3, 0, Math.PI / 2, 0, 6);
+  panel(6, 0.35, 3.95, 1.3, 0, -Math.PI / 2, 0, 6);
   const pmrem = new PMREMGenerator(renderer);
   const tex = pmrem.fromScene(scene, 0.04).texture;
   pmrem.dispose();
@@ -61,7 +68,7 @@ export function setupLighting(renderer: WebGLRenderer, scene: Scene): void {
   renderer.toneMappingExposure = 1.05;
   scene.environment = roomEnvironment(renderer);
   // (the environment lights PBR materials; it is not drawn: passthrough is the background)
-  scene.environmentIntensity = 1.0;
+  scene.environmentIntensity = 1.3;
 }
 
 let blobTex: CanvasTexture | null = null;

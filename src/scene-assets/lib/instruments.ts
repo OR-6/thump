@@ -6,11 +6,11 @@
  * when strummed. A handpan: a nitrided steel shell with its tone fields and raised ding. A marimba: rosewood bars
  * that bounce, on a frame. Deterministic: the same in the app and the editor.
  */
-import { BoxGeometry, CircleGeometry, PlaneGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
+import { BoxGeometry, CircleGeometry, PlaneGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2, Vector3 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
 import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
-import { fineNormal, hammered, woodGrain } from './surfaces.js';
+import { fineNormal, hammered, rawhide, tortoiseShell, woodGrain } from './surfaces.js';
 
 const mat = (name: string, color: number, roughness: number, metalness = 0) => new MeshStandardMaterial({ name, color, roughness, metalness });
 const named = <T extends { name: string }>(o: T, n: string): T => {
@@ -201,7 +201,7 @@ export class GuitarModel implements DeskModel {
   private readonly bone = mat('Bone', 0xeee6d2, 0.4);
   private readonly cream = mat('Binding', 0xefe6d0, 0.35);
   private readonly pearl = mat('Pearl', 0xf0ece2, 0.25);
-  private readonly tortoise = new MeshPhysicalMaterial({ name: 'Tortoise', color: 0x2a140c, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1 });
+  private readonly tortoise = new MeshPhysicalMaterial({ name: 'Tortoise', color: 0x5a2a14, map: tortoiseShell(), roughness: 0.3, clearcoat: 0.6, clearcoatRoughness: 0.15 });
 
   constructor() {
     this.root.add(this.body, this.neck);
@@ -217,7 +217,7 @@ export class GuitarModel implements DeskModel {
     const T = GUITAR.top;
     const zc = strs.reduce((a, q) => a + q.z, 0) / strs.length;
     const bx0 = strs[0].x - strs[0].w / 2 - 0.02;
-    const bx1 = strs[0].x + strs[0].w / 2 + 0.03;
+    const bx1 = strs[0].x + strs[0].w / 2 + 0.05;
     const len = bx1 - bx0;
     // (a body about 0.78 as wide as it is long, like a dreadnought's)
     const wid = Math.min(0.215, len * 0.78);
@@ -246,10 +246,16 @@ export class GuitarModel implements DeskModel {
       ring.position.set(hx, T + 0.0005, -zc);
       rings.add(ring);
     }
-    const guard = named(new Mesh(new CircleGeometry(0.03, 36), this.tortoise), 'Pickguard');
+    // the pickguard: a tortoiseshell teardrop on the treble side, its inner edge following the rosette
+    const gs = new Shape();
+    const a0 = -0.15;
+    const a1 = 1.35;
+    gs.absarc(0, 0, 0.043, a0, a1, false);
+    gs.quadraticCurveTo(Math.cos(a1) * 0.075, Math.sin(a1) * 0.075, Math.cos((a0 + a1) / 2) * 0.092, Math.sin((a0 + a1) / 2) * 0.092);
+    gs.quadraticCurveTo(Math.cos(a0) * 0.08, Math.sin(a0) * 0.08, Math.cos(a0) * 0.043, Math.sin(a0) * 0.043);
+    const guard = named(new Mesh(new ShapeGeometry(gs, 24), this.tortoise), 'Pickguard');
     guard.rotation.x = -Math.PI / 2;
-    guard.scale.set(1.25, 0.8, 1);
-    guard.position.set(hx + 0.03, T + 0.0005, -(zc - 0.04));
+    guard.position.set(hx, T + 0.0005, -zc);
     // the bridge with six pins and the saddle
     const brx = cx + len * 0.24;
     const bridge = named(new Mesh(new BoxGeometry(0.016, 0.005, 0.075), this.rosewood), 'Bridge');
@@ -267,19 +273,37 @@ export class GuitarModel implements DeskModel {
     const nx0 = Math.min(...pads.map((q) => q.x - q.w / 2)) - 0.035;
     const nx1 = bx0 + 0.02;
     const B = GUITAR.board;
-    const neckBack = named(new Mesh(new BoxGeometry(nx1 - nx0, 0.016, 0.046), this.side), 'NeckBack');
-    neckBack.position.set((nx0 + nx1) / 2, B - 0.012, -zc);
-    const fb = named(new Mesh(new BoxGeometry(nx1 - nx0, 0.005, 0.052), this.rosewood), 'Fretboard');
-    fb.position.set((nx0 + nx1) / 2, B - 0.0025, -zc);
-    const nut = named(new Mesh(new BoxGeometry(0.004, 0.006, 0.052), this.bone), 'Nut');
+    // a real neck: 34 mm at the nut widening to 42 where it meets the body, the back rounded under it, a heel
+    const wN = 0.034;
+    const wB = 0.042;
+    const widthAt = (x: number) => wN + ((wB - wN) * (x - nx0)) / Math.max(0.01, nx1 - nx0);
+    const taper = (x0: number, x1: number, w0: number, w1: number, th: number) => {
+      const sh = new Shape();
+      sh.moveTo(x0, -w0 / 2);
+      sh.lineTo(x1, -w1 / 2);
+      sh.lineTo(x1, w1 / 2);
+      sh.lineTo(x0, w0 / 2);
+      sh.lineTo(x0, -w0 / 2);
+      const g = new ExtrudeGeometry(sh, { depth: th, bevelEnabled: true, bevelSize: 0.0012, bevelThickness: 0.0012, bevelSegments: 2 });
+      g.rotateX(-Math.PI / 2);
+      return g;
+    };
+    const neckBack = named(new Mesh(taper(nx0, nx1, wN - 0.002, wB - 0.002, 0.014), this.side), 'NeckBack');
+    neckBack.position.set(0, B - 0.019, -zc);
+    const fb = named(new Mesh(taper(nx0, nx1, wN, wB, 0.004), this.rosewood), 'Fretboard');
+    fb.position.set(0, B - 0.004, -zc);
+    const nut = named(new Mesh(new BoxGeometry(0.004, 0.006, wN), this.bone), 'Nut');
     nut.position.set(nx0 + 0.002, B + 0.001, -zc);
-    this.neck.add(neckBack, fb, nut);
+    const heel = named(new Mesh(new BoxGeometry(0.022, B - 0.006, wB - 0.004), this.side), 'Heel');
+    heel.position.set(nx1 - 0.011, (B - 0.006) / 2, -zc);
+    this.neck.add(neckBack, fb, nut, heel);
     // frets at their real places: the nut to the saddle is the scale; fret n sits at S·(1 − 2^(−n/12))
     const S = brx - 0.004 - nx0;
-    const fretGeo = new BoxGeometry(0.0018, 0.0018, 0.052);
+    const fretGeo = new BoxGeometry(0.0018, 0.0018, 1);
     const fretX = (n: number) => nx0 + S * (1 - Math.pow(2, -n / 12));
     for (let n = 1; fretX(n) < nx1 - 0.004; n++) {
       const f = named(new Mesh(fretGeo, this.steel), 'Fret');
+      f.scale.z = widthAt(fretX(n));
       f.position.set(fretX(n), B + 0.0006, -zc);
       this.neck.add(f);
     }
@@ -305,28 +329,46 @@ export class GuitarModel implements DeskModel {
     const head = named(new Group(), 'Headstock');
     head.position.set(nx0, B - 0.003, -zc);
     head.rotation.z = -0.23;
-    const plate = new Mesh(new BoxGeometry(0.075, 0.012, 0.058), this.side);
-    plate.position.set(-0.04, 0, 0);
+    // (11 cm long, flaring from the nut's 42 mm to 50, 9 mm thick, a shallow V at its top)
+    const hs = new Shape();
+    hs.moveTo(0, -0.021);
+    hs.lineTo(-0.11, -0.025);
+    hs.lineTo(-0.114, 0);
+    hs.lineTo(-0.11, 0.025);
+    hs.lineTo(0, 0.021);
+    hs.lineTo(0, -0.021);
+    const hg = new ExtrudeGeometry(hs, { depth: 0.009, bevelEnabled: true, bevelSize: 0.0012, bevelThickness: 0.0012, bevelSegments: 2 });
+    hg.rotateX(-Math.PI / 2);
+    const plate = new Mesh(hg, this.side);
+    plate.position.y = -0.0045;
     head.add(plate);
-    const post = new CylinderGeometry(0.0022, 0.0022, 0.012, 10);
-    const button = new CylinderGeometry(0.004, 0.004, 0.006, 14);
+    const post = new CylinderGeometry(0.0022, 0.0022, 0.01, 10);
+    const shaft = new CylinderGeometry(0.0015, 0.0015, 0.008, 8);
+    const button = new CylinderGeometry(0.004, 0.004, 0.003, 16);
     for (let k = 0; k < 3; k++)
       for (const sd of [-1, 1]) {
-        const x = -0.018 - k * 0.022;
+        const x = -0.025 - k * 0.028;
+        const w = 0.021 + (0.004 * (k * 0.028 + 0.025)) / 0.11;
         const p = new Mesh(post, this.chrome);
-        p.position.set(x, 0.01, sd * 0.017);
+        p.position.set(x, 0.009, sd * (w - 0.007));
+        const sft = new Mesh(shaft, this.chrome);
+        sft.rotation.x = Math.PI / 2;
+        sft.position.set(x, 0, sd * (w + 0.004));
         const b = new Mesh(button, this.chrome);
         b.rotation.x = Math.PI / 2;
-        b.position.set(x, 0, sd * 0.036);
-        head.add(p, b);
+        b.position.set(x, 0, sd * (w + 0.009));
+        head.add(p, sft, b);
       }
     this.neck.add(head);
     // six strings from the bridge to the nut: the low three wound bronze, the high three plain steel
+    // (5.8 mm apart at the nut, fanning out to 8.5 at the saddle)
     strs.forEach((q, i) => {
       const r = 0.001 - i * 0.00008;
-      const s = named(new Mesh(new CylinderGeometry(r, r, brx - nx0, 8), i < 3 ? this.bronze : this.steel), `String${i}`);
-      s.rotation.z = Math.PI / 2;
-      s.position.set((brx + nx0) / 2, GUITAR.strings, -(zc + (i - 2.5) * 0.009));
+      const a = new Vector3(nx0, GUITAR.strings, -(zc + (i - 2.5) * 0.0058));
+      const b = new Vector3(brx, GUITAR.strings, -(zc + (i - 2.5) * 0.0085));
+      const s = named(new Mesh(new CylinderGeometry(r, r, a.distanceTo(b), 8), i < 3 ? this.bronze : this.steel), `String${i}`);
+      s.position.copy(a).add(b).multiplyScalar(0.5);
+      s.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), b.clone().sub(a).normalize());
       this.neck.add(s);
       this.strings.push(s);
     });
@@ -635,7 +677,8 @@ export class CongaModel implements DeskModel {
     return new MeshPhysicalMaterial({ name: 'Wood', color: 0x7a3f1c, map, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.1 });
   })();
   private readonly stripe = mat('Stripe', 0x2a140a, 0.4, 0.05);
-  private readonly crown = mat('Crown', 0x1d1d20, 0.35, 0.8);
+  private readonly crown = mat('Crown', 0x1d1d20, 0.25, 0.8);
+  private readonly seam = mat('Seam', 0x4a2412, 0.5);
   private readonly lug = mat('Lug', 0xcfd3d8, 0.2, 1);
   private readonly wrapHide = mat('HideEdge', 0xa88456, 0.8);
   /** The heads' height: a conga's barrel, cut down to a desk, still a barrel (22 cm). */
@@ -654,17 +697,19 @@ export class CongaModel implements DeskModel {
       // the shell: a conga's barrel, narrow at the foot, swelling to its belly a third of the way up, in to the head
       const rAt = (y: number) => {
         const t = Math.max(0, Math.min(1, y / (H - 0.004)));
-        // (foot 0.6, belly 1.1 at 0.35, the head 1.0)
-        return R * (t < 0.35 ? 0.6 + 0.5 * Math.sin((Math.PI / 2) * (t / 0.35)) : 1.1 - 0.1 * Math.pow((t - 0.35) / 0.65, 2));
+        // (a real conga's line: the foot 0.82 of the head, swelling to its belly 1.12 a little past halfway, back in
+        // to the head)
+        return R * (t < 0.55 ? 0.82 + 0.3 * Math.sin((Math.PI / 2) * (t / 0.55)) : 1.12 - 0.12 * Math.pow((t - 0.55) / 0.45, 2));
       };
       const pts: Vector2[] = [];
       for (let k = 0; k <= 16; k++) pts.push(new Vector2(rAt((k / 16) * (H - 0.004)), (k / 16) * (H - 0.004)));
       const shell = named(new Mesh(new LatheGeometry(pts, 48), this.wood), 'Shell');
-      const band = named(new Mesh(new CylinderGeometry(rAt(H * 0.62) + 0.0008, rAt(H * 0.56) + 0.0008, 0.006, 48, 1, true), this.stripe), 'Stripe');
-      band.position.y = H * 0.59;
+      // a black rubber foot ring at the bottom
+      const band = named(new Mesh(new CylinderGeometry(rAt(0.01) + 0.0012, rAt(0) + 0.0012, 0.01, 48, 1, true), mat('FootRing', 0x151515, 0.85)), 'FootRing');
+      band.position.y = 0.005;
       // staves: twelve seams following the barrel's curve, each a short segment hugging it
       const staves = named(new Group(), 'Staves');
-      const sg = new BoxGeometry(0.0012, 1, 0.0008);
+      const sg = new BoxGeometry(0.0006, 1, 0.0005);
       const segs = 4;
       for (let i = 0; i < 12; i++) {
         const a = (i / 12) * Math.PI * 2;
@@ -673,7 +718,7 @@ export class CongaModel implements DeskModel {
           const y1 = ((k + 1) / segs) * (H - 0.006);
           const r0 = rAt(y0) + 0.0005;
           const r1 = rAt(y1) + 0.0005;
-          const s = new Mesh(sg, this.stripe);
+          const s = new Mesh(sg, this.seam);
           s.scale.y = Math.hypot(y1 - y0, r1 - r0);
           s.position.set(Math.cos(a) * (r0 + r1) / 2, (y0 + y1) / 2, Math.sin(a) * (r0 + r1) / 2);
           s.rotation.set(0, -a, 0);
@@ -682,11 +727,11 @@ export class CongaModel implements DeskModel {
         }
       }
       // the head: rawhide, the low drum a shade darker, its own material so it can glow
-      const hide = new MeshStandardMaterial({ name: 'Rawhide', color: d === 0 ? 0xd9bd8c : 0xdfc497, roughness: 0.82 });
+      const hide = new MeshStandardMaterial({ name: 'Rawhide', color: d === 0 ? 0xd9bd8c : 0xdfc497, map: rawhide(), roughness: 0.6 });
       const head = named(new Mesh(new CylinderGeometry(R * 0.985, R * 0.985, 0.002, 48), hide), 'Head');
       head.position.y = H - 0.002;
       // (where the hide wraps over the edge it's darker: a centimetre band round it)
-      const wrap = named(new Mesh(new RingGeometry(R * 0.985 - 0.01, R * 0.985, 48), this.wrapHide), 'HideEdge');
+      const wrap = named(new Mesh(new RingGeometry(R * 0.985 - 0.015, R * 0.985, 48), this.wrapHide), 'HideEdge');
       wrap.rotation.x = -Math.PI / 2;
       wrap.position.y = 0.0011;
       head.add(wrap);
@@ -696,28 +741,43 @@ export class CongaModel implements DeskModel {
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = H - 0.0008;
       // the crown hoop: a black rolled rim over the head's edge
-      const crown = named(new Mesh(new TorusGeometry(R * 1.0, 0.004, 10, 56), this.crown), 'Crown');
+      // the crown: a rolled black rim over the head's edge with a skirt below it
+      const crown = named(new Mesh(new TorusGeometry(R * 1.0, 0.007, 12, 56), this.crown), 'Crown');
       crown.rotation.x = -Math.PI / 2;
       crown.position.y = H - 0.0005;
+      const skirt = named(new Mesh(new CylinderGeometry(R + 0.006, R + 0.006, 0.012, 56, 1, true), this.crown), 'Skirt');
+      skirt.position.y = H - 0.008;
       // side plates and lugs: four on the low drum, four on the high, each a plate on the shell with a rod to the rim
       const lugs = named(new Group(), 'Lugs');
       // (chrome side plates 35 mm tall, each with its rod up to the crown)
-      const plate = new BoxGeometry(0.0016, 0.035, 0.008);
-      const rod = new CylinderGeometry(0.0011, 0.0011, 0.02, 8);
+      // chrome side plates from 62 % to 85 % of the height, each with an L-hook up over the crown and a hex nut
+      const plate = new BoxGeometry(0.003, H * 0.23, 0.006);
+      const hookUp = new CylinderGeometry(0.0022, 0.0022, 1, 8);
+      const hookBend = new TorusGeometry(0.004, 0.0022, 6, 10, Math.PI / 2);
+      const nut = new CylinderGeometry(0.003, 0.003, 0.004, 6);
       for (let i = 0; i < 6; i++) {
         const a = ((i + 0.5) / 6) * Math.PI * 2;
         const l = named(new Group(), `Lug${i}`);
         const p = new Mesh(plate, this.lug);
-        p.position.set(rAt(H * 0.7) + 0.0012, H * 0.7, 0);
-        const r = new Mesh(rod, this.lug);
-        r.position.set(rAt(H - 0.015) + 0.0016, H - 0.013, 0);
+        p.position.set(rAt(H * 0.735) + 0.0018, H * 0.735, 0);
+        const ny = H * 0.85 + 0.002;
+        const nt = new Mesh(nut, this.lug);
+        nt.position.set(rAt(H * 0.85) + 0.004, ny, 0);
+        const up = new Mesh(hookUp, this.lug);
+        const x = R + 0.0105;
+        up.scale.y = H - 0.004 - ny;
+        up.position.set(x, (ny + H - 0.004) / 2, 0);
+        const r = new Mesh(hookBend, this.lug);
+        r.rotation.set(Math.PI / 2, 0, 0);
+        r.position.set(x - 0.004, H - 0.004, 0);
+        l.add(nt, up);
         l.add(p, r);
         l.rotation.y = a;
         lugs.add(l);
       }
       // (the seams are fine detail: they cast no shadow of their own)
       staves.traverse((o) => (o.userData.noShadow = true));
-      drum.add(shell, band, staves, head, ring, crown, lugs);
+      drum.add(shell, band, staves, head, ring, crown, skirt, lugs);
       this.root.add(drum);
       this.heads.push(head);
       this.marks.push(ring);

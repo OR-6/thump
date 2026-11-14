@@ -5,7 +5,7 @@
  * count or the results' stars. You poke an item with a fingertip, or pinch it: it lights and clicks. One canvas;
  * presses and pulses are light quads on top, so nothing redraws every frame. Kit-local, centred behind the instrument.
  */
-import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace, Vector3 } from '@iwsdk/core';
+import { AdditiveBlending, BoxGeometry, CylinderGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace, Vector3 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
 import { contactShadow } from '../art/lighting.js';
 import { thumb, whenThumbs } from '../art/thumbs.js';
@@ -240,32 +240,24 @@ export class Panel {
   readonly stand = new Group();
   private standParts: Mesh[] = [];
   private fitStand(): void {
+    // one slim post from a small round foot up to the back of the panel's centre (nothing standing inside the
+    // instrument in front of it)
     const lean = -this.root.rotation.x;
     const P = this.root.position;
-    const by = P.y - (PANEL.h / 2) * Math.cos(lean);
-    const bz = P.z + (PANEL.h / 2) * Math.sin(lean);
     if (!this.standParts.length) {
       const metal = new MeshStandardMaterial({ name: 'Anodised', color: 0x2a2b30, metalness: 0.85, roughness: 0.32 });
-      const box = new BoxGeometry(1, 1, 1);
-      for (let i = 0; i < 4; i++) this.standParts.push(new Mesh(box, metal));
+      this.standParts.push(new Mesh(new CylinderGeometry(0.004, 0.004, 1, 12), metal), new Mesh(new CylinderGeometry(0.035, 0.038, 0.006, 32), metal));
       this.stand.name = 'PanelStand';
-      this.stand.add(...this.standParts, contactShadow(PANEL.w * 1.05, 0.09, 0.7));
+      this.stand.add(...this.standParts, contactShadow(0.09, 0.09, 0.7));
     }
-    const [foot, l, r, kick] = this.standParts;
-    foot.scale.set(PANEL.w * 0.86, 0.006, 0.032);
-    foot.position.set(0, 0.003, bz - 0.006);
-    for (const [m, x] of [[l, -PANEL.w / 2 + 0.035], [r, PANEL.w / 2 - 0.035]] as const) {
-      m.scale.set(0.005, by - 0.004, 0.005);
-      m.position.set(x, (by + 0.004) / 2, bz);
-    }
-    // the kickstand: from the middle of the back of the display down to the desk behind it
-    const top = { y: P.y, z: P.z - 0.004 * Math.cos(lean) - 0.003 };
-    const footZ = top.z - top.y * 0.5;
-    const len = Math.hypot(top.y, top.z - footZ);
-    kick.scale.set(0.02, 0.005, len);
-    kick.position.set(0, top.y / 2, (top.z + footZ) / 2);
-    kick.rotation.x = Math.atan2(top.y, top.z - footZ);
-    (this.stand.children[4] as Mesh).position.set(0, 0.0006, bz - 0.02);
+    const [post, foot] = this.standParts;
+    // (the post meets the panel's back a little below its middle, 6 mm behind the face)
+    const ty = P.y - 0.02 * Math.cos(lean) - 0.006 * Math.sin(lean);
+    const tz = P.z + 0.02 * Math.sin(lean) - 0.006 * Math.cos(lean) - 0.004;
+    post.scale.set(1, ty, 1);
+    post.position.set(0, ty / 2, tz);
+    foot.position.set(0, 0.003, tz);
+    (this.stand.children[2] as Mesh).position.set(0, 0.0006, tz);
   }
 
   /** The item a press landed on (by its index in the page). */

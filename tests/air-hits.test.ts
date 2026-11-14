@@ -103,4 +103,16 @@ describe('hits in the air', () => {
     path(h, [0, 0.25, 0], [0, 0.1, 0], 4, [snare], o);
     expect(o).toHaveLength(1);
   });
+  it('a head tipped toward you is struck where it really is: higher at the back, lower at the front', () => {
+    const t = 0.3;
+    const tom: AirSurface = { id: 5, face: 'up', x: 0, y: 0.18, z: 0, r: 0.075, nx: 0, ny: Math.cos(t), nz: Math.sin(t) };
+    // at the back edge the head is higher (19.9 cm): a hand stopping at 19.5 cm, above a flat head's height, plays it
+    const out: AirHit[] = [];
+    path(new AirHits(1), [0, 0.3, -0.06], [0, 0.195, -0.06], 6, [tom], out);
+    expect(out).toHaveLength(1);
+    // at the front edge it is lower (16.2 cm): a hand stopping at 17 cm, under a flat head's height, never reached it
+    const out2: AirHit[] = [];
+    path(new AirHits(1), [0, 0.3, 0.06], [0, 0.17, 0.06], 6, [tom], out2);
+    expect(out2).toHaveLength(0);
+  });
 });

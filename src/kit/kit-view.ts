@@ -16,7 +16,7 @@ import { zonesFor, type Zone } from '../room/zones.js';
 import { CongaModel, GuitarModel, HandpanModel, MarimbaModel, PianoModel, type DeskModel } from '../scene-assets/lib/instruments.js';
 import { Tag } from '../ui/tag.js';
 import { Vector3 } from '@iwsdk/core';
-import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, instZones, type InstId, type Scale } from './shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, NECK, instZones, type InstId, type Scale } from './shelf.js';
 
 /** The table keys' row (kit-local, between the pads and the module). */
 export const KEYS_ROW = { x: 0, z: -0.11 } as const;
@@ -61,6 +61,8 @@ export class KitView {
   ]);
   /** The instrument's contact shadow on the desk (sized to it when it comes out). */
   private instShadow = contactShadow(1, 1, 0.85);
+  /** The guitar's neck lies off the desk: its own soft shadow under it. */
+  private neckShadow = contactShadow(0.3, 0.07, 0.6);
   /** The zones of the instrument on the desk (none for the drums: they have pads). */
   instZones: Zone[] = [];
   private handShadow: Mesh[] = [];
@@ -91,13 +93,15 @@ export class KitView {
     const rim = new DirectionalLight(0xdfe8ff, 0.8);
     rim.position.set(0.25, 0.35, -0.5);
     this.root.add(key, key.target, fill, fill.target, rim, rim.target);
-    this.root.add(this.instShadow, shadowCatcher(1.1, 0.75));
+    this.root.add(this.instShadow, this.neckShadow, shadowCatcher(1.1, 0.75));
     this.instShadow.visible = false;
+    this.neckShadow.visible = false;
     for (const lane of LANES) {
       if (lane === 'gong') continue;
       const p = new PadView(lane);
       p.x = PADS[lane].x;
       p.z = PADS[lane].z;
+      p.aim();
       this.pads.set(lane, p);
       this.padRoot.add(p.group);
     }
@@ -165,10 +169,11 @@ export class KitView {
     // (only the one that's out shows: the drums put every other model away)
     for (const [k, m] of this.models) m.root.visible = k === id;
     // the display stands just clear of it
-    this.module.standOver(id === 'drums' ? 0.19 : id === 'congas' ? CONGA.top : id === 'piano' ? 0.105 : id === 'marimba' ? MARIMBA.top : id === 'guitar' ? GUITAR.strings : HANDPAN.rim + HANDPAN.dome);
+    this.module.standOver(id === 'drums' ? 0.26 : id === 'congas' ? CONGA.top : id === 'piano' ? 0.105 : id === 'marimba' ? MARIMBA.top : id === 'guitar' ? GUITAR.strings : HANDPAN.rim + HANDPAN.dome);
     if (drums) {
       this.instZones = [];
       this.instShadow.visible = false;
+      this.neckShadow.visible = false;
       return;
     }
     this.instZones = instZones(id, root, scale);
@@ -191,6 +196,8 @@ export class KitView {
       z1 = Math.max(z1, q.z + hd);
     }
     this.instShadow.visible = Number.isFinite(x0);
+    this.neckShadow.visible = id === 'guitar';
+    if (id === 'guitar') this.neckShadow.position.set((NECK.x[0] + NECK.x[2]) / 2 - 0.05, 0.0007, -NECK.z);
     if (this.instShadow.visible) {
       this.instShadow.scale.set((x1 - x0) * 1.35 + 0.06, (z1 - z0) * 1.5 + 0.06, 1);
       this.instShadow.position.set((x0 + x1) / 2, 0.0006, -(z0 + z1) / 2 - 0.01);
@@ -240,6 +247,7 @@ export class KitView {
       const p = new PadView(lane, false, style);
       p.x = old.x;
       p.z = old.z;
+      p.aim();
       if (old.visible) p.appear('fade');
       this.padRoot.remove(old.group);
       old.group.traverse((o) => {

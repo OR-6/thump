@@ -29,13 +29,13 @@ export interface PadSpot {
 /** One-handed kit, for the right hand (mirrored for the left): an arc out from the kick. */
 const ONE_HAND: Record<Lane, { x: number; z: number }> = {
   kick: { x: 0.0, z: 0 },
-  snare: { x: 0.22, z: -0.03 },
-  hat: { x: 0.36, z: 0.14 },
-  tom: { x: -0.16, z: 0.14 },
+  snare: { x: 0.28, z: -0.04 },
+  hat: { x: 0.44, z: 0.16 },
+  tom: { x: -0.2, z: 0.16 },
   gong: { x: 0.3, z: -0.2 },
-  floor: { x: -0.3, z: -0.06 },
-  crash: { x: 0.42, z: -0.12 },
-  ride: { x: 0.1, z: -0.24 },
+  floor: { x: -0.36, z: -0.06 },
+  crash: { x: 0.5, z: -0.14 },
+  ride: { x: 0.1, z: -0.3 },
 };
 
 export function zoneRadius(size: number): number {
