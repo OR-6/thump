@@ -154,7 +154,10 @@ export function buildHiHat(d: number, height = DRUM_H + 0.004): Group {
   top.position.y = H + 0.006;
   const clutch = named(new Mesh(new CylinderGeometry(0.0038, 0.0038, 0.005, 14), rodMat), 'Clutch');
   clutch.position.y = H + 0.0095;
-  g.add(legs, rod, bottom, top, clutch);
+  // (the cymbals and the clutch as one: a hit moves them, not the stand)
+  const cymbals = named(new Group(), 'Cymbals');
+  cymbals.add(bottom, top, clutch);
+  g.add(legs, rod, cymbals);
   return g;
 }
 

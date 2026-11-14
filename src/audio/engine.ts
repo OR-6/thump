@@ -1081,16 +1081,17 @@ class Engine {
   }
 
   /** A soft card tap (choosing a song, a setting). */
-  tick(): void {
+  /** A control's tick: a press at full (−15 dB), a hover at `level` 0.12 (about −18 dB), lower and shorter. */
+  tick(level = 0.18): void {
     const ctx = this.ready();
     if (!ctx) return;
     const t = ctx.currentTime;
     const n = this.noiseSrc(ctx, t, 0.02);
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 2200;
+    bp.frequency.value = level < 0.15 ? 3200 : 2200;
     const g = this.out(ctx, this.master, 0, 0.2, t, 1);
-    this.env(g.gain, t, 0.18, 0.001, 0.025);
+    this.env(g.gain, t, level, 0.001, level < 0.15 ? 0.015 : 0.025);
     n.connect(bp).connect(g);
   }
 }

@@ -114,6 +114,6 @@ export function castShadows(root: import('@iwsdk/core').Object3D): void {
     const m = o as Mesh;
     if (!m.isMesh) return;
     const mat = m.material as MeshBasicMaterial;
-    m.castShadow = !mat.transparent && !(mat as unknown as { isMeshBasicMaterial?: boolean }).isMeshBasicMaterial;
+    m.castShadow = !m.userData.noShadow && !mat.transparent && !(mat as unknown as { isMeshBasicMaterial?: boolean }).isMeshBasicMaterial;
   });
 }

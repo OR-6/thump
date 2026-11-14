@@ -194,7 +194,7 @@ export class PadView {
     this.body.add(model);
     this.group.add(this.body);
     // (a hit squashes the drum, not its stand)
-    this.squashed = model.getObjectByName('Drum') ?? model;
+    this.squashed = model.getObjectByName('Drum') ?? model.getObjectByName('Cymbals') ?? model;
     this.headY = HEAD_Y[lane];
     this.topCymbal = lane === 'hat' ? (model.getObjectByName('Top') ?? null) : null;
     // it sits on the desk: a soft shadow under it

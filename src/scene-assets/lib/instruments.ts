@@ -6,7 +6,7 @@
  * when strummed. A handpan: a nitrided steel shell with its tone fields and raised ding. A marimba: rosewood bars
  * that bounce, on a frame. Deterministic: the same in the app and the editor.
  */
-import { BoxGeometry, CircleGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
+import { BoxGeometry, CircleGeometry, PlaneGeometry, ShapeGeometry, Path, SphereGeometry, DoubleSide, MeshBasicMaterial, CylinderGeometry, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, RingGeometry, Shape, TorusGeometry, Vector2 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
 import { CONGA, GUITAR, HANDPAN, KEYBOARD, PIANO_CHORD, handpanShape, handpanY } from '../../kit/shelf.js';
 import { KEY, buildPiano, isBlack } from './piano.js';
@@ -40,11 +40,15 @@ class Springs {
     if (i >= 0 && i < this.v.length) this.v[i] -= k;
   }
   step(dt: number, stiff = 900, damp = 28): void {
-    const h = Math.min(dt, 1 / 30);
-    for (let i = 0; i < this.x.length; i++) {
-      this.v[i] += (-stiff * this.x[i] - damp * this.v[i]) * h;
-      this.x[i] += this.v[i] * h;
-    }
+    // (in steps of at most 4 ms: a stiff, damped spring stepped a whole frame at once goes unstable or never moves)
+    const total = Math.min(dt, 1 / 30);
+    const n = Math.max(1, Math.ceil(total / 0.004));
+    const h = total / n;
+    for (let k = 0; k < n; k++)
+      for (let i = 0; i < this.x.length; i++) {
+        this.v[i] += (-stiff * this.x[i] - damp * this.v[i]) * h;
+        this.x[i] += this.v[i] * h;
+      }
   }
 }
 
@@ -92,12 +96,12 @@ export class PianoModel implements DeskModel {
 
   /** Key i (the white keys; 15 the chord button; 30 and up the black keys) goes down. */
   struck(i: number, gain: number): void {
-    this.spring.kick(i, 0.3 + 0.3 * gain);
+    this.spring.kick(i, 0.35 + 0.3 * gain);
   }
 
   update(dt: number): void {
-    // down in about 40 ms, back over about 160 (critically damped, no bounce)
-    this.spring.step(dt, 1600, 80);
+    // down 4 to 8 mm in about 40 ms, back over about 170 (critically damped, no bounce)
+    this.spring.step(dt, 625, 50);
     const press = (k: Group, x: number) => (k.rotation.x = KEY.press * Math.min(1, Math.max(0, -x / 0.008)));
     for (let i = 0; i < this.keys.length; i++) press(this.keys[i], this.spring.x[i]);
     for (let j = 0; j < this.blacks.length; j++) press(this.blacks[j], this.spring.x[30 + j]);
@@ -243,6 +247,15 @@ export class GuitarModel implements DeskModel {
       m.position.set(x, B + 0.0003, -(zc + dz));
       this.neck.add(m);
     }
+    // the chord positions: nothing at rest; a pressed one dips and glows under the finger
+    this.pads = [];
+    pads.forEach((q, c) => {
+      const m = named(new Mesh(new PlaneGeometry(q.w * 0.8, 0.046), new MeshBasicMaterial({ color: 0xfff0c8, transparent: true, opacity: 0, depthWrite: false, toneMapped: false })), `ChordPress${c}`);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(q.x, B + 0.0004, -zc);
+      this.neck.add(m);
+      this.pads.push(m);
+    });
     // the headstock, tipped back 13° toward the desk, three tuners a side
     const head = named(new Group(), 'Headstock');
     head.position.set(nx0, B - 0.003, -zc);
@@ -274,13 +287,24 @@ export class GuitarModel implements DeskModel {
     });
   }
 
+  /** The chord positions: a fingertip-sized press on the fretboard that dips and lights. */
+  private pads: Mesh[] = [];
+  private padK = [0, 0, 0];
   struck(i: number, gain: number): void {
     if (i >= 3) this.shake = Math.max(this.shake, 0.5 + 0.5 * gain);
+    else this.padK[i] = 0.6 + 0.4 * gain;
   }
 
   update(dt: number): void {
     this.t += dt;
-    this.shake = Math.max(0, this.shake - dt * 1.6);
+    // (eased out, gone in about half a second)
+    this.shake *= Math.exp(-dt * 5);
+    for (let i = 0; i < this.pads.length; i++) {
+      this.padK[i] *= Math.exp(-dt * 9);
+      const m = this.pads[i];
+      m.position.y = GUITAR.board + 0.0004 - 0.002 * this.padK[i];
+      (m.material as MeshBasicMaterial).opacity = this.padK[i] * 0.8;
+    }
     // strummed strings blur: a fast shimmer across, dying away
     for (let i = 0; i < this.strings.length; i++) {
       const s = this.strings[i];
@@ -540,7 +564,7 @@ export class CongaModel implements DeskModel {
       // staves: twelve seams following the barrel's curve, each a short segment hugging it
       const staves = named(new Group(), 'Staves');
       const sg = new BoxGeometry(0.0012, 1, 0.0008);
-      const segs = 8;
+      const segs = 4;
       for (let i = 0; i < 12; i++) {
         const a = (i / 12) * Math.PI * 2;
         for (let k = 0; k < segs; k++) {
@@ -584,6 +608,8 @@ export class CongaModel implements DeskModel {
         l.rotation.y = a;
         lugs.add(l);
       }
+      // (the seams are fine detail: they cast no shadow of their own)
+      staves.traverse((o) => (o.userData.noShadow = true));
       drum.add(shell, band, staves, head, ring, crown, lugs);
       this.root.add(drum);
       this.heads.push(head);
@@ -601,7 +627,7 @@ export class CongaModel implements DeskModel {
     this.spring.step(dt, 1800, 30);
     this.heads.forEach((h, d) => {
       // the head gives under the hand and comes back
-      h.position.y = CongaModel.H - 0.002 + Math.max(-0.002, this.spring.x[d] * 0.02);
+      h.position.y = CongaModel.H - 0.002 + Math.max(-0.003, Math.min(0, this.spring.x[d] * 0.05));
       const open = (this.glow[d * 2] = Math.max(0, this.glow[d * 2] - dt * 6));
       const slap = (this.glow[d * 2 + 1] = Math.max(0, this.glow[d * 2 + 1] - dt * 8));
       (h.material as MeshStandardMaterial).emissive.setHex(0xffb060).multiplyScalar(open * 0.5);

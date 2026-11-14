@@ -33,15 +33,17 @@ export interface Page {
   title: string;
   line: string;
   items: Item[];
-  /** What the middle shows besides items: a song's progress and count, or results' stars. */
-  body?: 'song' | 'results';
+  /** What the middle shows besides items: a song's progress and count, results' stars, or how to play. */
+  body?: 'song' | 'results' | 'how';
+  /** The how-to line for a 'how' body. */
+  how?: string;
 }
 
 export interface MenuInput {
   page: PageId;
   line: string;
   sub: string;
-  inst: { id: string; name: string; scale: string; sound: string; oct: number };
+  inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string };
   songs: { name: string; meta: string; stars: number; locked: boolean }[];
   songSel: number;
   level: 'easy' | 'normal' | 'hard';
@@ -76,7 +78,7 @@ export function buildPage(m: MenuInput): Page {
     case 'main': {
       const c = row(2, 24, W - 24, 24);
       const items: Item[] = [
-        { id: 'nav:instruments', label: 'FREE PLAY', sub: `${m.inst.name} on the desk`, icon: m.inst.id, kind: 'big', x: c[0].x, y: 150, w: c[0].w, h: 290 },
+        { id: 'nav:instruments', label: 'INSTRUMENTS', sub: `Swap the ${m.inst.name.toLowerCase()} for another`, icon: m.inst.id, kind: 'big', x: c[0].x, y: 150, w: c[0].w, h: 290 },
         { id: 'nav:songs', label: 'SONGS', sub: 'Play along with the band', kind: 'big', x: c[1].x, y: 150, w: c[1].w, h: 290 },
         { id: 'nav:build', label: 'MAKE A TRACK', sub: 'Your own, part by part', kind: 'big', x: c[0].x, y: 464, w: c[0].w, h: 290 },
         { id: 'nav:band', label: 'PLAY TOGETHER', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four headsets', kind: 'big', x: c[1].x, y: 464, w: c[1].w, h: 290 },
@@ -159,14 +161,15 @@ export function buildPage(m: MenuInput): Page {
       return { id: 'tune', title: m.line, line: m.sub, items: labels.map((l, i) => ({ id: `key:${['prev', 'play', 'next', 'jam', 'loop'][i]}`, label: l, kind: 'button' as const, off: !l, x: c[i].x, y: 590, w: c[i].w, h: 180 })) };
     }
     case 'free': {
-      const c = row(4, 24, W - 24, 18);
-      const items: Item[] = [
-        { id: 'nav:instruments', label: 'INSTRUMENTS', icon: m.inst.id, kind: 'button', x: c[0].x, y: 560, w: c[0].w, h: 210 },
-        { id: 'nav:inst', label: m.inst.scale || m.inst.id === 'drums' ? 'NOTES &\nSOUND' : 'SOUND', sub: m.inst.id === 'drums' ? '' : m.inst.scale ? `${m.inst.scale}, ${m.inst.sound}` : m.inst.sound, off: m.inst.id === 'drums', kind: 'button', x: c[1].x, y: 560, w: c[1].w, h: 210 },
-        { id: 'nav:songs', label: 'SONGS', kind: 'play', x: c[2].x, y: 560, w: c[2].w, h: 210 },
-        { id: 'nav:main', label: 'MENU', kind: 'button', x: c[3].x, y: 560, w: c[3].w, h: 210 },
-      ];
-      return { id: 'free', title: m.inst.name, line: m.line || 'Play anything. Every note fits.', items };
+      // (the drums have no notes or sounds to pick: no button for it)
+      const drums = m.inst.id === 'drums';
+      const c = row(drums ? 3 : 4, 24, W - 24, 18);
+      const items: Item[] = [{ id: 'nav:instruments', label: 'INSTRUMENTS', kind: 'button', x: c[0].x, y: 520, w: c[0].w, h: 250 }];
+      if (!drums) items.push({ id: 'nav:inst', label: m.inst.scale ? 'NOTES &\nSOUND' : 'SOUND', sub: m.inst.scale ? `${m.inst.scale}, ${m.inst.sound}` : m.inst.sound, kind: 'button', x: c[1].x, y: 520, w: c[1].w, h: 250 });
+      items.push({ id: 'nav:songs', label: 'SONGS', kind: 'play', x: c[drums ? 1 : 2].x, y: 520, w: c[drums ? 1 : 2].w, h: 250 });
+      items.push({ id: 'nav:main', label: 'MENU', kind: 'button', x: c[drums ? 2 : 3].x, y: 520, w: c[drums ? 2 : 3].w, h: 250 });
+      // how to play it, large, in the body (or what the game has to say)
+      return { id: 'free', title: m.inst.name, line: m.line || 'Play anything. Every note fits.', items, body: 'how', how: m.inst.how ?? '' };
     }
     case 'build': {
       const items: Item[] = m.perform

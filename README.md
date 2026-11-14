@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/OR-6/thump/actions/workflows/ci.yml/badge.svg)](https://github.com/OR-6/thump/actions/workflows/ci.yml)
 
-A music game for Meta Quest 3, played sitting down. Tap your desk (or an airplane tray) and a drum kit comes up under your hands. A screen floating over the back of the desk lets you swap it for a piano, a marimba, a guitar, congas or a handpan, pick a song and play your part while a band plays the rest, or make your own track a part at a time. Every note is in the scale, so there's no wrong one. Alone or with up to three friends in their own headsets. Hands only, in passthrough. Design notes: [docs/GAME-V3.md](docs/GAME-V3.md).
+A music game for Meta Quest 3, played sitting down. Tap your desk (or an airplane tray) and a drum kit comes up under your hands. A display standing at the back of the desk lets you swap it for a piano, a marimba, a guitar, congas or a handpan, pick a song and play your part while a band plays the rest, or make your own track a part at a time. Every note is in the scale, so there's no wrong one. Alone or with up to three friends in their own headsets. Hands only, in passthrough. Design notes: [docs/GAME-V3.md](docs/GAME-V3.md).
 
 **Play:** open **https://or-6.github.io/thump/** in the Quest browser, put the controllers down and press *Enter mixed reality*.
 
@@ -12,13 +12,13 @@ Sit at a desk or a tray table. If nothing shows up, rest a palm flat on it. A pa
 
 To press something on the panel, poke it with a fingertip or pinch it. An item lights up as your finger gets close, and it presses when your fingertip goes through the face. It clicks.
 
-Tap the desk and the drums come out, your band's name in marker on the kick (picked from where you sat: a tray band or a desk band): a kick and a snare under your hands, a hi-hat to the right, a row of light bars behind. A tom joins after your first song. Then your first few notes on anything bring in a soft backing band at your tempo (three steady notes set it; otherwise 90 bpm), and the panel says how fast. Stop for two bars and it drops out.
+Tap the desk and the drums come out: a snare and a hi-hat on their stands and a kick on its side, as a right-handed drummer has them (the hi-hat left of the snare). A tom joins after your first song. Then your first few notes on anything bring in a soft backing band at your tempo (three steady notes set it; otherwise 90 bpm), and the panel says how fast. Stop for two bars and it drops out.
 
 ## The panel
 
 The main menu has four tiles and a button: FREE PLAY, SONGS, MAKE A TRACK, PLAY TOGETHER, and SETTINGS in the corner.
 
-FREE PLAY opens the instruments, a card each: DRUMS, PIANO, MARIMBA, GUITAR, CONGAS, HANDPAN. Tap one and it unfolds onto the desk. Every instrument except the drums has a settings page:
+FREE PLAY opens the instruments, a card each: DRUMS, PIANO, MARIMBA, GUITAR, CONGAS, HANDPAN. Tap one and it unfolds onto the desk. Every instrument but the drums has a settings page:
 
 - Its notes: HAPPY, SAD, BLUESY, DREAMY (not on the congas: a drum has no notes to pick).
 - Its sounds. Piano: Grand, Bowl, Marimba, Glock. Marimba: Marimba, Xylo, Glock. Guitar: Nylon, Steel, Harp. Congas: Congas, Cajon, Frame drum. Handpan: Steel, Glass, Bells.
@@ -31,12 +31,12 @@ Whatever you leave out is there next time.
 
 They're models of the real things and they move when you play them. All of it is sized for a tray.
 
-- Drums: a kick (15 cm, a dark head with a port and your band's name), a snare (13 cm, coated head worn grey where sticks land, a throw-off) and a hi-hat (two 12 cm turned brass cymbals on a small tripod that swing when hit), with clear-coated wood shells, chrome hoops, lugs and tension rods. The heads sit just above the desk, so the hit is the real desk.
-- Piano: two octaves at real key size (white keys 23.5 mm apart and 150 mm long, black keys 11 by 95 mm, grouped two and three as on any keyboard) in a lacquered case with a felt rail, 41 cm across. Every white key is a note of the scale, and the tune sits in the middle. The red button on the left plays a chord. Outside a song, a black key plays the two white keys either side of it together.
-- Marimba: eight rosewood bars that bounce when hit. Pinch and a mallet appears in that hand; its head is what strikes. Your bare hand works too.
-- Guitar: lying flat on the desk. Three chord positions on the neck for the left hand; strum over the soundhole with the right, a hit or a brush down. The strings are synthesised in the browser.
-- Congas: two hand drums, a low one on the left and a high one on the right, wood staves and rawhide heads. The middle of a head is an open tone, the edge a slap.
-- Handpan: a low note in the middle, eight around it. Alternate hands round the rim and you walk up the scale.
+- Drums: a snare on its stand (13 cm, a chrome shell, its coated head 13 cm up and worn grey where sticks land, a throw-off), a hi-hat on its rod (two 12 cm turned brass cymbals that swing when hit) and an 18 cm kick on its side with its front head facing you, all with chrome hoops, lugs and tension rods. Slap a head (or push into the kick's front, or slap its top), or make fists: a stick appears in each, and its tip plays.
+- Piano: two octaves at real key size (white keys 23.5 mm apart and 150 mm long, black keys 11 by 95 mm, grouped two and three as on any keyboard) in a lacquered case with a felt rail, 41 cm across. Every white key is a note of the scale, and the tune sits in the middle. Your fingertips press the keys, one note per finger (a hand resting on them plays nothing). The red button on the left plays a chord. Outside a song, a black key plays the two white keys either side of it together.
+- Marimba: eight rosewood bars that bounce when hit, on a frame with resonators. Make a fist and a mallet appears in that hand; its head is what strikes. Your bare hand works too.
+- Guitar: lying on its back on the desk, spruce top, rosette, frets and six strings. Pinch (or press) one of the three chord positions on the neck with one hand; strum the strings with the fingertips of the other. The strings are synthesised in the browser.
+- Congas: two staved barrels 15 cm tall, the low one on the left. Slap the middle of a head for an open tone, its edge for a slap.
+- Handpan: a hammered bronze lens with a low note in the middle and eight round it. Tap them with your fingers; alternate hands round the rim and you walk up the scale.
 
 ## Songs
 

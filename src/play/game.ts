@@ -39,6 +39,8 @@ export interface GameStage {
   light(key: string, k: number): void;
   /** A celebration: a light sweep across every instrument, a note per star. */
   celebrate(stars: number): void;
+  /** Star `i` (0-based) of `of` just landed on the results. */
+  starLanded?(i: number, of: number): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
   retune(keyPc: number, minor?: boolean): void;
   save(p: Progress): void;
@@ -1870,7 +1872,10 @@ export class Game {
         this.resultsStage = stage;
         this.refreshDisplay();
       }
-      this.display.stars = this.replaying ? -1 : Math.min(this.last?.stars ?? 0, Math.floor(el / 0.45));
+      // the stars land one by one, 200 ms apart, each with its note (after your replay)
+      const lit = this.replaying ? -1 : Math.min(this.last?.stars ?? 0, Math.floor(el / 0.2));
+      if (lit > this.display.stars && lit > 0) this.stage.starLanded?.(lit - 1, this.last?.stars ?? 0);
+      this.display.stars = lit;
       if (stage === 0 && this.last && !this.fromPerform) {
         const k = Math.min(1, el / 1.1);
         this.display.line = `${Math.round((this.last.perfect + this.last.good) * (1 - Math.pow(1 - k, 3)))} of ${this.last.total} notes`;
@@ -2232,10 +2237,10 @@ export class Game {
     const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
       page: pageId,
-      line: pageId === 'free' ? (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try SONGS' : '') : pageId === 'main' ? (this.found.includes('kit') ? '' : 'Tap the desk to start') : d.line,
+      line: pageId === 'free' ? (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try SONGS' : '') : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Tap the desk to start') : d.line,
       // (the songs page's line: your turn after a listen, or the band being asked)
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
-      inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0 },
+      inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how },
       songs: this.tracks.map((t) => ({ name: t.name, meta: `${t.id.startsWith('daily-') ? 'Today: ' : ''}${t.bpm < 85 ? 'slow' : t.bpm < 100 ? 'steady' : 'quick'}, ${t.minor ? 'moody' : 'bright'}`.replace(/^[a-z]/, (c) => c.toUpperCase()), stars: this.progress.stars[t.id] ?? 0, locked: false })),
       songSel: this.songSel,
       level: this.level,
@@ -2327,7 +2332,7 @@ export class Game {
           // first the desk; once the drums are out, what's on the desk and how to get more
           const out = this.found.includes('kit') && this.stage.shelf ? this.stage.shelf(0) : null;
           d.line = out ? out.name : this.found.includes('kit') ? 'Hit something' : this.stage.shelf ? 'Pick one' : 'Tap the desk';
-          d.sub = out ? 'Pinch another on the stand' : this.stage.shelf ? 'Pinch it, or tap the desk' : 'Anywhere, with your hand';
+          d.sub = out ? 'INSTRUMENTS swaps it for another' : 'Tap the desk with your hand';
         } else {
           d.line = sel.name;
           const need = wants(sel.parts);
@@ -2335,13 +2340,11 @@ export class Game {
           const jamNew = un.includes('jam') && !this.jammed;
           d.sub = this.lastFound && this.found.length < 2
             ? found(this.lastFound)
-            : jamNew
-              ? 'Tap JAM'
-              : this.weakRuns >= 2 && this.opts.tempo > 0.95
-                ? 'Slower? Tap ◀ twice'
-                : have < need
-                  ? 'Tap ▶ to play'
-                  : 'Tap ▶ to play';
+            : this.weakRuns >= 2 && this.opts.tempo > 0.95
+              ? 'Slower? SETTINGS, SLOWER SONGS'
+              : have < need
+                ? 'SONGS, then PLAY'
+                : 'SONGS, then PLAY';
           d.pulse = jamNew ? 'jam' : 'play';
           d.stars = this.progress.stars[sel.id] ?? 0;
         }

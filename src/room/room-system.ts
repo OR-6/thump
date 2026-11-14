@@ -58,7 +58,7 @@ import { ACTIVE_M, AUTOPLAY, DEBUG, FIXED_DESK, params, NEAR_MAX, NEAR_MIN, SEAT
 import { SwapGesture } from './swaps.js';
 import { TouchFinder, becomesKeys, clapIn, grow, isClap, touchVoice, type Touch } from './touch.js';
 import { soundById, stepSound } from '../audio/bank.js';
-import { CONGA, GUITAR, KEYBOARD, NECK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
+import { CONGA, GUITAR, HANDPAN, KEYBOARD, NECK, PIANO_CHORD, PIANO_LOW, SCALES, handpanShape, handpanY, SHELF, STRUM, instDef, instZones, percVoice, pianoBlacks, scaleById, scaleMidi, stepShelf, strumNotes, type InstId } from '../kit/shelf.js';
 import type { ShelfView } from '../play/game.js';
 import { Mallets } from './mallets.js';
 import { HitLog, TUNE_ITEMS, current, fmt, stepValue, type StrikeTune } from './tuning.js';
@@ -77,6 +77,7 @@ import { KICK_DEPTH } from '../kit/pad-view.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { Dimmer } from './dimmer.js';
 import { FriendSeat } from './friend-seat.js';
+import { HitWords } from './hit-words.js';
 import { setupLighting } from '../art/lighting.js';
 import { makeThumbs } from '../art/thumbs.js';
 
@@ -238,6 +239,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.worldRoot.name = 'RoomOverlays';
     this.world.createTransformEntity(this.worldRoot);
     this.worldRoot.add(this.motes.mesh, this.tag.mesh, this.comboTag.mesh);
+    this.hitWords = new HitWords(this.worldRoot);
     this.hint = new Tag(0.36, 0.05);
     this.worldRoot.add(this.hint.mesh);
     const dot = new SphereGeometry(0.0035, 8, 6);
@@ -389,6 +391,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     useInstrument: (id) => this.useInstrument(id as InstId | null),
     shelfSet: (which) => this.shelfChange(which),
+    starLanded: (i, of) => {
+      // each star lands as a note of the song's own chord on its melody instrument (tonic, third, fifth; the ninth
+      // after a third)
+      const notes = this.starMinor ? [0, 3, 7, 14] : [0, 4, 7, 14];
+      const fam = this.melodyFamily();
+      const root = 72 + this.game.keyPc;
+      audio.modal(fam, root + notes[i], 0.75, (i - 1) * 0.3, 0, 0.4, 'stars');
+      if (i === 2 && of === 3) this.later(this.clock.t + 0.35, () => audio.modal(fam, root + notes[3], 0.6, 0, 0, 0.4, 'stars'));
+    },
     celebrate: (stars) => {
       // the last chord: every instrument flashes white and a ring of light runs out across the room from the kit;
       // then a light sweep across every instrument, the kit's LEDs in order, and a note for each star as it fills
@@ -405,9 +416,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const fam = this.melodyFamily();
       const root = 72 + this.game.keyPc;
       // (a minor song's chord is minor)
-      const notes = this.game.harmony()?.minor ? [0, 3, 7, 14] : [0, 4, 7, 14];
-      for (let i = 0; i < stars; i++) this.later(this.clock.t + 0.45 * (i + 1), () => audio.modal(fam, root + notes[i], 0.75, (i - 1) * 0.3, 0, 0.4, 'stars'));
-      if (stars === 3) this.later(this.clock.t + 1.8, () => audio.modal(fam, root + notes[3], 0.6, 0, 0, 0.4, 'stars'));
+      // (each star's note sounds as it lands on the results: starLanded)
+      this.starMinor = !!this.game.harmony()?.minor;
+      void fam;
+      void root;
+      void stars;
     },
     casting: (c) => {
       // the table marimba glows brighter when a song uses it
@@ -1275,6 +1288,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.watchCovers(dt);
     this.showFriends();
     this.showCombo();
+    this.hitWords?.update(dt);
     this.comboTag.update(dt);
     if (this.seats.size) {
       // the band's players leave when the song's over
@@ -1347,7 +1361,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (r.kind === 'pad') {
       const p = this.kit.pad(r.lane);
       if (!p || !p.visible || this.kit.inst !== 'drums') return false;
-      out.set(p.x, 0.02, p.z);
+      // (on the head, where it's struck; the kick's on its top)
+      out.set(p.x, r.lane === 'kick' ? 2 * p.radius + 0.006 : p.headY + 0.002, p.z);
       root.localToWorld(out);
       col.setHex(LED[r.lane]);
       t.w = p.radius * 2;
@@ -2326,6 +2341,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (g === 'perfect' && lane !== 'rim') {
       this.kit.pad(lane)?.perfect();
     }
+    const pad = lane !== 'rim' ? this.kit.pad(lane) : undefined;
+    if (pad && (g === 'perfect' || g === 'good')) {
+      this.wordAt.set(pad.x, lane === 'kick' ? 2 * pad.radius : pad.headY, pad.z);
+      this.hitWords?.show(g, this.kit.root.localToWorld(this.wordAt), this.head, LED[lane as Lane]);
+    }
     this.record(this.kitSurface, 0, gain, st, g, lane);
   }
 
@@ -2471,6 +2491,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           s.y = r + 0.004;
           s.z = p.z + KICK_DEPTH / 2;
           s.r = r;
+          // (and its top: a beginner slaps down on the big drum)
+          const t = this.airSurf[n++];
+          t.id = 4;
+          t.face = 'up';
+          t.x = p.x;
+          t.y = 2 * r + 0.004;
+          t.z = p.z;
+          t.r = undefined;
+          t.w = r * 1.6;
+          t.d = KICK_DEPTH;
         } else {
           s.face = 'up';
           s.x = p.x;
@@ -2494,7 +2524,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (let i = 0; i < 2; i++) {
       const h = i === 0 ? hands.left : hands.right;
       const side: Side = i === 0 ? 'left' : 'right';
-      if (!h.tracked || h.controller) {
+      if (!h.tracked) {
         // a frame or two of lost tracking mid-stroke is not a new start: forget only after a tenth of a second
         this.airGap[i] += dt;
         if (this.airGap[i] > 0.1) {
@@ -2506,7 +2536,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const step = dt + (this.airGap[i] <= 0.1 ? this.airGap[i] : 0);
       this.airGap[i] = 0;
       // a fist (not a pinch: that's for the panel) holds a stick; it has to stay a fist (or open) for 80 ms to change
-      const c = this.curl(h);
+      const c = h.controller ? 1 : this.curl(h);
       const want = this.fist[i] ? c < 0.085 : c < 0.065;
       if (want !== this.fist[i]) {
         this.fistHold[i] += dt;
@@ -2541,7 +2571,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const pinching = h.pinch.pinching;
       const locked = !piano && this.clock.t - this.airLock[i] < 0.05;
       for (let k = 0; k < AIR_PTS; k++) {
-        const use = piano ? k < 3 || k >= 5 : congas || guitar ? k < 4 && !pinching : this.fist[i] ? k === 4 : k < 4 && !pinching;
+        // (a controller: its tip is the one point)
+        const use = h.controller ? k === 0 : piano ? k < 3 || k >= 5 : congas || guitar ? k < 4 && !pinching : this.fist[i] ? k === 4 : k < 4 && !pinching;
         const p = i * AIR_PTS + k;
         if (!use) {
           this.air.forget(p);
@@ -2582,7 +2613,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
             this.debug.hits++;
             continue;
           }
-          const lane = AIR_LANES[hit.surface];
+          const lane = hit.surface === 4 ? 'kick' : AIR_LANES[hit.surface];
           if (!lane || this.flam('air', hit.surface, side, this.clock.t)) continue;
           this.playLane(lane, hit.gain, this.airP.x, this.clock.t, this.airStrike);
           this.debug.hits++;
@@ -2700,6 +2731,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
       }
     }
+    // a quiet tick as the finger comes over a new control
+    if (best !== this.lastHoverItem) {
+      if (best >= 0) audio.tick(0.12);
+      this.lastHoverItem = best;
+    }
     this.kit.module.hover(best, bk, this.hoverX, this.hoverZ);
   }
 
@@ -2744,6 +2780,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (k >= 0) this.pressPanel(k);
   }
 
+  private starMinor = false;
+  /** The word for a hit in a song, next to what was hit. */
+  private hitWords: HitWords | null = null;
+  private wordAt = new Vector3();
+  private lastHoverItem = -1;
   private tipOff = [1, 1];
   private tipArmed = [false, false];
   private tipX = [0, 0];
@@ -2978,7 +3019,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.instStruck(best, gain);
     const g = this.game.hit(`${id}:${best}`, t, gain);
     if (g === 'perfect') o?.perfect(best);
+    this.wordFor(g, best, id);
     this.record(this.kitSurface, best, gain, st, g, id);
+  }
+  /** The hit word over zone `best` of the instrument out (at its playing height). */
+  private wordFor(g: string | null, best: number, id: InstId): void {
+    if (g !== 'perfect' && g !== 'good') return;
+    const q = this.kit.instZones[best % PIANO_LOW];
+    if (!q) return;
+    const y = id === 'piano' ? KEYBOARD.top : id === 'congas' ? CONGA.top : id === 'guitar' ? GUITAR.board : id === 'handpan' ? HANDPAN.rim + HANDPAN.dome : 0.03;
+    this.wordAt.set(q.x, y, -q.z);
+    this.hitWords?.show(g, this.kit.root.localToWorld(this.wordAt), this.head, instDef(id).color);
   }
 
   /** A pinch near the guitar's neck: the chord position it's on. */
@@ -3003,7 +3054,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.strum(best, gain * 0.45, pan, 0);
     o?.hit(best, gain);
     this.kit.instStruck(best, gain);
-    this.record(this.kitSurface, best, gain, st, this.game.hit(`guitar:${best}`, t, gain), 'chord');
+    const gc = this.game.hit(`guitar:${best}`, t, gain);
+    this.wordFor(gc, best, 'guitar');
+    this.record(this.kitSurface, best, gain, st, gc, 'chord');
   }
   /** A strum through the strings: the chord picked (or the song's). */
   private playStrum(side: Side, gain: number, pan: number, t: number, st: Strike): void {
@@ -3014,7 +3067,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (let s = 3; s < 9; s++) o?.hit(s, gain * (1 - (s - 3) * 0.08));
     this.kit.instStruck(3, gain);
     // (in a track a strum is just a strum: it plays the chord under the bar)
-    this.record(this.kitSurface, 9, gain, st, this.game.hit(this.game.harmony() ? 'guitar:9' : `guitar:${this.guitarChord}`, t, gain), 'strum');
+    const gs = this.game.hit(this.game.harmony() ? 'guitar:9' : `guitar:${this.guitarChord}`, t, gain);
+    if (gs === 'perfect' || gs === 'good') {
+      this.wordAt.set((STRUM.x0 + STRUM.x1) / 2, GUITAR.strings, -(STRUM.z0 + STRUM.z1) / 2);
+      this.hitWords?.show(gs, this.kit.root.localToWorld(this.wordAt), this.head, instDef('guitar').color);
+    }
+    this.record(this.kitSurface, 9, gain, st, gs, 'strum');
   }
 
   /** A black key: the white keys either side of it together (outside a song). */

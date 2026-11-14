@@ -32,11 +32,11 @@ export interface InstDef {
 }
 
 export const SHELF: readonly InstDef[] = [
-  { id: 'drums', name: 'Drums', how: 'Hit the pads', sounds: [{ id: 'kit', name: 'Kit' }], scales: false, color: 0xff5a3c },
+  { id: 'drums', name: 'Drums', how: 'Slap the drum tops, or make fists for sticks', sounds: [{ id: 'kit', name: 'Kit' }], scales: false, color: 0xff5a3c },
   {
     id: 'piano',
     name: 'Piano',
-    how: 'Every key fits',
+    how: 'Press keys with your fingertips. Red button: a chord',
     sounds: [
       { id: 'piano', name: 'Grand', family: 'keys' },
       { id: 'bowl', name: 'Bowl', family: 'bowl' },
@@ -49,7 +49,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'marimba',
     name: 'Marimba',
-    how: 'Pinch for mallets, hit the bars',
+    how: 'Make fists for mallets, then hit the bars',
     sounds: [
       { id: 'marimba', name: 'Marimba', family: 'marimba' },
       { id: 'xylo', name: 'Xylo', family: 'xylophone', oct: 1 },
@@ -61,7 +61,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'guitar',
     name: 'Guitar',
-    how: 'Tap a square, then strings',
+    how: 'Pinch the neck for a chord, strum the strings',
     sounds: [
       { id: 'nylon', name: 'Nylon', string: 'nylon' },
       { id: 'steel', name: 'Steel', string: 'steel' },
@@ -73,7 +73,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'congas',
     name: 'Congas',
-    how: 'Middle for open, edge for slap',
+    how: 'The middle booms, the edge cracks',
     sounds: [
       { id: 'congas', name: 'Congas', family: 'congas' },
       { id: 'cajon', name: 'Cajon', family: 'cajon' },
@@ -85,7 +85,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'handpan',
     name: 'Handpan',
-    how: 'Tap anywhere on it',
+    how: 'Tap the round notes. The middle one is low',
     sounds: [
       { id: 'steel', name: 'Steel', family: 'tongue' },
       { id: 'glass', name: 'Glass', family: 'bowl' },
@@ -165,7 +165,7 @@ export function pianoZones(root: number, scale: Scale): Zone[] {
     const d = i - TUNE_AT;
     out.push({ i, shape: 'rect', x: KEYS_X0 + (i + 0.5) * K.pitch, z: K.front + K.len / 2, w: K.pitch - K.gap, h: K.len, degree: d, midi: scaleMidi(root, scale, d) });
   }
-  out.push({ i: PIANO_CHORD, shape: 'disc', x: KEYS_X0 - 0.045, z: 0.03, w: 0.022, h: 0, degree: -1, midi: root - 12 });
+  out.push({ i: PIANO_CHORD, shape: 'disc', x: KEYS_X0 - 0.066, z: 0.03, w: 0.022, h: 0, degree: -1, midi: root - 12 });
   return out;
 }
 

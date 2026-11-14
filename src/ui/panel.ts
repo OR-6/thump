@@ -19,7 +19,7 @@ import { ICON } from '../stand/stand.js';
  * The display: standing on the desk behind the instruments on two thin uprights, its bottom edge clear of the
  * keyboard's case (9 cm), tilted back 25°.
  */
-export const PANEL = { y: 0.182, z: -0.25, w: 0.34, h: 0.2, lean: 0.44 } as const;
+export const PANEL = { y: 0.28, z: -0.25, w: 0.34, h: 0.2, lean: 0.44 } as const;
 /** Canvas pixels (4 per millimetre). */
 const CW = 1360;
 const CH = 800;
@@ -302,7 +302,7 @@ export class Panel {
       this.cursor.scale.setScalar(r);
       const mm = this.cursor.material as MeshBasicMaterial;
       mm.opacity = 0.3 + 0.6 * this.hoverK;
-      mm.color.setHex(this.hoverK > 0.9 ? 0xffa630 : 0xfff2dc);
+      mm.color.setHex(this.hoverK > 0.9 ? 0xffffff : 0xfff2dc);
     }
     // the panel grows in when it first shows; a new page slides up into place and fades in
     if (this.root.visible && this.grow < 1) this.grow = Math.min(1, this.grow + dt / 0.35);
@@ -349,7 +349,7 @@ export class Panel {
     g.fillText(p.title, tx, 84);
     if (p.line) {
       g.fillStyle = SOFT;
-      fit(g, p.line, '500', 34, 22, right - tx);
+      fit(g, p.line, '500', 44, 32, right - tx);
       g.fillText(p.line, tx, 128);
     }
     if (d.code && p.id !== 'band') {
@@ -360,6 +360,20 @@ export class Panel {
     }
     if (p.body === 'song') this.drawSong(g, d);
     if (p.body === 'results') this.drawResults(g, d);
+    if (p.body === 'how' && p.how) {
+      // how to play what's on the desk, large, in the middle (two lines if it needs them)
+      g.fillStyle = INK;
+      const words = p.how.split(' ');
+      fit(g, p.how, '600', 64, 40, CW - 80);
+      if (g.measureText(p.how).width > CW - 80) {
+        const half = Math.ceil(words.length / 2);
+        const a = words.slice(0, half).join(' ');
+        const b = words.slice(half).join(' ');
+        fit(g, a.length > b.length ? a : b, '600', 64, 40, CW - 80);
+        g.fillText(a, 40, 300);
+        g.fillText(b, 40, 380);
+      } else g.fillText(p.how, 40, 340);
+    }
     p.items.forEach((it) => this.drawItem(g, it));
     this.tex.needsUpdate = true;
   }
@@ -380,11 +394,11 @@ export class Panel {
       const at = (b: number) => X + ((R - X) * b) / m.beats;
       g.fillStyle = '#34322e';
       g.fillRect(at(m.second[0]), 474, at(m.second[1]) - at(m.second[0]), 14);
-      g.font = `600 24px ${FONT}`;
+      g.font = `600 32px ${FONT}`;
       for (const [a, z] of m.wild) {
         g.fillStyle = '#7a2a1e';
         g.fillRect(at(a), 474, at(z) - at(a), 14);
-        g.fillStyle = '#ff7a5c';
+        g.fillStyle = INK;
         const t = 'SOLO';
         g.fillText(t, (at(a) + at(z) - g.measureText(t).width) / 2, 458);
       }
@@ -464,7 +478,7 @@ export class Panel {
     g.fillText(it.label, it.x + 30, it.y + it.h / 2 + 1);
     if (it.sub) {
       g.fillStyle = it.off ? DIMI : SOFT;
-      fit(g, it.sub, '400', 28, 18, it.w - 420 - 190);
+      fit(g, it.sub, '400', 34, 26, it.w - 420 - 190);
       g.fillText(it.sub, it.x + 420, it.y + it.h / 2 + 1);
     }
     g.textBaseline = 'alphabetic';
@@ -500,7 +514,7 @@ export class Panel {
       g.restore();
       g.fillStyle = ink;
       if (it.kind === 'card') {
-        fit(g, it.label, '700', Math.min(48, it.h * 0.2), 22, it.w - 20);
+        fit(g, it.label, '700', Math.min(48, it.h * 0.2), 30, it.w - 16);
         g.fillText(it.label, it.x + (it.w - g.measureText(it.label).width) / 2, it.y + it.h - 22);
         return;
       }
@@ -510,7 +524,7 @@ export class Panel {
       g.fillText(it.label, it.x + 34, it.y + it.h / 2 + 10);
       if (it.sub) {
         g.fillStyle = it.off ? DIMI : SOFT;
-        fit(g, it.sub, '500', 36, 22, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
+        fit(g, it.sub, '500', 40, 30, it.w - 60 - (it.icon ? it.h * 0.6 : 0));
         g.fillText(it.sub, it.x + 34, it.y + it.h / 2 + 62);
       }
       return;
@@ -523,7 +537,7 @@ export class Panel {
     lines.forEach((t, j) => g.fillText(t, cx - g.measureText(t).width / 2, top + j * px * 1.1));
     if (it.sub) {
       g.fillStyle = it.off ? DIMI : SOFT;
-      fit(g, it.sub, '500', 30, 18, it.w - 30);
+      fit(g, it.sub, '500', 34, 26, it.w - 30);
       g.fillText(it.sub, cx - g.measureText(it.sub).width / 2, top + 50);
     }
   }
