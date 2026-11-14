@@ -14,6 +14,8 @@ export interface ShelfCfg {
   oct?: number;
   key?: number;
   pieces?: 'small' | 'full';
+  /** The guitar's frets: three chord places that always fit (easy), or every fingertip stopping its string (real). */
+  frets?: 'easy' | 'real';
 }
 
 export interface Settings {
@@ -89,9 +91,9 @@ function readShelf(v: unknown): Record<string, ShelfCfg> {
   if (!v || typeof v !== 'object') return out;
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
     if (!/^[a-z]{1,12}$/.test(k) || !x || typeof x !== 'object') continue;
-    const { scale, sound, oct, key, pieces } = x as { scale?: unknown; sound?: unknown; oct?: unknown; key?: unknown; pieces?: unknown };
+    const { scale, sound, oct, key, pieces, frets } = x as { scale?: unknown; sound?: unknown; oct?: unknown; key?: unknown; pieces?: unknown; frets?: unknown };
     if (typeof scale === 'string' && typeof sound === 'string' && scale.length < 16 && sound.length < 16)
-      out[k] = { scale, sound, ...(oct === -1 || oct === 1 ? { oct } : {}), ...(typeof key === 'number' && Number.isInteger(key) && key >= 0 && key < 12 ? { key } : {}), ...(pieces === 'small' || pieces === 'full' ? { pieces } : {}) };
+      out[k] = { scale, sound, ...(oct === -1 || oct === 1 ? { oct } : {}), ...(typeof key === 'number' && Number.isInteger(key) && key >= 0 && key < 12 ? { key } : {}), ...(pieces === 'small' || pieces === 'full' ? { pieces } : {}), ...(frets === 'easy' || frets === 'real' ? { frets } : {}) };
   }
   return out;
 }

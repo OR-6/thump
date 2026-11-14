@@ -134,6 +134,7 @@ export interface ShelfView {
   /** Its key's name ('C', 'D'...; '' for the drums), and the drums' pieces. */
   key?: string;
   pieces?: 'small' | 'full';
+  frets?: 'easy' | 'real';
 }
 
 export interface MoteView {

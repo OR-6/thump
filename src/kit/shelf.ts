@@ -61,10 +61,10 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'guitar',
     name: 'Guitar',
-    how: 'Pinch the neck with one hand, sweep the strings with the other',
+    how: 'Left hand on the neck picks the chord; brush down or up across the strings',
     sounds: [
+      { id: 'steel', name: 'Acoustic', string: 'steel' },
       { id: 'nylon', name: 'Nylon', string: 'nylon' },
-      { id: 'steel', name: 'Steel', string: 'steel' },
       { id: 'harp', name: 'Harp', family: 'harp' },
     ],
     scales: true,

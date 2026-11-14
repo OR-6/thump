@@ -45,7 +45,7 @@ export interface MenuInput {
   page: PageId;
   line: string;
   sub: string;
-  inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full' };
+  inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full'; frets?: 'easy' | 'real' };
   songs: { name: string; meta: string; stars: number; locked: boolean }[];
   songSel: number;
   /** Which six songs show (more than six: a button in the corner turns the page). */
@@ -144,7 +144,11 @@ function buildPageFor(m: MenuInput): Page {
         items.push(label('Sound', y));
         across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), y);
         y += 130;
-        if (pitched) {
+        if (d.id === 'guitar') {
+          // (chords that always fit, or each fingertip stopping its own string, for people who play)
+          items.push(label('Frets', y));
+          across([{ id: 'frets:easy', label: 'Chords', on: m.inst.frets !== 'real' }, { id: 'frets:real', label: 'Real frets', on: m.inst.frets === 'real' }], y);
+        } else if (pitched) {
           items.push(label('Pitch', y));
           across([{ id: 'oct:-1', label: 'Lower', on: false, off: m.inst.oct <= -1 }, { id: 'oct:+1', label: 'Higher', on: false, off: m.inst.oct >= 1 }], y);
         }

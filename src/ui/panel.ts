@@ -284,9 +284,10 @@ export class Panel {
     this.root.rotation.order = 'YXZ';
     this.root.rotation.set(-lean, 0, 0);
     // moved by hand: where you left it, turned to face you
+    // (never down onto the instrument: its bottom edge stays over the tallest part, so nothing under it goes dead)
     if (this.userAt) {
-      this.baseY = this.userAt.y;
-      this.root.position.copy(this.userAt);
+      this.baseY = Math.max(this.userAt.y, this.clear + 0.04 + (PANEL.h / 2) * Math.cos(lean));
+      this.root.position.set(this.userAt.x, this.baseY, this.userAt.z);
       this.root.rotation.set(-lean, Math.atan2(-this.userAt.x, this.ahead - this.userAt.z), 0);
     }
     this.fitStand();

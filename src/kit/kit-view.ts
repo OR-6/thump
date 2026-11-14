@@ -3,6 +3,8 @@
  * toward the player): the drum pads, the table keys (a slim row of light bars that plays any melody
  * your room has no instrument for), the module at the back, and your hands' shadows on the table.
  */
+import { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
+import { HOLD } from './held-guitar.js';
 import { disposeMerged, mergeStatic } from '../scene-assets/lib/merge.js';
 import { BoxGeometry, DirectionalLight, MeshStandardMaterial, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture, SRGBColorSpace } from '@iwsdk/core';
 import { FONT } from '../ui/fonts.js';
@@ -165,13 +167,14 @@ export class KitView {
     this.chordTag.mesh.visible = false;
     this.padRoot.visible = drums;
     this.keys.group.visible = drums && this.keyZones.length > 0 && this.keysShown;
-    for (const [k, o] of this.shelf) o.group.visible = k === id;
+    // (the guitar you hold shows its own places on itself: no flat overlay on the desk)
+    for (const [k, o] of this.shelf) o.group.visible = k === id && id !== 'guitar';
     this.inst = id;
     this.instKey = `${id}:`;
     // (only the one that's out shows: the drums put every other model away)
     for (const [k, m] of this.models) m.root.visible = k === id;
     // the display stands just clear of it
-    this.module.standOver(id === 'drums' ? 0.26 : id === 'congas' ? CONGA.top : id === 'piano' ? 0.105 : id === 'marimba' ? MARIMBA.top : id === 'guitar' ? GUITAR.strings : HANDPAN.rim + HANDPAN.dome);
+    this.module.standOver(id === 'drums' ? 0.26 : id === 'congas' ? CONGA.top : id === 'piano' ? 0.105 : id === 'marimba' ? MARIMBA.top : id === 'guitar' ? 0.32 : HANDPAN.rim + HANDPAN.dome);
     if (drums) {
       this.instZones = [];
       this.instShadow.visible = false;
@@ -193,7 +196,7 @@ export class KitView {
       const live = new Set(model.live?.() ?? []);
       mergeStatic(model.root, (o) => live.has(o));
       // (a key moves as one: its own parts merged too; the pads each light alone)
-      for (const o of live) if (o && !(o as Mesh).isMesh && o.name !== 'Pads') mergeStatic(o);
+      for (const o of live) if (o && !(o as Mesh).isMesh && o.name.startsWith('Key')) mergeStatic(o);
     }
     // its shadow: a soft ellipse a little past its footprint
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
@@ -206,8 +209,15 @@ export class KitView {
       z1 = Math.max(z1, q.z + hd);
     }
     this.instShadow.visible = Number.isFinite(x0);
-    this.neckShadow.visible = id === 'guitar';
-    if (id === 'guitar') this.neckShadow.position.set((NECK.x[0] + NECK.x[2]) / 2 - 0.05, 0.0007, -NECK.z);
+    // (the guitar rests against the desk's edge: its shadow under the body, nothing under the neck in the air)
+    this.neckShadow.visible = false;
+    if (id === 'guitar') {
+      x0 = HOLD.x - 0.05;
+      x1 = HOLD.x + 0.4;
+      z0 = -HOLD.z - 0.12;
+      z1 = -HOLD.z + 0.08;
+      this.instShadow.visible = true;
+    }
     if (this.instShadow.visible) {
       this.instShadow.scale.set((x1 - x0) * 1.15 + 0.05, (z1 - z0) * 1.25 + 0.05, 1);
       this.instShadow.position.set((x0 + x1) / 2, 0.0006, -(z0 + z1) / 2 - 0.01);
@@ -335,7 +345,7 @@ export class KitView {
   readonly models = new Map<string, DeskModel>([
     ['piano', new PianoModel()],
     ['marimba', new MarimbaModel()],
-    ['guitar', new GuitarModel()],
+    ['guitar', new HeldGuitarModel()],
     ['handpan', new HandpanModel()],
     ['congas', new CongaModel()],
   ]);
@@ -363,7 +373,7 @@ export class KitView {
   /** The overlay of the instrument on the desk (null for the drums). */
   instOverlay(): Overlay | null {
     // (the congas lean in their stands: they light their own heads, so no flat overlay floats over them)
-    return this.inst === 'drums' || this.inst === 'congas' ? null : (this.shelf.get(this.inst) ?? null);
+    return this.inst === 'drums' || this.inst === 'congas' || this.inst === 'guitar' ? null : (this.shelf.get(this.inst) ?? null);
   }
 
   setContrast(hc: boolean): void {

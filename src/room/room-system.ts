@@ -75,6 +75,8 @@ import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R, MALLET_LEN, STICK_LEN } from './hand-mallet.js';
 import { KICK_DEPTH } from '../kit/pad-view.js';
+import { GuitarHands, HG, heldMatrix, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
+import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { formOf } from './waterfall-fx.js';
 import { Dimmer } from './dimmer.js';
@@ -350,7 +352,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (r.kind === 'inst') {
         if (!key.startsWith(this.kit.instKey)) return;
         // (the guitar's strum lights its six strings)
-        if (this.kit.inst === 'guitar' && r.zone >= 9) for (let s = 3; s < 9; s++) this.kit.instOverlay()?.light(s, k);
+        if (this.kit.inst === 'guitar' && r.zone >= 9) this.kit.instLight(9, k);
         else if (r.zone < PIANO_BLACK) this.kit.instLight(r.zone % PIANO_LOW, k);
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
@@ -1408,16 +1410,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (r.kind === 'inst') {
       if (!key.startsWith(this.kit.instKey)) return false;
-      // the guitar's strum: a bar across the strings (zone 9 is the strum, not a zone of its own)
-      if (this.kit.inst === 'guitar' && r.zone >= 9) {
-        out.set((STRUM.x0 + STRUM.x1) / 2, GUITAR.strings + 0.002, -(STRUM.z0 + STRUM.z1) / 2);
-        root.localToWorld(out);
-        col.setHex(instDef('guitar').color);
-        t.w = STRUM.x1 - STRUM.x0;
-        t.d = 0.04;
-        t.round = false;
-        return true;
-      }
+      // (the guitar you hold shows a song's chords and strums on itself)
+      if (this.kit.inst === 'guitar') return false;
       // (a song's note on a black key lands on that key)
       const bk = this.kit.inst === 'piano' && r.zone >= PIANO_BLACK ? this.blacksNow[r.zone - PIANO_BLACK] : null;
       if (bk) {
@@ -1432,7 +1426,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const z = this.kit.instZones[r.zone % PIANO_LOW];
       if (!z) return false;
       const hp = this.kit.inst === 'handpan' ? handpanShape(this.kit.instZones) : null;
-      out.set(z.x, this.kit.inst === 'marimba' ? MARIMBA.top + 0.002 : hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) + 0.003 : this.kit.inst === 'guitar' ? GUITAR.board + 0.002 : this.kit.inst === 'congas' ? CONGA.top + 0.002 : this.kit.inst === 'piano' ? KEYBOARD.top + 0.001 : 0.013, -z.z);
+      out.set(z.x, this.kit.inst === 'marimba' ? MARIMBA.top + 0.002 : hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) + 0.003 : this.kit.inst === 'congas' ? CONGA.top + 0.002 : this.kit.inst === 'piano' ? KEYBOARD.top + 0.001 : 0.013, -z.z);
       root.localToWorld(out);
       col.setHex(instDef(this.kit.inst).color);
       t.round = z.shape === 'disc';
@@ -1526,7 +1520,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (pinched && !this.pinchWas[i]) {
         this.pinchStand(h.pinchPoint);
         // with the guitar out, a pinch on the neck holds that chord (the left hand's grip)
-        if (this.kit.inst === 'guitar') this.pinchChord(h.pinchPoint, i === 0 ? 'left' : 'right');
       }
       this.pinchWas[i] = pinched;
       this.sample.pinching = this.swaps.holding(i) || (this.pinchHeld[i] > 0.15 && (this.progress.unlocks as string[]).includes('swaps'));
@@ -2522,32 +2515,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         s.w = q.w + 0.004;
         s.d = q.h;
       }
-    const guitar = out && this.kit.inst === 'guitar';
-    if (guitar) {
-      // the chord positions on the fretboard (a fingertip pressing one), then the strings over the body (a strum)
-      for (let c = 0; c < 3; c++) {
-        const s = this.airSurf[n++];
-        s.id = c;
-        s.face = 'up';
-        s.x = NECK.x[c];
-        s.y = GUITAR.board;
-        s.z = -NECK.z;
-        s.r = undefined;
-        s.w = NECK.w;
-        s.d = 0.06;
-      }
-      const s = this.airSurf[n++];
-      s.id = 9;
-      s.face = 'up';
-      s.x = (STRUM.x0 + STRUM.x1) / 2;
-      s.y = GUITAR.strings;
-      s.z = -(STRUM.z0 + STRUM.z1) / 2;
-      s.r = undefined;
-      s.w = STRUM.x1 - STRUM.x0 + 0.04;
-      s.d = STRUM.z1 - STRUM.z0 + 0.03;
-      // (a strum brushes across the strings as much as down into them)
-      s.along = 0.25;
-    }
+    // (the guitar you hold reads its own strings and neck: src/kit/held-guitar.ts)
+    const guitar = false;
+    if (out && this.kit.inst === 'guitar') this.guitarTick(dt, inv);
     if (congas)
       if (isPan) {
         // the handpan: each field a disc at its height on the dome
@@ -2757,12 +2727,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private guitarChord = 0;
   private chordPadT = -9;
   private pianoChord = 0;
-  private shelfCfg(id: InstId): { scale: string; sound: string; oct?: number } {
+  private shelfCfg(id: InstId): { scale: string; sound: string; oct?: number; frets?: 'easy' | 'real' } {
     const d = instDef(id);
     const c = this.settings.shelf[id] ?? { scale: SCALES[0].id, sound: d.sounds[0].id };
     // inside a track the instruments play its notes (its major or minor), with your sound
     const h = this.game.harmony();
-    return h?.song ? { scale: h.scale ?? (h.minor ? 'sad' : 'happy'), sound: c.sound, oct: c.oct } : c;
+    return h?.song ? { scale: h.scale ?? (h.minor ? 'sad' : 'happy'), sound: c.sound, oct: c.oct, frets: c.frets } : c;
   }
   /** Lowest notes: the piano round middle C, the handpan and guitar an octave down, all in the song's key. */
   /** The key an instrument plays in: the song's in a song, else the one you set for it. */
@@ -2781,7 +2751,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const d = instDef(id);
     const c = this.shelfCfg(id);
     const kc = this.settings.shelf[id]?.key ?? 0;
-    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name, oct: c.oct ?? 0, key: id === 'drums' ? '' : (KEY_NAMES.find((k) => k.pc === kc)?.name ?? 'C'), pieces: this.lanes().length > 3 ? 'full' : 'small' };
+    return { id, name: d.name, how: d.how, scale: d.scales ? scaleById(c.scale).name : '', sound: d.sounds.find((x) => x.id === c.sound)?.name ?? d.sounds[0].name, oct: c.oct ?? 0, key: id === 'drums' ? '' : (KEY_NAMES.find((k) => k.pc === kc)?.name ?? 'C'), pieces: this.lanes().length > 3 ? 'full' : 'small', frets: c.frets ?? 'easy' };
   }
   /** A song or a build wants this instrument out (null: the one you chose in free play). Not saved. */
   private useInstrument(id: InstId | null): void {
@@ -3077,7 +3047,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.game.refreshDisplay();
       return;
     }
-    if (kind === 'scale' || kind === 'sound' || kind === 'oct' || kind === 'key' || kind === 'pieces') {
+    if (kind === 'scale' || kind === 'sound' || kind === 'oct' || kind === 'key' || kind === 'pieces' || kind === 'frets') {
       this.setShelf(kind, arg);
       this.game.refreshDisplay();
       return;
@@ -3120,13 +3090,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   /** Change the instrument's scale, key, sound, octave or (the drums) pieces, saved, and let it be heard. */
-  private setShelf(kind: 'scale' | 'sound' | 'oct' | 'key' | 'pieces', arg: string): void {
+  private setShelf(kind: 'scale' | 'sound' | 'oct' | 'key' | 'pieces' | 'frets', arg: string): void {
     const id = this.kit.inst;
     const c = { ...(this.settings.shelf[id] ?? this.shelfCfg(id)) };
     if (kind === 'scale') c.scale = arg;
     else if (kind === 'sound') c.sound = arg;
     else if (kind === 'key') c.key = Math.max(0, Math.min(11, Number(arg) || 0));
     else if (kind === 'pieces') c.pieces = arg === 'small' ? 'small' : 'full';
+    else if (kind === 'frets') c.frets = arg === 'real' ? 'real' : 'easy';
     else c.oct = Math.max(-1, Math.min(1, (c.oct ?? 0) + (arg === '+1' ? 1 : -1)));
     this.settings = { ...this.settings, shelf: { ...this.settings.shelf, [id]: c } };
     saveSettings(this.settings);
@@ -3319,26 +3290,213 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** The hit word over zone `best` of the instrument out (at its playing height). */
   private wordFor(g: string | null, best: number, id: InstId): void {
     if (g !== 'perfect' && g !== 'good' && g !== 'early' && g !== 'late') return;
+    if (id === 'guitar') {
+      this.hitWords?.show(g, this.heldWorld(best < 3 ? zoneX(best) : HG.strikeX, HG.strings + 0.012, 0, this.wordAt), this.head, instDef('guitar').color);
+      return;
+    }
     const q = this.kit.instZones[best % PIANO_LOW];
     if (!q) return;
-    const y = id === 'piano' ? KEYBOARD.top : id === 'marimba' ? MARIMBA.top : id === 'congas' ? CONGA.top : id === 'guitar' ? GUITAR.board : id === 'handpan' ? HANDPAN.rim + HANDPAN.dome : 0.03;
+    const y = id === 'piano' ? KEYBOARD.top : id === 'marimba' ? MARIMBA.top : id === 'congas' ? CONGA.top : id === 'handpan' ? HANDPAN.rim + HANDPAN.dome : 0.03;
     this.wordAt.set(q.x, y, -q.z);
     this.hitWords?.show(g, this.kit.root.localToWorld(this.wordAt), this.head, instDef(id).color);
   }
 
-  /** A pinch near the guitar's neck: the chord position it's on. */
-  private pinchChord(at: Vector3, side: Side): void {
-    this.tmp.copy(at).applyMatrix4(this.kitSurface.inv);
-    if (Math.abs(this.tmp.y - GUITAR.board) > 0.04 || Math.abs(-this.tmp.z - NECK.z) > 0.045) return;
-    for (let c = 0; c < 3; c++)
-      if (Math.abs(this.tmp.x - NECK.x[c]) <= NECK.w / 2 + 0.006) {
-        this.airStrike.t = this.clock.t;
-        this.airStrike.speed = 0.5;
-        this.airStrike.gain = 0.6;
-        this.playChordPad(c, side, 0.6, 0, this.clock.t, this.airStrike);
-        return;
-      }
+  // ---- the guitar you hold (src/kit/held-guitar.ts) ----
+  private gh = new GuitarHands();
+  private readonly heldM = heldMatrix(new Matrix4());
+  private readonly heldInv = new Matrix4().copy(this.heldM).invert();
+  private gInv = new Matrix4();
+  /** Each hand's fingertips in the guitar's frame: index, middle, ring, thumb, little. */
+  private gTips = Array.from({ length: 10 }, () => new Vector3());
+  private gStrumRefs: (Vector3 | null)[] = [null, null, null, null];
+  private gFretRefs: (Vector3 | null)[] = new Array<Vector3 | null>(8).fill(null);
+  private plucks: Pluck[] = [];
+  /** A run of strings one hand crossed the same way: three or more close together is a strum. */
+  private gStrum = [0, 1].map(() => ({ t: -1, last: -9, n: 0, dir: 0, fired: false, vel: 0 }));
+  /** Strums you've played (the free-play arrows fade after a few). */
+  private guideStrums = 0;
+  private gNamesT = 0;
+  private gNames = ['', '', ''];
+  private gSongNames = ['', '', ''];
+
+  /** A point in the held guitar's frame, in the world. */
+  private heldWorld(x: number, y: number, z: number, out: Vector3): Vector3 {
+    return this.kit.root.localToWorld(out.set(x, y, z).applyMatrix4(this.heldM));
   }
+
+  /** Both hands on the guitar this frame: strings crossed sound, the neck picks the chord, the model shows it all. */
+  private guitarTick(dt: number, inv: Matrix4): void {
+    const model = this.kit.models.get('guitar') as HeldGuitarModel | undefined;
+    this.gInv.multiplyMatrices(this.heldInv, inv);
+    const t = this.clock.t;
+    this.plucks.length = 0;
+    for (let i = 0; i < 2; i++) {
+      const side = i as 0 | 1;
+      const h = i === 0 ? hands.left : hands.right;
+      // (a hand at the panel is pressing a button, not playing)
+      this.airP.copy(h.indexTip).applyMatrix4(this.moduleSurface.inv);
+      const atPanel = !this.kit.module.hidden && Math.abs(this.airP.y) < 0.06 && Math.abs(this.airP.x) < PANEL.w / 2 + 0.03 && Math.abs(this.airP.z) < PANEL.h / 2 + 0.03;
+      if (!h.tracked || atPanel || h.pinch.pinching) {
+        this.gh.forget(side);
+        for (let k = 0; k < 4; k++) this.gFretRefs[i * 4 + k] = null;
+        continue;
+      }
+      const base = i * 5;
+      const src = [h.indexTip, h.middleTip, h.ringTip, h.thumbTip, h.pinkyTip];
+      for (let k = 0; k < 5; k++) this.gTips[base + k].copy(src[k]).applyMatrix4(this.gInv);
+      // (a controller: its tip is the one point)
+      const one = !!h.controller;
+      for (let k = 0; k < 4; k++) this.gStrumRefs[k] = one && k > 0 ? null : this.gTips[base + k];
+      this.gh.strum(side, this.gStrumRefs, t, dt, this.plucks);
+      this.gFretRefs[i * 4] = this.gTips[base];
+      this.gFretRefs[i * 4 + 1] = one ? null : this.gTips[base + 1];
+      this.gFretRefs[i * 4 + 2] = one ? null : this.gTips[base + 2];
+      this.gFretRefs[i * 4 + 3] = one ? null : this.gTips[base + 4];
+    }
+    const z = this.gh.fret(this.gFretRefs, t);
+    if (z >= 0) this.guitarFret(z);
+    for (const p of this.plucks) this.guitarPluck(p, Math.max(0, Math.min(dt, p.t - (t - dt))));
+    if (!model) return;
+    model.zone = this.gh.zone;
+    model.onNeck = this.gh.onNeck;
+    model.setFingers(this.gh.pressed);
+    model.guideK += ((this.guideStrums >= 6 ? 0 : 1) - model.guideK) * Math.min(1, dt * 2);
+    this.guitarCues(model, dt);
+  }
+
+  /** A string sounds: the chord's note on it (or, with real frets, the note your finger stops), and it shakes. */
+  private guitarPluck(p: Pluck, offset: number): void {
+    const midi = this.guitarString(p.string);
+    (this.kit.models.get('guitar') as HeldGuitarModel | undefined)?.pluck(p.string, p.vel);
+    if (midi !== null) {
+      const snd = instDef('guitar').sounds.find((x) => x.id === this.shelfCfg('guitar').sound) ?? instDef('guitar').sounds[0];
+      const v = 0.3 + 0.62 * p.vel;
+      const when = audio.now() + offset;
+      // (the guitar is at your right: a little right in the mix, each string its own voice that a new pluck damps)
+      if (snd.string) audio.pluck(midi, v, 0.25, when, snd.string, `string${p.string}`);
+      else audio.modal(snd.family ?? 'harp', midi, v, 0.25, when, 0.5, `guitar${p.string}`, p.string);
+    }
+    // three or more strings crossed the same way within 90 ms of each other: a strum (scored, recorded)
+    const g = this.gStrum[p.side];
+    if (p.t - g.last > 0.09 || p.dir !== g.dir) {
+      g.t = p.t;
+      g.n = 0;
+      g.dir = p.dir;
+      g.fired = false;
+      g.vel = 0;
+    }
+    g.last = p.t;
+    g.n++;
+    g.vel = Math.max(g.vel, p.vel);
+    if (g.n >= 3 && !g.fired) {
+      g.fired = true;
+      this.guitarStrummed(g.vel, g.t);
+    }
+  }
+
+  /** What string i sounds now (MIDI; null: left silent). */
+  private guitarString(i: number): number | null {
+    const cfg = this.shelfCfg('guitar');
+    if (cfg.frets === 'real') return this.gh.realNotes(this.gNotes)[i];
+    const h = this.game.harmony();
+    const scale = scaleById(cfg.scale);
+    const c = Math.max(0, this.guitarChord) % scale.chords.length;
+    const v = h && this.clock.t - this.chordPickedT > 2 ? strumNotes(h.chord, h.chordMinor ? [0, 3, 7] : [0, 4, 7]) : strumNotes(this.instRoot('guitar'), scale.chords[c]);
+    const n = stringsOf(v)[i];
+    return n === null ? null : n + (h?.song ? 0 : (cfg.oct ?? 0) * 12);
+  }
+  private gNotes = [0, 0, 0, 0, 0, 0];
+
+  /** A strum: scored in a song, recorded in free play, the strum line flashes. */
+  private guitarStrummed(vel: number, t: number): void {
+    this.guideStrums++;
+    this.dimmer.hit(instDef('guitar').color, vel);
+    this.kit.instStruck(9, vel);
+    const gs = this.game.hit(this.game.harmony() ? 'guitar:9' : `guitar:${Math.max(0, this.guitarChord)}`, t, vel);
+    this.wordFor(gs, 9, 'guitar');
+    this.airStrike.t = t;
+    this.airStrike.speed = vel * 1.4;
+    this.airStrike.gain = vel;
+    this.record(this.kitSurface, 9, vel, this.airStrike, gs, 'strum');
+    this.debug.hits++;
+  }
+
+  /** The hand on the neck moved to chord place z: that chord is what the strings play now. */
+  private guitarFret(z: number): void {
+    this.guitarChord = z;
+    this.gh.zone = z;
+    if (!this.game.harmony()?.song) this.chordPickedT = this.clock.t;
+    this.kit.instStruck(z, 0.6);
+    const gc = this.game.hit(`guitar:${z}`, this.clock.t, 0.6);
+    this.wordFor(gc, z, 'guitar');
+    this.airStrike.t = this.clock.t;
+    this.airStrike.speed = 0.5;
+    this.airStrike.gain = 0.6;
+    this.record(this.kitSurface, z, 0.6, this.airStrike, gc, 'chord');
+  }
+
+  /** The autoplayer's strum: all six strings, down on the beat and up off it, a hair apart. */
+  private autoStrum(): void {
+    const b = this.game.beatNow;
+    const fr = b - Math.floor(b);
+    const dir: 1 | -1 = fr > 0.3 && fr < 0.85 ? -1 : 1;
+    for (let k = 0; k < 6; k++) this.guitarPluck({ string: dir > 0 ? k : 5 - k, vel: 0.8, dir, t: this.clock.t + k * 0.008, side: 1 }, k * 0.008);
+  }
+
+  /** The guitar's names and a song's asks: the chord coming to each place, the strums riding in. */
+  private guitarCues(model: HeldGuitarModel, dt: number): void {
+    const h = this.game.harmony();
+    const song = !!h?.song;
+    model.song = song;
+    model.zoneAhead.fill(Number.NaN);
+    model.strumAhead.fill(Number.NaN);
+    if (song) {
+      let a = 0;
+      const beatNow = this.game.beatNow;
+      for (let k = 0; k < this.game.moteCount; k++) {
+        const m = this.game.motes[k];
+        if (m.key.length !== 8 || !m.key.startsWith('guitar:')) continue;
+        const c = m.key.charCodeAt(7) - 48;
+        if (c === 9) {
+          if (a >= model.strumAhead.length || m.ahead > 3.2 || m.ahead < -0.3) continue;
+          const fr = beatNow + m.ahead - Math.floor(beatNow + m.ahead);
+          model.strumAhead[a] = m.ahead;
+          model.strumDir[a] = fr > 0.3 && fr < 0.85 ? -1 : 1;
+          model.strumHit[a] = m.grade === 'perfect' || m.grade === 'good';
+          a++;
+        } else if (c >= 0 && c < 3 && m.grade === null && m.ahead > -0.4 && !(model.zoneAhead[c] <= m.ahead)) model.zoneAhead[c] = m.ahead;
+      }
+    }
+    // (the names, four times a second: the key's three chords, or the song's chord coming to each place)
+    this.gNamesT -= dt;
+    if (this.gNamesT > 0) return;
+    this.gNamesT = 0.25;
+    const cfg = this.shelfCfg('guitar');
+    if (song) {
+      const spb = this.game.clock.spb;
+      for (let c = 0; c < 3; c++) {
+        const ah = model.zoneAhead[c];
+        if (!Number.isFinite(ah)) continue;
+        const hc = this.game.harmony(this.clock.t + Math.max(0, ah) * spb + 0.01);
+        if (hc) this.gSongNames[c] = `${NOTE_NAMES[((hc.chord % 12) + 12) % 12]}${hc.chordMinor ? 'm' : ''}`;
+      }
+      model.setNames(this.gSongNames);
+      return;
+    }
+    if (cfg.frets === 'real') {
+      this.gNames[0] = this.gNames[1] = this.gNames[2] = '';
+    } else {
+      const scale = scaleById(cfg.scale);
+      const root = this.instRoot('guitar');
+      for (let c = 0; c < 3; c++) {
+        const ch = scale.chords[c % scale.chords.length];
+        const sev = ch.length > 3 ? (ch[3] - ch[0] === 10 ? '7' : 'maj7') : '';
+        this.gNames[c] = `${NOTE_NAMES[(((root + ch[0]) % 12) + 12) % 12]}${ch[1] - ch[0] === 3 ? 'm' : ''}${sev}`;
+      }
+    }
+    model.setNames(this.gNames);
+  }
+
   /** A chord position on the guitar's neck: that chord, and a soft strum of it so the hand that picks is heard. */
   private playChordPad(best: number, side: Side, gain: number, pan: number, t: number, st: Strike): void {
     const o = this.kit.instOverlay();
@@ -4196,6 +4354,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.playBlack(r.zone - PIANO_BLACK, 'left', st.gain, 0, t, st);
         return;
       }
+      // (the guitar: a hand moves to the chord's place, or sweeps the strings, down or up as the beat falls)
+      if (id === 'guitar' && this.kit.inst === 'guitar') {
+        if (r.zone < 3) this.guitarFret(r.zone);
+        else this.autoStrum();
+        return;
+      }
       const q = this.kit.inst === id ? this.kit.instZones[r.zone % PIANO_LOW] : null;
       // (the piano's keys are pressed in the air: as a finger would)
       if (q && id === 'guitar') {
@@ -4361,7 +4525,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const top = this.kit.inst === 'piano' ? KEYBOARD.top : this.kit.inst === 'congas' ? CONGA.top : this.kit.inst === 'guitar' ? GUITAR.board : this.kit.inst === 'marimba' ? MARIMBA.top : 0;
     const hp = this.kit.inst === 'handpan' ? handpanShape(this.kit.instZones) : null;
     this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = root.localToWorld(this.tmp.set(z.x, hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) : top, -z.z)).toArray().map(r4)));
-    if (this.kit.inst === 'guitar') out.strum = root.localToWorld(this.tmp.set((STRUM.x0 + STRUM.x1) / 2, GUITAR.strings, -(STRUM.z0 + STRUM.z1) / 2)).toArray().map(r4);
+    if (this.kit.inst === 'guitar') {
+      // the held guitar: its three chord places on the fretboard, where a strum crosses the strings, which way is down
+      // across them (toward the high E), and which way its top faces
+      for (let c = 0; c < 3; c++) out[`inst${c}`] = this.heldWorld(zoneX(c), HG.board + 0.002, 0, this.tmp).toArray().map(r4);
+      out.strum = this.heldWorld(HG.strikeX, HG.strings, 0, this.tmp).toArray().map(r4);
+      out.strumDown = this.tmp.set(0, 0, 1).transformDirection(this.heldM).transformDirection(root.matrixWorld).toArray().map(r4);
+      out.guitarNormal = this.tmp.set(0, 1, 0).transformDirection(this.heldM).transformDirection(root.matrixWorld).toArray().map(r4);
+    }
     out.inst = [SHELF.findIndex((d) => d.id === this.kit.inst)];
     for (const it of this.kit.module.page?.items ?? []) {
       const z = itemZone(it);

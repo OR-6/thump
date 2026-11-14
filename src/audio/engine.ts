@@ -586,11 +586,13 @@ class Engine {
     if (b) return b;
     const sr = ctx.sampleRate;
     const f = 440 * Math.pow(2, (midi - 69) / 12);
-    // (the two-tap average delays half a sample: take it off, or the top strings ring flat)
-    const n = Math.max(2, sr / f - 0.5);
+    // (the two-tap average delays the loop by 1 − w samples: take it off, or the top strings ring flat. Steel keeps
+    // more of its highs each pass than nylon: w above a half)
+    const w = kind === 'steel' ? 0.6 : 0.5;
+    const n = Math.max(2, sr / f - (1 - w));
     const N = Math.floor(n);
     const frac = n - N;
-    const len = Math.floor(sr * (kind === 'steel' ? 2.6 : 1.9));
+    const len = Math.floor(sr * (kind === 'steel' ? 3 : 1.9));
     b = ctx.createBuffer(1, len, sr);
     const y = b.getChannelData(0);
     // the pluck: noise, softened for nylon (a fingertip), brighter for steel (a pick)
@@ -600,14 +602,22 @@ class Engine {
       lp += soft * (Math.random() * 2 - 1 - lp);
       y[i] = lp;
     }
-    // the string: each pass averages neighbours (losing highs first) and loses a little, tuned by a fractional tap
-    const loss = kind === 'steel' ? 0.9965 : 0.9935;
+    // (where it's picked, an eighth of the way from the bridge: the harmonics with a node there go quiet, as on a real
+    // string; it is what makes a pick near the soundhole sound like a guitar, not a harp)
+    const P = Math.max(1, Math.round(N * (kind === 'steel' ? 0.13 : 0.18)));
+    const e = y.slice(0, N + 1);
+    // (the comb can nearly double a peak: scaled back to the old level, so six strings at once don't clip)
+    for (let i = 0; i <= N && i < len; i++) y[i] = 0.62 * (e[i] - 0.9 * e[(i - P + N + 1) % (N + 1)]);
+    // the string: each pass averages neighbours (losing highs first) and loses a little, tuned by a fractional tap; a
+    // steel string's low E rings about five seconds, its high E about two (nylon dies sooner)
+    const t60 = kind === 'steel' ? Math.max(1.6, Math.min(6, 5.5 * Math.pow(82 / f, 0.45))) : Math.max(1, Math.min(4, 3.2 * Math.pow(82 / f, 0.5)));
+    const loss = Math.pow(0.001, 1 / (t60 * f));
     for (let i = N + 1; i < len; i++) {
       const a0 = y[i - N];
       const a1 = y[i - N - 1];
       const d = a0 + (a1 - a0) * frac;
       const d2 = i - N - 2 >= 0 ? y[i - N - 1] + (y[i - N - 2] - y[i - N - 1]) * frac : d;
-      y[i] = loss * 0.5 * (d + d2);
+      y[i] = loss * (w * d + (1 - w) * d2);
     }
     if (this.strings.size > 64) this.strings.delete(this.strings.keys().next().value as string);
     this.strings.set(id, b);
@@ -650,15 +660,25 @@ class Engine {
     // let it fade out rather than stop dead at the end of the buffer
     g.gain.setValueAtTime(level, t + dur - 0.3);
     g.gain.linearRampToValueAtTime(0.0001, t + dur);
-    const body = ctx.createBiquadFilter();
-    body.type = 'peaking';
-    body.frequency.value = kind === 'steel' ? 2400 : 180;
-    body.gain.value = kind === 'steel' ? 3 : 5;
+    // the body: a nylon guitar's warm box; a steel-string dreadnought's air (about 100 Hz) and top (about 210) that
+    // give it its boom, and the bright presence of a pick (about 3 kHz)
+    const peak = (hz: number, db: number, q: number) => {
+      const f = ctx.createBiquadFilter();
+      f.type = 'peaking';
+      f.frequency.value = hz;
+      f.gain.value = db;
+      f.Q.value = q;
+      return f;
+    };
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 70;
     // a soft pluck is darker as well as quieter
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 1500 + 7000 * v;
-    src.connect(body).connect(lp).connect(g);
+    lp.frequency.value = kind === 'steel' ? 2600 + 9000 * v : 1500 + 7000 * v;
+    if (kind === 'steel') src.connect(hp).connect(peak(100, 5, 1.8)).connect(peak(210, 3, 1.2)).connect(peak(3000, 3, 0.9)).connect(lp).connect(g);
+    else src.connect(hp).connect(peak(180, 5, 1)).connect(lp).connect(g);
     src.start(t);
     src.stop(t + dur);
     if (owner) this.claimVoice(owner, g, t, t + dur, [src], 1);

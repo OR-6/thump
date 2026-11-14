@@ -110,13 +110,37 @@ shot('shelf-marimba', look);
 await tab('guitar');
 s = state();
 check('then a guitar', s.targets.inst?.[0] === 3 && s.game.display.page?.title === 'Guitar', `${s.game.display.line} inst=${s.targets.inst}`);
-// (fingertips first onto the fretboard, 5 cm up: a chord position)
-await slapAt(s.targets.inst1.map((v, i) => v - (i === 1 ? 0.01 : 0)), [0, 1, 0], { from: 0.06, pose: { pitch: -50, yaw: 0, roll: 0 } });
+// the guitar you hold: a fingertip onto the fretboard's middle chord place, then a fingertip swept down across the
+// strings over the soundhole, then back up
+await slapAt(s.targets.inst1, s.targets.guitarNormal, { from: 0.05, pose: { pitch: -50, yaw: 0, roll: 0 } });
 s = state();
-check('a chord pad picks a chord (and strums it softly)', s.debug.lastHit?.family === 'chord' && s.debug.lastHit?.zone === 1, JSON.stringify(s.debug.lastHit));
-await slapAt(s.targets.strum.map((v, i) => v - (i === 1 ? 0.012 : 0)), [0, 1, 0], { from: 0.06, pose: { pitch: -50, yaw: 0, roll: 0 } });
+check('a fingertip on the neck picks that chord place', s.debug.lastHit?.family === 'chord' && s.debug.lastHit?.zone === 1, JSON.stringify(s.debug.lastHit));
+const sweepStrings = async (dir) => {
+  const st = state();
+  const at = st.targets.strum;
+  const d = st.targets.strumDown.map((v) => v * dir);
+  const nrm = st.targets.guitarNormal;
+  // (the index fingertip, not the wrist, is what crosses the strings: put the hand where its tip lands on the line)
+  const P = [at[0] + nrm[0] * 0.2, at[1] + nrm[1] * 0.2, at[2] + nrm[2] * 0.2];
+  const pose = { pitch: -40, yaw: 0, roll: 0 };
+  xr('set-transform', { device: HAND, position: { x: P[0], y: P[1], z: P[2] }, orientation: pose });
+  await wait(300);
+  const tip = state().right.indexTip;
+  const off = [P[0] - tip[0], P[1] - tip[1], P[2] - tip[2]];
+  const p = (k) => ({ x: at[0] + d[0] * k + off[0] - nrm[0] * 0.004, y: at[1] + d[1] * k + off[1] - nrm[1] * 0.004, z: at[2] + d[2] * k + off[2] - nrm[2] * 0.004 });
+  xr('set-transform', { device: HAND, position: p(-0.06), orientation: pose });
+  await wait(300);
+  xr('animate-to', { device: HAND, position: p(0.06), duration: 0.12 });
+  await wait(500);
+};
+const g0 = state().debug.hits;
+await sweepStrings(1);
 s = state();
-check('the strum band strums it', s.debug.lastHit?.family === 'strum', JSON.stringify(s.debug.lastHit));
+check('a fingertip swept down across the strings strums it', s.debug.lastHit?.family === 'strum' && s.debug.hits > g0, JSON.stringify(s.debug.lastHit));
+const hits1 = s.debug.hits;
+await sweepStrings(-1);
+s = state();
+check('and swept back up strums it again (an up-strum)', s.debug.lastHit?.family === 'strum' && s.debug.hits > hits1, `${hits1} → ${s.debug.hits}`);
 shot('shelf-guitar', look);
 
 await tab('handpan');
