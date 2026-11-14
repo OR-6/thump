@@ -11,7 +11,7 @@ import { loadSettings, saveSettings, type Settings } from '../persistence/settin
 import { loadProgress, saveProgress, freshProgress } from '../persistence/progress.js';
 import { coop, normaliseCode, type CoopStatus } from '../net/coop.js';
 import { asPlayer } from '../net/band.js';
-import { PADS } from '../config.js';
+import { PADS, type Lane } from '../config.js';
 import { CONGA, handpanZones, marimbaZones, percVoice, pianoBlacks, pianoZones, strumNotes, type InstId } from '../kit/shelf.js';
 import { LESSONS, TUNES } from '../songs/tunes.js';
 import { scoreOf } from '../songs/score.js';
@@ -406,6 +406,18 @@ export function mountLanding(world: World): void {
 /** Smooth scrolling, unless the reader asked for less movement. */
 const smooth = (): ScrollBehavior => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
+/** The kit's pieces, by the ids the drawing gives them. */
+const KIT = new Set<string>(['kick', 'snare', 'hat', 'tom', 'floor', 'crash', 'ride']);
+/** Each instrument's recordings (src/audio/sample-map.ts), decoded as soon as it's on show; the guitar is synthesised. */
+const BANKS: Record<InstId, readonly string[]> = {
+  drums: ['kit:kick', 'kit:snare', 'kit:hat', 'kit:tom', 'kit:crash', 'ride'],
+  piano: ['keys'],
+  marimba: ['marimba'],
+  congas: ['congas', 'kit:rim'],
+  handpan: ['tongue'],
+  guitar: [],
+};
+
 /** The drawing of the desk: pick an instrument from the band's list, tap its parts, hear the headset's sounds. */
 function mountDesk(el: HTMLElement, chose: (id: InstId) => void): void {
   const stage = el.querySelector<HTMLElement>('.stage')!;
@@ -430,7 +442,8 @@ function mountDesk(el: HTMLElement, chose: (id: InstId) => void): void {
   /** Play a part by its id. */
   const play = (id: string): void => {
     const n = Number(id.slice(1));
-    if (id === 'kick' || id === 'snare' || id === 'hat') audio.drum(id as Voice, 0.85, panOf(PADS[id].x));
+    // (every piece of the kit by its own name, before the letters below: the crash isn't a conga)
+    if (KIT.has(id)) audio.drum(id as Voice, 0.85, panOf(PADS[id as Lane].x));
     else if (id === 'chord') for (const k of [0, 7, 16]) audio.modal('keys', PAGE_ROOT.piano - 12 + k, 0.6, -0.4, 0, 0.5, 'page-chord', k);
     else if (id[0] === 'w') audio.modal('keys', pianoMidi.get(n) ?? 60, 0.8, panOf((n - 7) * 0.0235), 0, 0.5, 'page');
     else if (id[0] === 'b') for (const m of blacks.get(id) ?? []) audio.modal('keys', m, 0.7, 0, 0, 0.5, `page${m}`);
@@ -464,12 +477,39 @@ function mountDesk(el: HTMLElement, chose: (id: InstId) => void): void {
     window.setTimeout(() => span.remove(), 1000);
   };
 
+  // Audio may not start on the press itself: a phone only lets it start when the finger lifts (and Safari only inside
+  // that event), so every lift, click and key on the drawing unlocks it too, and a press made before it's running is
+  // held and played the moment it is, rather than lost.
+  const held: { id: string; at: number }[] = [];
+  let waiting = 0;
+  const flush = () => {
+    waiting = 0;
+    const now = performance.now();
+    while (held.length && now - held[0].at > 1200) held.shift();
+    if (!held.length) return;
+    if (!audio.running) {
+      waiting = requestAnimationFrame(flush);
+      return;
+    }
+    for (const h of held.splice(0)) asPlayer(() => play(h.id));
+  };
+  const unlock = () => {
+    // (Safari: play through the ringer switch, as an instrument should; it's asked for by a tap on one)
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (session && session.type !== 'playback') session.type = 'playback';
+    audio.resume();
+  };
+  for (const type of ['pointerup', 'touchend', 'click', 'keydown'] as const) stage.addEventListener(type, unlock);
+
   const hit = (p: Element, at?: { x: number; y: number }) => {
     const id = p.getAttribute('data-part') ?? '';
-    asPlayer(() => {
-      audio.resume();
-      play(id);
-    });
+    unlock();
+    if (audio.running && !held.length) asPlayer(() => play(id));
+    else {
+      held.push({ id, at: performance.now() });
+      if (held.length > 6) held.shift();
+      if (!waiting) waiting = requestAnimationFrame(flush);
+    }
     // (off, then on next frame: a second hit restarts the light)
     p.classList.remove('lit');
     requestAnimationFrame(() => p.classList.add('lit'));
@@ -479,6 +519,7 @@ function mountDesk(el: HTMLElement, chose: (id: InstId) => void): void {
 
   const show = (id: InstId, animate: boolean) => {
     inst = id;
+    void audio.sampler.warm(BANKS[id]);
     stage.querySelectorAll('svg.desk-svg').forEach((s) => s.remove());
     stage.insertAdjacentHTML('afterbegin', deskSvg(id, labelOf(id)));
     centreOnTray(stage.querySelector('svg.desk-svg')!);
@@ -495,24 +536,39 @@ function mountDesk(el: HTMLElement, chose: (id: InstId) => void): void {
     }
   };
 
-  for (const b of picks) b.addEventListener('click', () => {
-    if (b.dataset.inst !== inst) show(b.dataset.inst as InstId, true);
-  });
+  for (const b of picks) {
+    b.addEventListener('click', () => {
+      if (b.dataset.inst !== inst) show(b.dataset.inst as InstId, true);
+    });
+    // (its recordings come in as soon as you look like choosing it)
+    const warm = () => void audio.sampler.warm(BANKS[b.dataset.inst as InstId] ?? []);
+    b.addEventListener('pointerenter', warm);
+    b.addEventListener('focus', warm);
+  }
 
-  // a press plays at once; with a mouse held down, sliding over the parts plays them too (a glissando)
-  let held = false;
+  // a press plays at once; held down (a mouse button or a finger), sliding over the parts plays them too (a glissando)
+  const down = new Map<number, Element | null>();
   stage.addEventListener('pointerdown', (e) => {
     const p = (e.target as Element).closest('.part');
     if (!p) return;
-    held = e.pointerType === 'mouse';
+    down.set(e.pointerId, p);
     hit(p, e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : undefined);
   });
-  stage.addEventListener('pointerover', (e) => {
-    if (!held) return;
-    const p = (e.target as Element).closest('.part');
-    if (p && !p.contains(e.relatedTarget as Node | null)) hit(p, { x: e.clientX, y: e.clientY });
+  // (found under the pointer, not from the event's target: a finger's events all go to the part it first touched)
+  stage.addEventListener('pointermove', (e) => {
+    if (!down.has(e.pointerId)) return;
+    const p = document.elementFromPoint(e.clientX, e.clientY)?.closest('.part') ?? null;
+    if (p === down.get(e.pointerId)) return;
+    down.set(e.pointerId, p && stage.contains(p) ? p : null);
+    if (p && stage.contains(p)) hit(p, { x: e.clientX, y: e.clientY });
   });
-  window.addEventListener('pointerup', () => (held = false));
+  const up = (e: PointerEvent) => down.delete(e.pointerId);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+  // a slide that started on a part plays, rather than scrolling the page
+  stage.addEventListener('touchmove', (e) => {
+    if (down.size && e.cancelable) e.preventDefault();
+  }, { passive: false });
   stage.addEventListener('keydown', (e) => {
     const p = (e.target as Element).closest('.part');
     if (!p || (e.key !== 'Enter' && e.key !== ' ')) return;
