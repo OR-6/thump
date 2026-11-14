@@ -352,7 +352,8 @@ export class KitView {
 
   /** The overlay of the instrument on the desk (null for the drums). */
   instOverlay(): Overlay | null {
-    return this.inst === 'drums' ? null : (this.shelf.get(this.inst) ?? null);
+    // (the congas lean in their stands: they light their own heads, so no flat overlay floats over them)
+    return this.inst === 'drums' || this.inst === 'congas' ? null : (this.shelf.get(this.inst) ?? null);
   }
 
   setContrast(hc: boolean): void {

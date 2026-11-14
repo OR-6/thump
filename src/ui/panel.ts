@@ -21,11 +21,11 @@ import { motion } from './motion.js';
  * The display: standing on the desk behind the instruments on two thin uprights, its bottom edge clear of the
  * keyboard's case (9 cm), tilted back 25°.
  */
-export const PANEL = { y: 0.28, z: -0.25, w: 0.36, h: 0.24, lean: 0.44 } as const;
-/** Canvas pixels (3.78 per millimetre). */
+export const PANEL = { y: 0.28, z: -0.25, w: 0.33, h: 0.22, lean: 0.44 } as const;
+/** Canvas pixels (4.12 per millimetre). */
 const CW = 1360;
 const CH = 907;
-/** No text under this (12.7 mm on the panel: about 24 mm at 1 m from the seat). */
+/** No text under this (11.6 mm on the panel: 22 to 24 mm at 1 m from the seat, 50 to 55 cm away). */
 const MIN_PX = 48;
 const MAX_ITEMS = 16;
 

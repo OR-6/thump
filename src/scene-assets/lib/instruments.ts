@@ -434,8 +434,8 @@ export class HandpanModel implements DeskModel {
   })();
   private readonly rim = new MeshStandardMaterial({ name: 'Rim', color: 0x6b5640, roughness: 0.32, metalness: 1 });
   // (the tone fields are the shell itself, a touch smoother; a fine groove outlines each)
-  private readonly fieldMat = new MeshStandardMaterial({ name: 'Field', color: 0x6b5640, roughness: 0.35, metalness: 1 });
-  private readonly groove = new MeshStandardMaterial({ name: 'Groove', color: 0x4e3b2a, roughness: 0.6, metalness: 0.6 });
+  private readonly fieldMat = new MeshStandardMaterial({ name: 'Field', color: 0x6b5640, roughness: 0.35, metalness: 1, side: DoubleSide });
+  private readonly groove = new MeshStandardMaterial({ name: 'Groove', color: 0x4e3b2a, roughness: 0.6, metalness: 0.6, side: DoubleSide });
 
   layout(zones: readonly Zone[]): void {
     this.root.clear();
@@ -478,17 +478,34 @@ export class HandpanModel implements DeskModel {
       g.rotation.y = Math.atan2(dx, -dz);
       g.rotation.x = Math.atan(slope);
       const mat = this.fieldMat.clone();
-      const oval = new Mesh(new CircleGeometry(q.w * 0.92, 40), mat);
-      oval.rotation.x = -Math.PI / 2;
-      oval.scale.set(1, i === 0 ? 1 : 1.3, 1);
-      oval.position.y = 0.0006;
-      const ring = new Mesh(new RingGeometry(q.w * 0.92, q.w * 0.92 + 0.0015, 48), this.groove);
-      ring.rotation.x = -Math.PI / 2;
-      ring.scale.copy(oval.scale);
-      ring.position.y = 0.0008;
+      // the field and its groove lie on the shell itself: each point of the oval (longer along the radius) lifted
+      // to the dome's height where it falls
+      const ux = d > 1e-4 ? dx / d : 0;
+      const uz = d > 1e-4 ? -dz / d : 1;
+      const fx = q.x;
+      const fz = -q.z;
+      const stretch = i === 0 ? 1 : 1.3;
+      const onShell = (geo: CircleGeometry | RingGeometry, lift: number) => {
+        const pos = geo.attributes.position;
+        for (let v = 0; v < pos.count; v++) {
+          const b = pos.getX(v);
+          const a2 = pos.getY(v) * stretch;
+          const px = fx + ux * a2 - uz * b;
+          const pz = fz + uz * a2 + ux * b;
+          pos.setXYZ(v, px, handpanY(Math.hypot(px - cx, pz + cz), R) + lift, pz);
+        }
+        pos.needsUpdate = true;
+        geo.computeVertexNormals();
+        return geo;
+      };
+      const oval = new Mesh(onShell(new CircleGeometry(q.w * 0.92, 40), 0.0006), mat);
+      const ring = new Mesh(onShell(new RingGeometry(q.w * 0.92, q.w * 0.92 + 0.0015, 48), 0.0009), this.groove);
+      // (geometry already in place: undo the group's frame for these two)
+      oval.name = `Field${i}Face`;
+      this.root.add(oval, ring);
       const dome = new Mesh(new SphereGeometry(q.w * (i === 0 ? 0.62 : 0.42), 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
       dome.scale.y = i === 0 ? 0.32 : 0.25;
-      g.add(oval, ring, dome);
+      g.add(dome);
       this.fields.push(oval);
       this.root.add(g);
     });
@@ -855,8 +872,15 @@ export class CongaModel implements DeskModel {
       h.position.y = CongaModel.H - 0.002 + Math.max(-0.003, Math.min(0, this.spring.x[d]));
       const open = (this.glow[d * 2] = Math.max(0, this.glow[d * 2] - dt * 6));
       const slap = (this.glow[d * 2 + 1] = Math.max(0, this.glow[d * 2 + 1] - dt * 8));
-      (h.material as MeshStandardMaterial).emissive.setHex(0xffb060).multiplyScalar(open * 0.5);
-      (this.marks[d].material as MeshBasicMaterial).opacity = Math.min(0.7, slap * 0.8);
+      // (a hit flashes; a song asking for the middle glows the head, asking for the edge lights the edge ring)
+      (h.material as MeshStandardMaterial).emissive.setHex(0xffb060).multiplyScalar(Math.max(open * 0.5, this.asked[d * 2] * 0.35));
+      (this.marks[d].material as MeshBasicMaterial).opacity = Math.min(0.7, Math.max(slap * 0.8, this.asked[d * 2 + 1] * 0.6));
     });
+  }
+
+  /** A song asks for zone i (even: a drum's middle, odd: its edge) at k: it lights on the leaning head itself. */
+  private asked = [0, 0, 0, 0];
+  light(i: number, k: number): void {
+    if (i >= 0 && i < this.asked.length) this.asked[i] = Math.max(0, Math.min(1, k));
   }
 }
