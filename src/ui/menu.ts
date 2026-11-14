@@ -193,6 +193,7 @@ function buildPageFor(m: MenuInput): Page {
       const items: Item[] = [back()];
       const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, sub: on ? 'On' : 'Off', on, kind: 'chip', x: 24 + (i % 3) * 444, y: 170 + Math.floor(i / 3) * 260, w: 424, h: 240 });
       items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in\nthe room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4));
+      items.push({ id: 'set:panel', label: 'Panel back\nin place', kind: 'chip', x: 24 + 2 * 444, y: 170 + 260, w: 424, h: 240 });
       return { id: 'settings', title: 'Settings', line: '', items };
     }
     case 'tune': {

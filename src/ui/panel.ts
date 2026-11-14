@@ -215,6 +215,7 @@ export class Panel {
     this.countMesh.renderOrder = 7;
     this.countMesh.visible = false;
     this.root.add(this.bar, this.comboMesh, this.countMesh, this.minis.root);
+    this.buildHandle();
     // the results' stars, each its own quad over the drawn one: it lands (1.4 → 1 with a little overshoot, 180 ms)
     for (let i = 0; i < 3; i++) {
       const c = document.createElement('canvas');
@@ -280,7 +281,14 @@ export class Panel {
     // (higher rather than nearer at a tray: its bottom edge stays clear of hands at the back of the instrument)
     this.baseY = y;
     this.root.position.set(0, y, z);
-    this.root.rotation.x = -lean;
+    this.root.rotation.order = 'YXZ';
+    this.root.rotation.set(-lean, 0, 0);
+    // moved by hand: where you left it, turned to face you
+    if (this.userAt) {
+      this.baseY = this.userAt.y;
+      this.root.position.copy(this.userAt);
+      this.root.rotation.set(-lean, Math.atan2(-this.userAt.x, this.ahead - this.userAt.z), 0);
+    }
     this.fitStand();
   }
 
@@ -439,7 +447,128 @@ export class Panel {
     this.draw(d, p);
   }
 
+  /**
+   * The panel's handle, under it as on a visionOS window: a grab bar (pinch it and move the panel anywhere; it stays
+   * there and keeps facing you) and a close dot that folds the panel into a small Menu pill, which brings it back.
+   * In the panel's parent frame, following the panel.
+   */
+  readonly handle = new Group();
+  private grabBar!: Mesh;
+  private closeDot!: Mesh;
+  private pill!: Mesh;
+  hidden = false;
+  private userAt: Vector3 | null = null;
+  private grabK = 0;
+  private closeK = 0;
+  private pillK = 0;
+  private buildHandle(): void {
+    const tex = (w: number, h: number, draw: (g: CanvasRenderingContext2D) => void) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const t = new CanvasTexture(c);
+      t.colorSpace = SRGBColorSpace;
+      const redraw = () => {
+        const g = c.getContext('2d')!;
+        g.clearRect(0, 0, w, h);
+        draw(g);
+        t.needsUpdate = true;
+      };
+      redraw();
+      whenFonts(redraw);
+      return t;
+    };
+    const mat = (t: CanvasTexture) => new MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false });
+    // the bar: a soft white pill
+    this.grabBar = new Mesh(new PlaneGeometry(0.06, 0.012), mat(tex(240, 48, (g) => {
+      rounded(g, 4, 10, 232, 28, 14);
+      g.fillStyle = 'rgba(255,255,255,0.85)';
+      g.fill();
+    })));
+    // the close dot: a small dark disc with a fine cross
+    this.closeDot = new Mesh(new PlaneGeometry(0.016, 0.016), mat(tex(64, 64, (g) => {
+      g.beginPath();
+      g.arc(32, 32, 30, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(18,18,20,0.9)';
+      g.fill();
+      g.lineWidth = 2;
+      g.strokeStyle = 'rgba(255,255,255,0.3)';
+      g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,0.9)';
+      g.lineWidth = 5;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(22, 22);
+      g.lineTo(42, 42);
+      g.moveTo(42, 22);
+      g.lineTo(22, 42);
+      g.stroke();
+    })));
+    // the pill the panel folds into
+    this.pill = new Mesh(new PlaneGeometry(0.075, 0.026), mat(tex(300, 104, (g) => {
+      rounded(g, 4, 4, 292, 96, 48);
+      g.fillStyle = 'rgba(18,18,20,0.9)';
+      g.fill();
+      g.lineWidth = 3;
+      g.strokeStyle = 'rgba(255,255,255,0.22)';
+      g.stroke();
+      g.fillStyle = '#f4f4f2';
+      g.font = `600 48px ${FONT}`;
+      g.textBaseline = 'middle';
+      const t = 'Menu';
+      g.fillText(t, (300 - g.measureText(t).width) / 2, 54);
+    })));
+    const y = -PANEL.h / 2 - 0.02;
+    this.grabBar.position.set(0, y, 0.002);
+    this.closeDot.position.set(-0.05, y, 0.002);
+    this.pill.position.set(0, y + 0.01, 0.002);
+    this.pill.visible = false;
+    for (const m of [this.grabBar, this.closeDot, this.pill]) m.renderOrder = 9;
+    this.handle.name = 'PanelHandle';
+    this.handle.add(this.grabBar, this.closeDot, this.pill);
+  }
+  /** Where the handle's parts are, in the world. */
+  grabAt(out: Vector3): Vector3 {
+    return this.grabBar.getWorldPosition(out);
+  }
+  closeAt(out: Vector3): Vector3 {
+    return this.closeDot.getWorldPosition(out);
+  }
+  pillAt(out: Vector3): Vector3 {
+    return this.pill.getWorldPosition(out);
+  }
+  /** How lit each part is under a finger (0..1). */
+  handleHover(grab: number, close: number, pill: number): void {
+    this.grabK = grab;
+    this.closeK = close;
+    this.pillK = pill;
+  }
+  /** Fold the panel away into its pill, or bring it back. */
+  setHidden(on: boolean): void {
+    if (on === this.hidden) return;
+    this.hidden = on;
+    this.root.visible = !on;
+    if (!on) this.grow = 0;
+  }
+  /** Put the panel at `at` (its parent's frame: the kit's), turned to face you; null: back where it stands by itself. */
+  moveTo(at: Vector3 | null): void {
+    this.userAt = at ? (this.userAt ?? new Vector3()).copy(at) : null;
+    this.place();
+  }
+  get movedTo(): Vector3 | null {
+    return this.userAt;
+  }
+
   update(dt: number): void {
+    this.handle.position.copy(this.root.position);
+    this.handle.quaternion.copy(this.root.quaternion);
+    this.grabBar.visible = this.closeDot.visible = !this.hidden;
+    this.pill.visible = this.hidden;
+    (this.grabBar.material as MeshBasicMaterial).opacity = 0.55 + 0.45 * this.grabK;
+    this.grabBar.scale.setScalar(1 + 0.12 * this.grabK);
+    (this.closeDot.material as MeshBasicMaterial).opacity = 0.7 + 0.3 * this.closeK;
+    this.closeDot.scale.setScalar(1 + 0.15 * this.closeK);
+    this.pill.scale.setScalar(1 + 0.06 * this.pillK);
     this.pulseT += dt;
     // the hover eases in and out (60 ms); the cursor ring sits where the fingertip would land
     this.hoverShown += ((this.hoverI >= 0 ? this.hoverK : 0) - this.hoverShown) * Math.min(1, dt / 0.06);

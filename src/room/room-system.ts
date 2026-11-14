@@ -1305,7 +1305,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (this.game.mode === 'discover' || this.game.mode === 'build') this.dropSeats(true);
       for (const s of this.seats.values()) s.update(dt, this.head);
     }
-    this.panelHover();
+    this.panelHandle();
+    if (!this.kit.module.hidden) this.panelHover();
+    else this.kit.module.hover(-1, 0, 0, 0);
     this.tickBand(dt);
     if (this.bandOn) {
       const parts = this.game.perfParts;
@@ -2630,7 +2632,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!drums && !piano && !congas && !guitar && !marimba) continue;
       // a hand at the panel (its fingertip within 6 cm of the face) is pressing a button, not playing what's under it
       this.airP.copy(h.indexTip).applyMatrix4(this.moduleSurface.inv);
-      if (Math.abs(this.airP.y) < 0.06 && Math.abs(this.airP.x) < PANEL.w / 2 + 0.03 && Math.abs(this.airP.z) < PANEL.h / 2 + 0.03) {
+      if (!this.kit.module.hidden && Math.abs(this.airP.y) < 0.06 && Math.abs(this.airP.x) < PANEL.w / 2 + 0.03 && Math.abs(this.airP.z) < PANEL.h / 2 + 0.03) {
         for (let k = 0; k < AIR_PTS; k++) this.forgetPt(i * AIR_PTS + k);
         continue;
       }
@@ -2933,7 +2935,77 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private hoverZ = 0;
   private panelPressT = -9;
   /** An item on the panel was pressed. */
+  /**
+   * The panel's handle: pinch the grab bar and the panel follows your pinch until you let go (it stays there, saved);
+   * poke the close dot and it folds into its Menu pill; poke the pill and it comes back.
+   */
+  private dragging = [false, false];
+  private dragOff = [new Vector3(), new Vector3()];
+  private handleArmed = [true, true];
+  private hGrab = new Vector3();
+  private hClose = new Vector3();
+  private hPill = new Vector3();
+  private hRoot = new Vector3();
+  private panelHandle(): void {
+    if (this.placement.phase !== 'placed') return;
+    const m = this.kit.module;
+    m.grabAt(this.hGrab);
+    m.closeAt(this.hClose);
+    m.pillAt(this.hPill);
+    let gk = 0;
+    let ck = 0;
+    let pk = 0;
+    for (let i = 0; i < 2; i++) {
+      const h = i === 0 ? hands.left : hands.right;
+      if (!h.tracked) {
+        this.dragging[i] = false;
+        continue;
+      }
+      if (this.dragging[i]) {
+        if (!h.pinch.pinching) {
+          this.dragging[i] = false;
+          const at = m.movedTo;
+          if (at) {
+            this.settings = { ...this.settings, panelAt: { x: at.x, y: at.y, z: at.z } };
+            saveSettings(this.settings);
+          }
+          continue;
+        }
+        // (where the panel's middle goes, in the kit's frame: kept a little off the desk and in reach)
+        this.hRoot.copy(h.pinchPoint).add(this.dragOff[i]);
+        this.kit.root.worldToLocal(this.hRoot);
+        this.hRoot.set(Math.max(-0.7, Math.min(0.7, this.hRoot.x)), Math.max(0.15, Math.min(0.7, this.hRoot.y)), Math.max(-0.7, Math.min(0.3, this.hRoot.z)));
+        m.moveTo(this.hRoot);
+        gk = 1;
+        continue;
+      }
+      if (!m.hidden) {
+        const dg = h.pinchPoint.distanceTo(this.hGrab);
+        gk = Math.max(gk, 1 - Math.min(1, dg / 0.06));
+        if (h.edge === 'start' && dg < 0.04) {
+          this.dragging[i] = true;
+          m.root.getWorldPosition(this.dragOff[i]).sub(h.pinchPoint);
+          audio.tick(0.1);
+          continue;
+        }
+      }
+      // a poke on the close dot (or, hidden, on the pill)
+      const target = m.hidden ? this.hPill : this.hClose;
+      const d = h.indexTip.distanceTo(target);
+      if (m.hidden) pk = Math.max(pk, 1 - Math.min(1, d / 0.05));
+      else ck = Math.max(ck, 1 - Math.min(1, d / 0.05));
+      if (d > 0.03) this.handleArmed[i] = true;
+      if (this.handleArmed[i] && d < (m.hidden ? 0.02 : 0.014)) {
+        this.handleArmed[i] = false;
+        m.setHidden(!m.hidden);
+        audio.tick();
+      }
+    }
+    m.handleHover(gk, ck, pk);
+  }
+
   private pressPanel(k: number): void {
+    if (this.kit.module.hidden) return;
     const it = this.kit.module.itemAt(k);
     if (!it) return;
     // (a dimmed control answers too, quietly: it's there, it just can't be used yet)
@@ -2982,6 +3054,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (kind === 'scale' || kind === 'sound' || kind === 'oct' || kind === 'key' || kind === 'pieces') {
       this.setShelf(kind, arg);
       this.game.refreshDisplay();
+      return;
+    }
+    if (id === 'set:panel') {
+      // the panel back where it stands by itself
+      this.kit.module.moveTo(null);
+      const { panelAt: _drop, ...rest } = this.settings;
+      void _drop;
+      this.settings = rest;
+      saveSettings(this.settings);
       return;
     }
     if (id === 'band:start') {
@@ -3780,6 +3861,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // (no table found: a tray, most likely; the panel and the friends' seats come in close)
       this.kit.module.compact(!this.tableOutline);
       this.applyKit();
+      // (the panel where you last moved it)
+      const pa = this.settings.panelAt;
+      this.kit.module.moveTo(pa ? this.hRoot.set(pa.x, pa.y, pa.z) : null);
       // the display stands within reach of where you sit
       this.kit.module.seat(Math.hypot(pose.x - this.head.x, pose.z - this.head.z), this.head.y - pose.y);
     }

@@ -112,7 +112,7 @@ export class KitView {
     this.keys.group.visible = false;
     this.keys.rest = 0.35;
     // (the panel floats: no stand)
-    this.root.add(this.padRoot, this.keys.group, this.module.root);
+    this.root.add(this.padRoot, this.keys.group, this.module.root, this.module.handle);
     for (const o of this.shelf.values()) {
       o.group.visible = false;
       o.rest = 0.45;

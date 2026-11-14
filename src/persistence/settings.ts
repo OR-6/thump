@@ -47,6 +47,8 @@ export interface Settings {
   shelf: Record<string, ShelfCfg>;
   /** Songs: Easy or Normal. */
   level: Level;
+  /** Where you moved the panel to (kit-local, m); unset: where it stands by itself. */
+  panelAt?: { x: number; y: number; z: number };
 }
 
 const KEY = 'settings.v1';
@@ -73,6 +75,9 @@ export function loadSettings(): Settings {
     inst: typeof s.inst === 'string' && /^[a-z]{1,12}$/.test(s.inst) ? s.inst : 'drums',
     shelf: readShelf(s.shelf),
     level: s.level === 'normal' || s.level === 'hard' ? s.level : 'easy',
+    ...(s.panelAt && typeof s.panelAt === 'object' && [s.panelAt.x, s.panelAt.y, s.panelAt.z].every((v) => typeof v === 'number' && Number.isFinite(v))
+      ? { panelAt: { x: num(s.panelAt.x, -0.8, 0.8, 0), y: num(s.panelAt.y, 0.1, 0.8, 0.3), z: num(s.panelAt.z, -0.8, 0.5, -0.2) } }
+      : {}),
   };
 }
 
