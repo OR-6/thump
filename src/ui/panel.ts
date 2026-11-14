@@ -472,7 +472,8 @@ export class Panel {
     this.countMesh.position.set(nz.x, nz.z, 0.0008);
     this.countMesh.renderOrder = 7;
     this.countMesh.visible = false;
-    this.root.add(this.bar, this.comboMesh, this.countMesh, this.minis.root);
+    // (the 3D miniatures are retired: the Instruments page draws their pictures on its cards)
+    this.root.add(this.bar, this.comboMesh, this.countMesh);
     this.buildHandle();
     // the results' stars, each its own quad over the drawn one: it lands (1.4 → 1 with a little overshoot, 180 ms)
     for (let i = 0; i < 3; i++) {
@@ -606,9 +607,8 @@ export class Panel {
   private noPics = false;
   /** The picked instrument's miniature flies from its card to the middle of the desk. */
   flyMini(id: string): void {
-    this.root.updateMatrix();
-    const to = new Vector3(0, 0.03, 0.02).applyMatrix4(this.root.matrix.clone().invert());
-    this.minis.fly(id, to);
+    // (retired with the miniatures: a mini left mid-flight hung under the panel during songs)
+    void id;
   }
   private run: Quad;
   private hud: Quad;
