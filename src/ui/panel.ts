@@ -62,6 +62,9 @@ export class Panel {
   private canvas = document.createElement('canvas');
   private tex: CanvasTexture;
   private glows: Mesh[] = [];
+  private cards: Mesh[] = [];
+  private cardS: number[] = [];
+  private cardLive: boolean[] = [];
   private press = new Float32Array(MAX_ITEMS);
   private pulseT = 0;
   /** What's on it now, and a number that changes whenever its items do (the hit zones follow). */
@@ -107,6 +110,15 @@ export class Panel {
       m.visible = false;
       this.glows.push(m);
       this.root.add(m);
+    }
+    // each control is also its own quad, cut from the same canvas: it grows on hover and dips on a press
+    for (let i = 0; i < MAX_ITEMS; i++) {
+      const q = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: this.tex, transparent: true, toneMapped: false, depthWrite: false }));
+      q.renderOrder = 7;
+      q.visible = false;
+      this.cards.push(q);
+      this.cardS.push(1);
+      this.root.add(q);
     }
     this.frame.rotation.x = Math.PI / 2;
     this.root.add(this.frame);
@@ -299,6 +311,28 @@ export class Panel {
         m.position.set(z.x, z.z, 0.0012);
         m.scale.set(z.w * 0.97, z.h * 0.94, 1);
       });
+      // the controls' own quads: each one's corner of the canvas (labels and off items stay flat)
+      this.cards.forEach((q, i) => {
+        const it = p.items[i];
+        const live = !!it && !it.off && !it.id.startsWith('label:');
+        this.cardLive[i] = live;
+        q.visible = false;
+        this.cardS[i] = 1;
+        if (!live) return;
+        const z = this.zones[i];
+        const uv = q.geometry.getAttribute('uv');
+        const u0 = it.x / CW;
+        const u1 = (it.x + it.w) / CW;
+        const v1 = 1 - it.y / CH;
+        const v0 = 1 - (it.y + it.h) / CH;
+        uv.setXY(0, u0, v1);
+        uv.setXY(1, u1, v1);
+        uv.setXY(2, u0, v0);
+        uv.setXY(3, u1, v0);
+        uv.needsUpdate = true;
+        q.position.set(z.x, z.z, 0.0006);
+        q.scale.set(z.w, z.h, 1);
+      });
     }
     this.draw(d, p);
   }
@@ -337,9 +371,21 @@ export class Panel {
       (m.material as MeshBasicMaterial).opacity = op;
       // (an unlit glow isn't drawn at all)
       m.visible = !!items[i] && op > 0.002;
-      const pop = 1 + 0.04 * this.press[i];
       const z = items[i] ? this.zones[i] : null;
-      if (z && this.press[i] > 0) m.scale.set(z.w * 0.97 * pop, z.h * 0.94 * pop, 1);
+      // the control itself: 1.04 under a hovering finger (120 ms, eased out), 0.97 the moment it's pressed (60 ms),
+      // back over 150 ms
+      const q = this.cards[i];
+      // (not while a new page slides in: the face moves then, and the quads would sit apart from it)
+      q.visible = !!this.cardLive[i] && this.turn >= 1 && te > 0.99;
+      if (z && q.visible) {
+        const target = this.press[i] > 0.7 ? 0.97 : i === this.hoverI && this.hoverK > 0.05 ? 1.04 : 1;
+        const tau = target < this.cardS[i] ? 0.02 : target > 1 ? 0.04 : 0.05;
+        this.cardS[i] += (target - this.cardS[i]) * Math.min(1, dt / tau);
+        const s = this.cardS[i];
+        q.scale.set(z.w * s, z.h * s, 1);
+        q.position.z = 0.0006 + (s - 1) * 0.01;
+        m.scale.set(z.w * 0.97 * s, z.h * 0.94 * s, 1);
+      }
     }
   }
 
