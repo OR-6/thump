@@ -6,7 +6,7 @@
  * the drum's centre, +Y up; sizes in metres.
  */
 import { BoxGeometry, CylinderGeometry, Group, LatheGeometry, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Object3D, RingGeometry, TorusGeometry, Vector2, Vector3 } from '@iwsdk/core';
-import { cymbalRings, fineNormal, headCoat, meshWeave, woodGrain } from './surfaces.js';
+import { carbonTwill, cymbalRings, fineNormal, headCoat, meshWeave, woodGrain } from './surfaces.js';
 
 /** The old low drums' head height (still the default shell depth for anything flat). */
 export const DRUM_H = 0.022;
@@ -254,8 +254,18 @@ export function buildEPad(d: number, depth = 0.035): Group {
   const R = d / 2;
   const drum = named(new Group(), 'Drum');
   const plastic = new MeshStandardMaterial({ name: 'Plastic', color: 0x1d1d20, roughness: 0.55, metalness: 0.05 });
-  const shell = named(new Mesh(new CylinderGeometry(R * 0.97, R * 0.9, depth - 0.006, 48), plastic), 'Shell');
+  // the shell in carbon weave under a clear coat, a brushed-aluminium trim ring at its top, and round it a thin LED
+  // strip (named Glow: it flares when the pad is hit)
+  const twill = carbonTwill().clone();
+  twill.repeat.set(Math.max(4, Math.round(d * 70)), 2);
+  twill.needsUpdate = true;
+  const carbon = new MeshPhysicalMaterial({ name: 'Carbon', color: 0xffffff, map: twill, roughness: 0.38, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.12 });
+  const shell = named(new Mesh(new CylinderGeometry(R * 0.97, R * 0.9, depth - 0.006, 48), carbon), 'Shell');
   shell.position.y = (depth - 0.006) / 2;
+  const trim = named(new Mesh(new CylinderGeometry(R * 0.975, R * 0.975, 0.004, 48, 1, true), new MeshStandardMaterial({ name: 'Trim', color: 0xc2c6cc, metalness: 1, roughness: 0.28 })), 'Trim');
+  trim.position.y = depth - 0.008;
+  const glow = named(new Mesh(new CylinderGeometry(R * 0.955, R * 0.94, 0.0045, 48, 1, true), new MeshStandardMaterial({ name: 'Glow', color: 0x0a1a24, emissive: 0x2fa8ff, emissiveIntensity: 0.7, roughness: 0.4 })), 'Glow');
+  glow.position.y = depth * 0.45;
   const rubber = new MeshStandardMaterial({ name: 'Rim', color: 0x141416, roughness: 0.9 });
   const rim = named(new Mesh(new TorusGeometry(R * 0.955, 0.0065, 12, 64), rubber), 'Rim');
   rim.rotation.x = -Math.PI / 2;
@@ -267,7 +277,7 @@ export function buildEPad(d: number, depth = 0.035): Group {
   head.position.y = depth - 0.003;
   const jack = named(new Mesh(new BoxGeometry(0.012, 0.012, 0.016), plastic), 'Jack');
   jack.position.set(R * 0.9, depth * 0.4, 0);
-  drum.add(shell, rim, head, jack);
+  drum.add(shell, trim, glow, rim, head, jack);
   g.add(drum);
   return g;
 }
@@ -284,11 +294,15 @@ export function buildECymbal(d: number, tilt: number): Group {
   const black = new MeshStandardMaterial({ name: 'RubberPad', color: 0x18181b, roughness: 0.82, normalMap: fineNormal(3, 18) });
   const pts = [new Vector2(0.001, 0.009), new Vector2(R * 0.22, 0.009), new Vector2(R * 0.3, 0.0045), new Vector2(R, 0.0035), new Vector2(R, -0.0035), new Vector2(0.001, -0.0035)];
   const top = named(new Mesh(new LatheGeometry(pts, 64), black), 'Top');
-  const edge = named(new Mesh(new TorusGeometry(R * 0.985, 0.0035, 8, 64), new MeshStandardMaterial({ name: 'EdgeZone', color: 0x4a4a50, roughness: 0.8 })), 'Edge');
+  const edge = named(new Mesh(new TorusGeometry(R * 0.985, 0.0035, 8, 64), new MeshStandardMaterial({ name: 'EdgeZone', color: 0xb8bcc2, metalness: 0.9, roughness: 0.32 })), 'Edge');
   edge.rotation.x = -Math.PI / 2;
+  // a lit ring round the bell (named Glow, like the pads')
+  const ring = named(new Mesh(new TorusGeometry(R * 0.3, 0.0016, 8, 48), new MeshStandardMaterial({ name: 'Glow', color: 0x0a1a24, emissive: 0x2fa8ff, emissiveIntensity: 0.45 })), 'Glow');
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.0047;
   const nut = named(new Mesh(new BoxGeometry(0.014, 0.004, 0.004), blackMetal()), 'WingNut');
   nut.position.y = 0.012;
-  cymbals.add(top, edge, nut);
+  cymbals.add(top, edge, ring, nut);
   g.add(cymbals);
   return g;
 }

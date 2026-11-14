@@ -145,3 +145,15 @@ export function meshWeave(): DataTexture {
     }, true),
   );
 }
+
+/** Carbon fibre (greyscale): a 2x2 twill, each tow a band with a sheen across it, so it catches light as you move. */
+export function carbonTwill(): DataTexture {
+  return once('carbon', () =>
+    tex(64, 64, (x, y) => {
+      const t = Math.floor(x / 8) + Math.floor(y / 8);
+      const along = t % 2 === 0 ? (x % 8) / 8 : (y % 8) / 8;
+      const g = 34 + 30 * Math.sin(along * Math.PI) + (t % 4 < 2 ? 6 : 0);
+      return [g, g, g + 3];
+    }, true),
+  );
+}

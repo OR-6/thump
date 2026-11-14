@@ -3,7 +3,7 @@
  * toward the player): the drum pads, the table keys (a slim row of light bars that plays any melody
  * your room has no instrument for), the module at the back, and your hands' shadows on the table.
  */
-import { BoxGeometry, DirectionalLight, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture, SRGBColorSpace } from '@iwsdk/core';
+import { BoxGeometry, DirectionalLight, MeshStandardMaterial, Group, Mesh, MeshBasicMaterial, PlaneGeometry, CanvasTexture, SRGBColorSpace } from '@iwsdk/core';
 import { FONT } from '../ui/fonts.js';
 import { castShadows, contactShadow, shadowCatcher } from '../art/lighting.js';
 import { LANES, PADS, type Lane } from '../config.js';
@@ -270,6 +270,7 @@ export class KitView {
     const pads = lanes.map((l) => [l, this.pads.get(l)] as const).filter(([l, p]) => p && l !== 'hat' && l !== 'gong');
     if (!pads.length) return;
     const m = blackMetal();
+    const silver = new MeshStandardMaterial({ name: 'Clamp', color: 0xc8ccd2, metalness: 1, roughness: 0.25 });
     const rack = new Group();
     rack.name = 'Rack';
     const xs = pads.map(([, p]) => p!.x);
@@ -289,7 +290,7 @@ export class KitView {
       const under = HEAD_Y[lane] - (lane === 'crash' || lane === 'ride' ? 0.012 : (EPAD_DEPTH[lane] ?? 0.035));
       const cx = Math.max(x0 + 0.02, Math.min(x1 - 0.02, p!.x));
       rack.add(tube(v(cx, yb, zr), v(p!.x, under, p!.z), r * 0.75, m));
-      const clamp = new Mesh(new BoxGeometry(0.022, 0.022, 0.022), m);
+      const clamp = new Mesh(new BoxGeometry(0.022, 0.022, 0.022), silver);
       clamp.position.set(cx, yb, zr);
       rack.add(clamp);
     }

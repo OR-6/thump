@@ -165,6 +165,7 @@ export class PadView {
   headY = 0;
   private topCymbal: import('@iwsdk/core').Object3D | null = null;
   private wobble = 0;
+  private glowMats: MeshStandardMaterial[] = [];
   private cymRX = 0;
   private cymRZ = 0;
   private wobbleT = 0;
@@ -181,6 +182,11 @@ export class PadView {
     const headMesh = model.getObjectByName(cym ? 'Top' : 'Head') as Mesh | undefined;
     this.head = (headMesh?.material as MeshStandardMaterial | undefined) ?? new MeshStandardMaterial();
     this.hoopMat = ((model.getObjectByName('Hoop') ?? model.getObjectByName('Clutch')) as Mesh | undefined)?.material as MeshStandardMaterial | undefined;
+    // (an electronic pad's LED strip flares on a hit)
+    model.traverse((o) => {
+      const mm = (o as Mesh).material as MeshStandardMaterial | undefined;
+      if (o.name === 'Glow' && mm) this.glowMats.push(mm);
+    });
     this.body.add(model);
     this.group.add(this.body);
     // (a hit squashes the drum, not its stand)
@@ -318,6 +324,7 @@ export class PadView {
     if (this.glowMesh) this.glowMesh.visible = on;
     // the hoop glints on a hit
     if (this.hoopMat) this.hoopMat.emissive.setScalar(this.flash * 0.35);
+    for (const g of this.glowMats) g.emissiveIntensity = 0.7 + this.flash * 2.4;
     // a cymbal swings on its clutch and settles
     if (this.topCymbal && this.wobble > 0.001) {
       this.wobbleT += dt;
