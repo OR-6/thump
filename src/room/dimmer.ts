@@ -36,8 +36,12 @@ export class Dimmer {
     this.want = on && this.enabled ? 0.65 : 0;
   }
 
+  /** Told of every coloured moment too (Lights Out tints its beam with it). */
+  onHit: ((color: number, gain: number) => void) | null = null;
+
   /** A hit in the dark: a flash of its colour. */
   hit(color: number, gain: number): void {
+    this.onHit?.(color, gain);
     if (this.dark < 0.1 || this.calm || this.t - this.lastBurst < 0.33) return;
     this.burstColor.setHex(color);
     // (a near-white colour, the snare's, would read as a flash: it washes in as its warm tint instead)

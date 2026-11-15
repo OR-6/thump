@@ -1119,6 +1119,98 @@ class Engine {
     n.connect(bp).connect(g);
   }
 
+  /** Lights out: the room's power going down, a low thump falling away under a hum that dies with it. */
+  powerDown(): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(96, t);
+    o.frequency.exponentialRampToValueAtTime(30, t + 0.45);
+    const g = this.out(ctx, this.master, 0, 0.3, t, 1);
+    this.env(g.gain, t, 0.75, 0.008, 0.5);
+    o.connect(g);
+    o.start(t);
+    o.stop(t + 0.6);
+    // the mains hum of the house lights, sagging as they go
+    const h = ctx.createOscillator();
+    h.type = 'sawtooth';
+    h.frequency.setValueAtTime(100, t);
+    h.frequency.exponentialRampToValueAtTime(55, t + 0.38);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(900, t);
+    lp.frequency.exponentialRampToValueAtTime(140, t + 0.38);
+    const hg = this.out(ctx, this.master, 0, 0, t, 1);
+    hg.gain.setValueAtTime(0.05, t);
+    hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    h.connect(lp).connect(hg);
+    h.start(t);
+    h.stop(t + 0.45);
+  }
+
+  /** A follow spot striking `delay` seconds from now: the shutter's click, then the heavy iron "chunk" of the lamp house. */
+  kaChunk(delay = 0): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = ctx.currentTime + Math.max(0, delay);
+    // ka: a hard bright click
+    const n = this.noiseSrc(ctx, t, 0.03);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 3200;
+    bp.Q.value = 2.2;
+    const g = this.out(ctx, this.master, 0, 0.4, t, 1);
+    this.env(g.gain, t, 0.5, 0.001, 0.025);
+    n.connect(bp).connect(g);
+    // chunk: a beat later, a low metal thud with a short ring
+    const c = t + 0.06;
+    const n2 = this.noiseSrc(ctx, c, 0.16);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 900;
+    const g2 = this.out(ctx, this.master, 0, 0.9, c, 1);
+    this.env(g2.gain, c, 0.7, 0.002, 0.14);
+    n2.connect(lp).connect(g2);
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(130, c);
+    o.frequency.exponentialRampToValueAtTime(62, c + 0.12);
+    const g3 = this.out(ctx, this.master, 0, 0.5, c, 1);
+    this.env(g3.gain, c, 0.8, 0.002, 0.22);
+    o.connect(g3);
+    o.start(c);
+    o.stop(c + 0.3);
+    const r = ctx.createOscillator();
+    r.frequency.value = 1730;
+    const g4 = this.out(ctx, this.master, 0, 0.7, c, 1);
+    this.env(g4.gain, c, 0.05, 0.002, 0.35);
+    r.connect(g4);
+    r.start(c);
+    r.stop(c + 0.4);
+  }
+
+  /** The band drops out (the drums go on) now, and comes back at audio time `back`. */
+  bandDrop(back: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.bedBus || !this.bedOn) return;
+    const t = ctx.currentTime;
+    const gain = this.bedBus.gain;
+    gain.cancelScheduledValues(t);
+    gain.setValueAtTime(gain.value, t);
+    gain.linearRampToValueAtTime(0, t + 0.06);
+    gain.setValueAtTime(0, Math.max(t + 0.07, back - 0.01));
+    gain.linearRampToValueAtTime(0.55, Math.max(t + 0.08, back));
+  }
+
+  /** More room on everything (from audio time `at`), or back to the usual. Nothing while the room is off (the low levels). */
+  wetter(on: boolean, at = 0): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.send || this.send.gain.value === 0) return;
+    this.send.gain.setTargetAtTime(on ? 0.3 : 0.16, Math.max(ctx.currentTime, at), 0.08);
+  }
+
   /** The one after a drop: a crash (bright noise ringing out) and a sub thump you feel. */
   crash(vel = 1): void {
     const ctx = this.ready();

@@ -2384,6 +2384,14 @@ export class Game {
     this.spotMeter = Math.min(1, this.spotMeter + 0.25);
     this.stage.spotGain?.(this.spotMeter);
   }
+  /** Beats of the spotlight still to run (0 when it's off). */
+  get spotLeft(): number {
+    return Math.max(0, this.spotUntil - this.clock.beatAt(this.t));
+  }
+  /** A lesson is out (no spotlight, no curtain call). */
+  get inLesson(): boolean {
+    return !!this.perf?.track.score?.tune.lesson;
+  }
   /** Both hands up: the spotlight comes on, if it's half full or more. */
   fireSpotlight(): boolean {
     const beat = this.clock.beatAt(this.t);
