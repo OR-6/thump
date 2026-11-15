@@ -23,6 +23,7 @@ import { FAMILIES, type Family } from '../room/classify.js';
 import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
 import { buildPage, type PageId } from '../ui/menu.js';
+import { boardOf } from '../net/scores.js';
 
 /** The handpan's fields round its rim, by where they sit (src/kit/shelf.ts handpanZones: field k+1 at slot ORDER[k]). */
 const PAN_ORDER = [0, 7, 1, 6, 2, 5, 3, 4];
@@ -111,6 +112,8 @@ export interface GameStage {
     level(stem: string, v: number, tau?: number): void;
   };
   save(p: Progress): void;
+  /** Post a song's score to its world board; `done` hears where it put you (null: no server, or not posted). */
+  postScore?(p: { board: string; name: string; score: number; acc: number; grade: string; fc: boolean; notes: number }, done: (w: { rank: number; total: number } | null) => void): void;
   /** Lights down (a solo) or back up. */
   lightsDown?(on: boolean): void;
   /** Something new: the tom slides onto the table, JAM lights up… */
@@ -1414,6 +1417,16 @@ export class Game {
     const kb = keepBest(prevTop, sc, this.trace.slice(0, 400));
     pr.top[bk] = kb.best;
     this.lastScore = { ...sc, better: kb.better, hook: hookFor(sc, prevTop, kb.better), t: 0, prev: prevTop?.score ?? -1, stampT: -1 };
+    // the world's board for this song on this instrument at this level (not a lesson, not slowed down)
+    this.world = null;
+    if (this.stage.postScore && s.total > 0 && !p.track.score?.tune.lesson && this.tempoAtStart >= 0.999) {
+      const board = boardOf(p.track.id, p.inst, this.level, dayKey());
+      this.stage.postScore({ board, name: pr.bandName ?? 'A band', score: sc.score, acc: sc.accuracy, grade: sc.letter, fc: sc.fullCombo, notes: s.total }, (w) => {
+        if (!w || this.mode !== 'results') return;
+        this.world = { ...w, inst: p.inst };
+        this.refreshDisplay();
+      });
+    }
     this.sung = 0;
     this.stamped = false;
     this.tickAt = 0;
@@ -2051,6 +2064,8 @@ export class Game {
   private starsOn(id: string): number {
     return this.progress.istars?.[`${id}:${this.instNow()}`] ?? 0;
   }
+  /** Where your last song put you on its world board (null: not in yet, or no server). */
+  world: { rank: number; total: number; inst: string } | null = null;
   /** The last judged hit's offset from its note (s; − early, + late). */
   lastOffset = 0;
   /** Your last 10 hits' offsets (s), round the ring: `hitErrN` of them, the next going at `hitErrI`; `hitV` counts. */
@@ -3129,6 +3144,8 @@ export class Game {
         if (st <= 1) d.sub = this.fromPerform && this.lastTight >= 0 ? (this.lastScore ? `${lv} · ${feel}` : feel) : '';
         else if (st === 2 && this.fromPerform && this.carried) d.sub = this.carried;
         else if (st <= 3 && fresh) d.sub = fresh;
+        // (where you stand in the world, once it's in and the reveal is over)
+        else if (this.world && this.fromPerform) d.sub = `World #${this.world.rank} of ${this.world.total} · ${INST_NAME[this.world.inst] ?? this.world.inst}, ${lv}`;
         else d.sub = '';
         if (st <= 2 && this.fromPerform) d.pulse = null;
         else d.pulse = next && st >= 4 ? 'next' : 'play';

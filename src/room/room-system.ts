@@ -89,6 +89,7 @@ import { ApproachRings } from './approach-rings.js';
 import { Hud, type HudSay } from './hud.js';
 import { GuitarHands, HG, SADDLE_X, bodyHalfW, heldMatrix, lapMatrix, stringZ, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
 import { GuitarCues, cueSpot } from './guitar-cues.js';
+import { postScore } from '../net/scores.js';
 import { AIM_FROM, AimMarks } from './aim-marks.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
@@ -745,6 +746,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       setMinor(!!minor);
       for (const s of this.surfaces) if (s.discovered && s.voice && FAMILIES[s.voice.family].melodic) retune(s.zones, s.voice.family, s.voice.size, pc);
       retune(this.kit.keyZones, 'keys', 0.5, pc);
+    },
+    // (the world's boards: never for the autoplayer, which films and tests)
+    postScore: (p, done) => {
+      if (this.autoOn) return done(null);
+      void postScore(p).then(done);
     },
     save: (p) => {
       saveProgress(p);
