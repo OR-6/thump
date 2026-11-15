@@ -227,8 +227,18 @@ export function scoreOf(tune: Tune): Score {
 
 /** The songs, easiest first. */
 /** (the lessons first, one per instrument, then the songs) */
-// (the lessons, then the classics everyone knows, then the game's own songs; each easiest first)
-export const SCORES: readonly Score[] = [...LESSONS.map(scoreOf), ...TUNES.map(scoreOf).sort((a, b) => Number(!!a.tune.original) - Number(!!b.tune.original) || a.rating - b.rating)];
+/**
+ * The songs in the order the list shows them: the ones that play most naturally first (measured: how much of what you
+ * play the band's own accents mark, and the band doubling your off-beats; Mango Season best), so the first thing anyone
+ * picks shows the game at its best. Any song not named here goes after, easiest first.
+ */
+export const SONG_ORDER: readonly string[] = ['mango-season', 'rooftop', 'drunken-sailor', 'saints', 'ode-to-joy', 'kite-hill', 'low-tide', 'korobeiniki', 'can-can', 'entertainer', 'william-tell', 'late-bus', 'amazing-grace', 'cold-brew', 'mountain-king', 'scarborough-fair', 'turkish-march', 'fur-elise', 'canon'];
+const orderOf = (id: string) => {
+  const i = SONG_ORDER.indexOf(id);
+  return i < 0 ? SONG_ORDER.length : i;
+};
+// (the lessons, then the songs, best first)
+export const SCORES: readonly Score[] = [...LESSONS.map(scoreOf), ...TUNES.map(scoreOf).sort((a, b) => orderOf(a.tune.id) - orderOf(b.tune.id) || a.rating - b.rating)];
 
 /** MIDI of the melody's tonic: where the piano's tune sits (its root between F4 and E5, as the room sets it). */
 export function melodyRoot(key: number): number {
@@ -489,6 +499,8 @@ export function beatKey(b: number): number {
 export const EASY_GAP = 0.4;
 /** And Normal's on a tune (the piano, the marimba, the handpan): a quarter of a second apart is the quickest it asks. */
 export const NORMAL_GAP = 0.25;
+/** And Hard's, on the drums: a sixteenth at 100 bpm and no quicker. */
+export const HARD_GAP = 0.14;
 
 /** The guitar's three positions on the neck (its scale's I, IV and V): which one each chord goes on. */
 function padsFor(s: Score): (c: Chord) => number {
@@ -616,10 +628,13 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     const pattern = s.meter === 4 ? (t.bpm >= 130 ? [0, 1, 2, 3, 3 + up] : [0, 1, 1 + up, 2 + up, 3, 3 + up]) : s.meter === 3 ? [0, 1, 1 + up, 2, 2 + up] : [0, 1, 1 + up];
     const offsAt = (lv: Level | 'light') => (lv === 'easy' || lv === 'light' ? (s.meter === 4 ? [0, 2] : [0]) : lv === 'normal' ? Array.from({ length: s.meter }, (_, i) => i) : pattern);
     // (a phrase of four bars ends on one strum left to ring; on Easy a verse is a strum a bar, its chorus two)
+    const bands = planBars(s);
     for (const st of s.starts)
       for (let b = 0; b < s.bars; b++) {
         const at = st + b * s.meter;
-        const offs = b % 4 === 3 ? [0] : level === 'easy' && plan && calm(at) ? [0] : offsAt(step(at));
+        // (the ring-out on the band's own phrase ends: where its drummer fills)
+        const ends = bands.some((p) => p.fill && Math.abs(p.beat - at) < 1e-6);
+        const offs = ends ? [0] : level === 'easy' && plan && calm(at) ? [0] : offsAt(step(at));
         for (const o of offs) add(at + o, 'guitar:9', o % 1 ? 0.6 : o === 0 ? 0.9 : 0.75, 0);
       }
     // your other hand moves to each new chord on the neck as it comes in (on Easy too: getting there early counts)
@@ -634,65 +649,95 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     }
   } else if (inst === 'congas') {
     live.push('congas:0');
-    // a phrase of four bars: the groove twice, then answered (the other drum leads: low and high swap), then a roll to
-    // end it, alternating drums (quarters on Easy, eighths above, a slap to finish on Hard)
-    const SWAP: Record<string, string> = { '0': '2', '1': '3', '2': '0', '3': '1' };
-    for (const c of cyc) {
-      const lv = step(c.beat);
-      const pat = g.congas[lv === 'easy' || lv === 'light' ? 0 : lv === 'normal' ? 1 : 2];
-      for (const h of hits(pat, g.cycle)) {
-        const at = c.beat + h.at;
-        const rel = barOf(at);
-        const bar = Math.floor(rel / s.meter + 1e-6) % 4;
-        const inBar = rel - Math.floor(rel / s.meter + 1e-6) * s.meter;
-        if (bar === 3 && inBar >= s.meter - 2 - 1e-6) continue;
-        const ch = bar === 2 ? SWAP[h.ch] ?? h.ch : h.ch;
-        add(at, `congas:${ch}`, ch === '3' || ch === '1' ? 0.85 : 0.75, 0);
+    // the band's own conga player's part where it has one; else the drummer's, on the two drums: the low drum where the
+    // kick is, the high drum on the backbeat, a slap on the accented off-beats (Hard). So what you play is what the
+    // music already says; Easy keeps the beats, Normal the eighths, Hard all of it
+    const own = congaHits(bandStyle(s), planBars(s), s.meter, s.end);
+    const keep = (at: number) => (level === 'easy' ? Math.abs(at - Math.round(at)) < 1e-6 : level === 'normal' ? Math.abs(at * 2 - Math.round(at * 2)) < 1e-6 : true);
+    // (Easy: the drummer's beats, always there; the conga player's part from Normal, if it has enough on the grid)
+    // (the conga player's own notes where it plays them, thinned by time between them: Normal a quarter of a second,
+    // Hard a sixteenth at 100 bpm; in four only: a pattern of sixteen steps squeezed into a bar of two is all off-beats)
+    const cg = (level === 'normal' ? NORMAL_GAP : HARD_GAP) * (t.bpm / 60);
+    let lastC = -Infinity;
+    const mine = level === 'easy' || s.meter !== 4 ? [] : own.filter((h) => {
+      if (h.beat - lastC < cg - 1e-6) return false;
+      lastC = h.beat;
+      return true;
+    });
+    if (mine.length >= s.bars * s.starts.length * 0.75) {
+      for (const h of mine) add(h.beat, h.key, Number(h.key.slice(7)) % 2 ? 0.85 : 0.75, 0);
+      // (and the low drum on the drummer's downbeats under it, so it's never sparser than Easy)
+      for (const h of drumHits(bandStyle(s), planBars(s), s.meter, s.end).KICK) if (h.at !== undefined && h.mark === 'X' && Math.abs(h.at - Math.round(h.at)) < 1e-6) add(h.beat, 'congas:0', 0.8, 1);
+    } else {
+      const kit = drumHits(bandStyle(s), planBars(s), s.meter, s.end);
+      for (const h of kit.KICK) if (h.at !== undefined && h.mark !== 'o' && keep(h.at) && (level !== 'easy' || h.mark === 'X' || h.mark === 'c')) add(h.beat, 'congas:0', 0.8, 0);
+      for (const h of kit.SNARE) {
+        if (h.at === undefined || h.mark === 'o' || h.mark === '-' || !keep(h.at)) continue;
+        add(h.beat, h.mark === 'f' ? (Math.round(h.at * 2) % 2 ? 'congas:0' : 'congas:2') : 'congas:2', 0.8, 0);
       }
+      if (level === 'hard') for (const h of kit.HAT) if (h.at !== undefined && h.mark === 'X' && Math.abs(h.at - Math.round(h.at)) > 1e-6 && keep(h.at)) add(h.beat, 'congas:3', 0.85, 1);
     }
-    for (const st of s.starts)
-      for (let b = 3; b < s.bars; b += 4) {
-        const end = st + (b + 1) * s.meter;
-        const n = level === 'easy' ? 2 : 4;
-        for (let k = 0; k < n; k++) {
-          const last = k === n - 1;
-          add(end - 2 + (k * 2) / n, `congas:${last && level === 'hard' ? '3' : k % 2 ? '2' : '0'}`, last ? 0.9 : 0.75, 0);
-        }
-      }
   } else {
-    // the drums: Easy the kick and the snare, Normal the hat too, Hard the full groove and a fill into each phrase
+    // the drums: what the band's drummer plays (the very part your hits stand in for), at the places it plays them (a
+    // dembow's snare on the 16ths that make it, an open hat off the beat): thinned by time between notes, not snapped
+    // to a grid. Easy its downbeat kicks and its backbeat; Normal its kicks and snares a quarter of a second apart at
+    // least, and a hat a beat where it marks one; Hard all but its ghost notes. Its fills where it fills, on its own
+    // phrase ends
     live.push('kit:kick', 'kit:snare', 'kit:hat');
-    // (a phrase is four bars, whatever the metre)
-    const phrase = s.meter * 4;
-    const fillLen = s.meter === 3 ? 1 : 2;
-    for (const c of cyc) {
-      const rel = barOf(c.beat);
-      const lv = step(c.beat);
-      // (a fill to end each phrase of four bars at every level: quarter-note snares, eighths on Hard; and on
-      // Normal, in a song in its whole form, one into each section)
-      const intoSection = !!plan && barAt(c.beat + g.cycle - 0.5)?.fill === 2;
-      const endsPhrase = Math.floor(rel / phrase + 1e-6) !== Math.floor((rel + g.cycle) / phrase + 1e-6);
-      const fill = endsPhrase || (level === 'normal' && intoSection);
-      const cut = g.cycle - fillLen;
-      const kick = hits(lv === 'easy' ? g.easy[0] : lv === 'hard' ? g.hardKick : g.kick, g.cycle);
-      const snare = hits(lv === 'easy' ? g.easy[1] : lv === 'hard' ? g.hardSnare : g.snare, g.cycle);
-      // (a light verse's hat on the beat only)
-      const hat = lv === 'easy' ? [] : hits(lv === 'hard' ? g.hardHat : g.hat, g.cycle).filter((h) => lv !== 'light' || Math.abs(h.at - Math.round(h.at)) < 1e-6);
-      // (in three on Easy a phrase ends on a hit: the kick and the snare together on its last bar's one, then rest)
-      const stop = fill && level === 'easy' && s.meter === 3;
-      const from = stop ? g.cycle - s.meter + 0.5 : cut;
-      for (const h of kick) if (!(fill && h.at >= from)) add(c.beat + h.at, 'kit:kick', h.vel, 0);
-      for (const h of snare) if (!(fill && h.at >= from)) add(c.beat + h.at, 'kit:snare', h.vel, 0);
-      for (const h of hat) if (!(fill && h.at >= from)) add(c.beat + h.at, 'kit:hat', 0.6, 1);
-      if (stop) {
-        add(c.beat + g.cycle - s.meter, 'kit:kick', 1, 0);
-        add(c.beat + g.cycle - s.meter, 'kit:snare', 1, 0);
-      } else if (fill) {
-        // (quarter notes on Easy and Normal, eighths on Hard)
-        const per = level === 'hard' ? 2 : 1;
-        for (let k = 0; k < fillLen * per; k++) add(c.beat + cut + k / per, k >= fillLen && opts.tom && level === 'hard' ? 'kit:tom' : 'kit:snare', k === 0 ? 0.9 : 0.75, 0);
-      }
+    const kit = drumHits(bandStyle(s), planBars(s), s.meter, s.end);
+    const spb = 60 / t.bpm;
+    const beatOf = (at: number) => Math.abs(at - Math.round(at)) < 1e-6;
+    type C = { beat: number; key: string; vel: number; rank: number };
+    const ks: C[] = [];
+    for (const h of kit.KICK) {
+      if (h.at === undefined || h.mark === 'o') continue;
+      if (level === 'easy' && !((h.mark === 'X' || h.mark === 'c') && beatOf(h.at))) continue;
+      ks.push({ beat: h.beat, key: 'kit:kick', vel: h.mark === 'X' ? 0.9 : 0.75, rank: 0 });
     }
+    for (const h of kit.SNARE) {
+      if (h.at === undefined || h.mark === 'o' || (level !== 'hard' && h.mark === '-')) continue;
+      // (Easy: the backbeat, and a fill's notes on the beat)
+      if (level === 'easy' && h.mark === 'f' && !beatOf(h.at)) continue;
+      const tom = h.drum === 'tom' || h.drum === 'floor';
+      ks.push({ beat: h.beat, key: tom && opts.tom && level === 'hard' ? 'kit:tom' : 'kit:snare', vel: h.mark === 'X' || h.mark === 'f' ? 0.9 : 0.75, rank: 0 });
+    }
+    // (kicks first, then the snares that fit round them: none closer than the level's gap to a kept note, unless
+    // together; so a dembow on Easy keeps its kicks on 1 and 3 and the snares that sit between)
+    const gapS = level === 'easy' ? EASY_GAP : level === 'normal' ? NORMAL_GAP : HARD_GAP;
+    const kept: C[] = [];
+    // (the kick and the snare are two hands: from Normal up the gap is kept within each, so a dembow's snare a
+    // sixteenth after its kick stays; Easy keeps it between them too)
+    const fits = (c: C) => kept.every((k) => (level !== 'easy' && (k.key === 'kit:kick') !== (c.key === 'kit:kick')) || Math.abs(k.beat - c.beat) < 1e-6 || Math.abs(k.beat - c.beat) * spb >= gapS - 1e-6);
+    for (const pass of ['kit:kick', 'snare'] as const)
+      for (const c of ks) if ((pass === 'kit:kick') === (c.key === 'kit:kick') && fits(c)) kept.push(c);
+    kept.sort((a, b) => a.beat - b.beat);
+    // the hats: Hard all of them (soft ones on the eighths); Normal one a beat, where the pattern marks it (an open hat
+    // off the beat, for a dance groove); Easy only when its kick and backbeat leave a bar near empty (a ballad)
+    const sparse = kept.length < s.bars * s.starts.length * 1.5;
+    const hats: C[] = [];
+    let beatSeen = -1;
+    for (const h of kit.HAT) {
+      if (h.at === undefined || h.mark === 'o' || h.mark === 'c') continue;
+      if (level === 'hard') {
+        if (h.mark === '-' && Math.abs(h.at * 2 - Math.round(h.at * 2)) > 1e-6) continue;
+      } else if (level === 'normal') {
+        // (where its recording keeps time on the beat, not with the style's drummer: its hats on the beat)
+        if ((h.mark === '-' || t.hatsOnBeat) && !beatOf(h.at)) continue;
+        const b = Math.floor(h.beat + 1e-6);
+        if (b === beatSeen) continue;
+        beatSeen = b;
+      } else if (!sparse || !beatOf(h.at)) continue;
+      hats.push({ beat: h.beat, key: 'kit:hat', vel: 0.6, rank: 1 });
+    }
+    // (a hat that would come a hair before or after a kept kick or snare goes: together, or apart by the gap)
+    const near = (b: number) => kept.some((k) => Math.abs(k.beat - b) > 1e-6 && Math.abs(k.beat - b) * spb < gapS * 0.6);
+    for (const c of kept) add(c.beat, c.key, c.vel, c.rank);
+    for (const c of hats) if (!near(c.beat)) add(c.beat, c.key, c.vel, c.rank);
+  }
+  // (the drums and congas rest until the recording's drums come in)
+  if ((inst === 'drums' || inst === 'congas') && t.drumsFrom) {
+    const from = s.starts[0] + t.drumsFrom * s.meter;
+    for (let i = out.length - 1; i >= 0; i--) if (out[i].beat < from - 1e-6) out.splice(i, 1);
   }
   // in time order; one note per zone per moment, and two hands: the third at once goes (the lower-ranked first);
   // on Easy nothing closer than EASY_GAP to the note before

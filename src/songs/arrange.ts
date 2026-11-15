@@ -332,6 +332,11 @@ export interface Hit {
   vel: number;
   /** Seconds off the grid (the feel). */
   late: number;
+  /** For the player's chart: which drum, its mark in the pattern (X accent, x, - soft, o ghost, f a fill, c a crash), and
+   * where in its bar (beats from the bar's start, unswung). */
+  drum?: string;
+  mark?: string;
+  at?: number;
 }
 
 const KEY: Record<string, string> = { kick: 'kit:kick', snare: 'kit:snare', hat: 'kit:hat', open: 'kit:open', ride: 'kit:ride', rim: 'kit:rim', clap: 'clap:0', tom: 'kit:tom', floor: 'kit:floor', crash: 'kit:crash' };
@@ -385,7 +390,7 @@ export function drumHits(st: BandStyle, plan: readonly BarPlan[], meter: number,
     const fill = b.fill ? fillHits(st.fill, b.fill === 2, steps, meter) : [];
     const from = fill.length ? Math.min(...fill.map((f) => f[0])) : steps;
     const scale = 0.84 + 0.16 * b.level;
-    const add = (drum: string, i: number, v: number) => {
+    const add = (drum: string, i: number, v: number, mark: string) => {
       const beat = b.beat + stepAt(i, steps, meter, swing);
       if (beat >= end - 1e-6) return;
       const salt = drum.length * 7 + drum.charCodeAt(0);
@@ -394,7 +399,7 @@ export function drumHits(st: BandStyle, plan: readonly BarPlan[], meter: number,
       const drift = drum === 'kick' ? 0.0015 : v < 0.4 ? 0.006 : 0.004;
       // (the hats and cymbals a step back in the kit, as a drummer plays them under the backbeat)
       const kitLevel = drum === 'hat' || drum === 'open' || drum === 'ride' ? 0.82 : 1;
-      out[DRUM_PART[drum]].push({ beat, key: KEY[drum], vel: Math.min(1, v * kitLevel * scale * (1 + jitter(beat, salt, 0.06))), late: back + jitter(beat, salt + 3, drift) });
+      out[DRUM_PART[drum]].push({ beat, key: KEY[drum], vel: Math.min(1, v * kitLevel * scale * (1 + jitter(beat, salt, 0.06))), late: back + jitter(beat, salt + 3, drift), drum, mark, at: (i * meter) / steps });
     };
     for (const drum of ['kick', 'snare', 'hat', 'open', 'ride', 'rim', 'clap'] as const) {
       const pat = pick(kit[drum], b.solo ? 0 : n);
@@ -407,14 +412,14 @@ export function drumHits(st: BandStyle, plan: readonly BarPlan[], meter: number,
         if (i >= from && !keeps && !(drum === 'kick' && st.fill === 'roll')) continue;
         // (a crash stands in for the hat on its beat)
         if (i === 0 && b.crash && (drum === 'hat' || drum === 'ride' || drum === 'open')) continue;
-        add(drum, i, v);
+        add(drum, i, v, pat[i]);
       }
     }
     if (b.crash) {
-      add('crash', 0, 0.62 + 0.3 * b.level);
-      if (!pick(kit.kick, n).startsWith('X')) add('kick', 0, 0.9);
+      add('crash', 0, 0.62 + 0.3 * b.level, 'c');
+      if (!pick(kit.kick, n).startsWith('X')) add('kick', 0, 0.9, 'X');
     }
-    for (const [i, drum, v] of fill) add(drum, i, v);
+    for (const [i, drum, v] of fill) add(drum, i, v, 'f');
   });
   for (const k of Object.keys(out) as (keyof typeof out)[]) out[k].sort((a, c) => a.beat - c.beat);
   return out;
@@ -432,7 +437,7 @@ export function congaHits(st: BandStyle, plan: readonly BarPlan[], meter: number
       if (z < '0' || z > '3') continue;
       const beat = b.beat + stepAt(i, st.steps, meter, st.swing ?? 0.5);
       if (beat >= end - 1e-6) continue;
-      out.push({ beat, key: `congas:${z}`, vel: (z === '1' || z === '3' ? 0.16 : 0.12) * (0.85 + 0.15 * b.level) * (1 + jitter(beat, 11, 0.08)), late: jitter(beat, 12, 0.005) });
+      out.push({ beat, key: `congas:${z}`, vel: (z === '1' || z === '3' ? 0.16 : 0.12) * (0.85 + 0.15 * b.level) * (1 + jitter(beat, 11, 0.08)), late: jitter(beat, 12, 0.005), at: (i * meter) / st.steps });
     }
   });
   return out;

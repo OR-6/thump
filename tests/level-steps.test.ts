@@ -34,11 +34,12 @@ describe('the levels', () => {
   const r = rates();
   if (process.env.STEPS) for (const [k, v] of Object.entries(r)) console.log(k.padEnd(8), v.map((x) => x.toFixed(2)).join('  '));
   for (const inst of INSTS)
-    it(`${inst}: Normal at most twice Easy, Hard 1.2 to 1.8 times Normal (notes a second)`, () => {
+    it(`${inst}: Normal at most twice Easy, Hard 1.2 (congas 1.1) to 1.8 times Normal (notes a second)`, () => {
       const [e, n, h] = r[inst];
       expect(n / e).toBeGreaterThan(1.2);
       expect(n / e).toBeLessThanOrEqual(2);
-      expect(h / n).toBeGreaterThanOrEqual(1.2);
+      // (the congas are the band's conga player's part from Normal up: Hard adds its edges and quick notes, not as much)
+      expect(h / n).toBeGreaterThanOrEqual(inst === 'congas' ? 1.1 : 1.2);
       expect(h / n).toBeLessThanOrEqual(1.8);
     });
 });

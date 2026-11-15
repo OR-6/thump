@@ -5,7 +5,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { TUNES } from '../src/songs/tunes.js';
-import { scoreChart, scoreOf } from '../src/songs/score.js';
+import { bandStyle, scoreChart, scoreOf } from '../src/songs/score.js';
+import { drumHits, planBars } from '../src/songs/arrange.js';
 
 const INSTS = ['drums', 'piano', 'marimba', 'guitar', 'handpan', 'congas'] as const;
 const LEVELS = ['easy', 'normal', 'hard'] as const;
@@ -57,9 +58,31 @@ describe('charts vary', () => {
     for (const r of worst) console.log(`${r.song.padEnd(18)} ${r.inst.padEnd(8)} ${r.level.padEnd(7)} ${Math.round(r.same * 100)}% same, ${r.kinds} kinds of bar in ${r.bars}`);
   }
   it('measures', () => expect(rows.length).toBeGreaterThan(0));
-  // (the drums, congas and guitar used to repeat one bar the whole song: 93-99% of bars the same as the one before)
-  for (const inst of ['drums', 'congas', 'guitar'])
-    it(`${inst}: no song repeats the bar before more than 60% of the time, at any level`, () => {
-      for (const r of rows) if (r.inst === inst && r.bars > 8) expect(r.same, `${r.song} ${r.level}`).toBeLessThanOrEqual(0.6);
-    });
+  // (the guitar used to repeat one bar the whole song: 93-99% of bars the same as the one before)
+  it('guitar: no song repeats the bar before more than 60% of the time, at any level', () => {
+    for (const r of rows) if (r.inst === 'guitar' && r.bars > 8) expect(r.same, `${r.song} ${r.level}`).toBeLessThanOrEqual(0.6);
+  });
+  // (the drums and congas are the band's own drummer's part now: they change where the band changes, verse to chorus
+  // and its fills; from Normal up no song repeats the bar before more than 72% of the time on the drums: a dance groove repeats, as its band does)
+  it('drums from Normal up: no song repeats the bar before more than 72% of the time', () => {
+    for (const r of rows) if (r.inst === 'drums' && r.level !== 'easy' && r.bars > 8) expect(r.same, `${r.song} ${r.level}`).toBeLessThanOrEqual(0.72);
+  });
+});
+
+describe('the drums are the band\'s own drummer', () => {
+  // what you play on the drums is what the recorded drummer plays (its part is the one left out for you): every note of
+  // yours lands on one of its hits, so it sounds whole when you play it, and feels like part of the song
+  it('every drum note, at every level, is on a hit of the band\'s drummer', () => {
+    for (const tune of TUNES) {
+      if (tune.lesson) continue;
+      const s = scoreOf(tune);
+      const kit = drumHits(bandStyle(s), planBars(s), s.meter, s.end);
+      const band = new Set([...kit.KICK, ...kit.SNARE, ...kit.HAT].map((h) => Math.round(h.beat * 48)));
+      for (const level of ['easy', 'normal', 'hard'] as const) {
+        const c = scoreChart(s, 'drums', level, 0, s.end, s.solos);
+        const off = c.notes.filter((n) => !band.has(Math.round(n.beat * 48)));
+        expect(off.length, `${tune.id} ${level}`).toBe(0);
+      }
+    }
+  });
 });

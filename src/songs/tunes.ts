@@ -40,6 +40,10 @@ export interface Tune {
   solo?: string;
   /** Written for the game. */
   original?: boolean;
+  /** The bar the drums come in on its recording (before it, the drums and congas parts rest: no drummer to play to). */
+  drumsFrom?: number;
+  /** Its recording's drummer keeps time on the beat (a street band's ride and pedal hat), not the style's off-beats. */
+  hatsOnBeat?: boolean;
   /** Where each section starts (bars from the first): a song in its whole form (a `solo` section is a solo: its bars
    * are rests, anything goes). Without them, each pass's first half is its verse and its second half its chorus. */
   sections?: readonly { bar: number; kind: SectionKind }[];
@@ -305,6 +309,7 @@ export const TUNES: readonly Tune[] = [
   {
     // the traditional spiritual; checked against a published lead sheet
     id: 'saints',
+    hatsOnBeat: true,
     name: 'When the Saints',
     by: 'Trad., ska',
     bpm: 120,
@@ -456,6 +461,7 @@ export const TUNES: readonly Tune[] = [
   {
     // the hymn tune New Britain (1835), checked against a session tunebook; in three
     id: 'amazing-grace',
+    drumsFrom: 18,
     name: 'Amazing Grace',
     by: 'Hymn, soul',
     bpm: 84,
@@ -476,6 +482,7 @@ export const TUNES: readonly Tune[] = [
   {
     // the English ballad, Dorian on E, checked against a session tunebook; in three
     id: 'scarborough-fair',
+    drumsFrom: 19,
     name: 'Scarborough Fair',
     by: 'Trad. folk',
     bpm: 96,
