@@ -10,9 +10,10 @@ import { motion } from '../ui/motion.js';
 import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
 import { FONT, whenFonts } from '../ui/fonts.js';
 
-const WORDS = ['PERFECT', 'GOOD', 'EARLY', 'LATE'] as const;
+/** (the last two: a Good that was early or late, in Good's green: still counted, but it says which way) */
+const WORDS = ['PERFECT', 'GOOD', 'EARLY', 'LATE', 'EARLY ', 'LATE '] as const;
 /** Each word's own neon (a cyan Perfect, a green Good, an orange Early, a violet Late). */
-const INK: Record<string, [string, string]> = { PERFECT: ['#ffffff', '#33e1ff'], GOOD: ['#e6fff4', '#3cf0a0'], EARLY: ['#fff0dd', '#ff9a3c'], LATE: ['#efe6ff', '#8a5cff'] };
+const INK: Record<string, [string, string]> = { PERFECT: ['#ffffff', '#33e1ff'], GOOD: ['#e6fff4', '#3cf0a0'], EARLY: ['#fff0dd', '#ff9a3c'], LATE: ['#efe6ff', '#8a5cff'], 'EARLY ': ['#e6fff4', '#3cf0a0'], 'LATE ': ['#e6fff4', '#3cf0a0'] };
 const POOL = 6;
 /** How long a word is up (s). */
 const LIFE = 0.42;
@@ -28,6 +29,8 @@ function wordTexture(word: string): CanvasTexture {
     g.clearRect(0, 0, 512, 144);
     g.font = `italic 900 92px ${FONT}`;
     g.textBaseline = 'middle';
+    const ink = word;
+    word = word.trim();
     const w = g.measureText(word).width;
     const x = (512 - w) / 2;
     const y = 70;
@@ -37,7 +40,7 @@ function wordTexture(word: string): CanvasTexture {
     g.strokeStyle = '#1a0b2e';
     g.lineWidth = 18;
     g.strokeText(word, x, y);
-    const [a, b] = INK[word] ?? ['#ffffff', '#ffffff'];
+    const [a, b] = INK[ink] ?? ['#ffffff', '#ffffff'];
     const gr = g.createLinearGradient(0, y - 46, 0, y + 46);
     gr.addColorStop(0, a);
     gr.addColorStop(1, b);
@@ -81,10 +84,13 @@ export class HitWords {
   onShow: ((grade: string, at: Vector3) => void) | null = null;
   /** Whether a grade's word is shown this time (unset: always). */
   wants: ((grade: string) => boolean) | null = null;
+  /** The last judged hit's offset (s; − early): a Good says EARLY or LATE in its green. */
+  lean: (() => number) | null = null;
   /** The word for `grade` at world `at` (6 cm above it), facing `head`. */
   show(grade: string | null, at: Vector3, head: Vector3, color: number): void {
     if (grade) this.onShow?.(grade, at);
-    const w = grade === 'perfect' ? 0 : grade === 'good' ? 1 : grade === 'early' ? 2 : grade === 'late' ? 3 : -1;
+    const lean = grade === 'good' && this.lean ? this.lean() : 0;
+    const w = grade === 'perfect' ? 0 : grade === 'good' ? (lean < 0 ? 4 : lean > 0 ? 5 : 1) : grade === 'early' ? 2 : grade === 'late' ? 3 : -1;
     if (!this.meshes.length || w < 0 || (this.wants && !this.wants(grade!))) return;
     const i = this.next++ % this.meshes.length;
     const m = this.meshes[i];

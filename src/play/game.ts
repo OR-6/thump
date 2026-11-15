@@ -24,6 +24,9 @@ import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
 import { buildPage, type PageId } from '../ui/menu.js';
 
+/** Your last bars played back after the results: off (a song ends on its results). */
+const ENCORE = false;
+
 export type Unlock = 'tom' | 'jam' | 'loops' | 'swaps';
 /** Unlocked by finishing each song the first time. */
 export const UNLOCK_AFTER: Record<string, Unlock[]> = {
@@ -1099,7 +1102,10 @@ export class Game {
           [52, 56],
         ];
     // (Easy keeps its lights to the end: the last two bars go dark on Normal, the last four on Hard)
-    const holdFrom = this.level === 'easy' ? 999 : this.level === 'hard' ? bars * 4 - 16 : bars * 4 - 8;
+    // (every note has its ring to the end: the last bars used to be played from memory, and every song's climax
+    // ended on misses)
+    const holdFrom = 999;
+    void bars;
     const listen = this.listening;
     const first = this.chartFor(inst, 0, (listen ? 8 : bars) * 4, listen ? [] : fills);
     const notes = first.notes;
@@ -1983,6 +1989,8 @@ export class Game {
 
   /** You paused the song (the panel's Pause): the panel shows Resume, Restart and Songs. */
   paused = false;
+  /** The last judged hit's offset from its note (s; − early, + late). */
+  lastOffset = 0;
   /** The song now, from its start again. */
   restartSong(): void {
     const i = this.machine ? this.tracks.indexOf(this.machine.track) : this.songSel;
@@ -2074,6 +2082,9 @@ export class Game {
     if (se.milestone) this.stage.milestone?.(se.milestone);
     if (this.combo > this.bestRun) this.bestRun = this.combo;
     this.offsets.push(r.offset);
+    this.lastOffset = r.offset;
+    // (the timing learned as you go: every 16 hits, half the way toward where you really hit)
+    if (this.offsets.length >= 16) this.learnOffset();
     // what you played, kept for the encore (the beat as you played it, a little loose like a person)
     if (this.played.length < 400) this.played.push({ key, beat: this.clock.beatAt(t - this.opts.offset), gain });
     this.energy = Math.min(1, this.energy + (r.grade === 'perfect' ? 0.05 : 0.03));
@@ -2387,7 +2398,8 @@ export class Game {
   private startEncore(stars: number, song: Song): void {
     this.encore.length = 0;
     this.encoreAt = -1;
-    if (stars < 2 || !this.played.length) return;
+    // (off: a song ends on its results, with nothing played back over them)
+    if (!ENCORE || stars < 2 || !this.played.length) return;
     const from = (song.bars - 4) * 4;
     for (const p of this.played) if (p.beat >= from - 0.25) this.encore.push({ key: p.key, beat: p.beat - from, gain: p.gain });
     if (this.encore.length < 4) {

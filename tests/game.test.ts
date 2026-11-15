@@ -108,7 +108,9 @@ describe('the game', () => {
       if (g.display.line === 'No lights: keep going') sawHold = true;
     }
     expect(g.mode).toBe('results');
-    expect(sawFill && sawHold).toBe(true);
+    // (every note keeps its cue to the end now: no bars played from memory)
+    expect(sawFill).toBe(true);
+    expect(sawHold).toBe(false);
     expect(g.last?.stars).toBe(3);
     // (hits land up to a 30 fps frame after the note here, so not 100)
     expect(g.lastTight).toBeGreaterThan(60);
@@ -211,7 +213,7 @@ describe('the game', () => {
     expect(p.unlocks).toContain('swaps');
   });
 
-  it('the encore: after a good song your last four bars play back on what you hit; a hit stops it', () => {
+  it('no encore: after a good song nothing of yours is played back over the results', () => {
     const voiced: { key: string; at: number }[] = [];
     const st = { ...stage([]), voice: (key: string, at: number) => voiced.push({ key, at }) };
     const g = new Game(st, freshProgress(), room([]));
@@ -221,10 +223,7 @@ describe('the game', () => {
     expect(g.last?.stars).toBe(3);
     const before = voiced.length;
     for (let k = 1; k <= 60; k++) g.tick(t + k * 0.1);
-    const encore = voiced.slice(before);
-    expect(encore.length).toBeGreaterThan(4);
-    expect(encore.every((v) => v.at >= t + 2.3)).toBe(true);
-    expect(encore.some((v) => v.key.startsWith('kit:'))).toBe(true);
+    expect(voiced.slice(before).length).toBe(0);
   });
 
   it('build: ▶ asks for a thing per part; hit one, play two bars along, it loops; six parts and the desk plays it', () => {

@@ -3,7 +3,11 @@
  * fingertip, the palm, a stick's tip) crossing the surface the way you strike it, fast enough, mostly along its
  * normal. Loudness from the crossing speed, measured over three frames (one frame's difference is mostly tracking
  * noise). A point that has played stays "through" every surface until it comes back out by 2 cm: a hand resting on
- * the keys, or jittering on a head, plays once. Pure: kit-local coordinates in, hits out; no scene, no audio.
+ * the keys, or jittering on a head, plays once. A crossing too slow to be a hit isn't the end of it: for six frames,
+ * while the point is still in, it plays as soon as it's moving fast enough (a gentle press that speeds up, or one the
+ * tracking caught early). Keys fire a couple of millimetres in (`confirm`) instead of smoothing the height, so a
+ * fingertip's shake can't press one and a press isn't delayed. Measured in tests/air-feel.test.ts.
+ * Pure: kit-local coordinates in, hits out; no scene, no audio.
  */
 
 /** A surface to strike: a disc or a rectangle lying flat at height `y` (struck downward), or a disc standing facing
@@ -22,6 +26,8 @@ export interface AirSurface {
   along?: number;
   /** How far back out a point must come before it can play it again (default AIR.rearm). */
   rearm?: number;
+  /** Fire only this far through (m; default 0): keys, so a fingertip's tracking shake at the top can't press one. */
+  confirm?: number;
   /** A disc tipped toward the player: its normal (unit; default straight up). Only for 'up' discs. */
   nx?: number;
   ny?: number;
@@ -36,6 +42,8 @@ export interface AirHit {
   gain: number;
   /** How far through the surface it is on the frame it played (m): the point that led a slap is deepest. */
   depth: number;
+  /** How long ago (s) it crossed: the moment of the hit, between this frame and the last (judge by it). */
+  ago: number;
 }
 
 /**
@@ -43,11 +51,13 @@ export interface AirHit {
  * `frontSpeed`); `rearm` back out re-arms a point (m); the motion along the normal must be at least `along` of the
  * whole motion (a hand sliding past grazes nothing).
  */
-export const AIR = { minSpeed: 0.3, frontSpeed: 0.6, fullSpeed: 1.4, rearm: 0.02, along: 0.6 } as const;
+export const AIR = { minSpeed: 0.2, frontSpeed: 0.6, fullSpeed: 1.4, rearm: 0.02, along: 0.6, keyMin: 0.08, stickMin: 0.4 } as const;
+/** Frames a too-slow crossing is watched for (while still in) before it's let go. */
+const WATCH = 6;
 
 /** How hard a crossing at `speed` m/s sounds (0.15 soft to 1 at `full`). */
 export function airGain(speed: number, full: number = AIR.fullSpeed): number {
-  return Math.max(0.15, Math.min(1, 0.15 + (0.85 * (speed - AIR.minSpeed)) / Math.max(0.1, full - AIR.minSpeed)));
+  return Math.max(0.15, Math.min(1, 0.15 + (0.85 * (speed - 0.3)) / Math.max(0.1, full - 0.3)));
 }
 
 function inside(s: AirSurface, x: number, y: number, z: number): boolean {
@@ -72,6 +82,8 @@ export class AirHits {
   private seen: Uint8Array;
   /** Per point and surface id: through it now (waiting to come back out). */
   private through: Uint8Array;
+  /** Per point and surface id: frames left watching a crossing that was too slow (0: not watching). */
+  private slow: Uint8Array;
 
   constructor(readonly points: number) {
     this.prev = new Float32Array(points * 3);
@@ -79,6 +91,7 @@ export class AirHits {
     this.prevDt = new Float32Array(points);
     this.seen = new Uint8Array(points);
     this.through = new Uint8Array(points * IDS);
+    this.slow = new Uint8Array(points * IDS);
   }
 
   /** Forget a point (it went untracked, isn't in use, or changed meaning: a stick appeared). */
@@ -108,7 +121,11 @@ export class AirHits {
     this.prevDt[p] = dt;
     if (this.seen[p] < 2) {
       // (where it starts, or comes back: through a surface already counts as having played it)
-      if (!this.seen[p]) for (const s of surfaces) this.through[p * IDS + s.id] = side(s, x, y, z) < 0 ? 1 : 0;
+      if (!this.seen[p])
+        for (const s of surfaces) {
+          this.through[p * IDS + s.id] = side(s, x, y, z) < 0 ? 1 : 0;
+          this.slow[p * IDS + s.id] = 0;
+        }
       this.seen[p]++;
       return 0;
     }
@@ -117,25 +134,52 @@ export class AirHits {
       const t = p * IDS + s.id;
       const now = side(s, x, y, z);
       if (this.through[t]) {
-        if (now > (s.rearm ?? AIR.rearm)) this.through[t] = 0;
+        if (now > (s.rearm ?? AIR.rearm)) {
+          this.through[t] = 0;
+          this.slow[t] = 0;
+        }
         continue;
       }
+      const c = s.confirm ?? 0;
       const was = side(s, px, py, pz);
-      if (!(was > 0 && now <= 0)) continue;
-      // where it crossed, on the surface
-      const f = was / (was - now);
+      const crossed = was + c > 0 && now + c <= 0;
+      let watching = this.slow[t] > 0;
+      // (back out without having played: free to cross again)
+      if (watching && now > 0) {
+        this.slow[t] = 0;
+        watching = false;
+      }
+      if (!crossed && !watching) continue;
+      // where it crossed, on the surface (watching: where it is)
+      const f = crossed ? (was + c) / (was - now) : 1;
       const cx = px + (x - px) * f;
       const cy = py + (y - py) * f;
       const cz = pz + (z - pz) * f;
-      if (!inside(s, cx, cy, cz)) continue;
-      this.through[t] = 1;
-      // the speed into it over the last two frames; and most of the motion must be into it, not across
+      if (!inside(s, cx, cy, cz)) {
+        this.slow[t] = 0;
+        continue;
+      }
+      // the speed into it over the last two frames
       const span = dt + qdt;
       const speed = span > 0 ? (side(s, qx, qy, qz) - now) / span : 0;
-      if (speed < (s.face === 'front' ? Math.max(min, AIR.frontSpeed) : min) || (moved > 0 && was - now < (s.along ?? AIR.along) * moved)) continue;
-      out.push({ surface: s.id, point: p, speed, gain: airGain(speed, full), depth: -now });
+      if (speed < (s.face === 'front' ? Math.max(min, AIR.frontSpeed) : min)) {
+        // too slow yet: watched a few frames while it's still in (then it's resting, and plays nothing)
+        if (!watching) this.slow[t] = WATCH;
+        else if (--this.slow[t] === 0) this.through[t] = 1;
+        continue;
+      }
+      // most of the motion must be into it, not across (a hand sliding past grazes nothing)
+      if (moved > 0 && was - now < (s.along ?? AIR.along) * moved) {
+        this.through[t] = 1;
+        this.slow[t] = 0;
+        continue;
+      }
+      out.push({ surface: s.id, point: p, speed, gain: airGain(speed, full), depth: -now, ago: crossed ? (1 - f) * dt : 0 });
       // one note per finger: nothing under it plays until it comes back out
-      for (const q of surfaces) this.through[p * IDS + q.id] = 1;
+      for (const q of surfaces) {
+        this.through[p * IDS + q.id] = 1;
+        this.slow[p * IDS + q.id] = 0;
+      }
       return 1;
     }
     return 0;
