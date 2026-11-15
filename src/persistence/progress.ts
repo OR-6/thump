@@ -5,6 +5,7 @@
 import { LANES, type Lane } from '../config.js';
 import { load, save } from './storage.js';
 import type { Unlock } from '../play/game.js';
+import { readWords } from '../play/names.js';
 
 const UNLOCKS: readonly Unlock[] = ['tom', 'jam', 'loops', 'swaps'];
 
@@ -83,6 +84,9 @@ export interface Progress {
   built?: string[];
   /** Your band's name, painted on the kick (chosen once, from where you first sat). */
   bandName?: string;
+  /** Your name on the world's boards, and your band's (two words each: src/play/names.ts). */
+  me?: [number, number];
+  bandWords?: [number, number];
   /** Best score (% of notes) per song, instrument and level ('kick-start:drums:easy'). */
   best?: Record<string, number>;
   /** Best score, accuracy, grade and full combo per song, instrument and level ('id:inst:level'). */
@@ -100,7 +104,11 @@ export function loadProgress(): Progress {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const p = freshProgress();
   p.introDone = r.introDone === true;
-  if (typeof r.bandName === 'string' && /^[A-Za-z' ]{1,24}$/.test(r.bandName)) p.bandName = r.bandName;
+  if (typeof r.bandName === 'string' && /^[A-Za-z' ]{1,32}$/.test(r.bandName)) p.bandName = r.bandName;
+  const me = readWords(r.me);
+  if (me) p.me = me;
+  const bw = readWords(r.bandWords);
+  if (bw) p.bandWords = bw;
   if (Array.isArray(r.unlocks)) p.unlocks = r.unlocks.filter((u): u is Unlock => UNLOCKS.includes(u as Unlock));
   p.stars = numRecord(r.stars, 1, 3);
   p.best = numRecord(r.best, 0, 100);

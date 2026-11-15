@@ -90,6 +90,8 @@ import { Hud, type HudSay } from './hud.js';
 import { GuitarHands, HG, SADDLE_X, bodyHalfW, heldMatrix, lapMatrix, stringZ, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
 import { GuitarCues, cueSpot } from './guitar-cues.js';
 import { boardTop, postScore } from '../net/scores.js';
+import { randomWords } from '../play/names.js';
+import { letterFor } from '../songs/scoring.js';
 import { AIM_FROM, AimMarks } from './aim-marks.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
@@ -528,7 +530,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     shelf: (dir) => this.shelfStep(dir),
-    bandState: () => ({ state: coop.status.state, players: coop.status.players ?? 1, message: coop.status.message ?? '' }),
+    bandState: () => ({ state: coop.status.state, players: coop.status.players ?? 1, message: coop.status.message ?? '', host: coop.status.role === 'host' }),
     saveLevel: (level) => {
       this.settings = { ...this.settings, level };
       saveSettings(this.settings);
@@ -752,6 +754,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (this.autoOn) return done(null);
       void postScore(p).then(done);
     },
+    bandScore: (p, done) => this.bandScoreSend(p, done),
     boardTop: (board, done) => {
       if (this.autoOn) return done(null);
       void boardTop(board).then(done);
@@ -993,6 +996,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (this.game.mode === 'results' || this.game.mode === 'discover') this.game.playSong(m.i, beat0);
       return;
     }
+    if (m.k === 'score') {
+      if (this.band.host && m.p !== this.band.me) this.bandCollect(m.p, m.b, m.sc, m.n, m.a, m.f);
+      return;
+    }
+    if (m.k === 'brank') {
+      if (!this.band.host && m.b === this.bandBoard && this.bandDone) {
+        this.bandDone({ rank: m.r, total: m.t });
+        this.bandDone = null;
+      }
+      return;
+    }
     if (m.k === 'inst') {
       if (m.p === this.band.me) return;
       this.friendInst.set(m.p, m.id);
@@ -1005,8 +1019,63 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.seat(m.p, m.id);
     }
   }
+  /**
+   * A song played together, its scores: each headset sends its own to the band; the host adds them up (everyone's in,
+   * or 8 s after its own: one who dropped out doesn't hold it up) and posts the band's score to the song's band board
+   * under the band's name, then tells everyone where the band stands. Not for the autoplayer.
+   */
+  private bandBoard = '';
+  private bandDone: ((w: { rank: number; total: number } | null) => void) | null = null;
+  private bandScores = new Map<string, { sc: number; n: number; a: number; f: boolean }>();
+  private bandScoresFor = '';
+  private bandDue = -1;
+  private bandScoreSend(p: { board: string; score: number; notes: number; acc: number; fc: boolean }, done: (w: { rank: number; total: number } | null) => void): void {
+    if (this.autoOn) return done(null);
+    this.bandBoard = p.board;
+    this.bandDone = done;
+    const sc = Math.round(p.score);
+    this.band.send({ k: 'score', p: this.band.me, b: p.board, sc, n: p.notes, a: p.acc, f: p.fc });
+    if (this.band.host) {
+      this.bandCollect(this.band.me, p.board, sc, p.notes, p.acc, p.fc);
+      this.bandDue = this.clock.t + 8;
+    }
+  }
+  private bandCollect(who: string, board: string, sc: number, n: number, a: number, f: boolean): void {
+    // (a new song's scores: the last one's go)
+    if (board !== this.bandScoresFor) {
+      this.bandScores.clear();
+      this.bandScoresFor = board;
+    }
+    this.bandScores.set(who, { sc, n, a, f });
+    const players = coop.status.players ?? 1;
+    if (this.bandScores.has(this.band.me) && this.bandScores.size >= players) this.bandPost();
+  }
+  /** The host, each frame: a band's score that's waited long enough for a player who dropped out goes now. */
+  private bandTick(): void {
+    if (this.bandDue >= 0 && this.clock.t >= this.bandDue && this.bandScores.has(this.band.me)) this.bandPost();
+  }
+  private bandPost(): void {
+    this.bandDue = -1;
+    const all = [...this.bandScores.values()];
+    const board = this.bandScoresFor;
+    this.bandScores.clear();
+    this.bandScoresFor = '';
+    if (!all.length || !board) return;
+    const n = all.reduce((x, e) => x + e.n, 0);
+    const score = all.reduce((x, e) => x + e.sc, 0);
+    const acc = all.reduce((x, e) => x + e.a * e.n, 0) / n;
+    void postScore({ board, name: this.game.bandNameNow(), score, acc, grade: letterFor(acc), fc: all.every((e) => e.f), notes: n }).then((w) => {
+      if (!w) return;
+      this.band.send({ k: 'brank', b: board, r: w.rank, t: w.total });
+      if (board === this.bandBoard && this.bandDone) {
+        this.bandDone(w);
+        this.bandDone = null;
+      }
+    });
+  }
   /** Keep the clock measured: pings every second at first, then every ten. */
   private tickBand(dt: number): void {
+    if (this.band.host) this.bandTick();
     if (!this.bandOn || this.band.host) return;
     this.pingT -= dt;
     if (this.pingT > 0) return;
@@ -5377,6 +5446,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // your band's name on the kick (chosen the first time, from where you sat: a tray or a desk)
     if (!this.progress.bandName) {
       this.progress.bandName = bandNameFor(!this.tableOutline);
+      saveProgress(this.progress);
+    }
+    // (and your names on the world's boards: two words each, yours and your band's, shuffled on the name page)
+    if (!this.progress.me || !this.progress.bandWords) {
+      this.progress.me ??= randomWords();
+      this.progress.bandWords ??= randomWords();
       saveProgress(this.progress);
     }
     // (no names painted on the instruments: the band's name is the panel's to show)

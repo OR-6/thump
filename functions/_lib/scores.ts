@@ -3,7 +3,8 @@
  * the SQL that keeps one row per player per board (their best). Used by functions/api/scores.ts on Cloudflare and by
  * tests/scores-api.test.ts.
  *
- * A board is a song on an instrument at a level ('cold-brew:drums:normal'; a day's song is 'daily-2026-11-15:…').
+ * A board is a song on an instrument at a level ('cold-brew:drums:normal'; a day's song is 'daily-2026-11-15:…'), or a
+ * band's board for a song played together ('cold-brew:band:normal': the band's score, its players' added up).
  * A player is a random id their browser keeps, shown under their band's name: no accounts, nothing personal. The
  * address a score comes from is kept only as a hash that changes every day, to stop floods (20 posts an hour).
  */
@@ -16,7 +17,7 @@ export const MAX_NOTES = 4000;
 /** Posts allowed from one address in an hour. */
 export const RATE = 20;
 
-const BOARD = new RegExp(`^[a-z0-9-]{1,40}:(${INSTS.join('|')}):(${LEVELS.join('|')})$`);
+const BOARD = new RegExp(`^[a-z0-9-]{1,40}:(${INSTS.join('|')}|band):(${LEVELS.join('|')})$`);
 const PLAYER = /^[a-z0-9]{8,32}$/;
 
 export interface Post {
@@ -35,10 +36,10 @@ export function board(v: unknown): string | null {
   return typeof v === 'string' && BOARD.test(v) ? v : null;
 }
 
-/** A name to show: letters, digits, spaces, apostrophes and hyphens, 2 to 24 of them, else "A band". */
+/** A name to show: letters, digits, spaces, apostrophes and hyphens, 2 to 32 of them, else "A player". */
 export function cleanName(v: unknown): string {
   const s = typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '';
-  return /^[A-Za-z0-9' -]{2,24}$/.test(s) ? s : 'A band';
+  return /^[A-Za-z0-9' -]{2,32}$/.test(s) ? s : 'A player';
 }
 
 /** A posted score checked, or why not. */

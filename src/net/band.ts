@@ -67,7 +67,11 @@ export type BandCtl =
   | { k: 'song'; i: number; at: number }
   | { k: 'ask'; i: number }
   /** What a player has out, and the song they're playing on it now ('' none: their instrument then mutes nothing). */
-  | { k: 'inst'; p: string; id: string; s?: string; l?: string[] };
+  | { k: 'inst'; p: string; id: string; s?: string; l?: string[] }
+  /** A player's score for a song played together (its band board), for the host to add up. */
+  | { k: 'score'; p: string; b: string; sc: number; n: number; a: number; f: boolean }
+  /** Where the band's score put it on that board (from the host). */
+  | { k: 'brank'; b: string; r: number; t: number };
 
 export function validCtl(m: unknown): m is BandCtl {
   if (!m || typeof m !== 'object') return false;
@@ -78,6 +82,10 @@ export function validCtl(m: unknown): m is BandCtl {
   if (n.k === 'pong') return num(n.a) && num(n.h) && id;
   if (n.k === 'song') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && num(n.at);
   if (n.k === 'ask') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32;
+  const board = (x: unknown) => typeof x === 'string' && /^[a-z0-9-]{1,40}:band:(easy|normal|hard)$/.test(x);
+  const int = (x: unknown, lo: number, hi: number) => Number.isInteger(x) && (x as number) >= lo && (x as number) <= hi;
+  if (n.k === 'score') return id && board(n.b) && int(n.sc, 0, 4_000_000) && int(n.n, 1, 4000) && num(n.a) && (n.a as number) >= 0 && (n.a as number) <= 1 && typeof n.f === 'boolean';
+  if (n.k === 'brank') return board(n.b) && int(n.r, 1, 1e7) && int(n.t, 1, 1e7);
   if (n.k === 'inst') return typeof n.p === 'string' && n.p.length <= 12 && typeof n.id === 'string' && /^[a-z]{1,12}$/.test(n.id) && (n.s === undefined || (typeof n.s === 'string' && /^[a-z0-9-]{0,40}$/.test(n.s))) && (n.l === undefined || (Array.isArray(n.l) && n.l.length <= 9 && n.l.every((x) => typeof x === 'string' && /^[A-Z0-9 ]{1,8}$/.test(x))));
   return false;
 }

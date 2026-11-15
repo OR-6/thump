@@ -24,6 +24,7 @@ import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
 import { buildPage, type PageId } from '../ui/menu.js';
 import { boardOf } from '../net/scores.js';
+import { bandName, playerName, shuffleWord } from './names.js';
 
 /** The handpan's fields round its rim, by where they sit (src/kit/shelf.ts handpanZones: field k+1 at slot ORDER[k]). */
 const PAN_ORDER = [0, 7, 1, 6, 2, 5, 3, 4];
@@ -114,6 +115,11 @@ export interface GameStage {
   save(p: Progress): void;
   /** Post a song's score to its world board; `done` hears where it put you (null: no server, or not posted). */
   postScore?(p: { board: string; name: string; score: number; acc: number; grade: string; fc: boolean; notes: number }, done: (w: { rank: number; total: number } | null) => void): void;
+  /**
+   * A song played together: this player's score goes to the band (the host adds everyone's up and posts it to the
+   * song's band board); `done` hears where the band stands.
+   */
+  bandScore?(p: { board: string; score: number; notes: number; acc: number; fc: boolean }, done: (w: { rank: number; total: number } | null) => void): void;
   /** A world board's best and where you are on it; `done` gets null with no server. */
   boardTop?(board: string, done: (b: { top: { name: string; score: number }[]; total: number; rank: number; mine: boolean } | null) => void): void;
   /** Lights down (a solo) or back up. */
@@ -134,7 +140,7 @@ export interface GameStage {
   /** In-headset settings: read and switch (saved by the stage). */
   setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved' | 'guitarLap', flip: boolean): boolean;
   /** Playing together: the link's state and how many are in the band. */
-  bandState?(): { state: string; players: number; message?: string };
+  bandState?(): { state: string; players: number; message?: string; host?: boolean };
   /** Easy or Normal changed (saved). */
   saveLevel?(level: 'easy' | 'normal' | 'hard'): void;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
@@ -1421,9 +1427,18 @@ export class Game {
     this.lastScore = { ...sc, better: kb.better, hook: hookFor(sc, prevTop, kb.better), t: 0, prev: prevTop?.score ?? -1, stampT: -1 };
     // the world's board for this song on this instrument at this level (not a lesson, not slowed down)
     this.world = null;
-    if (this.stage.postScore && s.total > 0 && !p.track.score?.tune.lesson && this.tempoAtStart >= 0.999) {
+    const bs = this.stage.bandState?.();
+    const together = !!bs && bs.state === 'connected' && bs.players >= 2;
+    if (together && this.stage.bandScore && s.total > 0 && !p.track.score?.tune.lesson && this.tempoAtStart >= 0.999) {
+      // (played together: on the band's board, its players added up, under the band's name; not on the solo boards)
+      this.stage.bandScore({ board: boardOf(p.track.id, 'band', this.level, dayKey()), score: sc.score, notes: s.total, acc: sc.accuracy, fc: sc.fullCombo }, (w) => {
+        if (!w || this.mode !== 'results') return;
+        this.world = { ...w, inst: 'band' };
+        this.refreshDisplay();
+      });
+    } else if (this.stage.postScore && s.total > 0 && !p.track.score?.tune.lesson && this.tempoAtStart >= 0.999) {
       const board = boardOf(p.track.id, p.inst, this.level, dayKey());
-      this.stage.postScore({ board, name: pr.bandName ?? 'A band', score: sc.score, acc: sc.accuracy, grade: sc.letter, fc: sc.fullCombo, notes: s.total }, (w) => {
+      this.stage.postScore({ board, name: this.myName(), score: sc.score, acc: sc.accuracy, grade: sc.letter, fc: sc.fullCombo, notes: s.total }, (w) => {
         if (!w || this.mode !== 'results') return;
         this.world = { ...w, inst: p.inst };
         this.refreshDisplay();
@@ -2085,6 +2100,21 @@ export class Game {
       });
     }
     return have?.line || undefined;
+  }
+  private nameBack: PageId = 'main';
+  /** Your name on the world's boards, and your band's (two words each, shuffled on the name page). */
+  myName(): string {
+    return playerName(this.progress.me ?? [0, 0]);
+  }
+  bandNameNow(): string {
+    return bandName(this.progress.bandWords ?? [0, 0]);
+  }
+  /** The name page: whose name it's changing, and where it came from. */
+  private nameFor: 'me' | 'band' = 'me';
+  private nameWords(): [string, string] {
+    const full = this.nameFor === 'band' ? this.bandNameNow().replace(/^The /, '') : this.myName();
+    const sp = full.indexOf(' ');
+    return [full.slice(0, sp), full.slice(sp + 1)];
   }
   /** Where your last song put you on its world board (null: not in yet, or no server). */
   world: { rank: number; total: number; inst: string } | null = null;
@@ -2792,6 +2822,30 @@ export class Game {
   /** Something on the panel was pressed (an item's action id). */
   act(id: string): void {
     if (id.startsWith('key:')) return this.key(id.slice(4) as ModuleKey);
+    if (id === 'back' && this.menu === 'name' && !this.tuneOpen && !this.settingsOpen) {
+      // (back to where the name was changed from: Settings, or the band)
+      if (this.nameFor === 'me') this.settingsOpen = true;
+      this.menu = this.nameFor === 'band' ? 'band' : this.nameBack;
+      this.refreshDisplay();
+      return;
+    }
+    // the name page: yours (from Settings) or your band's (the band's host, from the band page); a word at a time
+    if (id === 'nav:name' || id === 'band:name') {
+      this.nameFor = id === 'band:name' ? 'band' : 'me';
+      this.nameBack = this.menu === 'name' ? this.nameBack : this.menu;
+      this.settingsOpen = false;
+      this.menu = 'name';
+      this.refreshDisplay();
+      return;
+    }
+    if (id === 'name:0' || id === 'name:1') {
+      const which = id === 'name:0' ? 0 : 1;
+      if (this.nameFor === 'band') this.progress.bandWords = shuffleWord(this.progress.bandWords ?? [0, 0], which);
+      else this.progress.me = shuffleWord(this.progress.me ?? [0, 0], which);
+      this.stage.save(this.progress);
+      this.refreshDisplay();
+      return;
+    }
     if (id === 'back') {
       if (this.tuneOpen) this.tuneOpen = false;
       else if (this.settingsOpen) this.settingsOpen = false;
@@ -2984,9 +3038,10 @@ export class Game {
       songPage: this.shownPage(),
       songFilter: this.songFilter,
       level: this.level,
-      band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode },
+      band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode, host: !!band.host, name: this.bandNameNow() },
+      name: { title: this.nameFor === 'band' ? "Your band's name" : 'Your name', full: this.nameFor === 'band' ? this.bandNameNow() : this.myName(), words: this.nameWords() },
       loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
-      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false), guitarLap: this.stage.setting('guitarLap', false) },
+      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false), guitarLap: this.stage.setting('guitarLap', false), name: this.myName() },
       next: this.fromPerform ? 'Next\nsong' : '',
       easier: this.mode === 'results' && this.fromPerform && this.lastScore?.letter === 'D' && this.level !== 'easy',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,
@@ -3267,7 +3322,7 @@ export function tightPercent(offsets: readonly number[]): number {
 /** The free-play band's chords, a bar each: the scale's first chord twice, then its second and third. */
 const GROOVE = [0, 0, 1, 2];
 
-const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', marimba: 'Marimba', handpan: 'Handpan', guitar: 'Guitar', congas: 'Congas' };
+const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', marimba: 'Marimba', handpan: 'Handpan', guitar: 'Guitar', congas: 'Congas', band: 'Band' };
 
 /** Which instrument each part is played on (it comes out on the desk when the part is asked for). */
 const PART_INST: Record<string, string> = { KICK: 'drums', SNARE: 'drums', HAT: 'drums', CLAP: 'drums', PERC: 'handpan', 'PERC 2': 'handpan', KEYS: 'piano', 'KEYS 2': 'piano', BASS: 'piano' };

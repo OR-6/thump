@@ -16,10 +16,13 @@ describe('the leaderboards take only real scores', () => {
     const c = checkPost({ ...ok, name: '  The   Desk Band ' });
     expect(c.ok && c.post.name).toBe('The Desk Band');
   });
-  it('a name that is not a name shows as "A band"', () => {
-    expect(cleanName('<script>')).toBe('A band');
-    expect(cleanName('x')).toBe('A band');
-    expect(cleanName(42)).toBe('A band');
+  it('a name that is not a name shows as "A player"', () => {
+    expect(cleanName('<script>')).toBe('A player');
+    expect(cleanName('x')).toBe('A player');
+    expect(cleanName(42)).toBe('A player');
+  });
+  it("a band's board for a song played together", () => {
+    expect(board('cold-brew:band:normal')).toBe('cold-brew:band:normal');
   });
   it('more than a note can score, a broken grade or accuracy, no player: refused', () => {
     expect(checkPost({ ...ok, score: ok.notes * MAX_PER_NOTE + 1 }).ok).toBe(false);

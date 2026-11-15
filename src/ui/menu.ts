@@ -5,7 +5,7 @@
  */
 import { KEYS, SCALES, SHELF, instDef } from '../kit/shelf.js';
 
-export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'join' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
+export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'join' | 'name' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
 
 export interface Item {
   id: string;
@@ -63,8 +63,10 @@ export interface MenuInput {
   songShown?: number[];
   songFilter?: 'all' | 'classics' | 'originals' | 'lessons';
   level: 'easy' | 'normal' | 'hard';
-  band: { state: string; code: string; players: number; message?: string; typed?: string };
-  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean; panelMoved?: boolean; guitarLap?: boolean };
+  band: { state: string; code: string; players: number; message?: string; typed?: string; host?: boolean; name?: string };
+  /** The name page: what it's naming, the name, its two words (each a button that changes it). */
+  name?: { title: string; full: string; words: [string, string] };
+  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean; panelMoved?: boolean; guitarLap?: boolean; name?: string };
   /** Free play's looper: off, counting in, recording or playing; how many layers it holds. */
   loop?: { state: string; layers: number; recording: boolean };
   /** Results: the next song's button ('' none), and whether MAKE IT YOURS is offered. */
@@ -227,6 +229,8 @@ function buildPageFor(m: MenuInput): Page {
         items.push({ id: 'band:start', label: 'Start a band', sub: 'You get a code to share', kind: 'play', x: 32 + half + 16, y: BOT.y, w: half, h: BOT.h });
       }
       else {
+        // (the band's name, on the world's boards: its host names it)
+        if (m.band.host && m.band.name) items.push({ id: 'band:name', label: m.band.name, sub: 'Your band on the world boards: tap to rename', kind: 'button', x: 32, y: BOT.y - 150, w: W - 64, h: 130 });
         items.push({ id: 'band:leave', label: 'Leave', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h });
         items.push({ id: 'nav:songs', label: 'Pick a song', sub: 'Everyone plays it, on one beat', kind: 'play', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h });
       }
@@ -259,11 +263,24 @@ function buildPageFor(m: MenuInput): Page {
       const slots = Array.from({ length: 4 }, (_, i) => typed[i] ?? '_').join(' ');
       return { id: 'join', title: 'Join a band', line: slots, items };
     }
+    case 'name': {
+      // the name large in the line; each of its two words a big button that changes it for another
+      const n = m.name ?? { title: 'Your name', full: '', words: ['', ''] };
+      const half = (W - 64 - 16) / 2;
+      const items: Item[] = [back()];
+      // (the name itself, large, above its two words)
+      items.push({ id: 'value:name', label: n.full, kind: 'text', x: 32, y: 176, w: W - 64, h: 120 });
+      n.words.forEach((w, i) => items.push({ id: `name:${i}`, label: w, sub: 'Tap for another', kind: 'button', x: 32 + i * (half + 16), y: 316, w: half, h: 200 }));
+      items.push({ id: 'back', label: 'Done', kind: 'play', x: 32, y: BOT.y, w: W - 64, h: BOT.h });
+      return { id: 'name', title: n.title, line: n.title === 'Your name' ? 'How you show on the world boards' : 'How your band shows on the world boards', items };
+    }
     case 'settings': {
       // two columns of switches; putting the panel back is an action, beside Done
       const items: Item[] = [back()];
       const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, on, kind: 'toggle', x: i % 2 ? 32 + C6 + 16 : 32, y: 176 + Math.floor(i / 2) * 116, w: C6, h: 104 });
       items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in the room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when you play', m.settings.light !== false, 5), t('set:guitarlap', 'Guitar in your lap', m.settings.guitarLap !== false, 6));
+      // (your name on the world's boards: a page to change it)
+      items.push({ id: 'nav:name', label: 'Your name', sub: m.settings.name, kind: 'button', x: 32 + C6 + 16, y: 176 + 3 * 116, w: C6, h: 104 });
       items.push({ id: 'set:panel', label: 'Panel back in place', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h, off: !m.settings.panelMoved });
       // (the back tile and Done both close it)
       items.push({ id: 'back', label: 'Done', kind: 'play', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h });

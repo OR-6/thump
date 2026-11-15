@@ -83,3 +83,15 @@ describe('playing together', () => {
     expect(validCtl({ k: 'pong', a: 1, h: 2, p: 'x' })).toBe(true);
   });
 });
+
+import { validCtl as validBandCtl } from '../src/net/band.js';
+describe('a band score on the wire', () => {
+  it('a player score for a band board, and the band rank back, pass; anything else is dropped', () => {
+    expect(validBandCtl({ k: 'score', p: 'ab12cd', b: 'cold-brew:band:normal', sc: 52000, n: 600, a: 0.9, f: false })).toBe(true);
+    expect(validBandCtl({ k: 'brank', b: 'cold-brew:band:normal', r: 2, t: 9 })).toBe(true);
+    // (a solo board, a broken score, a rank of 0)
+    expect(validBandCtl({ k: 'score', p: 'ab12cd', b: 'cold-brew:drums:normal', sc: 52000, n: 600, a: 0.9, f: false })).toBe(false);
+    expect(validBandCtl({ k: 'score', p: 'ab12cd', b: 'cold-brew:band:normal', sc: -1, n: 600, a: 0.9, f: false })).toBe(false);
+    expect(validBandCtl({ k: 'brank', b: 'cold-brew:band:normal', r: 0, t: 9 })).toBe(false);
+  });
+});

@@ -1057,3 +1057,51 @@ describe("the song card says where the world's board stands", () => {
     expect(g2.display.page?.card?.meta).not.toMatch(/World/);
   });
 });
+
+describe('names and band boards', () => {
+  it('played together, the score goes to the band board, not the solo one; alone, to yours under your name', () => {
+    const run = (together: boolean) => {
+      const solo: { board: string; name: string }[] = [];
+      const band: { board: string }[] = [];
+      const st = {
+        ...stage([]),
+        shelf: () => ({ id: 'drums' }),
+        bandState: () => ({ state: together ? 'connected' : 'idle', players: together ? 2 : 1, host: true }),
+        postScore: (p: { board: string; name: string }) => solo.push(p),
+        bandScore: (p: { board: string }) => band.push(p),
+      } as unknown as GameStage;
+      const p = freshProgress();
+      p.me = [0, 0];
+      const g = new Game(st, p, room([]));
+      g.start(0);
+      g.discovered('kit', 'table', 0);
+      // (a song, not a lesson: lessons go on no board)
+      g.playSong(g.tracks.findIndex((t) => t.score && !t.score.tune.lesson), 0);
+      play(g, 0, 400, 0.01, (x) => x.mode === 'results');
+      return { solo, band, g };
+    };
+    const a = run(false);
+    expect(a.band.length).toBe(0);
+    expect(a.solo.length).toBe(1);
+    expect(a.solo[0].name).toBe(a.g.myName());
+    const b = run(true);
+    expect(b.solo.length).toBe(0);
+    expect(b.band.length).toBe(1);
+    expect(b.band[0].board).toMatch(/:band:/);
+  });
+  it('the name page changes one word at a time and goes back where it came from', () => {
+    const p = freshProgress();
+    p.me = [3, 7];
+    const g = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, p, room([]));
+    g.start(0);
+    g.act('nav:settings');
+    g.act('nav:name');
+    expect(g.display.page?.id).toBe('name');
+    const before = g.myName();
+    g.act('name:1');
+    expect(g.myName().split(' ')[0]).toBe(before.split(' ')[0]);
+    expect(g.myName()).not.toBe(before);
+    g.act('back');
+    expect(g.display.page?.id).toBe('settings');
+  });
+});
