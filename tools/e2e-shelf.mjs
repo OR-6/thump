@@ -112,7 +112,8 @@ s = state();
 check('then a guitar', s.targets.inst?.[0] === 3 && s.game.display.page?.title === 'Guitar', `${s.game.display.line} inst=${s.targets.inst}`);
 // the guitar you hold: a fingertip onto the fretboard's middle chord place, then a fingertip swept down across the
 // strings over the soundhole, then back up
-await slapAt(s.targets.inst1, s.targets.guitarNormal, { from: 0.05, pose: { pitch: -50, yaw: 0, roll: 0 } });
+// (as a fretting hand does in your lap: onto the neck from above, from your side, not from beyond the guitar)
+await slapAt(s.targets.inst1, [0, 1, 0], { from: 0.05, pose: { pitch: -50, yaw: 0, roll: 0 } });
 s = state();
 check('a fingertip on the neck picks that chord place', s.debug.lastHit?.family === 'chord' && s.debug.lastHit?.zone === 1, JSON.stringify(s.debug.lastHit));
 const sweepStrings = async (dir) => {

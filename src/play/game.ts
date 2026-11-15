@@ -103,7 +103,7 @@ export interface GameStage {
   /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
   tempo(t: number): void;
   /** In-headset settings: read and switch (saved by the stage). */
-  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved', flip: boolean): boolean;
+  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved' | 'guitarLap', flip: boolean): boolean;
   /** Playing together: the link's state and how many are in the band. */
   bandState?(): { state: string; players: number; message?: string };
   /** Easy or Normal changed (saved). */
@@ -2845,6 +2845,7 @@ export class Game {
       if (k[id]) this.key(k[id]);
       else if (id === 'set:backing') this.stage.setting('band', true);
       else if (id === 'set:light') this.stage.setting('light', true);
+      else if (id === 'set:guitarlap') this.stage.setting('guitarLap', true);
       this.refreshDisplay();
     }
   }
@@ -2899,7 +2900,7 @@ export class Game {
       level: this.level,
       band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode },
       loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
-      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false) },
+      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false), guitarLap: this.stage.setting('guitarLap', false) },
       next: this.fromPerform ? 'Next\nsong' : '',
       easier: this.mode === 'results' && this.fromPerform && this.lastScore?.letter === 'D' && this.level !== 'easy',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,

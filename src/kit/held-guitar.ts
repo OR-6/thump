@@ -105,6 +105,56 @@ const _x = new Vector3();
 const _y = new Vector3();
 const _z = new Vector3();
 const _p = new Vector3();
+const _flipX = new Matrix4().makeScale(-1, 1, 1);
+/**
+ * Held in your lap, as a seated player holds one: on your right thigh between you and the desk, its top facing away
+ * from you and tipped back so you see over its upper edge onto the strings, the neck rising to your left and angled a
+ * little out. Placed from where your head is (kit frame) when it comes out: the soundhole this far right of, below and
+ * in front of your eyes, kept within reach of the desk whatever the head was doing at that moment.
+ */
+export const LAP = {
+  /** The neck rising toward your left; turned a little out, away from you. */
+  rise: 0.35,
+  yaw: 0.22,
+  /** The top tipped back from upright (facing away), so its strings show over its edge. */
+  tilt: 0.6,
+  /** The soundhole from your eyes (m): right, down, forward. */
+  right: 0.1,
+  down: 0.42,
+  forward: 0.22,
+} as const;
+
+/** Where a player's eyes are, seen from the kit, when nothing better is known (seated 45 cm back, eyes 45 cm up). */
+export const SEAT_EYES = { x: 0, y: 0.45, z: 0.45 } as const;
+
+/**
+ * The guitar in your lap (kit frame) for eyes at `eye`. A mirror of the model's own frame: its low E string stays on
+ * top as you hold it facing away (three.js draws a mirrored object the right way round). Detection works in the same
+ * frame, so it follows.
+ */
+export function lapMatrix(out: Matrix4, eye: { x: number; y: number; z: number } = SEAT_EYES, left = false): Matrix4 {
+  // (a left-handed player's guitar is the mirror image of a right-handed one's: built for the mirrored eyes, mirrored)
+  if (left) {
+    lapMatrix(out, { x: -eye.x, y: eye.y, z: eye.z }, false);
+    return out.premultiply(_flipX);
+  }
+  const { rise, yaw, tilt } = LAP;
+  // x from the headstock to the bridge: right, falling a little, toward you a little (the neck angled out)
+  _x.set(Math.cos(rise) * Math.cos(yaw), -Math.sin(rise), Math.cos(rise) * Math.sin(yaw)).normalize();
+  // the top faces away from you, tipped back toward the ceiling
+  _y.set(0, Math.sin(tilt), -Math.cos(tilt));
+  _y.addScaledVector(_x, -_y.dot(_x)).normalize();
+  _z.crossVectors(_x, _y).negate();
+  out.makeBasis(_x, _y, _z);
+  // (the head as it was may be leaning or looking away: kept to where a seated player's lap can be)
+  const ex = Math.max(-0.15, Math.min(0.15, eye.x));
+  const ey = Math.max(0.3, Math.min(0.65, eye.y));
+  const ez = Math.max(0.3, Math.min(0.7, eye.z));
+  _p.set(HG.hole, 0, 0).applyMatrix4(out.clone().setPosition(0, 0, 0));
+  out.setPosition(ex + LAP.right - _p.x, ey - LAP.down - _p.y, ez - LAP.forward - _p.z);
+  return out;
+}
+
 /** The guitar's frame in the kit's (its body resting just over the desk). */
 export function heldMatrix(out: Matrix4): Matrix4 {
   const { rise, yaw, tilt } = HOLD;
@@ -163,6 +213,12 @@ export class GuitarHands {
   private candidateT = 0;
   /** A finger on each string at its fret now (for the dots that show it), -1 none. */
   readonly pressed = new Int8Array(6).fill(-1);
+  /**
+   * How far out past the strings a fingertip still strums (m), and past the neck's sides and over its strings one
+   * still frets: held facing you, you see the strings and these are tight; in your lap you play them by feel, over
+   * the edge, and they're wider.
+   */
+  reach = { strum: 0.014, side: 0.01, over: 0.012 };
 
   /** A hand lost or a song restarted: no stale finger crosses anything from where it was. */
   forget(side?: 0 | 1): void {
@@ -193,7 +249,8 @@ export class GuitarHands {
       const jump = Math.hypot(p.x - q.x, p.y - q.y, dz);
       // (a tracking jump is not a strum; a hand drifting across slowly is resting, not playing)
       const vz = dz / dt;
-      const inBand = (v: Vector3) => v.x > HG.strumX0 - 0.02 && v.x < HG.strumX1 + 0.02 && v.y < HG.strings + 0.014 && v.y > -0.05;
+      const far = this.reach.strum;
+      const inBand = (v: Vector3) => v.x > HG.strumX0 - 0.02 && v.x < HG.strumX1 + 0.02 && v.y < HG.strings + far && v.y > -0.05;
       if (jump < 0.15 && Math.abs(vz) > 0.1 && (inBand(p) || inBand(q))) {
         const xm = (p.x + q.x) / 2;
         for (let i = 0; i < 6; i++) {
@@ -204,7 +261,7 @@ export class GuitarHands {
           const f = (zi - q.z) / dz;
           // (the finger is at the strings' height where it crosses this one)
           const y = q.y + (p.y - q.y) * f;
-          if (y > HG.strings + 0.014 || y < -0.05) continue;
+          if (y > HG.strings + far || y < -0.05) continue;
           const at = t - dt * (1 - f);
           if (at - this.lastPluck[i] < 0.05) continue;
           this.lastPluck[i] = at;
@@ -233,8 +290,8 @@ export class GuitarHands {
     for (const p of tips) {
       if (!p) continue;
       if (p.x < HG.nut - 0.005 || p.x > HG.join + 0.004) continue;
-      if (Math.abs(p.z) > neckW(p.x) / 2 + 0.01) continue;
-      if (p.y < HG.board - 0.03 || p.y > HG.strings + 0.012) continue;
+      if (Math.abs(p.z) > neckW(p.x) / 2 + this.reach.side) continue;
+      if (p.y < HG.board - 0.03 || p.y > HG.strings + this.reach.over) continue;
       const n = Math.max(1, fretAt(p.x));
       const sp = HG.nutSp + (HG.saddleSp - HG.nutSp) * clamp01((p.x - HG.nut) / HG.scale);
       const s = Math.max(0, Math.min(5, Math.round(p.z / sp + 2.5)));

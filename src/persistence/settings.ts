@@ -26,6 +26,10 @@ export interface Settings {
   hand: HandPref;
   /** One-handed kit: every pad within the leading hand's sweep, charts folded to one hand. */
   oneHand: boolean;
+  /** The guitar held facing you over the desk, as it first was (unset: in your lap, facing away, as it's really held). */
+  guitarDesk?: boolean;
+  /** Where you put the guitar in your lap (the kit's frame: its soundhole), when you've moved it. */
+  guitarAt?: { x: number; y: number; z: number };
   /** Slow mode: songs at this share of their tempo (0.6–1); stars are the same. */
   tempo: number;
   /** No words in the headset (felt tags hidden; shapes and lights only). */

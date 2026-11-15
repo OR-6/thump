@@ -9,7 +9,7 @@
  * soundhole, down and up, until you've strummed; in a song, the next chord's place glowing with a ring closing onto
  * it, and arrows (down or up) riding along the strings onto a line where you strum, in time.
  */
-import { BoxGeometry, CanvasTexture, Quaternion, CircleGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Path, PlaneGeometry, RingGeometry, SRGBColorSpace, Shape, SphereGeometry, Vector2, Vector3 } from '@iwsdk/core';
+import { BoxGeometry, BufferGeometry, Float32BufferAttribute, CanvasTexture, Quaternion, ShapeGeometry, CircleGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Path, PlaneGeometry, RingGeometry, SRGBColorSpace, Shape, SphereGeometry, Vector2, Vector3 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
 import { HG, OUTLINE, SADDLE_X, ZONE_FRETS, fretX, heldMatrix, neckW, stringZ, zoneX } from '../../kit/held-guitar.js';
 import { tortoiseShell, woodGrain } from './surfaces.js';
@@ -22,6 +22,75 @@ const glow = (color: number) => new MeshBasicMaterial({ color, transparent: true
 const flat = (w: number, d: number) => new PlaneGeometry(w, d).rotateX(-Math.PI / 2);
 
 /** The outline as a flat shape (x along the body, y across), grown by `grow` (m). */
+/**
+ * The rim: the body's sides as one smooth band round its outline (160 points, each with its own outward normal, so it
+ * lights as one bent board, not facets), `depth` deep from the top (y 0) down; the grain running round it, about eight
+ * lengths, the seam at the tail block. The extruded box this replaces had 10 flat faces a curve and its grain smeared
+ * across the rim. In the guitar's frame: x along the body, y out of the top, z across.
+ */
+function rimGeometry(shape: Shape, depth: number, n = 160): BufferGeometry {
+  const pts = shape.getSpacedPoints(n);
+  pts.pop();
+  const m = pts.length;
+  let cx = 0;
+  let cz = 0;
+  for (const p of pts) {
+    cx += p.x / m;
+    cz += p.y / m;
+  }
+  // start at the tail (the largest x), where the grain's seam goes
+  let s0 = 0;
+  for (let k = 1; k < m; k++) if (pts[k].x > pts[s0].x) s0 = k;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uvs: number[] = [];
+  let run = 0;
+  let total = 0;
+  for (let k = 0; k < m; k++) total += pts[k].distanceTo(pts[(k + 1) % m]);
+  for (let k = 0; k <= m; k++) {
+    const i = (s0 + k) % m;
+    const p = pts[i];
+    const a = pts[(i + m - 1) % m];
+    const b = pts[(i + 1) % m];
+    // the outward normal in the outline's plane (shape y is the guitar's z)
+    let nx = b.y - a.y;
+    let nz = -(b.x - a.x);
+    const l = Math.hypot(nx, nz) || 1;
+    nx /= l;
+    nz /= l;
+    if (nx * (p.x - cx) + nz * (p.y - cz) < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    if (k > 0) run += pts[(s0 + k - 1) % m].distanceTo(p);
+    const u = (run / total) * 8;
+    pos.push(p.x, 0, p.y, p.x, -depth, p.y);
+    nor.push(nx, 0, nz, nx, 0, nz);
+    uvs.push(u, 0, u, 0.5);
+  }
+  // (wound to face out: the first quad's face against its outward normal; the outline may run either way round)
+  const e1x = pos[6] - pos[0];
+  const e1z = pos[8] - pos[2];
+  const e2y = pos[4] - pos[1];
+  // face normal of (top0, top1, bottom0) = e1 x e2, e2 = (0, -depth, 0): (e1z * -e2y... ) in x and z
+  const fx = -e1z * e2y;
+  const fz = e1x * e2y;
+  const out = fx * nor[0] + fz * nor[2] > 0;
+  const idx: number[] = [];
+  for (let k = 0; k < m; k++) {
+    const t0 = k * 2;
+    const t1 = (k + 1) * 2;
+    if (out) idx.push(t0, t1, t0 + 1, t1, t1 + 1, t0 + 1);
+    else idx.push(t0, t0 + 1, t1, t1, t0 + 1, t1 + 1);
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx);
+  return g;
+}
+
 function outline(grow = 0): Shape {
   const pts: Vector2[] = [];
   const n = OUTLINE.length;
@@ -92,6 +161,11 @@ export class HeldGuitarModel implements DeskModel {
   zone = -1;
   onNeck = false;
   song = false;
+  /**
+   * Held in your lap (its top facing away): what lies on its top (the chord names, the strum line and its arrows, the
+   * free-play arrows) faces away from you, so it's hidden and the room shows it beside the guitar, facing you.
+   */
+  lap = false;
   /** The free-play strum guide's strength (0: gone). */
   guideK = 1;
   /** Chord place asks in a song: beats until each place's next chord (NaN: none coming), and that chord's name. */
@@ -109,6 +183,12 @@ export class HeldGuitarModel implements DeskModel {
     return new MeshPhysicalMaterial({ name: 'Spruce', color: 0xe3c48c, map, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.1 });
   })();
   private readonly mahogany = new MeshPhysicalMaterial({ name: 'Mahogany', color: 0x5a2c16, map: woodGrain(63), roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.15 });
+  private readonly backWood = (() => {
+    const map = woodGrain(64).clone();
+    map.needsUpdate = true;
+    map.repeat.set(5, 24);
+    return new MeshPhysicalMaterial({ name: 'MahoganyBack', color: 0x5a2c16, map, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.15 });
+  })();
   private readonly rosewood = mat('Rosewood', 0x2e1810, 0.5);
   private readonly bronze = mat('Bronze', 0xc2a26e, 0.22, 1);
   private readonly steel = mat('Steel', 0xdcdad4, 0.2, 1);
@@ -151,6 +231,25 @@ export class HeldGuitarModel implements DeskModel {
       this.labels.push({ c: cv, t, m: new MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false, opacity: 0.85 }), text: '' });
     }
   }
+
+  /** How much a song asks for chord place c (0–2) or the strum (3) now, 0..1; and the strum line's flash, 0..1. */
+  askedAt(i: number): number {
+    return this.asked[i] ?? 0;
+  }
+  get strikeFlash(): number {
+    return this.strikeK;
+  }
+  /** A chord place's flash as it's taken, 0..1. */
+  zoneFlash(c: number): number {
+    return this.zoneK[c] ?? 0;
+  }
+  /** Hold it as `m` says (kit frame; a mirror is fine: three.js draws it the right way round). */
+  pose(m: Matrix4): void {
+    m.decompose(this.root.position, this.root.quaternion, this.root.scale);
+    this.flipX = this.root.scale.x < 0 ? -1 : 1;
+  }
+  /** −1 held mirrored (in your lap): anything that scales it keeps the sign. */
+  flipX = 1;
 
   /** The chord names on the neck's three places (redrawn when they change). */
   setNames(names: readonly string[]): void {
@@ -228,18 +327,27 @@ export class HeldGuitarModel implements DeskModel {
     const body = new Group();
     body.name = 'Body';
     // the box: the top and back on its sides, the outline extruded back from the top
-    const box = new Mesh(new ExtrudeGeometry(outline(), { depth: HG.depth - 0.004, bevelEnabled: true, bevelSize: 0.002, bevelThickness: 0.002, bevelSegments: 2, curveSegments: 10 }).rotateX(Math.PI / 2), [this.spruce, this.mahogany]);
+    // the box: a spruce top, the smooth bent sides, a mahogany back
+    const box = new Group();
     box.name = 'Box';
-    box.position.y = -0.002;
+    const top = new Mesh(new ShapeGeometry(outline(), 40).rotateX(-Math.PI / 2), this.spruce);
+    top.name = 'Top';
+    const rim = new Mesh(rimGeometry(outline(), HG.depth), this.mahogany);
+    rim.name = 'Sides';
+    box.add(top, rim);
+    // the back: mahogany like the sides (in your lap it's the side you see), its grain along the body
+    const backPlate = new Mesh(new ShapeGeometry(outline(-0.001), 40).rotateX(Math.PI / 2), this.backWood);
+    backPlate.name = 'Back';
+    backPlate.position.y = -HG.depth - 0.0004;
     // the binding round the top's edge
     const ring = outline(0.003);
     ring.holes.push(new Path(outline(-0.002).getPoints(10).reverse()));
-    const binding = new Mesh(new ExtrudeGeometry(ring, { depth: 0.003, bevelEnabled: false, curveSegments: 10 }).rotateX(Math.PI / 2), this.cream);
+    const binding = new Mesh(new ExtrudeGeometry(ring, { depth: 0.003, bevelEnabled: false, curveSegments: 40 }).rotateX(Math.PI / 2), this.cream);
     binding.position.y = 0.0006;
     // the soundhole, its rosette, the pickguard on the treble side below it
     const hole = new Mesh(new CircleGeometry(HG.holeR, 48).rotateX(-Math.PI / 2), this.hole);
     hole.position.set(HG.hole, 0.0005, 0);
-    body.add(box, binding, hole);
+    body.add(box, backPlate, binding, hole);
     for (const [r0, r1, m] of [[HG.holeR + 0.002, HG.holeR + 0.005, this.rosewood], [HG.holeR + 0.008, HG.holeR + 0.014, this.cream], [HG.holeR + 0.017, HG.holeR + 0.02, this.rosewood]] as const) {
       const r = new Mesh(new RingGeometry(r0, r1, 64).rotateX(-Math.PI / 2), m);
       r.position.set(HG.hole, 0.0006, 0);
@@ -508,9 +616,9 @@ export class HeldGuitarModel implements DeskModel {
       this.zoneGlow[c].opacity = Math.min(0.85, Math.max(base, ask * 0.6, this.zoneK[c] * 0.7));
       // (the names: all three in free play; in a song, the chord coming and the one you're on)
       const L = this.labels[c].m;
-      L.opacity = this.song ? (ask > 0 ? 0.7 + 0.3 * ask : mine ? 0.6 : 0) : mine ? 1 : 0.8;
+      L.opacity = this.lap ? 0 : this.song ? (ask > 0 ? 0.7 + 0.3 * ask : mine ? 0.6 : 0) : mine ? 1 : 0.8;
       const ring = this.zoneRing[c];
-      ring.visible = Number.isFinite(ahead) && ahead < 2 && ahead > -0.25;
+      ring.visible = !this.lap && Number.isFinite(ahead) && ahead < 2 && ahead > -0.25;
       if (ring.visible) {
         const r = 0.03 * (1 + 1.6 * Math.max(0, ahead) / 2);
         ring.scale.set(r, 1, r * 0.75);
@@ -519,11 +627,11 @@ export class HeldGuitarModel implements DeskModel {
     }
     // the strum line, and the arrows riding onto it (down: warm, pointing toward the high E; up: cool)
     this.strikeK *= Math.exp(-dt * 6);
-    (this.strike.material as MeshBasicMaterial).opacity = this.song ? Math.min(0.95, 0.3 + 0.5 * this.asked[3] + 0.6 * this.strikeK) : 0;
+    (this.strike.material as MeshBasicMaterial).opacity = this.song && !this.lap ? Math.min(0.95, 0.3 + 0.5 * this.asked[3] + 0.6 * this.strikeK) : 0;
     for (let k = 0; k < this.arrows.length; k++) {
       const a = this.arrows[k];
       const ah = this.strumAhead[k];
-      const on = this.song && Number.isFinite(ah) && ah < 3.2 && ah > -0.3;
+      const on = this.song && !this.lap && Number.isFinite(ah) && ah < 3.2 && ah > -0.3;
       a.visible = on;
       if (!on) continue;
       const m = a.material as MeshBasicMaterial;
@@ -538,7 +646,7 @@ export class HeldGuitarModel implements DeskModel {
     }
     for (let k = 0; k < this.guideArrows.length; k++) {
       const pulse = 0.5 + 0.5 * Math.sin(this.t * 4 - k * Math.PI);
-      (this.guideArrows[k].material as MeshBasicMaterial).opacity = this.song ? 0 : this.guideK * (0.35 + 0.45 * pulse);
+      (this.guideArrows[k].material as MeshBasicMaterial).opacity = this.song || this.lap ? 0 : this.guideK * (0.35 + 0.45 * pulse);
     }
   }
 }

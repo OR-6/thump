@@ -25,6 +25,8 @@ export interface DeskModel {
   struck(i: number, gain: number): void;
   /** Light part i at k (0..1) when a song asks for it, if it lights itself (else the overlay does). */
   light?(i: number, k: number): void;
+  /** −1 when it's drawn mirrored (the guitar in your lap): its scale's x keeps the sign through the unfold. */
+  readonly flipX?: number;
   /** Part i held down by a finger, `k` of its travel (0: let go): a key stays down while it's held. */
   hold?(i: number, k: number): void;
   update(dt: number): void;

@@ -26,6 +26,9 @@ import {
   RingGeometry,
   DoubleSide,
   SphereGeometry,
+  Shape,
+  ShapeGeometry,
+  MeshStandardMaterial,
   Vector3,
   VisibilityState,
   XRAnchor,
@@ -36,6 +39,7 @@ import {
   type Object3D,
   Quaternion,
 } from '@iwsdk/core';
+import { tortoiseShell } from '../scene-assets/lib/surfaces.js';
 import { PADS, PLACE, STRIKE, type Lane } from '../config.js';
 import { hands, type HandState, type Side } from '../input/hands.js';
 import { KIT_STYLES, type KitStyle } from '../scene-assets/lib/drums.js';
@@ -84,7 +88,8 @@ import { BRAND, INST_LIGHT, hexNum, withAlpha } from '../ui/theme.js';
 import { HitFx, type PartShape } from './hit-fx.js';
 import { ApproachRings } from './approach-rings.js';
 import { Hud, type HudSay } from './hud.js';
-import { GuitarHands, HG, SADDLE_X, heldMatrix, stringZ, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
+import { GuitarHands, HG, SADDLE_X, bodyHalfW, heldMatrix, lapMatrix, stringZ, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
+import { GuitarCues, cueSpot } from './guitar-cues.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { formOf } from './waterfall-fx.js';
@@ -114,8 +119,9 @@ interface KeyRef {
 }
 
 export interface RoomDebug {
-  /** Claps and stick clicks heard (for the E2E). */
+  /** Claps, stick clicks and knocks on the guitar heard (for the E2E). */
   claps?: number;
+  taps?: number;
   clicks?: number;
   phase: string;
   deskY: number | null;
@@ -195,6 +201,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // the guitar on your lap: a fret zone on the neck, or the strings over the soundhole
       const z = Number(key.slice(7));
       const zone = z >= 0 && z < 3;
+      if (this.guitarLap) {
+        // (held facing away: round the cue that stands for it just off the guitar, turned to your eyes)
+        cueSpot(zone ? z : 9, this.fxN);
+        this.heldWorld(this.fxN.x, this.fxN.y, this.fxN.z, s.at);
+        this.fxS.subVectors(this.head, s.at).normalize();
+        s.q.setFromUnitVectors(RoomSystem.UP, this.fxS);
+        s.w = zone ? 0.075 : 0.06;
+        s.d = s.w;
+        s.round = true;
+        col.setHex(instDef('guitar').color);
+        return true;
+      }
       this.heldWorld(zone ? zoneX(z) : HG.strikeX, HG.strings + 0.002, 0, s.at);
       this.heldM.decompose(this.fxN, this.fxQ, this.fxS);
       s.q.multiply(this.fxQ);
@@ -366,6 +384,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     sfx.grid = (div) => this.sfxGrid(div);
     this.hint = new Tag(0.36, 0.05);
     this.worldRoot.add(this.hint.mesh);
+    this.lapCues = new GuitarCues(this.worldRoot);
     const dot = new SphereGeometry(0.0035, 8, 6);
     this.holdRing = new InstancedMesh(dot, new MeshBasicMaterial({ color: 0xf2efe6 }), HOLD_DOTS);
     this.holdRing.frustumCulled = false;
@@ -693,6 +712,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     setting: (name, flip) => {
       const s = this.settings;
       if (name === 'panelMoved') return !!s.panelAt;
+      if (name === 'guitarLap') {
+        const lap = !s.guitarDesk;
+        if (!flip) return lap;
+        this.settings = { ...s, guitarDesk: lap };
+        saveSettings(this.settings);
+        sfx.toggle(!lap);
+        // (the guitar out now: held the new way at once)
+        if (this.kit.inst === 'guitar') {
+          this.instTuning = '';
+          this.useInstrument('guitar');
+        }
+        return !lap;
+      }
       const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : name === 'band' ? s.band : name === 'light' ? s.freeLight : !s.noWords;
       if (!flip) return cur;
       const next = { ...s };
@@ -1283,6 +1315,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     hud.set(say);
     this.hudSay = say;
+    // (the guitar in your lap is where the sign stands: the sign stands back on the desk, behind it)
+    this.hudAt.z = this.guitarLap && this.kit.inst === 'guitar' ? 0.02 : 0.24;
     hud.update(dt, this.hudAt, this.head, motion.calm, this.hudTargetOn ? this.hudTarget : null);
   }
 
@@ -1853,6 +1887,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     this.panelHandle();
     this.kitHandle();
+    this.guitarGrabTick();
     if (!this.kit.module.hidden) this.panelHover();
     else this.kit.module.hover(-1, 0, 0, 0);
     this.tickBand(dt);
@@ -1903,6 +1938,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (!inSongNow) this.waterfall.update(dt, this.game, this.kit.root, this.resolveNote);
     // (a ring's warning is about 1.1 s whatever the tempo: 2 beats of a slow song, up to 3 of a fast one)
     const lead = Math.max(2, Math.min(3, 1.1 / Math.max(0.2, this.game.clock.spb)));
+    // (the guitar in your lap: what it would show on its top, shown beside it facing you)
+    const gm = this.kit.models.get('guitar') as HeldGuitarModel | undefined;
+    if (gm && this.lapCues) this.lapCues.update(gm, this.guitarLap && this.kit.inst === 'guitar' && this.placement.phase === 'placed', this.placeHeld, this.head, motion.calm);
     this.approach?.update(this.game, this.shapeOf, motion.calm, this.game.hold?.kind === 'note' ? this.game.hold.key : '', this.uiT, this.game.paused, lead);
     this.dimmer.update(dt, this.head, motion.calm);
     this.lightsOut.update(dt, motion.calm);
@@ -3518,6 +3556,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const tuning = `${want}:${root}:${scale.id}`;
     if (tuning === this.instTuning) return;
     this.instTuning = tuning;
+    // (the guitar comes out where you are now)
+    if (want === 'guitar') this.poseGuitar();
     this.kit.setInstrument(want, root, scale);
     if (want === 'piano') this.kit.pianoScreen(instDef('piano').sounds.find((x) => x.id === this.shelfCfg('piano').sound)?.name ?? '');
     // the guitar's strings, made a frame at a time while it unfolds
@@ -4091,8 +4131,89 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   // ---- the guitar you hold (src/kit/held-guitar.ts) ----
   private gh = new GuitarHands();
-  private readonly heldM = heldMatrix(new Matrix4());
-  private readonly heldInv = new Matrix4().copy(this.heldM).invert();
+  private heldM = heldMatrix(new Matrix4());
+  private heldInv = new Matrix4().copy(this.heldM).invert();
+  /** The guitar in your lap (facing away, as it's really held), or facing you over the desk (the setting). */
+  private guitarLap = false;
+  private lapCues: GuitarCues | null = null;
+  /** Put the lap guitar's soundhole at (x, y, z) in the kit's frame, held as it is. */
+  private moveGuitarTo(x: number, y: number, z: number): void {
+    this.tmp.set(HG.hole, 0, 0).applyMatrix4(this.tmpM2.copy(this.heldM).setPosition(0, 0, 0));
+    this.heldM.setPosition(x - this.tmp.x, y - this.tmp.y, z - this.tmp.z);
+  }
+  /**
+   * Moving the guitar in your lap: pinch its headstock (out past the nut, where no chord place is) and carry it; let
+   * go and it stays, and comes out there next time. Not in a song (like the desk's handle).
+   */
+  private guitarHand = -1;
+  private guitarOff = new Vector3();
+  private guitarPinchWas = [false, false];
+  private guitarGrabTick(): void {
+    const on = this.guitarLap && this.kit.inst === 'guitar' && this.placement.phase === 'placed' && this.game.mode !== 'play' && this.game.mode !== 'count';
+    if (!on) {
+      this.guitarHand = -1;
+      return;
+    }
+    const inv = this.tmpM2.copy(this.kit.root.matrixWorld).invert();
+    for (let i = 0; i < 2; i++) {
+      const h = i === 0 ? hands.left : hands.right;
+      if (!h.tracked || h.controller) {
+        if (this.guitarHand === i) this.guitarHand = -1;
+        continue;
+      }
+      // the pinch, and the guitar's soundhole, in the kit's frame
+      this.tmp.copy(h.pinchPoint).applyMatrix4(inv);
+      if (this.guitarHand === i) {
+        if (!h.pinch.pinching) {
+          this.guitarHand = -1;
+          this.heldWorld(HG.hole, 0, 0, this.fxN).applyMatrix4(inv);
+          this.settings = { ...this.settings, guitarAt: { x: this.fxN.x, y: this.fxN.y, z: this.fxN.z } };
+          saveSettings(this.settings);
+          sfx.set();
+          continue;
+        }
+        this.moveGuitarTo(this.tmp.x + this.guitarOff.x, this.tmp.y + this.guitarOff.y, this.tmp.z + this.guitarOff.z);
+        this.heldInv.copy(this.heldM).invert();
+        (this.kit.models.get('guitar') as HeldGuitarModel | undefined)?.pose(this.heldM);
+        continue;
+      }
+      const started = h.pinch.pinching && !this.guitarPinchWas[i];
+      this.guitarPinchWas[i] = h.pinch.pinching;
+      if (this.guitarHand >= 0 || !started) continue;
+      // (its headstock: 15 cm past the nut, within 6 cm)
+      this.heldWorld(HG.nut - 0.15, 0.01, 0, this.fxN);
+      if (h.pinchPoint.distanceTo(this.fxN) > 0.06) continue;
+      this.guitarHand = i;
+      this.heldWorld(HG.hole, 0, 0, this.fxN).applyMatrix4(inv);
+      this.guitarOff.subVectors(this.fxN, this.tmp);
+      sfx.tick();
+    }
+  }
+  private readonly placeHeld = (x: number, y: number, z: number, out: Vector3): Vector3 => this.heldWorld(x, y, z, out);
+  /**
+   * Hold the guitar as the setting says: in your lap, placed from where your eyes are now (seen from the kit), or
+   * over the desk. Its model, its hands (the lap's reach is wider: you play it by feel, over its edge) and the desk's
+   * shadow follow.
+   */
+  private poseGuitar(): void {
+    this.guitarLap = !this.settings.guitarDesk;
+    if (this.guitarLap) {
+      this.tmp.copy(this.head).applyMatrix4(this.tmpM2.copy(this.kit.root.matrixWorld).invert());
+      lapMatrix(this.heldM, this.tmp, this.handed() === 'left');
+      // (where you moved it to, if you have: its soundhole there, held the same way)
+      const at = this.settings.guitarAt;
+      if (at) this.moveGuitarTo(at.x, at.y, at.z);
+    } else heldMatrix(this.heldM);
+    this.heldInv.copy(this.heldM).invert();
+    this.gh.reach = this.guitarLap ? { strum: 0.03, side: 0.02, over: 0.025 } : { strum: 0.014, side: 0.01, over: 0.012 };
+    this.gh.forget();
+    const model = this.kit.models.get('guitar') as HeldGuitarModel | undefined;
+    if (model) {
+      model.pose(this.heldM);
+      model.lap = this.guitarLap;
+    }
+    this.kit.guitarLap = this.guitarLap;
+  }
   private gInv = new Matrix4();
   /** Each hand's fingertips in the guitar's frame: index, middle, ring, thumb, little. */
   private gTips = Array.from({ length: 10 }, () => new Vector3());
@@ -4118,21 +4239,45 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.gInv.multiplyMatrices(this.heldInv, inv);
     const t = this.clock.t;
     this.plucks.length = 0;
+    // (the hand that strums: the right, or the left for a left-handed player)
+    const strummer = this.handed() === 'left' ? 0 : 1;
     for (let i = 0; i < 2; i++) {
       const side = i as 0 | 1;
       const h = i === 0 ? hands.left : hands.right;
       // (a hand at the panel is pressing a button, not playing)
       this.airP.copy(h.indexTip).applyMatrix4(this.moduleSurface.inv);
       const atPanel = !this.kit.module.hidden && Math.abs(this.airP.y) < 0.06 && Math.abs(this.airP.x) < PANEL.w / 2 + 0.03 && Math.abs(this.airP.z) < PANEL.h / 2 + 0.03;
-      if (!h.tracked || atPanel || h.pinch.pinching) {
+      // a pinch with the strumming hand holds a pick (not at the panel, nor moving the guitar by its head)
+      const pick = h.tracked && !h.controller && !atPanel && h.pinch.pinching && i === strummer && this.guitarHand !== i;
+      // (from fingers to the pick or back: no strum read across the jump between them)
+      if (pick !== this.pickOn[i]) this.gh.forget(side);
+      this.pickOn[i] = pick;
+      if (!h.tracked || atPanel || (h.pinch.pinching && !pick)) {
         this.gh.forget(side);
         for (let k = 0; k < 4; k++) this.gFretRefs[i * 4 + k] = null;
+        this.tapForget(i);
         continue;
       }
       const base = i * 5;
       this.gOk[i] = true;
-      const src = [h.indexTip, h.middleTip, h.ringTip, h.thumbTip, h.pinkyTip];
-      for (let k = 0; k < 5; k++) this.gTips[base + k].copy(src[k]).applyMatrix4(this.gInv);
+      if (pick) {
+        // the pick's tip is the one point that strums
+        this.pickAt(i, h);
+        this.gTips[base].copy(this.pickTip[i]).applyMatrix4(this.gInv);
+        this.gStrumRefs[0] = this.gTips[base];
+        this.gStrumRefs[1] = this.gStrumRefs[2] = this.gStrumRefs[3] = null;
+        this.gh.strum(side, this.gStrumRefs, t, dt, this.plucks);
+        for (let k = 0; k < 4; k++) this.gFretRefs[i * 4 + k] = null;
+        this.tapForget(i);
+        this.gOk[i] = false;
+        continue;
+      }
+      this.gTips[base].copy(h.indexTip).applyMatrix4(this.gInv);
+      this.gTips[base + 1].copy(h.middleTip).applyMatrix4(this.gInv);
+      this.gTips[base + 2].copy(h.ringTip).applyMatrix4(this.gInv);
+      this.gTips[base + 3].copy(h.thumbTip).applyMatrix4(this.gInv);
+      this.gTips[base + 4].copy(h.pinkyTip).applyMatrix4(this.gInv);
+      this.bodyTaps(i, h, dt);
       // (a controller: its tip is the one point)
       const one = !!h.controller;
       for (let k = 0; k < 4; k++) this.gStrumRefs[k] = one && k > 0 ? null : this.gTips[base + k];
@@ -4147,6 +4292,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     for (const p of this.plucks) this.guitarPluck(p, Math.max(0, Math.min(dt, p.t - (t - dt))));
     if (model) this.bowStrings(model);
     this.gOk[0] = this.gOk[1] = false;
+    this.showPicks();
     if (!model) return;
     model.zone = this.gh.zone;
     model.onNeck = this.gh.onNeck;
@@ -4200,6 +4346,102 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (near < 9 && (py !== 0 || pz !== 0)) model.press(si, px, py, pz);
     }
   }
+  /**
+   * A pick: pinch with the strumming hand while the guitar is out and one is between your thumb and index finger, its
+   * tip a centimetre and a half out past the pinch, toward your fingers; that tip strums (one clean point, as a pick
+   * is). Drawn as a small tortoiseshell pick, flat between thumb and finger. Gone when you open your hand.
+   */
+  private pickOn = [false, false];
+  private pickTip = [new Vector3(), new Vector3()];
+  private pickMesh: Mesh[] = [];
+  private pickD = new Vector3();
+  private pickN = new Vector3();
+  private pickY = new Vector3();
+  private pickM = new Matrix4();
+  private pickAt(i: number, h: typeof hands.left): void {
+    // toward the fingers from the middle knuckle; flat across the hand (its faces to the thumb and the finger)
+    this.pickD.subVectors(h.pinchPoint, h.knuckleMiddle);
+    this.pickN.subVectors(h.knuckleIndex, h.knucklePinky);
+    if (this.pickD.lengthSq() < 1e-8 || this.pickN.lengthSq() < 1e-8) {
+      this.pickTip[i].copy(h.pinchPoint);
+      return;
+    }
+    this.pickN.normalize();
+    this.pickD.addScaledVector(this.pickN, -this.pickD.dot(this.pickN)).normalize();
+    this.pickTip[i].copy(h.pinchPoint).addScaledVector(this.pickD, 0.014);
+    const m = this.pickMeshFor(i);
+    this.pickY.crossVectors(this.pickN, this.pickD);
+    this.pickM.makeBasis(this.pickD, this.pickY, this.pickN);
+    m.quaternion.setFromRotationMatrix(this.pickM);
+    m.position.copy(h.pinchPoint);
+  }
+  private pickMeshFor(i: number): Mesh {
+    if (!this.pickMesh[i]) {
+      // a teardrop, its point along +x, 2.8 cm long
+      const sh = new Shape();
+      sh.moveTo(0.014, 0);
+      sh.quadraticCurveTo(0.004, 0.013, -0.009, 0.0095);
+      sh.quadraticCurveTo(-0.0145, 0, -0.009, -0.0095);
+      sh.quadraticCurveTo(0.004, -0.013, 0.014, 0);
+      const m = new Mesh(new ShapeGeometry(sh, 12), new MeshStandardMaterial({ color: 0xc8643a, map: tortoiseShell(), roughness: 0.35, side: DoubleSide }));
+      m.name = 'Pick';
+      m.visible = false;
+      m.renderOrder = 8;
+      this.worldRoot.add(m);
+      this.pickMesh[i] = m;
+    }
+    return this.pickMesh[i];
+  }
+  private showPicks(): void {
+    for (let i = 0; i < 2; i++) {
+      const on = this.pickOn[i] && this.kit.inst === 'guitar';
+      if (on || this.pickMesh[i]) this.pickMeshFor(i).visible = on;
+      if (!on) this.pickOn[i] = false;
+    }
+  }
+
+  /**
+   * The guitar's body knocked: a fingertip or the heel of the hand striking its top away from the strings (at 0.5 m/s
+   * or more, mostly into the wood) sounds a knock through the box, deep by the soundhole and sharper out toward its
+   * edges, louder for a harder knock: a percussive player's beat. Once a touch: it comes 1.5 cm off before it knocks
+   * again. A strum brushing across the strings isn't a knock.
+   */
+  private tapPrev = Array.from({ length: 12 }, () => new Vector3());
+  private tapOk = new Uint8Array(12);
+  private tapArmed = new Uint8Array(12).fill(1);
+  private tapP = new Vector3();
+  private tapT = [-9, -9];
+  private tapForget(i: number): void {
+    for (let k = 0; k < 6; k++) this.tapOk[i * 6 + k] = 0;
+  }
+  private bodyTaps(i: number, h: typeof hands.left, dt: number): void {
+    for (let k = 0; k < 6; k++) {
+      const j = i * 6 + k;
+      const P = k < 5 ? this.gTips[i * 5 + k] : this.tapP.copy(h.palm).applyMatrix4(this.gInv);
+      const q = this.tapPrev[j];
+      const was = this.tapOk[j] === 1;
+      const py = q.y;
+      const moved = was ? P.distanceTo(q) : 0;
+      q.copy(P);
+      this.tapOk[j] = 1;
+      if (P.y > 0.015) this.tapArmed[j] = 1;
+      if (!was || !this.tapArmed[j] || dt <= 0 || !(py > 0 && P.y <= 0)) continue;
+      const v = (py - P.y) / dt;
+      // (a tracking jump through the wood isn't a knock; two fingers landing together are one)
+      if (v < 0.5 || py - P.y < 0.6 * moved || moved > 0.08 || this.clock.t - this.tapT[i] < 0.06) continue;
+      // on the top, inside its outline, off the strings (and not on the neck)
+      const hw = bodyHalfW(P.x);
+      if (P.x < HG.join + 0.01 || hw < 0.02 || Math.abs(P.z) > hw - 0.005) continue;
+      if (P.x < SADDLE_X + 0.015 && Math.abs(P.z) < Math.abs(stringZ(5, P.x)) + 0.012) continue;
+      this.tapArmed[j] = 0;
+      this.tapT[i] = this.clock.t;
+      const deep = Math.hypot(P.x - HG.hole, P.z) < 0.09;
+      audio.modal('cajon', 0, Math.min(1, 0.25 + v * 0.35), 0.25, 0, 0.5, 'gbody', deep ? 0 : 1);
+      this.dimmer.hit(instDef('guitar').color, Math.min(1, v * 0.4));
+      this.debug.taps = (this.debug.taps ?? 0) + 1;
+    }
+  }
+
   /** A string sounds: the chord's note on it (or, with real frets, the note your finger stops), and it shakes. */
   private guitarPluck(p: Pluck, offset: number): void {
     const midi = this.guitarString(p.string);
@@ -4351,6 +4593,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (hc) this.gSongNames[c] = `${NOTE_NAMES[((hc.chord % 12) + 12) % 12]}${hc.chordMinor ? 'm' : ''}`;
       }
       model.setNames(this.gSongNames);
+      this.lapCues?.setNames(this.gSongNames);
       return;
     }
     if (cfg.frets === 'real') {
@@ -4365,6 +4608,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     }
     model.setNames(this.gNames);
+    this.lapCues?.setNames(this.gNames);
   }
 
   /** A chord position on the guitar's neck: that chord, and a soft strum of it so the hand that picks is heard. */

@@ -16,6 +16,7 @@ const js = (body) => {
   return o;
 };
 const dbg = () => js(`return { claps: r.debug.claps ?? 0, clicks: r.debug.clicks ?? 0, fists: [r.fist[0], r.fist[1]], errors: r.debug.errors };`);
+const dbg2 = () => js(`return { taps: r.debug.taps ?? 0 };`);
 const FWD = { pitch: 0, yaw: 0, roll: 0 };
 /** A drummer's fist: pitched down at the drums (the emulator's own hand points a little up). */
 const GRIP = { pitch: -35, yaw: 0, roll: 0 };
@@ -122,6 +123,76 @@ put('hand-right', [0.26, 1.1, -0.3], GRIP);
 await wait(400);
 rest = await into(0.1);
 check('pushed 10 cm through, it goes with the hand', rest.moved < 0.002, JSON.stringify(rest));
+// ---- the guitar in your lap: pinch its headstock and carry it; it stays where you let go, and is kept
+js(`r.curl = () => 1; r.putOut('guitar'); return 1;`);
+await wait(1500);
+put('hand-left', [-0.5, 1.4, -0.1]);
+put('hand-right', [0.5, 1.4, -0.1]);
+await wait(400);
+const g0 = js(`const V = r.head.constructor; return { lap: r.guitarLap, head: r.heldWorld(-0.6, 0.01, 0, new V()).toArray(), hole: r.heldWorld(0.052, 0, 0, new V()).toArray() };`);
+check('the guitar comes out in your lap', g0.lap === true, JSON.stringify(g0));
+// (the right hand's pinch point onto the headstock: the hand moved by how far its pinch is from it)
+// (the pinch point as it is while pinching: the fingers closing move it)
+xr('set-select-value', { device: 'hand-right', value: 1 });
+await wait(400);
+const pp = js(`return H.right.pinchPoint.toArray();`);
+xr('set-select-value', { device: 'hand-right', value: 0 });
+await wait(300);
+const R1 = [0.5 + g0.head[0] - pp[0], 1.4 + g0.head[1] - pp[1], -0.1 + g0.head[2] - pp[2]];
+put('hand-right', R1);
+await wait(300);
+xr('set-select-value', { device: 'hand-right', value: 1 });
+await wait(400);
+go('hand-right', [R1[0], R1[1] + 0.1, R1[2]], 400);
+await wait(700);
+xr('set-select-value', { device: 'hand-right', value: 0 });
+await wait(400);
+const g1 = js(`const V = r.head.constructor; return { hole: r.heldWorld(0.052, 0, 0, new V()).toArray(), saved: r.settings.guitarAt ?? null };`);
+check('pinched by its headstock and lifted 10 cm, the guitar comes with the hand', Math.abs(g1.hole[1] - g0.hole[1] - 0.1) < 0.02, JSON.stringify([g0.hole, g1.hole]));
+check('and where you put it is kept', !!g1.saved, JSON.stringify(g1.saved));
+js(`const s = { ...r.settings }; delete s.guitarAt; r.settings = s; return 1;`);
+
+// ---- a pick: pinch with the strumming hand and one is between thumb and finger; its tip strums
+const st0 = state();
+const at = st0.targets.strum;
+const dn = st0.targets.strumDown;
+const nrm = st0.targets.guitarNormal;
+const PP = [at[0] + nrm[0] * 0.2, at[1] + nrm[1] * 0.2, at[2] + nrm[2] * 0.2];
+const PO = { pitch: -40, yaw: 0, roll: 0 };
+put('hand-right', PP, PO);
+await wait(300);
+xr('set-select-value', { device: 'hand-right', value: 1 });
+await wait(400);
+const pk = js(`return { on: r.pickOn[1], shown: !!r.pickMesh[1]?.visible, tip: r.pickTip[1].toArray() };`);
+check('a pinch with the strumming hand holds a pick', pk.on && pk.shown, JSON.stringify(pk));
+const po = [PP[0] - pk.tip[0], PP[1] - pk.tip[1], PP[2] - pk.tip[2]];
+const pp2 = (k) => [at[0] + dn[0] * k + po[0] - nrm[0] * 0.004, at[1] + dn[1] * k + po[1] - nrm[1] * 0.004, at[2] + dn[2] * k + po[2] - nrm[2] * 0.004];
+put('hand-right', pp2(-0.06), PO);
+await wait(300);
+let h0 = state().debug.hits;
+go('hand-right', pp2(0.06), 120, PO);
+await wait(500);
+let sx = state();
+check('swept across the strings, the pick strums', sx.debug.lastHit?.family === 'strum' && sx.debug.hits > h0, JSON.stringify(sx.debug.lastHit));
+xr('set-select-value', { device: 'hand-right', value: 0 });
+await wait(400);
+check('open the hand and the pick is gone', js(`return !r.pickOn[1] && !r.pickMesh[1]?.visible;`), '');
+
+// ---- a knock on the guitar's body: a fingertip striking its top off the strings, out on the lower bout
+const kn = js(`const V = r.head.constructor; return r.heldWorld(0.26, 0, 0.07, new V()).toArray();`);
+const KP = [kn[0] + nrm[0] * 0.2, kn[1] + nrm[1] * 0.2, kn[2] + nrm[2] * 0.2];
+put('hand-right', KP, PO);
+await wait(300);
+const ti = state().right.indexTip;
+const ko = [KP[0] - ti[0], KP[1] - ti[1], KP[2] - ti[2]];
+const kp = (d) => [kn[0] + nrm[0] * d + ko[0], kn[1] + nrm[1] * d + ko[1], kn[2] + nrm[2] * d + ko[2]];
+put('hand-right', kp(0.06), PO);
+await wait(300);
+const t0 = dbg2();
+go('hand-right', kp(-0.012), 80, PO);
+await wait(400);
+const t1 = dbg2();
+check('a fingertip knocked on the body, off the strings: a knock', t1.taps === t0.taps + 1, `${t0.taps} -> ${t1.taps}`);
 n = dbg();
 check('no frame errors', n.errors === 0, `errors=${n.errors}`);
 done('E2E feel');

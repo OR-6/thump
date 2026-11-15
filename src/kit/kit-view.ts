@@ -211,7 +211,8 @@ export class KitView {
     this.instShadow.visible = Number.isFinite(x0);
     // (the guitar rests against the desk's edge: its shadow under the body, nothing under the neck in the air)
     this.neckShadow.visible = false;
-    if (id === 'guitar') {
+    if (id === 'guitar' && this.guitarLap) this.instShadow.visible = false;
+    else if (id === 'guitar') {
       x0 = HOLD.x - 0.05;
       x1 = HOLD.x + 0.4;
       z0 = -HOLD.z - 0.12;
@@ -359,6 +360,8 @@ export class KitView {
     this.models.get(this.inst)?.struck(i % 20, gain);
   }
   /** Piano key (or black key 30 + j, or the chord button) `i` held down by a finger, `k` of its travel (0: let go). */
+  /** The guitar is held in your lap (nothing of it on the desk: no shadow there). */
+  guitarLap = false;
   keyHold(i: number, k: number): void {
     // (whatever is out: a key let go as the piano is put away mustn't stay down for when it comes back)
     this.models.get('piano')?.hold?.(i, k);
@@ -412,8 +415,9 @@ export class KitView {
         this.unfoldT = Math.min(1, this.unfoldT + dt / this.unfoldS);
         const t = this.unfoldT;
         const e = 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2);
-        m.root.scale.set(0.6 + 0.4 * e, Math.max(0.05, e), 0.6 + 0.4 * e);
-      } else m.root.scale.setScalar(1);
+        const fx = m.flipX ?? 1;
+        m.root.scale.set(fx * (0.6 + 0.4 * e), Math.max(0.05, e), 0.6 + 0.4 * e);
+      } else m.root.scale.set(m.flipX ?? 1, 1, 1);
     }
     this.module.update(dt);
   }
