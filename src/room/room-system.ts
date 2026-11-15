@@ -3654,7 +3654,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (m === 'play' || m === 'count') {
         if (!this.game.switchTo(arg)) {
           this.switchNoT = this.uiT;
-          audio.tick(0.08);
+          sfx.denied();
         }
         return;
       }
