@@ -488,7 +488,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       play: (id, zero, from) => this.clock.toAudio(zero) > 0 && audio.stemPlay(id, this.clock.toAudio(zero), this.clock.toAudio(from)),
       stop: (fade) => audio.stemStop(fade),
       synced: (zero) => audio.stems.zero > 0 && Math.abs(audio.stems.zero - this.clock.toAudio(zero)) < 0.004,
-      level: (stem, v) => audio.stemLevel(stem, v),
+      level: (stem, v, tau) => audio.stemLevel(stem, v, tau),
     },
     light: (key, k) => {
       const r = this.ref(key);
@@ -1170,7 +1170,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     saveSettings(this.settings);
   }
   /** What the HUD says now: the count-in, the one thing to do, the streak; else the first steps; else nothing. */
-  private hudTick(dt: number): void {
+/** What the sign says while you play (one object, refreshed each frame: nothing allocated). */
+  private hudPlay: Extract<HudSay, { kind: 'play' }> = { kind: 'play', run: 0, mult: 1, v: 0, errs: new Float32Array(10), n: 0, i: 0 };
+    private hudTick(dt: number): void {
     const hud = this.hud;
     if (!hud) return;
     // (what it says is worked out 20 times a second, not every frame: it's words, and nothing here needs a frame)
@@ -1229,6 +1231,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (inSong && this.uiT - this.hudStreakT < 1.5 && this.hudStreak > 0) say = { kind: 'streak', n: this.hudStreak };
       else if (step) say = { kind: 'tip', big: step.title, small: step.say };
       else if (inSong && beat >= 0 && beat < 8 && coach < 3) say = { kind: 'tip', big: 'Hit as the ring closes', small: 'Each note is a ring shrinking onto what plays it' };
+      // (playing a song with nothing else to say: the run, the multiplier, and how your last hits sat in time)
+      else if (inSong && mode === 'play' && !this.game.paused && !this.game.listening) {
+        const p = this.hudPlay;
+        p.run = this.game.run;
+        p.errs = this.game.hitErrs;
+        p.mult = d.mult ?? 1;
+        p.v = this.game.hitV;
+        p.n = this.game.hitErrN;
+        p.i = this.game.hitErrI;
+        say = p;
+      }
       else if (coach === 0 && mode === 'discover' && !this.game.paused) {
         // the welcome: tap the desk and the drums arrive, then the first lesson starts by itself
         if (!this.game.found.includes('kit'))
@@ -1888,7 +1901,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const inSongNow = this.game.mode === 'play' || this.game.mode === 'count';
     this.waterfall.root.visible = !inSongNow;
     if (!inSongNow) this.waterfall.update(dt, this.game, this.kit.root, this.resolveNote);
-    this.approach?.update(this.game, this.shapeOf, motion.calm, this.game.hold?.kind === 'note' ? this.game.hold.key : '', this.uiT, this.game.paused);
+    // (a ring's warning is about 1.1 s whatever the tempo: 2 beats of a slow song, up to 3 of a fast one)
+    const lead = Math.max(2, Math.min(3, 1.1 / Math.max(0.2, this.game.clock.spb)));
+    this.approach?.update(this.game, this.shapeOf, motion.calm, this.game.hold?.kind === 'note' ? this.game.hold.key : '', this.uiT, this.game.paused, lead);
     this.dimmer.update(dt, this.head, motion.calm);
     this.lightsOut.update(dt, motion.calm);
     audio.idle();
@@ -4247,9 +4262,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (!sp?.ready || this.userPaused) {
       this.handsUpT = 0;
+      this.game.spotRaise = false;
       return;
     }
     const up = (h: typeof hands.left) => h.tracked && h.wrist.y > this.head.y - 0.12;
+    // (both hands on their way up to fire it: the notes they leave aren't held against your run)
+    const rising = (h: typeof hands.left) => h.tracked && h.wrist.y > this.head.y - 0.35;
+    this.game.spotRaise = rising(hands.left) && rising(hands.right);
     this.handsUpT = up(hands.left) && up(hands.right) ? this.handsUpT + dt : 0;
     if (this.handsUpT >= 0.25) {
       this.handsUpT = 0;

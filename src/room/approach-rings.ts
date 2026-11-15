@@ -104,7 +104,8 @@ export class ApproachRings {
     }
   }
 
-  update(feed: ApproachFeed, shapeOf: ShapeOf, calm: boolean, waitKey = '', t = 0, paused = false): void {
+  /** `lead`: how many beats ahead a ring appears (the song's tempo sets it: about 1.1 s, 2 to 3 beats). */
+  update(feed: ApproachFeed, shapeOf: ShapeOf, calm: boolean, waitKey = '', t = 0, paused = false, lead = LEAD_BEATS): void {
     let s = 0;
     if (feed.mode === 'play' || feed.mode === 'count') {
       const count = Math.min(feed.moteCount, feed.motes.length);
@@ -112,12 +113,12 @@ export class ApproachRings {
         const n = feed.motes[i];
         // (a miss: its ring goes grey and sinks inside the part as it fades; any other grade, it's done)
         const miss = n.grade === 'miss';
-        if ((n.grade && !miss) || n.faint || n.ahead > LEAD_BEATS || n.ahead < (miss ? -0.6 : -0.25)) continue;
+        if ((n.grade && !miss) || n.faint || n.ahead > lead || n.ahead < (miss ? -0.6 : -0.25)) continue;
         if (!shapeOf(n.key, this.shape, _c)) continue;
         if (n.gold) _c.lerp(GOLD, 0.85);
         if (miss) _c.setRGB(0.55, 0.52, 0.6);
         const sh = this.shape;
-        const u = Math.max(0, n.ahead) / LEAD_BEATS;
+        const u = Math.max(0, n.ahead) / lead;
         // (closing: steady in speed, so its last beat reads like a count; past due it holds on the outline and fades)
         const grow = miss && n.ahead < 0 ? Math.max(0.55, 1 + n.ahead * 0.6) : 1 + (START - 1) * u;
         const hw = (sh.w / 2) * grow;

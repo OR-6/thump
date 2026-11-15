@@ -24,7 +24,12 @@ export type HudSay =
   | { kind: 'tip'; big: string; small: string; gold?: boolean; hot?: boolean; foot?: string; icon?: 'stick' }
   | { kind: 'mult'; n: number }
   /** A streak milestone: the run's length. */
-  | { kind: 'streak'; n: number };
+  | { kind: 'streak'; n: number }
+  /**
+   * Playing a song: the run and the multiplier, and under them how your last hits sat in time (offsets in seconds, −
+   * early; `n` of them, the newest at `i - 1` round `errs`). `v` changes with every hit or miss (it redraws then).
+   */
+  | { kind: 'play'; run: number; mult: number; v: number; errs: Float32Array; n: number; i: number };
 
 export class Hud {
   readonly mesh: Mesh;
@@ -43,6 +48,9 @@ export class Hud {
   private age = 9;
   private shown = 0;
   private lastKind: HudSay['kind'] = 'none';
+  /** Seconds since the run went up (the number pops). */
+  private pop = 9;
+  private lastRun = 0;
   private leader: Mesh;
   private leaderEnd: Mesh;
   private lk = 0;
@@ -88,10 +96,16 @@ export class Hud {
 
   /** What to show now (called every frame; redraws only when it changes). */
   set(s: HudSay): void {
-    const sig = s.kind === 'count' || s.kind === 'mult' || s.kind === 'streak' ? `${s.kind}${s.n}` : s.kind === 'tip' ? `tip${s.big}|${s.small}|${s.gold ? 1 : 0}${s.hot ? 1 : 0}|${s.foot ?? ''}|${s.icon ?? ''}` : s.kind;
+    const sig = s.kind === 'count' || s.kind === 'mult' || s.kind === 'streak' ? `${s.kind}${s.n}` : s.kind === 'tip' ? `tip${s.big}|${s.small}|${s.gold ? 1 : 0}${s.hot ? 1 : 0}|${s.foot ?? ''}|${s.icon ?? ''}` : s.kind === 'play' ? `play${s.v}|${s.run}|${s.mult}` : s.kind;
     if (sig === this.sig) return;
-    // (a tip that's only reworded doesn't stamp in again)
-    const restamp = !(s.kind === 'tip' && this.say.kind === 'tip' && this.say.big === s.big);
+    // (a tip that's only reworded doesn't stamp in again; nor does the run as you play: it pops)
+    const playing = s.kind === 'play' && this.say.kind === 'play';
+    const restamp = !(s.kind === 'tip' && this.say.kind === 'tip' && this.say.big === s.big) && !playing;
+    // (the run is told by one object refreshed each frame: what it was is kept here)
+    if (s.kind === 'play') {
+      if (s.run > this.lastRun) this.pop = 0;
+      this.lastRun = s.run;
+    }
     this.sig = sig;
     this.say = s;
     if (restamp) {
@@ -148,6 +162,8 @@ export class Hud {
       g.textAlign = 'left';
       g.fillStyle = DARK;
       g.fillText(t, cx - w / 2 + 60, 226);
+    } else if (s.kind === 'play') {
+      this.drawPlay(g, s);
     } else if (s.kind === 'streak') {
       // the screen's run: the count in the streak's colours, COMBO under it
       const [a, b] = MULT_PAIR[4];
@@ -247,9 +263,85 @@ export class Hud {
     this.tex.needsUpdate = true;
   }
 
+  /**
+   * Playing: the run big in the streak's colours with COMBO under it, the multiplier's chip beside it; along the bottom
+   * a strip of time, early to late, ±120 ms wide: the Perfect band (±60 ms) in the middle, and your last hits as ticks
+   * where they landed (cyan a Perfect, green a Good, orange early or violet late beyond it, at its edge), the newest
+   * brightest. So you can see which way you're off, and put it right.
+   */
+  private drawPlay(g: CanvasRenderingContext2D, s: Extract<HudSay, { kind: 'play' }>): void {
+    const DARK = '#1a0b2e';
+    const [a, b] = MULT_PAIR[Math.max(1, Math.min(4, s.mult))];
+    g.textBaseline = 'alphabetic';
+    // the run (from 2: one hit isn't a run)
+    const run = s.run >= 2 ? String(s.run) : '';
+    const nx = s.mult > 1 ? 400 : W / 2;
+    if (run) {
+      g.font = display(160, 900);
+      g.textAlign = 'left';
+      const x = nx - g.measureText(run).width / 2;
+      g.lineWidth = 12;
+      g.strokeStyle = DARK;
+      g.strokeText(run, x, 150);
+      glowText(g, run, x, 150, vgrad(g, 30, 150, a, b), b, 20);
+      g.font = display(40, 700);
+      g.textAlign = 'center';
+      g.fillStyle = NEON.muted;
+      g.fillText('COMBO', nx, 196);
+    }
+    if (s.mult > 1) {
+      // the multiplier: the screen's chip, its number dark on it
+      const t = `×${s.mult}`;
+      g.font = display(110, 900);
+      const w = g.measureText(t).width + 70;
+      const x = 640;
+      slant(g, x, 40, w, 130);
+      g.shadowColor = b;
+      g.shadowBlur = 16;
+      g.fillStyle = vgrad(g, 40, 170, a, b);
+      g.fill();
+      g.shadowBlur = 0;
+      g.textAlign = 'left';
+      g.fillStyle = DARK;
+      g.fillText(t, x + 35, 146);
+    }
+    // the strip
+    const x0 = 150;
+    const x1 = W - 150;
+    const y = 252;
+    const span = 0.12;
+    const at = (o: number) => (x0 + x1) / 2 + (Math.max(-span, Math.min(span, o)) / span) * ((x1 - x0) / 2);
+    rr(g, x0, y - 6, x1 - x0, 12, 6);
+    g.fillStyle = 'rgba(255,255,255,0.12)';
+    g.fill();
+    rr(g, at(-0.06), y - 9, at(0.06) - at(-0.06), 18, 9);
+    g.fillStyle = 'rgba(51,225,255,0.28)';
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.7)';
+    g.fillRect((x0 + x1) / 2 - 2, y - 22, 4, 44);
+    g.font = body(30, 700);
+    g.fillStyle = NEON.muted;
+    g.textAlign = 'right';
+    g.fillText('EARLY', x0 - 18, y + 11);
+    g.textAlign = 'left';
+    g.fillText('LATE', x1 + 18, y + 11);
+    const N = s.errs.length;
+    for (let k = 0; k < s.n; k++) {
+      // oldest first, so the newest is drawn on top
+      const o = s.errs[(s.i - s.n + k + N * 2) % N];
+      const off = Math.abs(o);
+      g.globalAlpha = 0.3 + 0.7 * ((k + 1) / s.n);
+      g.fillStyle = off <= 0.06 ? NEON.cyan : off <= 0.12 ? '#3cf0a0' : o < 0 ? '#ff9a3c' : '#8a5cff';
+      const w = k === s.n - 1 ? 10 : 6;
+      g.fillRect(at(o) - w / 2, y - 26, w, 52);
+    }
+    g.globalAlpha = 1;
+  }
+
   /** Each frame: stand at kit-local `at`, turned to `eyeWorld`; stamp in, fade out when there's nothing to say. */
   update(dt: number, at: Vector3, eyeWorld: Vector3, calm: boolean, target: Vector3 | null = null): void {
     this.age += dt;
+    this.pop += dt;
     // the leader to `target` (kit-local), drawn from the top of the sign; it grows in after the sign lands
     this.lk += ((target && this.say.kind === 'tip' ? 1 : 0) - this.lk) * Math.min(1, dt / 0.15);
     const lon = this.lk > 0.02 && !!target;
@@ -290,10 +382,11 @@ export class Hud {
       m.position.set(calm ? 0 : SW * 0.18 * (1 - back), calm ? 0 : -SH * 0.12 * (1 - out), 0);
       m.scale.setScalar(1);
     } else {
-      // a number stamps in: from 1.35x to 1 over 160 ms, a little overshoot
+      // a number stamps in: from 1.35x to 1 over 160 ms, a little overshoot; the run as you play pops a little each hit
       const q = Math.min(1, this.age / 0.16);
+      const p = Math.min(1, this.pop / 0.12);
       m.position.set(0, 0, 0);
-      m.scale.setScalar(calm ? 1 : 1 + 0.35 * (1 - q) * (1 - q) - 0.05 * Math.sin(Math.PI * q));
+      m.scale.setScalar(calm ? 1 : 1 + 0.35 * (1 - q) * (1 - q) - 0.05 * Math.sin(Math.PI * q) + (this.say.kind === 'play' ? 0.06 * (1 - p) * (1 - p) : 0));
     }
     // leaving as it goes: the sign sinks a little as it fades
     if (!want || !mult) m.position.y -= SH * 0.15 * (1 - this.shown);

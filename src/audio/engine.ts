@@ -221,8 +221,8 @@ class Engine {
   stemStop(fade = 0.03): void {
     this.stems.stop(this.ctx, fade);
   }
-  stemLevel(stem: string, v: number): void {
-    this.stems.level(this.ctx, stem, v);
+  stemLevel(stem: string, v: number, tau?: number): void {
+    this.stems.level(this.ctx, stem, v, tau);
   }
 
   /** The band's kick: the held parts dip under it and swell back (the pump), as deep as the song's style asks. */

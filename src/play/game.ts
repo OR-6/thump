@@ -26,6 +26,8 @@ import { buildPage, type PageId } from '../ui/menu.js';
 
 /** Your last bars played back after the results: off (a song ends on its results). */
 const ENCORE = false;
+/** A song's stems, as the band's layers go: the core first, then what your streak brings in. */
+const STEMS = ['drums', 'bass', 'lead', 'guitar', 'keys', 'perc', 'strings', 'brass'] as const;
 
 export type Unlock = 'tom' | 'jam' | 'loops' | 'swaps';
 /** Unlocked by finishing each song the first time. */
@@ -82,7 +84,7 @@ export interface GameStage {
     play(id: string, zero: number, from: number): boolean;
     stop(fade?: number): void;
     synced(zero: number): boolean;
-    level(stem: string, v: number): void;
+    level(stem: string, v: number, tau?: number): void;
   };
   save(p: Progress): void;
   /** Lights down (a solo) or back up. */
@@ -966,6 +968,9 @@ export class Game {
   stemsOn = false;
   private stemsPlaying = false;
   private stemLevels = new Map<string, number>();
+  /** How much of the band is in (1–4, with your multiplier; a miss takes one step away), and the run it last saw. */
+  private bandStep = 1;
+  private bandComboWas = 0;
   /** The song being played now (its id), or '' (listening counts as not playing: it's this headset's own). */
   get perfTrack(): string {
     return this.perf && !this.listening && (this.mode === 'play' || this.mode === 'count') ? this.perf.track.id : '';
@@ -1075,6 +1080,11 @@ export class Game {
     this.combo = 0;
     this.bestRun = 0;
     this.scorer.reset();
+    this.hitErrN = 0;
+    this.hitErrI = 0;
+    this.hitV++;
+    this.bandStep = 1;
+    this.bandComboWas = 0;
     this.lastScore = null;
     this.lessonIdx = -1;
     this.setHold(null);
@@ -1197,11 +1207,21 @@ export class Game {
     const backing = this.stage.setting('band', false);
     const solo = within(p.fills, beat, 0);
     const live = beat >= p.holdFrom ? 1 : 0.8 + 0.2 * this.energy;
-    for (const stem of ['drums', 'perc', 'bass', 'lead', 'guitar', 'keys', 'strings', 'brass']) {
-      const v = !backing || stem === mine || friends.has(stem) ? 0 : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : live;
+    // the band grows with your streak: the core (drums, bass, the tune, keys, guitar) always, the percussion from x2,
+    // the strings from x3, the brass from x4 and everyone up full; a miss takes one step away, not all of them
+    if (this.combo === 0 && this.bandComboWas > 0) this.bandStep = Math.max(1, this.bandStep - 1);
+    this.bandComboWas = this.combo;
+    this.bandStep = Math.max(this.bandStep, this.scorer.mult);
+    // (a song you're listening to has the whole band)
+    const step = this.listening ? 4 : this.bandStep;
+    for (const stem of STEMS) {
+      const layer = stem === 'perc' ? 2 : stem === 'strings' ? 3 : stem === 'brass' ? 4 : 1;
+      const v = !backing || stem === mine || friends.has(stem) ? 0 : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : step < layer ? 0 : step >= 4 ? 1 : live;
       if (Math.abs((this.stemLevels.get(stem) ?? -1) - v) < 0.02) continue;
+      const first = !this.stemLevels.has(stem);
       this.stemLevels.set(stem, v);
-      st.level(stem, v);
+      // (a layer coming in or going swells over about a third of a second; the song's start and your own part at once)
+      st.level(stem, v, first || stem === mine ? 0.04 : 0.12);
     }
   }
 
@@ -1991,6 +2011,21 @@ export class Game {
   paused = false;
   /** The last judged hit's offset from its note (s; − early, + late). */
   lastOffset = 0;
+  /** Your last 10 hits' offsets (s), round the ring: `hitErrN` of them, the next going at `hitErrI`; `hitV` counts. */
+  readonly hitErrs = new Float32Array(10);
+  hitErrN = 0;
+  hitErrI = 0;
+  hitV = 0;
+  /** The run you're on (hits in a row). */
+  get run(): number {
+    return this.combo;
+  }
+  private noteErr(o: number): void {
+    this.hitErrs[this.hitErrI] = o;
+    this.hitErrI = (this.hitErrI + 1) % this.hitErrs.length;
+    this.hitErrN = Math.min(this.hitErrs.length, this.hitErrN + 1);
+    this.hitV++;
+  }
   /** The song now, from its start again. */
   restartSong(): void {
     const i = this.machine ? this.tracks.indexOf(this.machine.track) : this.songSel;
@@ -2071,6 +2106,8 @@ export class Game {
       this.graded.extra++;
       // (near a note but outside its window: say which way)
       const off = this.judge.near(key, at, 0.25 * this.clock.spb);
+      // (near a note but outside its window: on the strip at its edge, the way it was off)
+      if (off !== null) this.noteErr(off < 0 ? -0.2 : 0.2);
       return off === null ? 'extra' : off < 0 ? 'early' : 'late';
     }
     this.graded[r.grade === 'perfect' ? 'perfect' : 'good']++;
@@ -2083,6 +2120,7 @@ export class Game {
     if (this.combo > this.bestRun) this.bestRun = this.combo;
     this.offsets.push(r.offset);
     this.lastOffset = r.offset;
+    this.noteErr(r.offset);
     // (the timing learned as you go: every 16 hits, half the way toward where you really hit)
     if (this.offsets.length >= 16) this.learnOffset();
     // what you played, kept for the encore (the beat as you played it, a little loose like a person)
@@ -2347,8 +2385,12 @@ export class Game {
   }
   private onMiss = (n: { lane: string; beat: number }): void => {
     if (this.listening) return;
+    // (both hands going up for the Spotlight, and a second after it fires: a note let go for it doesn't break the
+    // run or take the band away; it's still a miss on the score)
+    if (this.spotRaise || this.t < this.spotGraceT) return;
     this.spotNote(n.beat, false);
     this.combo = 0;
+    this.hitV++;
     const se = this.scorer.missed();
     if (se.broke) this.stage.comboBroke?.(se.broke);
     this.energy = Math.max(0.15, this.energy - 0.05);
@@ -2505,12 +2547,16 @@ export class Game {
     return !!this.perf?.track.score?.tune.lesson;
   }
   /** Both hands up: the spotlight comes on, if it's half full or more. */
+  /** Both hands on their way up to fire the Spotlight (the room says), and when its grace after firing ends. */
+  spotRaise = false;
+  private spotGraceT = -1;
   fireSpotlight(): boolean {
     const beat = this.clock.beatAt(this.t);
     if (this.mode !== 'play' || this.spotMeter < 0.5 || beat < this.spotUntil) return false;
     this.spotLen = this.spotMeter * 16;
     this.spotUntil = beat + this.spotLen;
     this.spotMeter = 0;
+    this.spotGraceT = this.t + 1;
     this.stage.spotFire?.();
     return true;
   }

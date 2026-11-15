@@ -109,11 +109,11 @@ export class StemPlayer {
     this.zero = -1;
   }
 
-  /** A stem's level (0 mutes it), from now. */
-  level(ctx: BaseAudioContext | null, stem: string, v: number): void {
+  /** A stem's level (0 mutes it), from now, eased over about `tau` × 3 seconds. */
+  level(ctx: BaseAudioContext | null, stem: string, v: number, tau = 0.04): void {
     this.gains.set(stem, v);
     const now = ctx?.currentTime ?? 0;
-    for (const p of this.playing) if (p.stem === stem) p.g.gain.setTargetAtTime(v, now, 0.04);
+    for (const p of this.playing) if (p.stem === stem) p.g.gain.setTargetAtTime(v, now, tau);
   }
 
   /** The stems the song has (once in). */
