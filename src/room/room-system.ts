@@ -207,7 +207,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.heldWorld(this.fxN.x, this.fxN.y, this.fxN.z, s.at);
         this.fxS.subVectors(this.head, s.at).normalize();
         s.q.setFromUnitVectors(RoomSystem.UP, this.fxS);
-        s.w = zone ? 0.075 : 0.06;
+        // (just round the tag: the ring lands on its edge, no gap)
+        s.w = zone ? 0.066 : 0.054;
         s.d = s.w;
         s.round = true;
         col.setHex(instDef('guitar').color);
@@ -222,6 +223,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       col.setHex(instDef('guitar').color);
       return true;
     }
+    // (on Easy and Normal a conga counts anywhere on the drum: its ring goes round the whole drum)
+    if (this.kit.inst === 'congas' && this.game.level !== 'hard' && key.startsWith('congas:')) key = CONGA_WHOLE[Number(key.slice(7))] ?? key;
     if (!this.resolveNote(key, s.at, col, this.fxNt)) return false;
     s.w = this.fxNt.w;
     s.d = this.fxNt.d;
@@ -4624,6 +4627,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const h = this.game.harmony();
     const song = !!h?.song;
     model.song = song;
+    // a chord place held as its ring closes counts, judged on its beat: put your hand there as soon as you see it
+    // coming and hold it (only changing on the beat counted, so getting there early was a miss)
+    if (song && this.gh.onNeck && this.gh.zone >= 0 && this.gh.zone < 3) {
+      const key = GUITAR_ZONE_KEYS[this.gh.zone];
+      const spb = this.game.clock.spb;
+      for (let k = 0; k < this.game.moteCount; k++) {
+        const m = this.game.motes[k];
+        if (m.grade !== null || m.key !== key || m.ahead > 0.04 || m.ahead < -0.25) continue;
+        const gc = this.hitGame(key, this.clock.t + m.ahead * spb, 0.6);
+        this.wordFor(gc, this.gh.zone, 'guitar');
+        this.kit.instStruck(this.gh.zone, 0.5);
+      }
+    }
     model.zoneAhead.fill(Number.NaN);
     model.strumAhead.fill(Number.NaN);
     if (song) {
@@ -5796,6 +5812,10 @@ const FINALE_SPEED = 2.2;
 const LANE_INDEX: Partial<Record<string, number>> = { kick: 0, snare: 1, hat: 2, tom: 3, rim: 4 };
 /** Points tracked per hand for hits in the air. */
 const AIR_PTS = 7;
+/** The guitar's chord places as a song names them (made once, not each frame). */
+const GUITAR_ZONE_KEYS = ['guitar:0', 'guitar:1', 'guitar:2'] as const;
+/** A conga's whole drum (its edge zone, the full head), by zone. */
+const CONGA_WHOLE = ['congas:1', 'congas:1', 'congas:3', 'congas:3'];
 /** Each hand point's held piano notes go by its own name, so lifting that finger lets go of just those. */
 const HOLD_OWNER = Array.from({ length: AIR_PTS * 2 }, (_, p) => `key${p}`);
 /**

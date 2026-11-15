@@ -24,6 +24,30 @@ import { dayKey, type Progress } from '../persistence/progress.js';
 import type { Display, ModuleKey } from '../ui/module.js';
 import { buildPage, type PageId } from '../ui/menu.js';
 
+/** The handpan's fields round its rim, by where they sit (src/kit/shelf.ts handpanZones: field k+1 at slot ORDER[k]). */
+const PAN_ORDER = [0, 7, 1, 6, 2, 5, 3, 4];
+const PAN_AT_SLOT = (() => {
+  const a = new Array<number>(8);
+  PAN_ORDER.forEach((slot, k) => (a[slot] = k + 1));
+  return a;
+})();
+const NONE: readonly string[] = [];
+const CONGA_ALT = ['congas:1', 'congas:0', 'congas:3', 'congas:2'];
+const PAN_ALT: readonly (readonly string[])[] = Array.from({ length: 9 }, (_, z) => {
+  if (z === 0) return NONE;
+  const slot = PAN_ORDER[z - 1];
+  return [`handpan:${PAN_AT_SLOT[(slot + 1) % 8]}`, `handpan:${PAN_AT_SLOT[(slot + 7) % 8]}`];
+});
+/** Other keys a hit on `key` may stand for at this level (the drum's other half; a field's neighbours on Easy). */
+export function nearKeys(key: string, level: string): readonly string[] {
+  if (level !== 'hard' && key.startsWith('congas:')) {
+    const z = Number(key.slice(7));
+    return z >= 0 && z < 4 ? [CONGA_ALT[z]] : NONE;
+  }
+  if (level === 'easy' && key.startsWith('handpan:')) return PAN_ALT[Number(key.slice(8))] ?? NONE;
+  return NONE;
+}
+
 /** Your last bars played back after the results: off (a song ends on its results). */
 const ENCORE = false;
 /** A song's stems, as the band's layers go: the core first, then what your streak brings in. */
@@ -2106,7 +2130,10 @@ export class Game {
       }
     }
     const at = t - this.opts.offset - this.clock.start;
-    const r = this.judge.hit(key, at);
+    let r = this.judge.hit(key, at);
+    // (forgiving where it's hard to see: on Easy and Normal a conga counts anywhere on the right drum; on Easy a
+    // handpan field counts for the one beside it as well; the sound is what you hit)
+    if (!r) for (const alt of nearKeys(key, this.level)) if ((r = this.judge.hit(alt, at))) break;
     if (!r) {
       this.graded.extra++;
       // (near a note but outside its window: say which way)

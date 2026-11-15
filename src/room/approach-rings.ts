@@ -18,8 +18,8 @@ const START = 1.6;
 const K = 8;
 const P = 4 * (K + 1);
 const SLOTS = 14;
-/** Per slot: a dark edge band and the ring band, each P quads (2P vertices). */
-const VPS = 4 * P;
+/** Per slot: a dark edge band, the ring band, and the still ring it lands on, each P quads (2P vertices). */
+const VPS = 6 * P;
 
 export interface ApproachNote {
   key: string;
@@ -40,6 +40,8 @@ export type ShapeOf = (key: string, s: PartShape, col: Color) => boolean;
 const _l = new Vector3();
 const _c = new Color();
 const GOLD = new Color(0xffd23f);
+const WHITE = new Color(1, 1, 1);
+const _t = new Color();
 const EDGE = new Color(hexNum(BRAND.plum));
 
 export class ApproachRings {
@@ -59,7 +61,7 @@ export class ApproachRings {
     g.setAttribute('color', new BufferAttribute(this.col, 4));
     const idx: number[] = [];
     for (let s = 0; s < SLOTS; s++)
-      for (const band of [0, 1]) {
+      for (let band = 0; band < 3; band++) {
         const b = s * VPS + band * 2 * P;
         for (let i = 0; i < P; i++) {
           const j = (i + 1) % P;
@@ -127,12 +129,25 @@ export class ApproachRings {
         const a = n.ahead < 0 ? Math.max(0, 1 + n.ahead / (miss ? 0.6 : 0.25)) * (miss ? 0.8 : 1) : 0.2 + 0.8 * Math.pow(1 - u, 1.5);
         // thicker as it lands (5.5 → 7 mm), so the moment it meets the edge is the thing you see
         let w = (calm ? 0.005 : 0.0055) + 0.0015 * (1 - u);
+        // the beat itself: within a tenth of a beat of it, the ring goes white-hot and bolder (now!)
+        const now = miss ? 0 : Math.max(0, 1 - Math.abs(n.ahead) / 0.1);
+        if (now > 0) {
+          _c.lerp(WHITE, 0.6 * now);
+          if (!calm) w *= 1 + 0.6 * now;
+        }
         // (the note a lesson is waiting on: its ring sits on the edge and beats, so it's plainly the one)
         if (waitKey && n.key === waitKey && n.ahead <= 0.05) w *= 1.3 + 0.35 * Math.sin(t * 9);
         // (paused: everything waits, quietly)
         const al = paused ? a * 0.25 : a;
         this.band(s, 0, sh, hw, hd, r, -0.0015, w + 0.0015, EDGE, al * 0.45);
         this.band(s, 1, sh, hw, hd, r, 0, w, _c, al);
+        // the still ring it lands on: exactly where it will be on the beat, thin and light (you watch the two meet,
+        // not the ring and a gap); gone once it's due
+        const w1 = sh.w / 2;
+        const d1 = (sh.round ? sh.w : sh.d) / 2;
+        const r1 = sh.round ? w1 : Math.min(w1, d1) * 0.35;
+        _t.copy(_c).lerp(WHITE, 0.6);
+        this.band(s, 2, sh, w1, d1, r1, 0.0005, 0.0035, _t, n.ahead > 0 && !miss ? Math.min(1, a * 0.5 + 0.35) * (paused ? 0.25 : 1) : 0);
         s++;
       }
     }

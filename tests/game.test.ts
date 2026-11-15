@@ -985,3 +985,19 @@ describe('the game', () => {
     expect([...seen].sort()).toEqual([1, 2, 3, 4]);
   });
 });
+
+import { nearKeys } from '../src/play/game.js';
+describe('forgiving where it is hard to see', () => {
+  it('a conga counts anywhere on the right drum on Easy and Normal, not on Hard', () => {
+    expect(nearKeys('congas:0', 'easy')).toEqual(['congas:1']);
+    expect(nearKeys('congas:3', 'normal')).toEqual(['congas:2']);
+    expect(nearKeys('congas:0', 'hard')).toEqual([]);
+  });
+  it('a handpan field stands for the fields beside it on Easy only (the ding for none)', () => {
+    const n = nearKeys('handpan:1', 'easy');
+    expect(n.length).toBe(2);
+    expect(n.every((k) => /^handpan:[1-8]$/.test(k) && k !== 'handpan:1')).toBe(true);
+    expect(nearKeys('handpan:0', 'easy')).toEqual([]);
+    expect(nearKeys('handpan:1', 'normal')).toEqual([]);
+  });
+});
