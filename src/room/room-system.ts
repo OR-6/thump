@@ -87,6 +87,7 @@ import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { formOf } from './waterfall-fx.js';
 import { Dimmer } from './dimmer.js';
+import { LightsOut } from './lights-out.js';
 import { FriendSeat } from './friend-seat.js';
 import { HitWords } from './hit-words.js';
 import { setupLighting } from '../art/lighting.js';
@@ -318,6 +319,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.root.add(this.stand.root);
     for (const m of this.handMallets) this.worldRoot.add(m.group);
     this.worldRoot.add(this.waterfall.root, this.dimmer.mesh);
+    this.buildLightsOut();
     this.kitHome = this.kit.root.parent;
     this.worldRoot.name = 'RoomOverlays';
     this.world.createTransformEntity(this.worldRoot);
@@ -520,6 +522,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         audio.crash(0.55);
         audio.cheer(letter === 'S' ? 1 : 0.7, letter === 'S');
         this.dimmer.hit(letter === 'S' ? 0xffd36a : 0x7be0a0, 1);
+        if (letter === 'S') this.lightsOut.fire('curtain');
       }
       void fullCombo;
     },
@@ -550,9 +553,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       audio.cheer(1, true);
       this.kit.module.burst('spotlight', 500, 552);
       this.dimmer.hit(0xffd36a, 1);
+      this.lightsOut.fire('song');
     },
     spotEnd: () => {
       audio.whoosh(0);
+      this.lightsOut.end();
     },
     overtake: () => {
       this.kit.module.say('Ahead of your best', 'gold');
@@ -1787,6 +1792,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.waterfall.update(dt, this.game, this.kit.root, this.resolveNote);
     this.approach?.update(this.game, this.shapeOf, motion.calm, this.game.hold?.kind === 'note' ? this.game.hold.key : '', this.uiT);
     this.dimmer.update(dt, this.head, motion.calm);
+    this.lightsOut.update(dt, motion.calm);
     audio.idle();
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
     if (this.debug.anchored) this.saveKitPose();
@@ -1798,6 +1804,33 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   private waterfall = new Waterfall();
   private dimmer = new Dimmer();
+  /** The Spotlight's moment: the room goes dark, a follow spot strikes, your hands' shadows on your wall (src/room/lights-out.ts). */
+  private lightsOut!: LightsOut;
+  private buildLightsOut(): void {
+    const self = this;
+    this.lightsOut = new LightsOut(this.renderer, this.world.scene, {
+      head: this.head,
+      get kit() {
+        return self.kit.root;
+      },
+      get game() {
+        return self.game;
+      },
+      forward: (out) => this.forwardFlat(out),
+      frame: () => this.xrFrame ?? undefined,
+      refSpace: () => this.renderer.xr.getReferenceSpace(),
+      planes: () => this.queries.planes.entities,
+      meshes: () => this.queries.meshes.entities,
+      paused: () => this.userPaused,
+      tasteOk: () => this.placement.phase === 'placed' && (this.game.mode === 'discover' || this.game.mode === 'jam') && !(this.settings.taught ?? []).includes('lightsout'),
+      tasted: () => {
+        this.settings = { ...this.settings, taught: [...(this.settings.taught ?? []), 'lightsout'] };
+        saveSettings(this.settings);
+      },
+    });
+    this.worldRoot.add(this.lightsOut.root);
+    this.dimmer.onHit = (c, g) => this.lightsOut.hit(c, g);
+  }
   /** Where a note lands (world), its colour, and its target's size and shape. */
   private leanQ = new Quaternion();
   private leanN = new Vector3();
@@ -5019,6 +5052,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     occluderState.enabled = lvl < 2;
     // (lights down costs a blend over both eyes: at the lowest levels the fill keeps only its sound and colours)
     this.dimmer.enabled = lvl < 2;
+    this.lightsOut.level = lvl;
     for (const sh of this.sheens.values()) sh.group.visible = lvl < 1;
     try {
       this.renderer.xr.setFoveation(FOVEATION[Math.min(2, lvl)]);
