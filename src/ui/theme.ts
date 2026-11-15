@@ -5,6 +5,24 @@
  */
 import { FONT } from './fonts.js';
 
+/**
+ * Thump's own colours (the icon's and the site's): a warm plum night, off-white ink, one hot red-orange for what you
+ * hit and what you press, gold only for the best things (an S, all perfect). Nothing else carries colour except an
+ * instrument's own light.
+ */
+export const BRAND = {
+  plum: '#1d0b2c',
+  plum2: '#26103a',
+  plum3: '#341650',
+  line: '#3d2357',
+  ink: '#f6efe4',
+  ink2: '#b9aac9',
+  ink3: '#7d6b92',
+  hot: '#ff4b2b',
+  hotInk: '#1d0b2c',
+  gold: '#ffc93c',
+} as const;
+
 export const NEON = {
   bg0: '#150a30',
   bg1: '#2a0c44',

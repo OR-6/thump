@@ -5,6 +5,12 @@
  */
 /** The panel's face: a clean grotesque (the system's: Roboto on Quest), never condensed. */
 export const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+/**
+ * Thump's own type, the same as the site's (index.html loads both): Big Shoulders Display, heavy and condensed, set
+ * upright, for words and numbers you read at a glance; Atkinson Hyperlegible for anything you read as a sentence.
+ */
+export const DISPLAY = `'Big Shoulders Display', 'Barlow Condensed', ${FONT}`;
+export const BODY = `'Atkinson Hyperlegible', ${FONT}`;
 
 const WEIGHTS: [string, string][] = [
   ['500', 'BarlowCondensed-Medium.ttf'],
@@ -25,6 +31,8 @@ export function loadFonts(): void {
   if (typeof document === 'undefined' || typeof FontFace === 'undefined') return;
   const base = `${import.meta.env?.BASE_URL ?? './'}fonts/`;
   Promise.all([
+    // (the brand's faces come from the page's stylesheet: wait for the weights the canvas uses)
+    ...['900 40px "Big Shoulders Display"', '800 40px "Big Shoulders Display"', '700 40px "Atkinson Hyperlegible"', '400 40px "Atkinson Hyperlegible"'].map((f) => document.fonts.load(f).catch(() => [])),
     ...WEIGHTS.map(([weight, file]) => {
       const f = new FontFace('Barlow Condensed', `url(${base}${file})`, { weight });
       return f.load().then((ff) => document.fonts.add(ff));
