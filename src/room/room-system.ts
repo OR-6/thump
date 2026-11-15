@@ -1205,7 +1205,21 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** What the HUD says now: the count-in, the one thing to do, the streak; else the first steps; else nothing. */
 /** What the sign says while you play (one object, refreshed each frame: nothing allocated). */
   private hudPlay: Extract<HudSay, { kind: 'play' }> = { kind: 'play', run: 0, mult: 1, v: 0, errs: new Float32Array(10), n: 0, i: 0 };
-    private hudTick(dt: number): void {
+    /**
+   * A first song's timing, guessed before it's learned: you hit with what you hear and see, and the headset's sound
+   * comes out a little late and your hands are seen a little late, so a hit right on the beat was judged late until
+   * the learning caught up (the first song is the one that matters most). Once, ever, when a song first counts in: the
+   * sound's own delay plus 30 ms for the tracking, at most 100 ms; a timing already learned is left as it is. Then it's
+   * learned as you play (every 16 hits). Not for the autoplayer, which hits by the clock.
+   */
+  private seedOffset(): void {
+    if (this.settings.offsetSeeded || this.autoOn || this.game.mode !== 'count') return;
+    if (Math.abs(this.game.opts.offset) < 0.001) this.game.opts.offset = Math.min(0.1, Math.max(0, audio.outputLatency() + 0.03));
+    this.settings = { ...this.settings, offsetSeeded: true, offset: this.game.opts.offset };
+    saveSettings(this.settings);
+    this.debug.offsetMs = Math.round(this.game.opts.offset * 1000);
+  }
+  private hudTick(dt: number): void {
     const hud = this.hud;
     if (!hud) return;
     // (what it says is worked out 20 times a second, not every frame: it's words, and nothing here needs a frame)
@@ -1833,6 +1847,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.watchSwaps();
       this.brushShakers(delta);
       if (this.autoOn) this.autoplay();
+      this.seedOffset();
     } catch (e) {
       this.partFailed(1, e);
     }

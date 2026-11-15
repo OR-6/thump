@@ -28,6 +28,8 @@ export interface Settings {
   oneHand: boolean;
   /** The guitar held facing you over the desk, as it first was (unset: in your lap, facing away, as it's really held). */
   guitarDesk?: boolean;
+  /** The timing's first guess has been made (the headset's sound delay and its hand tracking's), once, ever. */
+  offsetSeeded?: boolean;
   /** Where you put the guitar in your lap (the kit's frame: its soundhole), when you've moved it. */
   guitarAt?: { x: number; y: number; z: number };
   /** Slow mode: songs at this share of their tempo (0.6–1); stars are the same. */
@@ -98,6 +100,11 @@ export function loadSettings(): Settings {
     ...(s.kitNudge && typeof s.kitNudge === 'object' && [s.kitNudge.a, s.kitNudge.l].every((v) => typeof v === 'number' && Number.isFinite(v))
       ? { kitNudge: { a: num(s.kitNudge.a, -0.3, 0.3, 0), l: num(s.kitNudge.l, -0.5, 0.5, 0) } }
       : {}),
+    ...(s.guitarDesk === true ? { guitarDesk: true } : {}),
+    ...(s.guitarAt && typeof s.guitarAt === 'object' && [s.guitarAt.x, s.guitarAt.y, s.guitarAt.z].every((v) => typeof v === 'number' && Number.isFinite(v))
+      ? { guitarAt: { x: num(s.guitarAt.x, -0.6, 0.6, 0.1), y: num(s.guitarAt.y, -0.5, 0.4, 0), z: num(s.guitarAt.z, -0.4, 0.8, 0.2) } }
+      : {}),
+    ...(s.offsetSeeded === true ? { offsetSeeded: true } : {}),
   };
 }
 

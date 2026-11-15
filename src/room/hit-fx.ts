@@ -41,6 +41,8 @@ interface Slot {
   hd: number;
   r: number;
   fillK: number;
+  /** How long the part's own snap lasts (s). */
+  fillT: number;
 }
 
 /** Write the perimeter of a rounded rectangle (half sizes hw, hd, corner r) grown by o, into xyz at `base`. */
@@ -84,6 +86,7 @@ export class HitFx {
   private slots: Slot[] = [];
   private next = 0;
   private col = new Color();
+  private white = new Color(1, 1, 1);
 
   constructor(parent: Object3D) {
     this.root.name = 'HitFx';
@@ -102,7 +105,7 @@ export class HitFx {
         m.name = 'HitFlash';
         this.root.add(m);
       }
-      this.slots.push({ ring, edge, fill, age: 9, life: 1, spread: 0, width: 0, hw: 0, hd: 0, r: 0, fillK: 0 });
+      this.slots.push({ ring, edge, fill, age: 9, life: 1, spread: 0, width: 0, hw: 0, hd: 0, r: 0, fillK: 0, fillT: 0.1 });
     }
     parent.add(this.root);
   }
@@ -120,12 +123,16 @@ export class HitFx {
     const size = Math.min(slot.hw, slot.hd);
     const calm = motion.calm ? 0.5 : 1;
     slot.spread = calm * (kind === 'mult' ? 0.03 + size * 0.45 : kind === 'perfect' ? 0.006 + size * 0.2 : 0.004 + size * 0.1);
-    slot.width = kind === 'mult' ? 0.005 : kind === 'perfect' ? 0.0035 : 0.0026;
-    slot.fillK = motion.calm ? 0 : kind === 'perfect' ? 0.28 : 0;
-    // (a Good: the part's colour, dimmer)
+    slot.width = kind === 'mult' ? 0.005 : kind === 'perfect' ? 0.0045 : 0.0026;
+    // (a Perfect: the part snaps white-hot for 70 ms, a crack of light, not a glow; a Good: just its ring)
+    slot.fillK = motion.calm ? 0 : kind === 'perfect' ? 0.55 : 0;
+    slot.fillT = 0.07;
+    // (a Good: the part's colour, dimmer; a Perfect's ring a little toward white)
     this.col.setHex(color);
     if (kind === 'good') this.col.multiplyScalar(0.65);
+    if (kind === 'perfect') this.col.lerp(this.white, 0.3);
     (slot.ring.material as MeshBasicMaterial).color.copy(this.col);
+    if (kind === 'perfect') this.col.lerp(this.white, 0.35);
     (slot.fill.material as MeshBasicMaterial).color.copy(this.col);
     for (const m of [slot.ring, slot.edge, slot.fill]) {
       m.position.copy(s.at);
@@ -158,8 +165,8 @@ export class HitFx {
       (s.ring.material as MeshBasicMaterial).opacity = 1 - u * u;
       (s.edge.material as MeshBasicMaterial).opacity = 0.35 * (1 - u);
       s.ring.visible = s.edge.visible = true;
-      // the part itself glows for the first tenth of a second
-      const f = s.fillK * Math.max(0, 1 - s.age / 0.1);
+      // the part itself snaps bright for its first moment
+      const f = s.fillK * Math.max(0, 1 - s.age / s.fillT);
       s.fill.visible = f > 0.01;
       if (s.fill.visible) {
         const fan = s.fill.geometry.getAttribute('position') as BufferAttribute;
