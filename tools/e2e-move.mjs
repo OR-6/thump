@@ -61,4 +61,30 @@ await slap(await measureHand(), [k1[0] + 0.06, DESK_Y, k1[2]]);
 await wait(500);
 s = state();
 check('the drums play in their new place', s.debug.hits > hits, JSON.stringify(s.debug.lastHit));
+
+// up as well: pinch the handle again and lift it 6 cm; the instruments rise with it and the height is kept
+const puck2 = js(`const p = r.movePuck; return p.getWorldPosition(p.position.clone()).toArray();`);
+xr('set-transform', { device: HAND, position: { x: puck2[0], y: puck2[1] + 0.06, z: puck2[2] + 0.05 }, orientation: POSE });
+await wait(300);
+xr('set-select-value', { device: HAND, value: 1 });
+await wait(300);
+const pp2 = state().right.pinchPoint;
+xr('set-select-value', { device: HAND, value: 0 });
+await wait(300);
+const at2 = { x: puck2[0] + (puck2[0] - pp2[0]), y: puck2[1] + 0.06 + (puck2[1] - pp2[1]), z: puck2[2] + 0.05 + (puck2[2] - pp2[2]) };
+xr('set-transform', { device: HAND, position: at2, orientation: POSE });
+await wait(300);
+xr('set-select-value', { device: HAND, value: 1 });
+await wait(400);
+for (let i = 1; i <= 6; i++) {
+  xr('set-transform', { device: HAND, position: { x: at2.x, y: at2.y + 0.01 * i, z: at2.z }, orientation: POSE });
+  await wait(120);
+}
+await wait(300);
+xr('set-select-value', { device: HAND, value: 0 });
+await wait(800);
+const k2 = state().debug.kitOrigin;
+check('lifted 6 cm, the instruments rise with it', Math.abs(k2[1] - k1[1] - 0.06) < 0.012, `${k1} -> ${k2}`);
+const nudge2 = js(`return r.settings.kitNudge ?? null;`);
+check('and the height is kept', !!nudge2 && Math.abs((nudge2.h ?? 0) - 0.06) < 0.012, JSON.stringify(nudge2));
 done('E2E move');

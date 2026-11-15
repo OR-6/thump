@@ -1040,6 +1040,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** Where the instruments stand by themselves (world x, z, yaw) and which way was ahead then. */
   private kitBase = new Vector3();
+  /** Where the kit stood by itself in height (the desk found), before any move of yours. */
+  private kitBaseY = 0;
   private kitBaseFwd = new Vector3(0, 0, -1);
   /** The move handle: a puck on the desk at the front left; pinch it and the whole setup follows your hand. */
   private movePuck: Mesh | null = null;
@@ -1118,18 +1120,21 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           const f = this.kitBaseFwd;
           const a = dx * f.x + dz * f.z;
           const l = dx * -f.z + dz * f.x;
-          this.settings = { ...this.settings, kitNudge: { a: Math.max(-0.3, Math.min(0.3, a)), l: Math.max(-0.5, Math.min(0.5, l)) } };
+          const hh = Math.max(-0.2, Math.min(0.25, root.position.y - this.kitBaseY));
+          this.settings = { ...this.settings, kitNudge: { a: Math.max(-0.3, Math.min(0.3, a)), l: Math.max(-0.5, Math.min(0.5, l)), ...(Math.abs(hh) > 0.003 ? { h: hh } : {}) } };
           saveSettings(this.settings);
           sfx.set();
           this.placeKit(true);
           continue;
         }
-        // (the pinch carries it in x and z only: it stays on the desk; and it turns to face you as it goes)
+        // (the pinch carries it across the desk and up or down too, if it doesn't sit right on your real desk: within
+        // 20 cm below and 25 cm above where the desk was found; and it turns to face you as it goes)
         const p = root.parent;
         this.moveAt.copy(h.pinchPoint).add(this.moveOff);
         if (p) p.worldToLocal(this.moveAt);
         root.position.x = this.moveAt.x;
         root.position.z = this.moveAt.z;
+        root.position.y = Math.max(this.kitBaseY - 0.2, Math.min(this.kitBaseY + 0.25, this.moveAt.y));
         root.getWorldPosition(this.moveAt);
         root.rotation.y = Math.atan2(-(this.moveAt.x - this.head.x), -(this.moveAt.z - this.head.z));
         root.updateMatrixWorld(true);
@@ -1141,7 +1146,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (this.moveHand < 0 && h.edge === 'start' && d < 0.045 && !this.dragging[0] && !this.dragging[1]) {
         this.moveHand = i;
         root.getWorldPosition(this.moveOff).sub(h.pinchPoint);
-        this.moveOff.y = 0;
         sfx.lift();
       }
     }
@@ -5268,6 +5272,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const pose = kitPose(this.head, this.fwd, this.placement.deskY!, palm);
       // (where it stands by itself, kept: a move of yours is saved from there)
       this.kitBase.set(pose.x, pose.z, pose.yaw);
+      this.kitBaseY = pose.y;
       this.kitBaseFwd.set(this.fwd.x, 0, this.fwd.z);
       const nu = this.settings.kitNudge;
       if (nu) {
@@ -5275,6 +5280,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         pose.z += this.fwd.z * nu.a + this.fwd.x * nu.l;
         // turned to face you from there
         pose.yaw = Math.atan2(-(pose.x - this.head.x), -(pose.z - this.head.z));
+        pose.y += nu.h ?? 0;
       }
       root.position.set(pose.x, pose.y, pose.z);
       root.rotation.set(0, pose.yaw, 0);
