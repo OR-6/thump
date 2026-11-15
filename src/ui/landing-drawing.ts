@@ -4,10 +4,10 @@
  * x to the right, y towards you (the game's z, flipped). Every playable part is a `.part` with a `data-part` and a
  * `.glow` copy of its shape that flashes when it's hit.
  *
- * Flat, like the rest of the site (docs/SITE-DESIGN.md): ink outlines on plum fills, `--line` details, solid ink for
- * small hardware. The classes are styled in index.html, with strokes in CSS pixels (`vector-effect:
- * non-scaling-stroke`), so a drum and a key carry the same weight of line at any size. The only hot thing on the
- * drawing is the ring a hit sends out (src/ui/landing.ts).
+ * Flat and filled in the instruments' own colours (docs/SITE-DESIGN.md): every shape carries a material class
+ * (`m-head`, `m-brass`, `m-rosewood`…) that index.html fills from a `--i-*` custom property on :root, so no colour
+ * lives here. Strokes are in CSS pixels (`vector-effect: non-scaling-stroke`), so a drum and a key carry the same
+ * weight of line at any size.
  */
 import { PADS } from '../config.js';
 import { CONGA, KEYBOARD, NECK, PIANO_CHORD, marimbaZones, handpanZones, pianoBlacks, pianoZones, scaleById, type InstId } from '../kit/shelf.js';
@@ -40,16 +40,15 @@ const circle = (x: number, y: number, r: number, attrs = '') => `<circle cx="${x
 const rect = (x: number, y: number, w: number, h: number, attrs = '') => `<rect x="${+x.toFixed(2)}" y="${+y.toFixed(2)}" width="${+w.toFixed(2)}" height="${+h.toFixed(2)}" ${attrs}/>`;
 const line = (x1: number, y1: number, x2: number, y2: number, attrs: string) => `<line x1="${+x1.toFixed(2)}" y1="${+y1.toFixed(2)}" x2="${+x2.toFixed(2)}" y2="${+y2.toFixed(2)}" ${attrs}/>`;
 
-/** The drawing's inks: an ink outline on a plum fill, a quiet `--line` detail, solid ink. */
-const OUT = 'class="o"';
-const LINE = 'class="l"';
-const INK = 'class="i"';
+/** A shape's material (index.html colours each from a `--i-*` property). */
+const M = (name: string) => `class="m-${name}"`;
+const CHROME = M('chrome');
 
 function lugs(x: number, y: number, r: number, n: number, size: number): string {
   let s = '';
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + Math.PI / n;
-    s += circle(+(x + Math.cos(a) * r).toFixed(2), +(y + Math.sin(a) * r).toFixed(2), size, INK);
+    s += circle(+(x + Math.cos(a) * r).toFixed(2), +(y + Math.sin(a) * r).toFixed(2), size, CHROME);
   }
   return s;
 }
@@ -57,11 +56,12 @@ function lugs(x: number, y: number, r: number, n: number, size: number): string 
 function drums(): string {
   // the whole kit from above, every piece where the game puts it: the drums' heads in their hoops and lugs, the
   // three cymbals with their lathe grooves and bells
-  const DRUM: { lane: 'kick' | 'snare' | 'tom' | 'floor'; label: string; lugs: number }[] = [
-    { lane: 'kick', label: 'Bass drum', lugs: 10 },
-    { lane: 'snare', label: 'Snare drum', lugs: 8 },
-    { lane: 'tom', label: 'Rack tom', lugs: 6 },
-    { lane: 'floor', label: 'Floor tom', lugs: 8 },
+  // (the shells as the game paints them: a red kit, the snare in white)
+  const DRUM: { lane: 'kick' | 'snare' | 'tom' | 'floor'; label: string; lugs: number; shell: string }[] = [
+    { lane: 'kick', label: 'Bass drum', lugs: 10, shell: 'shell' },
+    { lane: 'snare', label: 'Snare drum', lugs: 8, shell: 'chrome' },
+    { lane: 'tom', label: 'Rack tom', lugs: 6, shell: 'shell' },
+    { lane: 'floor', label: 'Floor tom', lugs: 8, shell: 'shell' },
   ];
   const CYM: { lane: 'hat' | 'crash' | 'ride'; label: string }[] = [
     { lane: 'hat', label: 'Hi-hat' },
@@ -74,7 +74,7 @@ function drums(): string {
     const x = cm(p.x), y = -cm(p.z), r = cm(p.size / 2);
     s += part({
       id: c.lane, label: c.label,
-      body: lugs(x, y, r + 0.9, c.lugs, 0.55) + circle(x, y, r + 0.1, OUT) + circle(x, y, +(r - 1.3).toFixed(2), LINE),
+      body: lugs(x, y, r + 0.9, c.lugs, 0.55) + circle(x, y, r + 0.1, M(c.shell)) + circle(x, y, +(r - 1.1).toFixed(2), M('head')),
       glow: circle(x, y, r + 0.1),
     });
   }
@@ -82,10 +82,10 @@ function drums(): string {
     const p = PADS[c.lane];
     const x = cm(p.x), y = -cm(p.z), r = cm(p.size / 2);
     let grooves = '';
-    for (let i = 1; i <= 3; i++) grooves += circle(x, y, +(r * (0.38 + i * 0.17)).toFixed(2), LINE);
+    for (let i = 1; i <= 3; i++) grooves += circle(x, y, +(r * (0.38 + i * 0.17)).toFixed(2), M('groove'));
     s += part({
       id: c.lane, label: c.label,
-      body: circle(x, y, r, OUT) + grooves + circle(x, y, +(r * 0.27).toFixed(2), OUT) + circle(x, y, 0.6, INK),
+      body: circle(x, y, r, M('brass')) + grooves + circle(x, y, +(r * 0.27).toFixed(2), M('brass')) + circle(x, y, 0.6, CHROME),
       glow: circle(x, y, r),
     });
   }
@@ -101,14 +101,14 @@ function piano(): string {
   const front = -cm(K.front);
   // the case round the keys, the felt strip at the back as a line
   const kx = cm(whites[0].x - whites[0].w / 2);
-  let s = rect(-20.5, back - 3.6, 41, front - back + 5.4, OUT);
-  s += line(kx, back - 1, kx + cm(K.pitch * whites.length), back - 1, LINE);
+  let s = rect(-20.5, back - 3.6, 41, front - back + 5.4, M('case'));
+  s += line(kx, back - 1, kx + cm(K.pitch * whites.length), back - 1, M('felt'));
   const names = ['C', 'D', 'E', 'G', 'A'];
   for (const z of whites) {
     const x = cm(z.x - z.w / 2), w = cm(z.w);
     s += part({
       id: `w${z.i}`, label: `Piano key ${names[z.i % 5]}`, pale: true,
-      body: rect(x, back, w, front - back, 'class="key"'),
+      body: rect(x, back, w, front - back, M('key')),
       glow: rect(x, back, w, front - back),
     });
   }
@@ -116,14 +116,14 @@ function piano(): string {
     const x = cm(b.x - b.w / 2), y = -cm(b.z + b.h / 2);
     s += part({
       id: `b${b.a}-${b.b}`, label: `Black key: ${names[b.a % 5]} and ${names[b.b % 5]} together`,
-      body: rect(x, y, cm(b.w), cm(b.h), 'class="bkey"'),
+      body: rect(x, y, cm(b.w), cm(b.h), M('bkey')),
       glow: rect(x, y, cm(b.w), cm(b.h)),
     });
   }
   const cx = cm(chord.x), cy = -cm(chord.z), cr = cm(chord.w) * 0.75;
   s += part({
     id: 'chord', label: 'Chord button',
-    body: circle(cx, cy, +(cr + 0.35).toFixed(2), OUT) + circle(cx, cy, +(cr * 0.45).toFixed(2), INK),
+    body: circle(cx, cy, +(cr + 0.35).toFixed(2), M('bkey')) + circle(cx, cy, +(cr * 0.45).toFixed(2), CHROME),
     glow: circle(cx, cy, +(cr + 0.35).toFixed(2)),
   });
   return s;
@@ -137,13 +137,13 @@ function marimba(): string {
   const node = (z: (typeof zones)[number], side: 1 | -1) => +(y0 + side * cm(z.h) * 0.28).toFixed(2);
   const xl = cm(first.x - first.w / 2) - 1.4, xr = cm(last.x + last.w / 2) + 1.4;
   let s = '';
-  for (const side of [-1, 1] as const) s += line(xl, node(first, side), xr, node(last, side), 'class="rail"');
+  for (const side of [-1, 1] as const) s += line(xl, node(first, side), xr, node(last, side), M('rail'));
   const names = ['C', 'D', 'E', 'G', 'A', 'C', 'D', 'E'];
   for (const z of zones) {
     const x = cm(z.x - z.w / 2), w = cm(z.w), h = cm(z.h), y = y0 - h / 2;
     s += part({
       id: `m${z.i}`, label: `Marimba bar ${names[z.i]}`,
-      body: rect(x, y, w, h, OUT) + circle(x + w / 2, node(z, -1), 0.35, INK) + circle(x + w / 2, node(z, 1), 0.35, INK),
+      body: rect(x, y, w, h, M('rosewood')) + circle(x + w / 2, node(z, -1), 0.35, CHROME) + circle(x + w / 2, node(z, 1), 0.35, CHROME),
       glow: rect(x, y, w, h),
     });
   }
@@ -167,18 +167,18 @@ function guitar(): string {
   const seg = (ps: [number, number][], s: number) => `C ${ps.map(([px, py]) => `${px} ${+(y + s * py).toFixed(2)}`).join(' ')}`;
   const back = half.map((c, i) => [c[1], c[0], i === 0 ? ([-6.5, 0] as [number, number]) : half[i - 1][2]]).reverse();
   const outline = `M -6.5 ${y} ${half.map((c) => seg(c, 1)).join(' ')} ${back.map((c) => seg(c, -1)).join(' ')} Z`;
-  let s = `<path d="${outline}" ${OUT}/>`;
-  s += circle(4, y, 3.6, LINE) + circle(4, y, 2.9, 'class="hole"');
+  let s = `<path d="${outline}" ${M('spruce')}/>`;
+  s += circle(4, y, 3.6, M('rosette')) + circle(4, y, 2.9, M('hole'));
   // headstock and fretboard
-  s += `<path d="M ${G.nut} ${y - 2.6} L ${G.nut - 6.5} ${y - 3.2} L ${G.nut - 6.5} ${y + 3.2} L ${G.nut} ${y + 2.6} Z" ${OUT}/>`;
-  for (let i = 0; i < 3; i++) s += circle(G.nut - 1.8 - i * 1.7, y - 2.4, 0.45, INK) + circle(G.nut - 1.8 - i * 1.7, y + 2.4, 0.45, INK);
-  s += rect(G.nut, y - 2.6, -2 - G.nut, 5.2, OUT);
-  for (const fx of [-22.6, -19.9, -17.4, -15.1, -12.9, -11.1, -9.4, -7.8, -6.3, -4.9, -3.6]) s += line(fx, y - 2.6, fx, y + 2.6, LINE);
-  s += rect(18.6, y - 4.2, 1.8, 8.4, OUT);
+  s += `<path d="M ${G.nut} ${y - 2.6} L ${G.nut - 6.5} ${y - 3.2} L ${G.nut - 6.5} ${y + 3.2} L ${G.nut} ${y + 2.6} Z" ${M('board')}/>`;
+  for (let i = 0; i < 3; i++) s += circle(G.nut - 1.8 - i * 1.7, y - 2.4, 0.45, CHROME) + circle(G.nut - 1.8 - i * 1.7, y + 2.4, 0.45, CHROME);
+  s += rect(G.nut, y - 2.6, -2 - G.nut, 5.2, M('board'));
+  for (const fx of [-22.6, -19.9, -17.4, -15.1, -12.9, -11.1, -9.4, -7.8, -6.3, -4.9, -3.6]) s += line(fx, y - 2.6, fx, y + 2.6, M('fret'));
+  s += rect(18.6, y - 4.2, 1.8, 8.4, M('board'));
   // strings: nylon on the treble side, wound on the bass side (the low string nearest you, as it lies on the desk)
   for (let i = 0; i < 6; i++) {
     const sy = +(y + (i - 2.5) * 1.1).toFixed(2);
-    s += line(G.nut, sy, G.bridge, sy, `class="str${i >= 3 ? ' wound' : ''}"`);
+    s += line(G.nut, sy, G.bridge, sy, `class="m-string${i >= 3 ? ' wound' : ''}"`);
   }
   // the strum: over the soundhole and the strings on the body
   s += part({
@@ -204,11 +204,11 @@ function congas(): string {
     const x = cm(CONGA.x[d]), y = -cm(CONGA.z), r = cm(CONGA.r[d]);
     const name = d === 0 ? 'low' : 'high';
     const open = +(r * CONGA.open).toFixed(2);
-    s += lugs(x, y, r + 1.3, 6, 0.6) + circle(x, y, r + 0.25, OUT);
+    s += lugs(x, y, r + 1.3, 6, 0.6) + circle(x, y, r + 0.25, CHROME);
     // the edge (a slap) is the ring outside the dashed line, the middle (open) inside it
     s += part({
       id: `c${d * 2 + 1}`, label: `Edge of the ${name} conga (slap)`,
-      body: circle(x, y, r - 0.2, 'fill="transparent"') + circle(x, y, open, 'class="l dash"'),
+      body: circle(x, y, r - 0.2, M('skin')) + circle(x, y, open, M('dash')),
       glow: circle(x, y, +(r * 0.8).toFixed(2), `fill="none" stroke-width="${(r * 0.4).toFixed(2)}" class="band"`),
     });
     s += part({
@@ -223,7 +223,7 @@ function congas(): string {
 function handpan(): string {
   const zones = handpanZones(PAGE_ROOT.handpan, PAGE_SCALE);
   const cx = 0, cy = -cm(zones[0].z);
-  let s = circle(cx, cy, 14.4, OUT);
+  let s = circle(cx, cy, 14.4, M('bronze'));
   const names = ['C', 'D', 'E', 'G', 'A'];
   for (const z of zones) {
     const x = cm(z.x), y = -cm(z.z), r = cm(z.w);
@@ -231,7 +231,7 @@ function handpan(): string {
     const ell = (attrs: string) => `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${+(r * (ding ? 1 : 0.86)).toFixed(2)}" ${attrs}/>`;
     s += part({
       id: `h${z.i}`, label: ding ? 'Handpan, the low note in the middle' : `Handpan note ${names[((z.degree % 5) + 5) % 5]}`,
-      body: ell(OUT) + circle(x, y, +(r * 0.36).toFixed(2), LINE),
+      body: ell(M('note')) + circle(x, y, +(r * 0.36).toFixed(2), M('dimple')),
       glow: ell(''),
     });
   }

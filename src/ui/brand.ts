@@ -63,7 +63,8 @@ export function wordmarkSvg(fill = 'currentColor', label = 'Thump'): string {
 /**
  * Thump's mark (the icon, tools/icon-hit.mjs, the same geometry): a solid core and three broken rings spreading from
  * it, each turned a little differently. `simple` is the favicon's two heavier rings, for small sizes. The view box is
- * centred on the core, and each ring sits in its own `.ring` group so the page can turn them.
+ * centred on the core, and each ring sits in its own `.ring` group so the page can turn them. Its colours come from
+ * the page's CSS (`.mark-ring` and `.core`, from the palette on :root in index.html).
  */
 const RINGS = [
   { r: 150, w: 56, dash: [760, 180], rot: -20 },
@@ -79,7 +80,7 @@ export function ringMarkSvg(opts: { simple?: boolean; className?: string; label?
   const half = opts.simple ? 372 : 400;
   const aria = opts.label ? `role="img" aria-label="${opts.label}"` : 'aria-hidden="true" focusable="false"';
   const body = rings
-    .map((g, i) => `<g class="ring ring-${i + 1}"><circle r="${g.r}" fill="none" stroke="var(--hot, #ff4b2b)" stroke-width="${g.w}" stroke-dasharray="${g.dash.join(' ')}" transform="rotate(${g.rot})"/></g>`)
+    .map((g, i) => `<g class="ring ring-${i + 1}"><circle class="mark-ring" r="${g.r}" stroke-width="${g.w}" stroke-dasharray="${g.dash.join(' ')}" transform="rotate(${g.rot})"/></g>`)
     .join('');
-  return `<svg class="${opts.className ?? 'mark'}" viewBox="${-half} ${-half} ${half * 2} ${half * 2}" ${aria}>${body}<circle class="core" r="${opts.simple ? 84 : 70}" fill="var(--ink, #f6efe4)"/></svg>`;
+  return `<svg class="${opts.className ?? 'mark'}" viewBox="${-half} ${-half} ${half * 2} ${half * 2}" ${aria}>${body}<circle class="core" r="${opts.simple ? 84 : 70}"/></svg>`;
 }
