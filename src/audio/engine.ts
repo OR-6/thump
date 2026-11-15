@@ -490,7 +490,7 @@ class Engine {
    * A tuned instrument from the room (DESIGN.md §3.4): `midi` its note, `vel` 0..1, `size` 0..1 the surface's
    * size within its family (bigger: lower partial decay, longer ring).
    */
-  modal(family: Family, midi: number, vel: number, pan = 0, when = 0, size = 0.5, owner = '', tone = 0): void {
+  modal(family: Family, midi: number, vel: number, pan = 0, when = 0, size = 0.5, owner = '', tone = 0, hold = false): void {
     const sctx = this.ready();
     if (sctx && this.sampler.has(family)) {
       const t = Math.max(sctx.currentTime, when || sctx.currentTime);
@@ -501,7 +501,7 @@ class Engine {
       this.lastAt = t;
       const pitched = !UNPITCHED.has(family);
       const wet = MODAL[family]?.wet ?? MODAL[ALIAS[family] ?? 'marimba']?.wet ?? 1;
-      this.playSample(sctx, family, pitched ? midi : null, v, tone, size, pan, wet, FAMILY_LEVEL[family] ?? 0.7, t, owner || family);
+      this.playSample(sctx, family, pitched ? midi : null, v, tone, size, pan, wet, FAMILY_LEVEL[family] ?? 0.7, t, owner || family, this.drums, hold);
       return;
     }
     if (family === 'stomp') return this.stomp(vel, pan, when);
@@ -574,7 +574,12 @@ class Engine {
   }
 
   /** A recorded clip: on its note, louder and brighter with the hit (soft hits are darker), through the room. */
-  private playSample(ctx: AudioContext, key: string, midi: number | null, v: number, tone: number, size: number, pan: number, wet: number, level: number, t: number, owner: string, bus: AudioNode = this.drums): void {
+  /**
+   * `hold`: a key held down (the piano). The recording plays, then crossfades in phase into a seamless loop of its own
+   * middle, which fades as a held piano note does (about 8 s), until `release(owner)` lifts the key. Without it, the
+   * recording plays to its end as before.
+   */
+  private playSample(ctx: AudioContext, key: string, midi: number | null, v: number, tone: number, size: number, pan: number, wet: number, level: number, t: number, owner: string, bus: AudioNode = this.drums, hold = false): void {
     const c = this.sampler.pick(key, { midi, vel: v, tone, size });
     if (!c) return;
     const src = ctx.createBufferSource();
@@ -582,16 +587,163 @@ class Engine {
     src.playbackRate.value = c.rate * Math.pow(2, ((Math.random() - 0.5) * 8) / 1200);
     const g = this.out(ctx, bus, pan, wet, t, level * (0.12 + 0.88 * v));
     // a soft hit is darker as well as quieter (the recordings have 2–3 layers; this fills between them)
+    let dst: AudioNode = g;
     if (v < 0.75) {
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
       lp.frequency.value = 2500 + 15000 * v * v;
-      src.connect(lp).connect(g);
-    } else src.connect(g);
+      lp.connect(g);
+      dst = lp;
+    }
+    const rate = src.playbackRate.value;
+    let end = t + c.buffer.duration / rate;
+    const loop = hold && owner ? this.loopOf(ctx, c.buffer) : null;
+    if (!loop) {
+      src.connect(dst);
+      src.start(t);
+      src.stop(end + 0.02);
+      if (owner) this.claimVoice(owner, g, t, end, [src]);
+      return;
+    }
+    // the hand-over, where the loop's own samples are the recording's (so the two are in phase): 40 ms crossfade
+    const gm = ctx.createGain();
+    const gl = ctx.createGain();
+    src.connect(gm).connect(dst);
+    const ls = ctx.createBufferSource();
+    ls.buffer = loop.buf;
+    ls.loop = true;
+    ls.playbackRate.value = rate;
+    ls.connect(gl).connect(dst);
+    const at = t + loop.at / rate;
+    gm.gain.setValueAtTime(1, at);
+    gm.gain.linearRampToValueAtTime(0, at + 0.04);
+    gl.gain.setValueAtTime(0, at);
+    gl.gain.linearRampToValueAtTime(1, at + 0.04);
+    // (held, a piano note fades slowly: about 60% gone in 2.5 s; silent by 15 s)
+    gl.gain.setTargetAtTime(0, at + 0.04, 2.5);
     src.start(t);
-    const end = t + c.buffer.duration / c.rate;
-    src.stop(end + 0.02);
-    if (owner) this.claimVoice(owner, g, t, end, [src]);
+    src.stop(Math.min(end, at + 0.06) + 0.02);
+    ls.start(at, loop.off);
+    end = t + 15;
+    ls.stop(end);
+    this.claimVoice(owner, g, t, end, [src, ls]);
+    const mine = this.voices[this.voices.length - 1];
+    if (mine?.g === g) {
+      mine.t = t;
+      mine.held = true;
+    }
+  }
+
+  /**
+   * A held key lifted: its notes damp, as a piano's damper falls (not before 0.2 s after the strike, so a quick tap is
+   * still a note, then gone in about half a second).
+   */
+  release(owner: string): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    for (const v of this.voices) {
+      if (v.owner !== owner || !v.held) continue;
+      v.held = false;
+      const at = Math.max(now, (v.t ?? now) + 0.2);
+      const gp = v.g.gain as AudioParam & { cancelAndHoldAtTime?: (t: number) => void };
+      if (gp.cancelAndHoldAtTime) gp.cancelAndHoldAtTime(at);
+      else {
+        gp.cancelScheduledValues(at);
+        gp.setValueAtTime(gp.value, at);
+      }
+      gp.setTargetAtTime(0, at, 0.12);
+      v.end = at + 0.8;
+      if (v.oscs) for (const o of v.oscs) try { o.stop(v.end); } catch { /* already stopped */ }
+    }
+  }
+
+  /**
+   * A recording made into a seamless loop, once per recording: about 0.3 s from 0.12 s in, its decay taken out (a
+   * straight line in dB fitted to it, so the loop neither pulses nor wobbles), its length chosen so its end runs on
+   * into its start in phase, and the two crossfaded. Levelled to where it takes over from the recording, so the hand-
+   * over doesn't jump. `at`: where in the recording (s) it takes over; `off`: where in the loop that is.
+   */
+  private loops = new WeakMap<AudioBuffer, { buf: AudioBuffer; at: number; off: number } | null>();
+  private loopOf(ctx: AudioContext, b: AudioBuffer): { buf: AudioBuffer; at: number; off: number } | null {
+    if (this.loops.has(b)) return this.loops.get(b)!;
+    const sr = b.sampleRate;
+    const A = Math.floor(0.12 * sr);
+    const L = Math.min(Math.floor(0.32 * sr), b.length - A - Math.floor(0.03 * sr));
+    const X = Math.floor(0.05 * sr);
+    if (L < Math.floor(0.15 * sr)) {
+      this.loops.set(b, null);
+      return null;
+    }
+    const chs = b.numberOfChannels;
+    const data: Float32Array[] = [];
+    for (let ch = 0; ch < chs; ch++) data.push(b.getChannelData(ch));
+    // the decay: dB over 10 ms blocks, smoothed over 70 ms (it follows the bend of a note's early decay, and is too
+    // slow to ripple with the pitch)
+    const B = Math.floor(0.01 * sr);
+    const nb = Math.floor(L / B);
+    const raw = new Float32Array(nb);
+    for (let k = 0; k < nb; k++) {
+      let e = 0;
+      for (const d of data) for (let i = A + k * B; i < A + (k + 1) * B; i++) e += d[i] * d[i];
+      raw[k] = 10 * Math.log10(e / (B * chs) + 1e-12);
+    }
+    const env = new Float32Array(nb);
+    for (let k = 0; k < nb; k++) {
+      let sum = 0, n = 0;
+      for (let j = Math.max(0, k - 3); j <= Math.min(nb - 1, k + 3); j++) {
+        sum += raw[j];
+        n++;
+      }
+      env[k] = sum / n;
+    }
+    const dbAt = (i: number) => {
+      const f = Math.max(0, Math.min(nb - 1, i / B - 0.5));
+      const k = Math.floor(f);
+      const k2 = Math.min(nb - 1, k + 1);
+      return env[k] + (env[k2] - env[k]) * (f - k);
+    };
+    // the gain that holds the level where the loop takes over (index X), at most 40 dB up
+    const ref = dbAt(X);
+    const gain = (i: number) => Math.min(100, Math.pow(10, (ref - dbAt(i)) / 20));
+    const flat = (d: Float32Array, i: number) => d[A + i] * gain(i);
+    // the loop's length: the end that best continues into the start (correlated over 20 ms), within its last 25 ms
+    const W = Math.floor(0.02 * sr);
+    const d0 = data[0];
+    let N = L - X;
+    let best = -2;
+    for (let n = L - X - Math.floor(0.025 * sr); n <= L - X; n++) {
+      let ab = 0, aa = 0, bb = 0;
+      for (let j = 0; j < W; j++) {
+        const a = flat(d0, j), c = flat(d0, n + j);
+        ab += a * c; aa += a * a; bb += c * c;
+      }
+      const r = ab / Math.sqrt(aa * bb + 1e-12);
+      if (r > best) {
+        best = r;
+        N = n;
+      }
+    }
+    const out = ctx.createBuffer(chs, N, sr);
+    const lin = best > 0.6;
+    for (let ch = 0; ch < chs; ch++) {
+      const d = data[ch];
+      const o = out.getChannelData(ch);
+      for (let i = 0; i < N; i++) {
+        const a = flat(d, i);
+        if (i >= X) {
+          o[i] = a;
+          continue;
+        }
+        // (in phase, a straight crossfade; else equal power: the loop's last sample runs on into its first)
+        const w = i / X;
+        const c = flat(d, N + i);
+        o[i] = lin ? a * w + c * (1 - w) : a * Math.sin(w * Math.PI * 0.5) + c * Math.cos(w * Math.PI * 0.5);
+      }
+    }
+    const r = { buf: out, at: (A + X) / sr, off: X / sr };
+    this.loops.set(b, r);
+    return r;
   }
 
   /**
@@ -825,7 +977,7 @@ class Engine {
   }
 
   /** Ringing voices (gongs, bowls): at most 3 per surface and 24 in all; the oldest fades out to make room. */
-  private voices: { owner: string; g: GainNode; end: number; oscs: AudioScheduledSourceNode[] | null }[] = [];
+  private voices: { owner: string; g: GainNode; end: number; oscs: AudioScheduledSourceNode[] | null; t?: number; held?: boolean }[] = [];
   private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: AudioScheduledSourceNode[] | null = null, max = 3): void {
     const ctx = this.ctx!;
     const now = ctx.currentTime;

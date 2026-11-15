@@ -2947,7 +2947,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** Each point's height, filtered (keys and bars: a fingertip hovering over them shakes, it isn't pressing). */
   private airY = Array.from({ length: AIR_PTS * 2 }, () => new OneEuro1(2, 6, 1));
   private airLockSurf = [-1, -1];
+  /** The piano key each hand point is holding down (its surface id; -1: none), and the point playing a note now. */
+  private keyHeld = new Int16Array(AIR_PTS * 2).fill(-1);
+  private holdPt = -1;
+  /** The point's held key, let go (the finger lifted, slid off, or stopped being tracked). */
+  private letGo(p: number): void {
+    if (this.keyHeld[p] < 0) return;
+    this.keyHeld[p] = -1;
+    audio.release(HOLD_OWNER[p]);
+  }
   private forgetPt(p: number): void {
+    this.letGo(p);
     this.air.forget(p);
     this.airY[p].reset();
   }
@@ -3125,6 +3135,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.airSong = songNow;
       this.forgetAir();
     }
+    // (the piano not playable now, picked up or moved: what it held lets go)
+    if (!piano) for (let p = 0; p < AIR_PTS * 2; p++) this.letGo(p);
     for (let i = 0; i < 2; i++) {
       const h = i === 0 ? hands.left : hands.right;
       const side: Side = i === 0 ? 'left' : 'right';
@@ -3215,6 +3227,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.airOut.length = 0;
         // (keys and bars: the height smoothed, so a hovering fingertip's shake isn't a press)
         if ((piano || marimba) && k !== 4) this.airP.y = this.airY[p].filter(this.airP.y, step);
+        // (a key held down: still under this finger? lifted 8 mm off it, or slid off its sides, lets it go)
+        if (piano && this.keyHeld[p] >= 0) {
+          let on = false;
+          for (let j = 0; j < n; j++) {
+            const q = this.airSurf[j];
+            if (q.id !== this.keyHeld[p]) continue;
+            const hw = (q.w ?? (q.r ?? 0) * 2) / 2 + 0.008;
+            const hd = (q.d ?? (q.r ?? 0) * 2) / 2 + 0.015;
+            on = this.airP.y < q.y + 0.008 && Math.abs(this.airP.x - q.x) < hw && Math.abs(this.airP.z - q.z) < hd;
+            break;
+          }
+          if (!on) this.letGo(p);
+        }
         // (the loudness range: a stick moves far faster than a fingertip on a key; and a stick resting over a head
         // isn't struck by its shake: it plays from 1 m/s)
         const full = k === 4 ? 6.5 : piano ? 1.0 : 2.5;
@@ -3272,8 +3297,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return;
     }
     if (piano) {
+      // (held down, the note sounds on until this finger lifts: a sampled piano's key, like a real keyboard's)
+      this.letGo(hit.point);
+      this.keyHeld[hit.point] = hit.surface;
+      this.holdPt = hit.point;
       if (hit.surface >= 30) this.playBlack(hit.surface - 30, side, hit.gain, pan, this.clock.t, this.airStrike);
       else this.playZone('piano', hit.surface, side, hit.gain, pan, this.clock.t, this.airStrike);
+      this.holdPt = -1;
       this.debug.hits++;
       return;
     }
@@ -3772,14 +3802,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const ch = h ? (h.chordMinor ? [0, 3, 7] : [0, 4, 7]) : scale.chords[this.pianoChord % scale.chords.length];
       const base = (h ? h.chord : root) - 12;
       // root, fifth, and the third an octave up (open, not muddy)
-      for (const n of [0, 7, 12 + (ch[1] - ch[0])]) audio.modal(snd.family ?? 'keys', base + ch[0] + n, vel * 0.7, pan, when, 0.5, `piano-chord`, n);
+      const held = this.holdPt >= 0 && (snd.family ?? 'keys') === 'keys';
+      for (const n of [0, 7, 12 + (ch[1] - ch[0])]) audio.modal(snd.family ?? 'keys', base + ch[0] + n, vel * 0.7, pan, when, 0.5, held ? HOLD_OWNER[this.holdPt] : `piano-chord`, n, held);
       return;
     }
     // (a black key in a song: a semitone over the white key left of it)
     if (id === 'piano' && zone >= PIANO_BLACK) {
       const bk = (this.kit.inst === 'piano' ? this.blacksNow : pianoBlacks(instZones('piano', root, scale)))[zone - PIANO_BLACK];
       const a = bk ? (this.kit.inst === 'piano' ? this.kit.instZones : instZones('piano', root, scale))[bk.a] : null;
-      if (a) audio.modal(snd.family ?? 'keys', a.midi + 1 + (snd.oct ?? 0) * 12, vel, pan, when, 0.5, 'piano', zone);
+      const held = this.holdPt >= 0 && (snd.family ?? 'keys') === 'keys';
+      if (a) audio.modal(snd.family ?? 'keys', a.midi + 1 + (snd.oct ?? 0) * 12, vel, pan, when, 0.5, held ? HOLD_OWNER[this.holdPt] : 'piano', zone, held);
       return;
     }
     // (zone + PIANO_LOW on the piano: the same key two octaves down, for a bass line)
@@ -3787,7 +3819,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const zi = low ? zone - PIANO_LOW : zone;
     const z = this.kit.inst === id ? this.kit.instZones[zi] : null;
     const midi = (z?.midi ?? scaleMidi(root, scale, zi)) - (low ? 24 : 0) + (low ? 0 : (snd.oct ?? 0) * 12);
-    audio.modal(low ? 'keys' : (snd.family ?? 'keys'), midi, vel, pan, when, 0.5, `${id}${low ? 'lo' : ''}`, zi);
+    const fam = low ? 'keys' : (snd.family ?? 'keys');
+    const held = id === 'piano' && this.holdPt >= 0 && fam === 'keys';
+    audio.modal(fam, midi, vel, pan, when, 0.5, held ? HOLD_OWNER[this.holdPt] : `${id}${low ? 'lo' : ''}`, zi, held);
   }
 
   /** The guitar: six strings low to high, a hair apart (a slow hand spreads them more), from chord `c`. */
@@ -5231,6 +5265,8 @@ const FINALE_SPEED = 2.2;
 const LANE_INDEX: Partial<Record<string, number>> = { kick: 0, snare: 1, hat: 2, tom: 3, rim: 4 };
 /** Points tracked per hand for hits in the air. */
 const AIR_PTS = 7;
+/** Each hand point's held piano notes go by its own name, so lifting that finger lets go of just those. */
+const HOLD_OWNER = Array.from({ length: AIR_PTS * 2 }, (_, p) => `key${p}`);
 /**
  * A One-Euro filter on a direction (or any 3-vector): smooth when it's still, quick when it moves (a stick that has a
  * little weight without lagging a stroke).
