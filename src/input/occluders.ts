@@ -25,6 +25,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MinEquation,
+  ShaderMaterial,
   Quaternion,
   SRGBColorSpace,
   SphereGeometry,
@@ -51,6 +52,51 @@ const PALM = ['wrist', 'thumb-metacarpal', 'thumb-phalanx-proximal', 'index-fing
 /** A real headset's browser (a dev build opened on a Quest must hide the hand model too). */
 const ON_HEADSET = typeof navigator !== 'undefined' && /OculusBrowser|Quest|Pico/i.test(navigator.userAgent);
 const FORCED = typeof location !== 'undefined' && /[?&]mask=1\b/.test(location.search);
+/**
+ * For filming in the emulator (?hands=ghost: the site's hero loop), where there's no passthrough to see your real hand
+ * through: the same hand drawn see-through, as it reads in the headset, nearly clear in the middle and a soft bright
+ * rim round every finger and knuckle, like glass catching the light. Each pixel shows only the hand's nearest surface
+ * (a depth pass first, its shape; then the rim on it), so where its parts overlap it doesn't build up into blobs. In
+ * place of the emulator's own outline hands, which read as a diagram.
+ */
+const GHOST = typeof location !== 'undefined' && /[?&]hands=ghost\b/.test(location.search);
+
+/** The see-through hand's look (filming only). */
+function ghostMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: { uColor: { value: new Color(0xeaf6ff) }, uFill: { value: 0.07 }, uRim: { value: 0.85 } },
+    vertexShader: `
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        vec4 p = vec4(position, 1.0);
+        vec3 n = normal;
+        #ifdef USE_INSTANCING
+          p = instanceMatrix * p;
+          n = mat3(instanceMatrix) * n;
+        #endif
+        vec4 mv = modelViewMatrix * p;
+        vN = normalize(normalMatrix * n);
+        vV = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uFill;
+      uniform float uRim;
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        float d = abs(dot(normalize(vN), normalize(vV)));
+        float r = pow(1.0 - d, 2.4);
+        gl_FragColor = vec4(uColor * (0.7 + 0.5 * r), uFill + uRim * r);
+        #include <colorspace_fragment>
+      }`,
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+}
 
 const JOINTS = 25;
 const SIDES = ['left', 'right'] as const;
@@ -83,12 +129,16 @@ export class HandOccluderSystem extends createSystem({}) {
   private lastWrist = { left: new Vector3(), right: new Vector3() };
   private hadWrist = { left: false, right: false };
   private hold = { left: 0, right: 0 };
-  private on = ON_HEADSET || FORCED;
+  private on = ON_HEADSET || FORCED || GHOST;
+  /** Filming: each part's twin that draws the see-through rim over the depth the part laid down. */
+  private twins: { balls: InstancedMesh; sticks: InstancedMesh; palm: Mesh }[] = [];
 
   init() {
     // what's drawn over the hand is held to SHOW of its strength (as it would show over your real hand); MIN doesn't
     // add up where capsules overlap. The colour cap is in the output's own (sRGB) terms.
-    const mat = new MeshBasicMaterial({
+    const mat = GHOST
+      ? new MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true, side: DoubleSide })
+      : new MeshBasicMaterial({
       color: new Color().setRGB(SHOW, SHOW, SHOW, SRGBColorSpace),
       transparent: true,
       opacity: SHOW,
@@ -122,6 +172,22 @@ export class HandOccluderSystem extends createSystem({}) {
       }
       balls.count = 0;
       sticks.count = 0;
+      if (GHOST) {
+        // (filming: a twin of each part draws the rim on the nearest surface the part's depth left)
+        const gm = ghostMaterial();
+        const tb = new InstancedMesh(ball, gm, JOINTS);
+        const ts = new InstancedMesh(stick, gm, BONES.length);
+        tb.instanceMatrix = balls.instanceMatrix;
+        ts.instanceMatrix = sticks.instanceMatrix;
+        const tp = new Mesh(pg, gm);
+        for (const o of [tb, ts, tp]) {
+          o.renderOrder = 100001;
+          o.frustumCulled = false;
+          o.visible = false;
+          this.world.createTransformEntity(o);
+        }
+        this.twins.push({ balls: tb, sticks: ts, palm: tp });
+      }
       this.balls[side] = balls;
       this.sticks[side] = sticks;
       this.palms[side] = palm;
@@ -262,6 +328,17 @@ export class HandOccluderSystem extends createSystem({}) {
         this.balls[side].count = this.sticks[side].count = 0;
         this.balls[side].visible = this.sticks[side].visible = this.palms[side].visible = false;
       }
+    // (filming: the twins follow their parts; the palm's light needs its facing)
+    SIDES.forEach((side, k) => {
+      const tw = this.twins[k];
+      if (!tw) return;
+      tw.balls.count = this.balls[side].count;
+      tw.sticks.count = this.sticks[side].count;
+      tw.balls.visible = this.balls[side].visible;
+      tw.sticks.visible = this.sticks[side].visible;
+      tw.palm.visible = this.palms[side].visible;
+      if (tw.palm.visible) this.palms[side].geometry.computeVertexNormals();
+    });
   }
 
   private spaces: Record<string, XRSpace[] | undefined> = {};
@@ -277,7 +354,7 @@ export class HandOccluderSystem extends createSystem({}) {
    * layers instead (IWSDK never touches layers), checking each frame for new ones.
    */
   private hideIwsdkHands() {
-    if (import.meta.env.DEV && !ON_HEADSET) return; // the desktop emulator has no real hands to see: keep its hand model
+    if (import.meta.env.DEV && !ON_HEADSET && !GHOST) return; // the desktop emulator has no real hands to see: keep its hand model
     const ad = this.input.xr.visualAdapters?.hand;
     if (!ad) return;
     for (const a of [ad.left, ad.right]) {
