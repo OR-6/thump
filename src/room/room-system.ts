@@ -759,6 +759,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (this.autoOn) return done(null);
       void boardTop(board).then(done);
     },
+    // (a frame later: the game asking is replaced by a new one)
+    startOver: () => this.later(this.clock.t, () => this.resetProgress()),
     save: (p) => {
       saveProgress(p);
       if (Math.abs(this.game.opts.offset - this.settings.offset) > 0.001) {
@@ -1162,7 +1164,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     const t = new CanvasTexture(c);
     t.colorSpace = SRGBColorSpace;
-    const m = new Mesh(new PlaneGeometry(0.04, 0.04), new MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false }));
+    const m = new Mesh(new PlaneGeometry(0.05, 0.05), new MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false }));
     m.name = 'MoveHandle';
     m.rotation.x = -Math.PI / 2;
     m.position.set(-0.27, 0.003, 0.22);
@@ -1194,12 +1196,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (!h.pinch.pinching) {
           // let go: the surfaces refit where it stands, and the move is kept (from where it stood by itself)
           this.moveHand = -1;
-          const dx = root.position.x - this.kitBase.x;
-          const dz = root.position.z - this.kitBase.y;
+          // (in the world: the kit may hang from last session's room anchor, whose frame isn't the world's)
+          root.getWorldPosition(this.moveAt);
+          const dx = this.moveAt.x - this.kitBase.x;
+          const dz = this.moveAt.z - this.kitBase.y;
           const f = this.kitBaseFwd;
           const a = dx * f.x + dz * f.z;
           const l = dx * -f.z + dz * f.x;
-          const hh = Math.max(-0.2, Math.min(0.25, root.position.y - this.kitBaseY));
+          const hh = Math.max(-0.2, Math.min(0.25, this.moveAt.y - this.kitBaseY));
           this.settings = { ...this.settings, kitNudge: { a: Math.max(-0.3, Math.min(0.3, a)), l: Math.max(-0.5, Math.min(0.5, l)), ...(Math.abs(hh) > 0.003 ? { h: hh } : {}) } };
           saveSettings(this.settings);
           sfx.set();
@@ -1208,12 +1212,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
         // (the pinch carries it across the desk and up or down too, if it doesn't sit right on your real desk: within
         // 20 cm below and 25 cm above where the desk was found; and it turns to face you as it goes)
+        // (the height kept in the world's frame, then into the parent's: a room anchor's origin can be on the floor)
         const p = root.parent;
         this.moveAt.copy(h.pinchPoint).add(this.moveOff);
+        this.moveAt.y = Math.max(this.kitBaseY - 0.2, Math.min(this.kitBaseY + 0.25, this.moveAt.y));
         if (p) p.worldToLocal(this.moveAt);
-        root.position.x = this.moveAt.x;
-        root.position.z = this.moveAt.z;
-        root.position.y = Math.max(this.kitBaseY - 0.2, Math.min(this.kitBaseY + 0.25, this.moveAt.y));
+        root.position.copy(this.moveAt);
         root.getWorldPosition(this.moveAt);
         root.rotation.y = Math.atan2(-(this.moveAt.x - this.head.x), -(this.moveAt.z - this.head.z));
         root.updateMatrixWorld(true);
@@ -1222,7 +1226,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       const d = h.pinchPoint.distanceTo(this.moveAt);
       near = Math.max(near, 1 - Math.min(1, d / 0.08));
-      if (this.moveHand < 0 && h.edge === 'start' && d < 0.045 && !this.dragging[0] && !this.dragging[1]) {
+      // (a pinch starting within 6 cm of it takes it: tracking puts a pinch a centimetre or two off)
+      if (this.moveHand < 0 && h.edge === 'start' && d < 0.06 && !this.dragging[0] && !this.dragging[1]) {
         this.moveHand = i;
         root.getWorldPosition(this.moveOff).sub(h.pinchPoint);
         sfx.lift();
@@ -1762,10 +1767,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (s.noWords) this.tag.show('', 0, null, null);
   }
 
-  /** "Start over" on the page: forget progress here too (the kit stays where it is). */
+  /** "Start over" (on the page, or in Settings): forget progress (the kit stays where it is, and your names on the
+   * world's boards stay yours), and the first-time hints come back. */
   private resetProgress(): void {
     const kitPose = this.progress.kit;
-    this.progress = { ...freshProgress(), kit: kitPose, rooms: {} };
+    const { me, bandWords } = this.progress;
+    this.progress = { ...freshProgress(), kit: kitPose, rooms: {}, ...(me ? { me } : {}), ...(bandWords ? { bandWords } : {}) };
+    if (this.settings.taught?.length) {
+      this.settings = { ...this.settings, taught: [] };
+      saveSettings(this.settings);
+    }
     saveProgress(this.progress);
     this.game.endJam();
     this.game.looper.clear();
@@ -1943,6 +1954,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.partFailed(2, e);
     }
     for (let i = this.timed.length - 1; i >= 0; i--) {
+      // (one may clear the rest: starting over)
+      if (i >= this.timed.length) continue;
       if (this.timed[i].at <= this.clock.t) {
         const f = this.timed[i].fn;
         this.timed.splice(i, 1);
@@ -3140,7 +3153,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private fistHold = [0, 0];
   private stickSnap = [false, false];
   /** (light: tracking shake out, the hand's motion kept; at 1.5 Hz the stick trailed the wrist and felt loose) */
-  private stickFilt = [new OneEuro3(6, 3, 5), new OneEuro3(6, 3, 5)];
+  // (firm in the hand: light smoothing at rest, almost none moving)
+  private stickFilt = [new OneEuro3(9, 5, 5), new OneEuro3(9, 5, 5)];
   /**
    * The stick (or mallet) as drawn: where the hand has it, unless its tip has gone into a head or a bar, when it pivots
    * at the grip until its tip rests on the surface, as a real one would stop there. Fully resting up to 3 cm in, easing
@@ -3284,8 +3298,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       s.r = undefined;
       s.w = w;
       s.d = d;
-      // (a repeated note: a 1.2 cm lift is enough; it plays 2 mm in, so a fingertip shaking at the top can't press it)
-      s.rearm = 0.012;
+      // (played as keys: down 2 mm in, at any speed, sliding in from the side too; up as the finger lifts, so a quick
+      // repeated note plays: src/input/air-hits.ts)
+      s.key = true;
+      s.lift = undefined;
       s.confirm = 0.002;
       return s;
     };
@@ -3295,7 +3311,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     for (let j = 0; j < this.blacksNow.length; j++) {
       const b = this.blacksNow[j];
-      set(30 + j, b.x, K.blackTop, -b.z, b.w + 0.002, b.h);
+      // (the black keys sit at the back, out of reach and narrow: each takes a press 3 mm either side of it and a
+      // centimetre behind it, where nothing else is)
+      set(30 + j, b.x, K.blackTop, -b.z - 0.005, b.w + 0.006, b.h + 0.01);
     }
     for (const q of this.kit.instZones) {
       // (a white key reaches 2.5 cm past its front edge: a finger pressing the front of a key, or the slip in front of
@@ -3312,6 +3330,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
     }
     return n;
+  }
+  /** The handpan's field nearest a hit (kit-local x, z): by how far it is outside each field's edge, so the big ding
+   * in the middle takes what's closer to it than to a note round it. */
+  private nearestField(x: number, z: number, was: number): number {
+    let best = was;
+    let bd = Infinity;
+    for (const q of this.kit.instZones) {
+      const d = Math.hypot(x - q.x, z + q.z) - q.w;
+      if (d < bd) {
+        bd = d;
+        best = q.i;
+      }
+    }
+    return best;
   }
   /** Two piano surfaces side by side: white keys next to each other, or a black key and a white key it sits between. */
   private besideKey(a: number, b: number): boolean {
@@ -3344,6 +3376,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       q.along = undefined;
       q.confirm = undefined;
       q.rearm = undefined;
+      q.key = undefined;
+      q.lift = undefined;
+      // (struck surfaces: a quick second stroke that lifts a centimetre or so plays, not only one back out past 2 cm)
+      q.relift = 0.012;
       q.nx = q.ny = q.nz = undefined;
     }
     if (piano) n = this.pianoSurfaces();
@@ -3357,10 +3393,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         s.y = MARIMBA.top;
         s.z = -q.z;
         s.r = undefined;
-        s.w = q.w + 0.004;
+        // (the bars as keys: a mallet's stroke plays as it reaches the bar, at any speed, and one dragged along them
+        // plays each it crosses; a bar takes its whole slot, gaps and all, so a stroke between two plays one)
+        s.w = 0.054 - 0.0045;
         s.d = q.h;
-        // (a mallet swings in an arc: it comes down onto a bar at a slant, not straight)
-        s.along = 0.4;
+        s.key = true;
+        s.lift = 0.01;
+        s.confirm = 0.002;
       }
     // (the guitar you hold reads its own strings and neck: src/kit/held-guitar.ts)
     const guitar = false;
@@ -3377,7 +3416,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           s.x = q.x;
           s.y = handpanY(Math.hypot(q.x - sh.x, q.z - sh.z), sh.R);
           s.z = -q.z;
-          s.r = q.w + 0.004;
+          // (each field reaches over the gaps round it: a hit between fields is the nearest one's, below; nothing on
+          // the shell is dead)
+          s.r = q.w + 0.02;
           s.w = undefined;
         }
       } else
@@ -3391,7 +3432,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
             s.x = q.x;
             s.y = CONGA.top;
             s.z = -q.z;
-            s.r = q.w + (pass ? 0.006 : 0);
+            // (the edge a little past the rim: tracking puts a palm a centimetre off)
+            s.r = q.w + (pass ? 0.012 : 0);
             s.w = undefined;
             // (each head tipped toward you, as the drum leans in its stand)
             const cn = congaNormal(q.x, -q.z);
@@ -3564,6 +3606,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
               this.airBest.surface = hit.surface;
               this.airBest.gain = hit.gain;
               this.airBest.x = this.airP.x;
+              this.airBest.z = this.airP.z;
               this.airBest.ago = hit.ago;
             }
             continue;
@@ -3573,7 +3616,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       if (this.aimH[i] < AIM_FROM) this.aimMarks.show(i, this.aimAt[i], this.aimN[i].x, this.aimN[i].y, this.aimN[i].z, this.aimH[i], this.aimCol[i]);
       if (this.airBest.speed >= 0) {
-        this.airHit.surface = this.airBest.surface;
+        this.airHit.surface = congas && isPan ? this.nearestField(this.airBest.x, this.airBest.z, this.airBest.surface) : this.airBest.surface;
         this.airHit.speed = this.airBest.speed;
         this.airHit.gain = this.airBest.gain;
         this.airHit.ago = this.airBest.ago;
@@ -3607,11 +3650,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   /** One hand's hit in the air: one note per slap (chords on the piano), on whatever is out. */
   private airHit: AirHit = { surface: 0, point: 0, speed: 0, gain: 0, depth: 0, ago: 0 };
-  private airBest = { speed: -1, depth: 0, surface: 0, gain: 0, x: 0, ago: 0 };
+  private airBest = { speed: -1, depth: 0, surface: 0, gain: 0, x: 0, z: 0, ago: 0 };
   private airPlay(i: number, side: Side, hit: AirHit, guitar: boolean, zone: boolean, piano: boolean): void {
     // one slap is one note: the other points of the same hand land in the same frame or a moment later (not
     // on the piano: chords)
-    if (!piano && this.clock.t - this.airLock[i] < 0.05) return;
+    // (a mallet dragged along the bars plays each: a shorter wait)
+    if (!piano && this.clock.t - this.airLock[i] < (zone && this.kit.inst === 'marimba' ? 0.025 : 0.05)) return;
     // on the piano, the finger next to the one that pressed, dipping with it, isn't a press of its own
     if (piano && this.clock.t - this.airLock[i] < 0.06 && hit.speed < 0.8 * this.airLockSpeed[i] && this.besideKey(hit.surface, this.airLockSurf[i])) return;
     this.airLock[i] = this.clock.t;
@@ -5574,6 +5618,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     root.position.set(saved.x, saved.y, saved.z);
     root.rotation.set(0, saved.yaw, 0);
     root.updateMatrixWorld(true);
+    // where it would stand by itself, from where it came back less the move you'd made (so the move handle and a
+    // later move keep to the desk's height, not the anchor's)
+    {
+      const w = root.getWorldPosition(this.tmp);
+      const f = this.tmp3.set(0, 0, -1).transformDirection(root.matrixWorld).setY(0);
+      if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+      f.normalize();
+      const nu = this.settings.kitNudge;
+      this.kitBaseFwd.copy(f);
+      this.kitBase.set(w.x - (nu ? f.x * nu.a - f.z * nu.l : 0), w.z - (nu ? f.z * nu.a + f.x * nu.l : 0), saved.yaw);
+      this.kitBaseY = w.y - (nu?.h ?? 0);
+    }
     this.debug.resumed = true;
     this.placeKit(true);
     return true;

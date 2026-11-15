@@ -716,14 +716,14 @@ export class MarimbaModel implements DeskModel {
     return [...this.bars];
   }
   struck(i: number, gain: number): void {
-    this.spring.kick(i, 0.1 + 0.2 * gain);
+    this.spring.kick(i, 0.16 + 0.26 * gain);
   }
 
   update(dt: number): void {
     this.spring.step(dt, 1100, 22);
     this.bars.forEach((b, i) => {
-      // a struck bar dips and bounces on its cords, rocking a little
-      b.position.y = this.barY + Math.max(-0.004, Math.min(0.002, this.spring.x[i]));
+      // a struck bar dips and bounces on its cords, rocking a little (as far as it can: 6 mm)
+      b.position.y = this.barY + Math.max(-0.006, Math.min(0.0025, this.spring.x[i]));
       b.rotation.x = this.spring.x[i] * 2;
     });
   }

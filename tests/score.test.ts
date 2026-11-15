@@ -158,11 +158,12 @@ describe('the songs: classics with modern grooves, and originals', () => {
       }
   });
 
-  it('the melody on Easy is its notes on the strong beats; Normal the whole tune; Hard adds the chord key on the piano', () => {
+  it('the melody on Easy is its notes on the strong beats; Normal on every beat; Hard the whole tune and the chord key on the piano', () => {
     const s = by('ode-to-joy');
     expect(chart(s, 'piano', 'easy').notes.every((n) => n.beat % 2 === 0)).toBe(true);
+    expect(chart(s, 'piano', 'normal').notes.every((n) => n.beat % 1 === 0)).toBe(true);
     // (every note of each time through but the last, which is the last hit)
-    expect(chart(s, 'piano', 'normal').notes.length).toBe(s.melody.length * s.tune.passes - 1);
+    expect(chart(s, 'piano', 'hard').notes.filter((n) => n.key !== `piano:${PIANO_CHORD}`).length).toBe(s.melody.length * s.tune.passes - 1);
     expect(chart(s, 'piano', 'hard').notes.filter((n) => n.key === `piano:${PIANO_CHORD}`).length).toBeGreaterThan(20);
     // the drums: Easy kick and snare, Normal the hat too, Hard a fill into every phrase
     expect(new Set(chart(s, 'drums', 'easy').notes.map((n) => n.key))).toEqual(new Set(['kit:kick', 'kit:snare']));

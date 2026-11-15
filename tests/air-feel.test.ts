@@ -156,7 +156,8 @@ export type Detector = (inst: Inst) => {
 const current: Detector = (inst) => {
   const keys = inst.name.startsWith('piano');
   const stick = inst.name.includes('sticks') || inst.name.includes('mallets');
-  const surf: AirSurface[] = [{ id: 0, face: 'up', x: 0, y: 0, z: 0, w: 0.2, d: 0.2, along: inst.along, rearm: inst.rearm, confirm: keys ? 0.002 : undefined }];
+  const mallet = inst.name.includes('mallets');
+  const surf: AirSurface[] = [{ id: 0, face: 'up', x: 0, y: 0, z: 0, w: 0.2, d: 0.2, along: inst.along, rearm: inst.rearm, confirm: keys || mallet ? 0.002 : undefined, key: keys || mallet || undefined }];
   const air = new AirHits(1);
   const out: AirHit[] = [];
   const min = stick ? AIR.stickMin : keys ? AIR.keyMin : AIR.minSpeed;

@@ -29,7 +29,7 @@ describe('the instrument shelf', () => {
     // the tune's first note is in the middle (the sixth key)
     expect(keys[5].degree).toBe(0);
   });
-  it('black keys where a keyboard has them: two over C D E, three over F G A B, 11 by 95 mm, each playing its two neighbours', () => {
+  it('black keys where a keyboard has them: two over C D E, three over F G A B, 12.5 by 95 mm, each playing its two neighbours', () => {
     const z = pianoZones(60, scaleById('happy'));
     const bl = pianoBlacks(z);
     expect(bl).toHaveLength(10);
@@ -38,7 +38,7 @@ describe('the instrument shelf', () => {
       expect(k.b).toBe(k.a + 1);
       expect(k.x).toBeGreaterThan(z[k.a].x);
       expect(k.x).toBeLessThan(z[k.b].x);
-      expect(k.w).toBeCloseTo(0.011, 4);
+      expect(k.w).toBeCloseTo(0.0125, 4);
       expect(k.h).toBeCloseTo(0.095, 4);
     }
   });

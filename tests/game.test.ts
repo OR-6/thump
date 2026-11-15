@@ -1046,7 +1046,7 @@ describe("the song card says where the world's board stands", () => {
     g.refreshDisplay();
     expect(asked.length).toBe(1);
     expect(asked[0]).toMatch(/:drums:easy$/);
-    expect(g.display.page?.card?.meta).toBe('World best 52,000 · Night Owls');
+    expect(g.display.page?.card?.world?.split('\n')).toEqual(['World best 52,000 · Night Owls', 'World top 52,000', 'Top 52,000']);
     // (no server: the card keeps its own line)
     const g2 = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, freshProgress(), room([]));
     g2.start(0);
@@ -1103,5 +1103,20 @@ describe('names and band boards', () => {
     expect(g.myName()).not.toBe(before);
     g.act('back');
     expect(g.display.page?.id).toBe('settings');
+  });
+  it('Start over in Settings asks once: Keep everything goes back, Start over asks the room to begin again', () => {
+    let over = 0;
+    const g = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }), startOver: () => over++ } as unknown as GameStage, freshProgress(), room([]));
+    g.start(0);
+    g.act('nav:settings');
+    expect(g.display.page?.items.some((i) => i.id === 'nav:reset')).toBe(true);
+    g.act('nav:reset');
+    expect(g.display.page?.id).toBe('reset');
+    g.act('back');
+    expect(g.display.page?.id).toBe('settings');
+    expect(over).toBe(0);
+    g.act('nav:reset');
+    g.act('reset:yes');
+    expect(over).toBe(1);
   });
 });

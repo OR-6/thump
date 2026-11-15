@@ -486,6 +486,8 @@ export function beatKey(b: number): number {
 
 /** The closest Easy notes may come (seconds): anything quicker is a beginner's miss. */
 export const EASY_GAP = 0.4;
+/** And Normal's on a tune (the piano, the marimba, the handpan): a quarter of a second apart is the quickest it asks. */
+export const NORMAL_GAP = 0.25;
 
 /** The guitar's three positions on the neck (its scale's I, IV and V): which one each chord goes on. */
 function padsFor(s: Score): (c: Chord) => number {
@@ -550,6 +552,10 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     const x = barOf(b) % s.meter;
     return s.meter === 4 ? Math.abs(x / 2 - Math.round(x / 2)) < 1e-6 : Math.abs(x) < 1e-6;
   };
+  const onBeat = (b: number) => {
+    const x = barOf(b);
+    return Math.abs(x - Math.round(x)) < 1e-6;
+  };
   const mel = melodyNotes(s);
   const chords = chordSpans(s);
   const cyc = cycles(s, g);
@@ -564,9 +570,10 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
   const step = (b: number): Level | 'light' => (!plan || level === 'easy' || !calm(b) ? level : level === 'hard' ? 'normal' : 'light');
   if (inst === 'piano' || inst === 'marimba') {
     for (const n of mel) {
-      // Easy: the notes on the strong beats (the band plays the rest of the tune); a note the instrument hasn't got
-      // (the marimba has no notes outside the scale) is the band's
+      // Easy: the notes on the strong beats, Normal on every beat, Hard all of them (the band plays the rest of the
+      // tune); a note the instrument hasn't got (the marimba has no notes outside the scale) is the band's
       if (level === 'easy' && !strong(n.beat)) continue;
+      if (level === 'normal' && !onBeat(n.beat)) continue;
       const z = inst === 'piano' ? pianoKey(s.scale, n.degree, n.acc) : n.acc === 0 ? zoneOf('marimba', s.scale, n.degree) : -1;
       if (z >= 0) add(n.beat, `${inst}:${z}`, strong(n.beat) ? 0.9 : 0.8, 0, 'band:melody');
       // Hard on the marimba: the other mallet a chord tone under a long note on a strong beat
@@ -597,7 +604,7 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     }
     if (level === 'hard')
       for (const n of mel)
-        if (strong(n.beat) && n.acc === 0) {
+        if (onBeat(n.beat) && n.acc === 0) {
           const z = handpanZone(s.scale, n.degree, false);
           if (z >= 0) add(n.beat, `handpan:${z}`, 0.8, 1);
         }
@@ -660,7 +667,7 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     for (const c of cyc) {
       const rel = barOf(c.beat);
       const lv = step(c.beat);
-      // (a fill to end each phrase of four bars at every level: two quarter-note snares on Easy, eighths above; and on
+      // (a fill to end each phrase of four bars at every level: quarter-note snares, eighths on Hard; and on
       // Normal, in a song in its whole form, one into each section)
       const intoSection = !!plan && barAt(c.beat + g.cycle - 0.5)?.fill === 2;
       const endsPhrase = Math.floor(rel / phrase + 1e-6) !== Math.floor((rel + g.cycle) / phrase + 1e-6);
@@ -680,7 +687,8 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
         add(c.beat + g.cycle - s.meter, 'kit:kick', 1, 0);
         add(c.beat + g.cycle - s.meter, 'kit:snare', 1, 0);
       } else if (fill) {
-        const per = level === 'easy' ? 1 : 2;
+        // (quarter notes on Easy and Normal, eighths on Hard)
+        const per = level === 'hard' ? 2 : 1;
         for (let k = 0; k < fillLen * per; k++) add(c.beat + cut + k / per, k >= fillLen && opts.tom && level === 'hard' ? 'kit:tom' : 'kit:snare', k === 0 ? 0.9 : 0.75, 0);
       }
     }
@@ -688,14 +696,16 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
   // in time order; one note per zone per moment, and two hands: the third at once goes (the lower-ranked first);
   // on Easy nothing closer than EASY_GAP to the note before
   out.sort((a, b) => a.beat - b.beat || a.rank - b.rank);
-  const gap = (EASY_GAP * t.bpm) / 60 - 1e-6;
+  // (Normal's gap only for a tune: a groove's eighths are what Normal is)
+  const tuneGap = inst === 'piano' || inst === 'marimba' || inst === 'handpan';
+  const gap = ((level === 'easy' ? EASY_GAP : NORMAL_GAP) * t.bpm) / 60 - 1e-6;
   const notes: ChartNote[] = [];
   const cover = new Map<string, Set<number>>();
   let lastAt = -Infinity;
   for (const n of out) {
     const same = notes.filter((m) => Math.abs(m.beat - n.beat) < 1e-6);
     if (same.some((m) => m.key === n.key) || same.length >= 2) continue;
-    if (level === 'easy' && !same.length && n.beat - lastAt < gap) continue;
+    if ((level === 'easy' || (level === 'normal' && tuneGap)) && !same.length && n.beat - lastAt < gap) continue;
     notes.push({ beat: n.beat, key: n.key, vel: n.vel });
     lastAt = n.beat;
     if (n.covers) {

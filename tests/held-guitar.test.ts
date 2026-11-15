@@ -103,3 +103,48 @@ describe('fretting', () => {
     expect(stringsOf([48, 55, 60, 64, 67])).toEqual([null, 48, 55, 60, 64, 67]);
   });
 });
+
+describe('strumming with tracking noise', () => {
+  const rng = (seed: number) => {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  const gauss = (r: () => number) => Math.sqrt(-2 * Math.log(Math.max(1e-9, r()))) * Math.cos(2 * Math.PI * r());
+  const TIP = 0.0012;
+  it('a fingertip resting on a string plucks it about once in 3 s at most (it was 34)', () => {
+    let tot = 0;
+    for (let k = 0; k < 50; k++) {
+      const r = rng(k + 1);
+      const g = new GuitarHands();
+      const out: Pluck[] = [];
+      const z = stringZ(3, 0.03);
+      for (let f = 0; f < 216; f++) g.strum(1, [new Vector3(0.03 + gauss(r) * TIP, HG.strings + gauss(r) * TIP, z + gauss(r) * TIP), null, null, null], f / 72, 1 / 72, out);
+      tot += out.length;
+    }
+    expect(tot / 50).toBeLessThan(1.2);
+  });
+  it('down and up strums at 4 a second, 0.6 m/s across: every string, every strum', () => {
+    let ok = 0;
+    for (let k = 0; k < 50; k++) {
+      const r = rng(100 + k);
+      const g = new GuitarHands();
+      const out: Pluck[] = [];
+      // (back and forth 9 cm across the strings, a triangle wave: each half a strum)
+      for (let f = 0; f < 72 * 2; f++) {
+        const t = f / 72;
+        const u = (t * 4) % 1;
+        const z = -0.045 + 0.09 * (u < 0.5 ? u * 2 : 2 - u * 2);
+        g.strum(1, [new Vector3(0.03 + gauss(r) * TIP, HG.strings + gauss(r) * TIP, z + gauss(r) * TIP), null, null, null], t, 1 / 72, out);
+      }
+      // (8 back-and-forths: 16 strums of 6 strings, less the first, which starts on them)
+      if (out.length >= 15 * 6 && out.length <= 16 * 6) ok++;
+    }
+    expect(ok).toBeGreaterThanOrEqual(48);
+  });
+});

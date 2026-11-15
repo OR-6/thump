@@ -197,10 +197,18 @@ export const FRET_TIPS = 4;
 /**
  * Both hands on the guitar, in its own frame, each frame: the strings crossed (plucks), what the neck is stopping.
  */
+/** How far past a string a fingertip must get to have crossed it (m): tracking shakes a resting tip a millimetre or so. */
+export const STRING_DEAD = 0.003;
+
 export class GuitarHands {
   private prev = Array.from({ length: 2 * STRUM_TIPS }, () => new Vector3());
   private prevOk = new Array<boolean>(2 * STRUM_TIPS).fill(false);
   private lastPluck = new Float64Array(6).fill(-1);
+  /** Per fingertip and string: which side of it the tip is (-1, +1; 0 not yet known), changing only past STRING_DEAD. */
+  private sides = new Int8Array(2 * STRUM_TIPS * 6);
+  /** Each tip's z two frames ago and the frame's time before last (its speed over two frames: one is mostly noise). */
+  private z2 = new Float64Array(2 * STRUM_TIPS);
+  private dt2 = new Float64Array(2 * STRUM_TIPS);
   /** Each string's fret now (0 open), with real frets. */
   readonly frets = new Int8Array(6);
   private fretT = -1;
@@ -236,6 +244,7 @@ export class GuitarHands {
       const p = tips[k];
       if (!p) {
         this.prevOk[j] = false;
+        this.sides.fill(0, j * 6, j * 6 + 6);
         continue;
       }
       const q = this.prev[j];
@@ -243,22 +252,34 @@ export class GuitarHands {
       this.prevOk[j] = true;
       if (!was || dt <= 0) {
         q.copy(p);
+        this.z2[j] = p.z;
+        this.dt2[j] = 0;
+        for (let i = 0; i < 6; i++) {
+          const a = p.z - stringZ(i, p.x);
+          this.sides[j * 6 + i] = a > STRING_DEAD ? 1 : a < -STRING_DEAD ? -1 : 0;
+        }
         continue;
       }
       const dz = p.z - q.z;
       const jump = Math.hypot(p.x - q.x, p.y - q.y, dz);
       // (a tracking jump is not a strum; a hand drifting across slowly is resting, not playing)
       const vz = dz / dt;
+      const vz2 = (p.z - this.z2[j]) / (dt + this.dt2[j]);
+      this.z2[j] = q.z;
+      this.dt2[j] = dt;
       const far = this.reach.strum;
       const inBand = (v: Vector3) => v.x > HG.strumX0 - 0.02 && v.x < HG.strumX1 + 0.02 && v.y < HG.strings + far && v.y > -0.05;
-      if (jump < 0.15 && Math.abs(vz) > 0.1 && (inBand(p) || inBand(q))) {
+      if (jump < 0.15 && Math.abs(vz) > 0.1 && Math.abs(vz2) > 0.1 && Math.sign(vz2) === Math.sign(vz) && (inBand(p) || inBand(q))) {
         const xm = (p.x + q.x) / 2;
         for (let i = 0; i < 6; i++) {
           const zi = stringZ(i, xm);
-          const a0 = q.z - zi;
+          // (crossed: from one side of it, past its dead zone, to the other past it; a tip shaking on a string isn't)
           const a1 = p.z - zi;
-          if (!((a0 < 0 && a1 >= 0) || (a0 > 0 && a1 <= 0))) continue;
-          const f = (zi - q.z) / dz;
+          const was1 = this.sides[j * 6 + i];
+          const now1 = a1 > STRING_DEAD ? 1 : a1 < -STRING_DEAD ? -1 : was1;
+          this.sides[j * 6 + i] = now1;
+          if (!was1 || now1 === was1) continue;
+          const f = Math.max(0, Math.min(1, (zi - q.z) / dz));
           // (the finger is at the strings' height where it crosses this one)
           const y = q.y + (p.y - q.y) * f;
           if (y > HG.strings + far || y < -0.05) continue;
@@ -268,6 +289,13 @@ export class GuitarHands {
           out.push({ string: i, vel: Math.max(0.2, Math.min(1, Math.abs(vz) / 1.4)), dir: dz > 0 ? 1 : -1, t: at, side });
         }
       }
+      else
+        for (let i = 0; i < 6; i++) {
+          // (out of reach, or creeping: where it is, so coming back in from the far side isn't a strum)
+          const a = p.z - stringZ(i, p.x);
+          if (a > STRING_DEAD) this.sides[j * 6 + i] = 1;
+          else if (a < -STRING_DEAD) this.sides[j * 6 + i] = -1;
+        }
       q.copy(p);
     }
     // (in the order the strings were crossed)

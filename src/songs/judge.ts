@@ -31,8 +31,11 @@ export interface Windows {
   good: number;
 }
 
-export function windows(slow: boolean): Windows {
-  const k = slow ? TIMING.slowWiden : 1;
+/** How much wider the windows are at each level (hand tracking has its own jitter, so even Hard forgives a little). */
+export const LEVEL_WIDEN = { easy: 1.35, normal: 1.2, hard: 1.1 } as const;
+
+export function windows(slow: boolean, level: keyof typeof LEVEL_WIDEN = 'hard'): Windows {
+  const k = (slow ? TIMING.slowWiden : 1) * LEVEL_WIDEN[level];
   return { perfect: TIMING.perfectS * k, good: TIMING.goodS * k };
 }
 

@@ -5,7 +5,7 @@
  */
 import { KEYS, SCALES, SHELF, instDef } from '../kit/shelf.js';
 
-export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'join' | 'name' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
+export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'join' | 'name' | 'reset' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
 
 export interface Item {
   id: string;
@@ -40,7 +40,8 @@ export interface Page {
   /** What the middle shows besides items: a song's progress and count, results' stars, or how to play. */
   body?: 'song' | 'results' | 'how' | 'songs' | 'pause' | 'band';
   /** Songs: the chosen song's card. */
-  card?: { name: string; meta: string; stars: number; grade: string; best: number };
+  /** The chosen song; `world`: where the world's board stands, ways to say it longest first, one a line. */
+  card?: { name: string; meta: string; stars: number; grade: string; best: number; world?: string };
   /** Play together: the code, and how many are in.
    */
   band?: { code: string; players: number };
@@ -217,7 +218,7 @@ function buildPageFor(m: MenuInput): Page {
       items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 408, y: BOT.y, w: 360, h: BOT.h });
       items.push({ id: 'play', label: 'Play', kind: 'play', x: 784, y: BOT.y, w: W - 32 - 784, h: BOT.h });
       const sel = m.songs[m.songSel];
-      return { id: 'songs', title: 'Songs', line: m.sub, items, body: 'songs', card: sel ? { name: sel.name, meta: sel.world ?? sel.meta, stars: sel.stars, grade: sel.grade ?? '', best: sel.best ?? -1 } : undefined };
+      return { id: 'songs', title: 'Songs', line: m.sub, items, body: 'songs', card: sel ? { name: sel.name, meta: sel.meta, stars: sel.stars, grade: sel.grade ?? '', best: sel.best ?? -1, world: sel.world } : undefined };
     }
     case 'band': {
       const on = m.band.state === 'hosting' || m.band.state === 'connected';
@@ -274,6 +275,15 @@ function buildPageFor(m: MenuInput): Page {
       items.push({ id: 'back', label: 'Done', kind: 'play', x: 32, y: BOT.y, w: W - 64, h: BOT.h });
       return { id: 'name', title: n.title, line: n.title === 'Your name' ? 'How you show on the world boards' : 'How your band shows on the world boards', items };
     }
+    case 'reset': {
+      // starting over: asked once, with keeping it the big button
+      const half = (W - 64 - 16) / 2;
+      const items: Item[] = [back()];
+      items.push({ id: 'value:reset', label: "Your stars, best scores and lessons go, as if it were your first time. Your name, your settings and where the instruments stand don't change.", kind: 'text', x: 32, y: 196, w: W - 64, h: 260 });
+      items.push({ id: 'reset:yes', label: 'Start over', sub: "Can't be undone", kind: 'button', x: 32, y: BOT.y, w: half, h: BOT.h });
+      items.push({ id: 'back', label: 'Keep everything', kind: 'play', x: 32 + half + 16, y: BOT.y, w: half, h: BOT.h });
+      return { id: 'reset', title: 'Start over?', line: '', items };
+    }
     case 'settings': {
       // two columns of switches; putting the panel back is an action, beside Done
       const items: Item[] = [back()];
@@ -281,7 +291,10 @@ function buildPageFor(m: MenuInput): Page {
       items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in the room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when you play', m.settings.light !== false, 5), t('set:guitarlap', 'Guitar in your lap', m.settings.guitarLap !== false, 6));
       // (your name on the world's boards: a page to change it)
       items.push({ id: 'nav:name', label: 'Your name', sub: m.settings.name, kind: 'button', x: 32 + C6 + 16, y: 176 + 3 * 116, w: C6, h: 104 });
-      items.push({ id: 'set:panel', label: 'Panel back in place', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h, off: !m.settings.panelMoved });
+      // (putting the panel back, and starting over, share the left half)
+      const hw = (C6 - 16) / 2;
+      items.push({ id: 'set:panel', label: 'Panel', sub: 'Put back', kind: 'button', x: 32, y: BOT.y, w: hw, h: BOT.h, off: !m.settings.panelMoved });
+      items.push({ id: 'nav:reset', label: 'Start over', kind: 'button', x: 32 + hw + 16, y: BOT.y, w: hw, h: BOT.h });
       // (the back tile and Done both close it)
       items.push({ id: 'back', label: 'Done', kind: 'play', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h });
       return { id: 'settings', title: 'Settings', line: '', items };

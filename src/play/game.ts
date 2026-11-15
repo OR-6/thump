@@ -113,6 +113,8 @@ export interface GameStage {
     level(stem: string, v: number, tau?: number): void;
   };
   save(p: Progress): void;
+  /** Forget all progress (stars, scores, lessons; not your name) and begin again where the kit stands. */
+  startOver?(): void;
   /** Post a song's score to its world board; `done` hears where it put you (null: no server, or not posted). */
   postScore?(p: { board: string; name: string; score: number; acc: number; grade: string; fc: boolean; notes: number }, done: (w: { rank: number; total: number } | null) => void): void;
   /**
@@ -1182,7 +1184,7 @@ export class Game {
     this.bedCursor = new EventCursor(sc ? scoreBed(sc) : chordBed({ roots: prog.map((c) => c.root), minor: prog.flatMap((c, b) => (c.minor ? [b] : [])), bass: '........', chord: 'hold', shaker: false }, bars));
     this.bedCursor.seek(-4);
     const chart = this.stage.setting('oneHand', false) ? oneHanded(notes) : notes;
-    this.judge = new NoteJudge(chart.map((n) => ({ beat: n.beat, lane: n.part as string, vel: n.vel })), spb, windows(this.opts.tempo < 0.95));
+    this.judge = new NoteJudge(chart.map((n) => ({ beat: n.beat, lane: n.part as string, vel: n.vel })), spb, windows(this.opts.tempo < 0.95, this.level));
     this.graded.perfect = this.graded.good = this.graded.extra = 0;
     this.energy = 0.5;
     this.mode = 'count';
@@ -2052,7 +2054,7 @@ export class Game {
     this.clock.set(this.t + 0.4 + 4 * spb, spb);
     this.bedCursor = new EventCursor(song.bed);
     this.bedCursor.seek(-4);
-    this.judge = new NoteJudge(notes, spb, windows(this.opts.tempo < 0.95));
+    this.judge = new NoteJudge(notes, spb, windows(this.opts.tempo < 0.95, this.level));
     this.graded.perfect = this.graded.good = this.graded.extra = 0;
     this.energy = 0.5;
     this.mode = 'count';
@@ -2094,7 +2096,9 @@ export class Game {
       this.worldLines.set(board, { line: have?.line ?? '', t: this.t });
       this.stage.boardTop(board, (b) => {
         if (!b) return;
-        const line = b.mine ? `You're #${b.rank} of ${b.total} in the world` : b.top.length ? `World best ${b.top[0].score.toLocaleString('en-GB')} · ${b.top[0].name}` : "No one's on the board yet. Be the first";
+        // (ways to say it, longest first: the card shows the first that fits its line)
+        const n = (v: number) => v.toLocaleString('en-GB');
+        const line = (b.mine ? [`You're #${n(b.rank)} of ${n(b.total)} in the world`, `World #${n(b.rank)} of ${n(b.total)}`, `#${n(b.rank)} of ${n(b.total)}`] : b.top.length ? [`World best ${n(b.top[0].score)} · ${b.top[0].name}`, `World top ${n(b.top[0].score)}`, `Top ${n(b.top[0].score)}`] : ["No one's on the world board yet", 'Be the first on it']).join('\n');
         this.worldLines.set(board, { line, t: this.t });
         if (this.mode === 'discover' && this.menu === 'songs') this.refreshDisplay();
       });
@@ -2111,6 +2115,8 @@ export class Game {
   }
   /** The name page: whose name it's changing, and where it came from. */
   private nameFor: 'me' | 'band' = 'me';
+  /** The page Settings was opened over, to go back to from the start-over page. */
+  private resetBack: PageId = 'main';
   private nameWords(): [string, string] {
     const full = this.nameFor === 'band' ? this.bandNameNow().replace(/^The /, '') : this.myName();
     const sp = full.indexOf(' ');
@@ -2822,6 +2828,25 @@ export class Game {
   /** Something on the panel was pressed (an item's action id). */
   act(id: string): void {
     if (id.startsWith('key:')) return this.key(id.slice(4) as ModuleKey);
+    // starting over: from Settings, asked once; back (or Keep everything) returns to Settings
+    if (id === 'nav:reset') {
+      this.resetBack = this.menu;
+      this.settingsOpen = false;
+      this.menu = 'reset';
+      this.refreshDisplay();
+      return;
+    }
+    if (this.menu === 'reset' && !this.settingsOpen && (id === 'back' || id === 'reset:yes')) {
+      this.menu = this.resetBack === 'reset' ? 'main' : this.resetBack;
+      if (id === 'back') {
+        this.settingsOpen = true;
+        this.refreshDisplay();
+        return;
+      }
+      // (the room starts a new game from nothing: this one is done with)
+      this.stage.startOver?.();
+      return;
+    }
     if (id === 'back' && this.menu === 'name' && !this.tuneOpen && !this.settingsOpen) {
       // (back to where the name was changed from: Settings, or the band)
       if (this.nameFor === 'me') this.settingsOpen = true;

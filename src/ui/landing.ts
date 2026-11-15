@@ -389,7 +389,7 @@ export function mountLanding(world: World): void {
       return;
     }
     const p = loadProgress();
-    saveProgress({ ...freshProgress(), kit: p.kit });
+    saveProgress({ ...freshProgress(), kit: p.kit, ...(p.me ? { me: p.me } : {}), ...(p.bandWords ? { bandWords: p.bandWords } : {}) });
     window.dispatchEvent(new Event('thump:reset'));
     b.textContent = 'Done. Progress cleared.';
     b.dataset.sure = '';

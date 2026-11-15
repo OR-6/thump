@@ -16,7 +16,7 @@ export const KEY = {
   length: 0.15,
   thick: 0.014,
   /** Black key width, length, height above the white tops. */
-  blackW: 0.011,
+  blackW: 0.0125,
   blackL: 0.095,
   blackH: 0.0105,
   /** Height of the white key tops above the desk (a slim compact keyboard's). */

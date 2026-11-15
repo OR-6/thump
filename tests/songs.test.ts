@@ -166,7 +166,10 @@ describe('timing judge', () => {
   it('slow mode widens the windows', () => {
     const j = new NoteJudge(notes, spb, windows(true));
     expect(j.hit('kick', 0.15)?.grade).toBe('good');
-    expect(windows(true).good).toBeCloseTo(0.18);
+    expect(windows(true).good).toBeCloseTo(0.12 * 1.5 * 1.1);
+    // (and each level its own: Easy the widest)
+    expect(windows(false, 'easy').good).toBeGreaterThan(windows(false, 'normal').good);
+    expect(windows(false, 'normal').good).toBeGreaterThan(windows(false, 'hard').good);
   });
 
   it('notes added live (an answer) are judged', () => {

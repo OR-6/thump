@@ -748,7 +748,7 @@ export class Panel {
     if (p === this.page && d.count > 0 === this.lastCount > 0 && (d.stars === this.lastStars || !!d.result) && !(p.body === 'song' && d.map && !this.sig)) return;
     this.lastCount = d.count;
     this.lastStars = d.stars;
-    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, d.result ? 'r' : '', p.card ? `${p.card.name}|${p.card.best}|${p.card.grade}|${p.card.meta}` : '', p.band ? `${p.band.code}|${p.band.players}` : '', p.body === 'pause' ? `${d.score}` : '', p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}|${i.grade ?? ''}`).join(',')].join('~');
+    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, d.result ? 'r' : '', p.card ? `${p.card.name}|${p.card.best}|${p.card.grade}|${p.card.meta}|${p.card.world ?? ''}` : '', p.band ? `${p.band.code}|${p.band.players}` : '', p.body === 'pause' ? `${d.score}` : '', p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}|${i.grade ?? ''}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
     if (p.id !== this.pageId) {
@@ -1370,7 +1370,7 @@ export class Panel {
 
 
   /** The chosen song beside the list: its name (two lines if it needs them), what it is, your best and its grade. */
-  private drawSongCard(g: CanvasRenderingContext2D, c: { name: string; meta: string; stars: number; grade: string; best: number }): void {
+  private drawSongCard(g: CanvasRenderingContext2D, c: { name: string; meta: string; stars: number; grade: string; best: number; world?: string }): void {
     const x = 32 + 2 * (421.3 + 16);
     const w = 421.3;
     const room = w - 44;
@@ -1404,8 +1404,21 @@ export class Panel {
     lines.forEach((l, k) => g.fillText(l, x + 28, 236 + k * 52));
     const my = lines.length > 1 ? 330 : 286;
     g.fillStyle = MUTED;
-    fit(g, c.meta, '500', 48, 48, lines.length > 1 && c.grade ? room - 130 : room);
-    g.fillText(c.meta, x + 28, my);
+    // the song's line, then the world's board on a line of its own (in the song's place if its name takes two): the
+    // longest way of saying it that fits
+    const world = c.world?.split('\n');
+    const wroom = lines.length > 1 && c.grade ? room - 130 : room;
+    if (!world || lines.length === 1) {
+      fit(g, c.meta, '500', 48, 48, wroom);
+      g.fillText(c.meta, x + 28, my);
+    }
+    if (world) {
+      g.font = `600 48px ${FONT}`;
+      const say = world.find((s) => g.measureText(s).width <= wroom) ?? world[world.length - 1];
+      fit(g, say, '600', 48, 48, wroom);
+      g.fillStyle = NEON.ink;
+      g.fillText(say, x + 28, lines.length > 1 ? 330 : 342);
+    }
     // your best, and its grade large at the right
     g.font = display(48, 800);
     g.fillStyle = MUTED;
@@ -1416,7 +1429,8 @@ export class Panel {
     g.fillText(c.best >= 0 ? c.best.toLocaleString('en-GB') : '—', x + 28 + bw2 + 6, 404);
     if (c.grade) {
       const [ga, gb] = GRADE_PAIR[c.grade] ?? GRADE_PAIR.D;
-      g.font = display(110, 900);
+      // (smaller under a world line, so the two don't touch)
+      g.font = display(c.world && lines.length === 1 ? 80 : 110, 900);
       g.textAlign = 'right';
       g.fillStyle = vgrad(g, 330, 414, ga, gb);
       g.fillText(c.grade, x + w - 30, 414);
@@ -1492,6 +1506,23 @@ export class Panel {
     // (words with no box: a value between a stepper's arrows; a row's name)
     if (it.kind === 'text') {
       g.fillStyle = NEON.ink;
+      // (too long for one line even at the smallest size: wrapped, word by word, centred in its box)
+      g.font = `600 48px ${FONT}`;
+      if (g.measureText(it.label).width > it.w) {
+        const lines: string[] = [];
+        let line = '';
+        for (const w of it.label.split(' ')) {
+          const next = line ? `${line} ${w}` : w;
+          if (line && g.measureText(next).width > it.w) {
+            lines.push(line);
+            line = w;
+          } else line = next;
+        }
+        if (line) lines.push(line);
+        const top = it.y + it.h / 2 - ((lines.length - 1) * 62) / 2 + 17;
+        lines.forEach((l, k) => g.fillText(l, it.x + (it.w - g.measureText(l).width) / 2, top + k * 62));
+        return;
+      }
       fit(g, it.label, '700', 56, 48, it.w);
       g.fillText(it.label, it.x + (it.w - g.measureText(it.label).width) / 2, it.y + it.h / 2 + 20);
       return;
