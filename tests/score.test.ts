@@ -168,8 +168,9 @@ describe('the songs: classics with modern grooves, and originals', () => {
     expect(new Set(chart(s, 'drums', 'easy').notes.map((n) => n.key))).toEqual(new Set(['kit:kick', 'kit:snare']));
     expect(new Set(chart(s, 'drums', 'normal').notes.map((n) => n.key))).toEqual(new Set(['kit:kick', 'kit:snare', 'kit:hat']));
     expect(chart(s, 'drums', 'hard').notes.some((n) => n.key === 'kit:tom')).toBe(true);
-    // the guitar changes chord on the neck from Normal (I, IV and V on their own positions)
-    expect(chart(s, 'guitar', 'easy').notes.every((n) => n.key === 'guitar:9')).toBe(true);
+    // the guitar changes chord on the neck at every level now (I, IV and V on their own positions; getting there early
+    // counts, so Easy follows the chords too)
+    expect(new Set(chart(s, 'guitar', 'easy').notes.filter((n) => n.key !== 'guitar:9').map((n) => n.key))).toEqual(new Set(['guitar:0', 'guitar:2']));
     expect(new Set(chart(s, 'guitar', 'normal').notes.filter((n) => n.key !== 'guitar:9').map((n) => n.key))).toEqual(new Set(['guitar:0', 'guitar:2']));
   });
 

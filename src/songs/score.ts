@@ -607,8 +607,15 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     const up = g.swing ? 2 / 3 : 0.5;
     const pattern = s.meter === 4 ? (t.bpm >= 130 ? [0, 1, 2, 3, 3 + up] : [0, 1, 1 + up, 2 + up, 3, 3 + up]) : s.meter === 3 ? [0, 1, 1 + up, 2, 2 + up] : [0, 1, 1 + up];
     const offsAt = (lv: Level | 'light') => (lv === 'easy' || lv === 'light' ? (s.meter === 4 ? [0, 2] : [0]) : lv === 'normal' ? Array.from({ length: s.meter }, (_, i) => i) : pattern);
-    for (const st of s.starts) for (let b = 0; b < s.bars; b++) for (const o of offsAt(step(st + b * s.meter))) add(st + b * s.meter + o, 'guitar:9', o % 1 ? 0.6 : o === 0 ? 0.9 : 0.75, 0);
-    if (level !== 'easy') {
+    // (a phrase of four bars ends on one strum left to ring; on Easy a verse is a strum a bar, its chorus two)
+    for (const st of s.starts)
+      for (let b = 0; b < s.bars; b++) {
+        const at = st + b * s.meter;
+        const offs = b % 4 === 3 ? [0] : level === 'easy' && plan && calm(at) ? [0] : offsAt(step(at));
+        for (const o of offs) add(at + o, 'guitar:9', o % 1 ? 0.6 : o === 0 ? 0.9 : 0.75, 0);
+      }
+    // your other hand moves to each new chord on the neck as it comes in (on Easy too: getting there early counts)
+    {
       const pad = padsFor(s);
       let was = -1;
       for (const c of chords) {
@@ -619,32 +626,63 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     }
   } else if (inst === 'congas') {
     live.push('congas:0');
+    // a phrase of four bars: the groove twice, then answered (the other drum leads: low and high swap), then a roll to
+    // end it, alternating drums (quarters on Easy, eighths above, a slap to finish on Hard)
+    const SWAP: Record<string, string> = { '0': '2', '1': '3', '2': '0', '3': '1' };
     for (const c of cyc) {
       const lv = step(c.beat);
       const pat = g.congas[lv === 'easy' || lv === 'light' ? 0 : lv === 'normal' ? 1 : 2];
-      for (const h of hits(pat, g.cycle)) add(c.beat + h.at, `congas:${h.ch}`, h.ch === '3' || h.ch === '1' ? 0.85 : 0.75, 0);
+      for (const h of hits(pat, g.cycle)) {
+        const at = c.beat + h.at;
+        const rel = barOf(at);
+        const bar = Math.floor(rel / s.meter + 1e-6) % 4;
+        const inBar = rel - Math.floor(rel / s.meter + 1e-6) * s.meter;
+        if (bar === 3 && inBar >= s.meter - 2 - 1e-6) continue;
+        const ch = bar === 2 ? SWAP[h.ch] ?? h.ch : h.ch;
+        add(at, `congas:${ch}`, ch === '3' || ch === '1' ? 0.85 : 0.75, 0);
+      }
     }
+    for (const st of s.starts)
+      for (let b = 3; b < s.bars; b += 4) {
+        const end = st + (b + 1) * s.meter;
+        const n = level === 'easy' ? 2 : 4;
+        for (let k = 0; k < n; k++) {
+          const last = k === n - 1;
+          add(end - 2 + (k * 2) / n, `congas:${last && level === 'hard' ? '3' : k % 2 ? '2' : '0'}`, last ? 0.9 : 0.75, 0);
+        }
+      }
   } else {
     // the drums: Easy the kick and the snare, Normal the hat too, Hard the full groove and a fill into each phrase
     live.push('kit:kick', 'kit:snare', 'kit:hat');
-    const phrase = s.meter === 3 ? 12 : 16;
+    // (a phrase is four bars, whatever the metre)
+    const phrase = s.meter * 4;
     const fillLen = s.meter === 3 ? 1 : 2;
     for (const c of cyc) {
       const rel = barOf(c.beat);
       const lv = step(c.beat);
-      // (Hard: a fill into each phrase; Normal, in a song in its whole form: one into each section)
+      // (a fill to end each phrase of four bars at every level: two quarter-note snares on Easy, eighths above; and on
+      // Normal, in a song in its whole form, one into each section)
       const intoSection = !!plan && barAt(c.beat + g.cycle - 0.5)?.fill === 2;
-      const fill = (level === 'hard' && Math.floor(rel / phrase) !== Math.floor((rel + g.cycle) / phrase)) || (level === 'normal' && intoSection);
+      const endsPhrase = Math.floor(rel / phrase + 1e-6) !== Math.floor((rel + g.cycle) / phrase + 1e-6);
+      const fill = endsPhrase || (level === 'normal' && intoSection);
       const cut = g.cycle - fillLen;
       const kick = hits(lv === 'easy' ? g.easy[0] : lv === 'hard' ? g.hardKick : g.kick, g.cycle);
       const snare = hits(lv === 'easy' ? g.easy[1] : lv === 'hard' ? g.hardSnare : g.snare, g.cycle);
       // (a light verse's hat on the beat only)
       const hat = lv === 'easy' ? [] : hits(lv === 'hard' ? g.hardHat : g.hat, g.cycle).filter((h) => lv !== 'light' || Math.abs(h.at - Math.round(h.at)) < 1e-6);
-      for (const h of kick) if (!(fill && h.at >= cut)) add(c.beat + h.at, 'kit:kick', h.vel, 0);
-      for (const h of snare) if (!(fill && h.at >= cut)) add(c.beat + h.at, 'kit:snare', h.vel, 0);
-      for (const h of hat) if (!(fill && h.at >= cut)) add(c.beat + h.at, 'kit:hat', 0.6, 1);
-      if (fill)
-        for (let k = 0; k < fillLen * 2; k++) add(c.beat + cut + k / 2, k >= fillLen && opts.tom && level === 'hard' ? 'kit:tom' : 'kit:snare', k === 0 ? 0.9 : 0.75, 0);
+      // (in three on Easy a phrase ends on a hit: the kick and the snare together on its last bar's one, then rest)
+      const stop = fill && level === 'easy' && s.meter === 3;
+      const from = stop ? g.cycle - s.meter + 0.5 : cut;
+      for (const h of kick) if (!(fill && h.at >= from)) add(c.beat + h.at, 'kit:kick', h.vel, 0);
+      for (const h of snare) if (!(fill && h.at >= from)) add(c.beat + h.at, 'kit:snare', h.vel, 0);
+      for (const h of hat) if (!(fill && h.at >= from)) add(c.beat + h.at, 'kit:hat', 0.6, 1);
+      if (stop) {
+        add(c.beat + g.cycle - s.meter, 'kit:kick', 1, 0);
+        add(c.beat + g.cycle - s.meter, 'kit:snare', 1, 0);
+      } else if (fill) {
+        const per = level === 'easy' ? 1 : 2;
+        for (let k = 0; k < fillLen * per; k++) add(c.beat + cut + k / per, k >= fillLen && opts.tom && level === 'hard' ? 'kit:tom' : 'kit:snare', k === 0 ? 0.9 : 0.75, 0);
+      }
     }
   }
   // in time order; one note per zone per moment, and two hands: the third at once goes (the lower-ranked first);
