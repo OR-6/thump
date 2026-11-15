@@ -1,13 +1,14 @@
 /**
- * The HUD (drawn in the screen's own look, src/ui/theme.ts: the same count-in, plates, type and streak colours): a small sign standing on the desk just in front of the instrument, on your side, turned to your eyes —
+ * The HUD, drawn with the screen's own pieces (src/ui/theme.ts: its count-in, its plate, its italic type, its primary
+ * button, its streak colours), so the two read as one thing: a small sign standing on the desk just in front of the instrument, on your side, turned to your eyes —
  * where you're looking while you play (the screen at the back is for choosing; this is for doing). It shows one thing
  * at a time: the count-in (big, stamped), or the one thing to do now (a lesson's step, a first-time tip, "Hands up!"),
  * or the streak stepping up. Nothing at all when there's nothing to say. One canvas, redrawn only when what it says
  * changes; nothing allocated per frame.
  */
 import { CanvasTexture, CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
-import { BODY, DISPLAY, whenFonts } from '../ui/fonts.js';
-import { BRAND, withAlpha } from '../ui/theme.js';
+import { whenFonts } from '../ui/fonts.js';
+import { MULT_PAIR, NEON, body, display, glowText, hgrad, rr, slant, vgrad } from '../ui/theme.js';
 
 const W = 1024;
 const H = 300;
@@ -74,7 +75,7 @@ export class Hud {
     this.root.visible = false;
     parent.add(this.root);
     // the leader: a thin hot line from the sign to the thing it's about, and a small ring where it lands
-    const hot = new MeshBasicMaterial({ color: BRAND.hot, transparent: true, depthWrite: false, depthTest: false, toneMapped: false });
+    const hot = new MeshBasicMaterial({ color: NEON.cyan, transparent: true, depthWrite: false, depthTest: false, toneMapped: false });
     this.leader = new Mesh(new CylinderGeometry(0.0011, 0.0011, 1, 6), hot);
     this.leaderEnd = new Mesh(new RingGeometry(0.006, 0.009, 24), hot);
     this.leader.renderOrder = this.leaderEnd.renderOrder = 14;
@@ -116,165 +117,123 @@ export class Hud {
     if (s.kind === 'none') return;
     g.lineJoin = 'round';
     g.lineCap = 'round';
-    g.textBaseline = 'middle';
     const cx = W / 2;
-    const cy = H / 2;
-    const B = BRAND;
-    // the brand's mark: a solid core and broken rings (the icon, the count-in, the streak are all this one shape)
-    const ring = (x: number, y: number, r: number, w: number, dash: number[], rot: number, col: string) => {
-      g.save();
-      g.translate(x, y);
-      g.rotate(rot);
-      g.strokeStyle = col;
-      g.lineWidth = w;
-      g.setLineDash(dash);
-      g.beginPath();
-      g.arc(0, 0, r, 0, Math.PI * 2);
-      g.stroke();
-      g.restore();
-    };
-    const outlined = (text: string, x: number, y: number, fill: string, w = 12) => {
-      g.strokeStyle = B.plum;
-      g.lineWidth = w;
-      g.strokeText(text, x, y);
-      g.fillStyle = fill;
-      g.fillText(text, x, y);
-    };
-    if (s.kind === 'count') {
-      // the count-in: four arcs round the number, one goes each beat (4 3 2 1)
-      for (let q = 0; q < 4; q++) {
-        if (q >= s.n) continue;
-        g.save();
-        g.translate(cx, cy);
-        g.rotate(-Math.PI / 2 + q * (Math.PI / 2));
-        g.strokeStyle = B.hot;
-        g.lineWidth = 20;
-        g.lineCap = 'butt';
-        g.beginPath();
-        g.arc(0, 0, 122, 0.16, Math.PI / 2 - 0.16);
-        g.stroke();
-        g.restore();
-      }
-      g.textAlign = 'center';
-      g.font = `900 176px ${DISPLAY}`;
-      outlined(String(s.n), cx, cy + 10, B.ink);
-    } else if (s.kind === 'go') {
-      // GO: the whole mark, struck
-      ring(cx, cy, 128, 20, [300, 90, 180, 110], -0.3, B.hot);
-      ring(cx, cy, 86, 26, [400, 140], 0.6, B.hot);
-      g.fillStyle = B.ink;
-      g.beginPath();
-      g.arc(cx, cy, 52, 0, Math.PI * 2);
-      g.fill();
-      g.textAlign = 'center';
-      g.font = `900 64px ${DISPLAY}`;
-      g.fillStyle = B.plum;
-      g.fillText('GO', cx, cy + 4);
-    } else if (s.kind === 'mult') {
-      // the multiplier: as many broken rings round the core as the streak is worth
-      const mx = cx - 150;
-      const col = s.n >= 4 ? B.gold : B.hot;
-      for (let r = 0; r < s.n; r++) ring(mx, cy, 50 + r * 30, 14, [140 + r * 60, 40 + r * 10], r * 0.9, col);
-      g.fillStyle = B.ink;
-      g.beginPath();
-      g.arc(mx, cy, 30, 0, Math.PI * 2);
-      g.fill();
+    const DARK = '#1a0b2e';
+    // a number exactly as the screen draws its count-in: chunky italic, outlined, a gradient with a glow
+    const big = (t: string, px: number, y: number, a: string, b: string, glow: string) => {
+      g.font = display(px, 900);
+      g.textBaseline = 'alphabetic';
       g.textAlign = 'left';
-      g.font = `900 190px ${DISPLAY}`;
-      outlined(`×${s.n}`, cx - 10, cy + 12, s.n >= 4 ? B.gold : B.ink);
+      const x = cx - g.measureText(t).width / 2;
+      g.lineWidth = 14;
+      g.strokeStyle = DARK;
+      g.strokeText(t, x, y);
+      glowText(g, t, x, y, vgrad(g, y - px * 0.8, y, a, b), glow, 24);
+    };
+    if (s.kind === 'count') big(String(s.n), 270, 262, NEON.cyan, NEON.magenta, NEON.magenta);
+    else if (s.kind === 'go') big('GO!', 230, 250, NEON.cyan, NEON.magenta, NEON.magenta);
+    else if (s.kind === 'mult') {
+      // the screen's multiplier chip, large: a slanted plate in the streak's colours, the number dark on it
+      const [a, b] = MULT_PAIR[Math.max(1, Math.min(4, s.n))];
+      const t = `×${s.n}`;
+      g.font = display(200, 900);
+      const w = g.measureText(t).width + 120;
+      slant(g, cx - w / 2, 34, w, 232);
+      g.shadowColor = b;
+      g.shadowBlur = 22;
+      g.fillStyle = vgrad(g, 34, 266, a, b);
+      g.fill();
+      g.shadowBlur = 0;
+      g.textBaseline = 'alphabetic';
+      g.textAlign = 'left';
+      g.fillStyle = DARK;
+      g.fillText(t, cx - w / 2 + 60, 226);
     } else if (s.kind === 'streak') {
+      // the screen's run: the count in the streak's colours, COMBO under it
+      const [a, b] = MULT_PAIR[4];
+      big(String(s.n), 190, 196, a, b, b);
+      g.font = display(54, 700);
       g.textAlign = 'center';
-      g.font = `900 176px ${DISPLAY}`;
-      outlined(String(s.n), cx, cy - 22, B.ink);
-      g.font = `700 46px ${BODY}`;
-      outlined('IN A ROW', cx, cy + 96, B.ink2, 8);
+      g.fillStyle = NEON.muted;
+      g.fillText('COMBO', cx, 262);
     } else {
-      // a tip: a plum plate, straight edges and one cut corner; the command big and upright, at most one line under
-      // it, and what to do to go on on a hot tab
-      const big = s.big.toUpperCase();
+      // a tip: one of the screen's plates (its indigo, its solid edge); the command in its italic display face, a line
+      // under it in its body face, and what to do to go on on its primary button
+      const cmd = s.big.toUpperCase();
       const room = W - 120 - (s.icon ? 150 : 0);
-      let size = 120;
+      let size = 108;
       for (; size > 64; size -= 4) {
-        g.font = `900 ${size}px ${DISPLAY}`;
-        if (g.measureText(big).width <= room) break;
+        g.font = display(size, 900);
+        if (g.measureText(cmd).width <= room) break;
       }
-      const bw = g.measureText(big).width;
-      // the line under it: one line if it fits at 50 px, else two at 44
-      let sz = 50;
+      const cw = g.measureText(cmd).width;
+      let sz = 48;
       let lines: string[] = s.small ? [s.small] : [];
       if (s.small) {
-        g.font = `700 ${sz}px ${BODY}`;
+        g.font = body(sz, 600);
         if (g.measureText(s.small).width > room) {
-          sz = 44;
-          g.font = `700 ${sz}px ${BODY}`;
+          sz = 42;
+          g.font = body(sz, 600);
           lines = wrapTo(g, s.small, room).slice(0, 2);
         }
       }
       let sw = 0;
       for (const l of lines) sw = Math.max(sw, g.measureText(l).width);
-      g.font = `800 42px ${DISPLAY}`;
       const foot = s.foot ? s.foot.toUpperCase() : '';
-      const fw = foot ? g.measureText(foot).width + 56 : 0;
-      const pw = Math.min(W - 8, Math.max(bw, sw, fw) + 96 + (s.icon ? 150 : 0));
-      const ph = H - 8 - (foot ? 0 : 0);
+      g.font = display(40, 900);
+      const fw = foot ? g.measureText(foot).width + 90 : 0;
+      const pw = Math.min(W - 8, Math.max(cw, sw, fw) + 100 + (s.icon ? 150 : 0));
       const px = cx - pw / 2;
       const py = 4;
-      const cut = 34;
-      g.beginPath();
-      g.moveTo(px, py);
-      g.lineTo(px + pw - cut, py);
-      g.lineTo(px + pw, py + cut);
-      g.lineTo(px + pw, py + ph);
-      g.lineTo(px, py + ph);
-      g.closePath();
-      g.fillStyle = withAlpha(B.plum, 0.95);
+      const ph = H - 8;
+      rr(g, px, py, pw, ph, 30);
+      g.fillStyle = vgrad(g, py, py + ph, 'rgba(26,13,56,0.95)', 'rgba(36,16,70,0.95)');
       g.fill();
       g.lineWidth = 4;
-      g.strokeStyle = B.line;
+      g.strokeStyle = '#3b2670';
       g.stroke();
       const tx = px + 48;
-      const big1 = lines.length > 1 ? py + 66 : s.small || foot ? py + 82 : py + ph / 2 + 4;
+      const top = lines.length > 1 ? py + 64 : lines.length || foot ? py + 80 : py + ph / 2 + 6;
+      g.textBaseline = 'middle';
       g.textAlign = 'left';
-      g.font = `900 ${size}px ${DISPLAY}`;
-      g.fillStyle = s.gold ? B.gold : s.hot ? B.hot : B.ink;
-      g.fillText(big, tx, big1);
+      g.font = display(size, 900);
+      const fill = s.gold ? vgrad(g, top - size / 2, top + size / 2, '#fff1a8', '#ffb000') : s.hot ? vgrad(g, top - size / 2, top + size / 2, '#ffffff', NEON.cyan) : NEON.ink;
+      glowText(g, cmd, tx, top, fill, s.gold ? NEON.gold : s.hot ? NEON.cyan : 'rgba(51,225,255,0.25)', s.hot || s.gold ? 18 : 8);
       if (lines.length) {
-        g.font = `700 ${sz}px ${BODY}`;
-        g.fillStyle = B.ink2;
-        lines.forEach((l, i) => g.fillText(l, tx, big1 + size / 2 + (lines.length > 1 ? 26 : 34) + i * (sz + 6)));
+        g.font = body(sz, 600);
+        g.fillStyle = NEON.muted;
+        lines.forEach((l, i) => g.fillText(l, tx, top + size / 2 + (lines.length > 1 ? 24 : 32) + i * (sz + 6)));
       }
       if (foot) {
-        // the hot tab along the bottom: what you do to go on
-        const th = 62;
-        const ty = py + ph - th;
-        g.fillStyle = B.hot;
-        g.fillRect(px, ty, fw, th);
-        g.font = `800 42px ${DISPLAY}`;
-        g.fillStyle = B.hotInk;
-        g.fillText(foot, px + 28, ty + th / 2 + 2);
+        // the screen's primary button: a slanted plate, magenta into orange, white italic on it
+        const bh = 64;
+        const by = py + ph - bh - 14;
+        slant(g, tx - 6, by, fw, bh);
+        g.shadowColor = NEON.magenta;
+        g.shadowBlur = 12;
+        g.fillStyle = hgrad(g, tx, tx + fw, ['#ff3ea5', '#ff6a6a', '#ff9a3c']);
+        g.fill();
+        g.shadowBlur = 0;
+        g.font = display(40, 900);
+        g.fillStyle = '#ffffff';
+        g.fillText(foot, tx + 34, by + bh / 2 + 2);
       }
       if (s.icon === 'stick') {
-        // a fist holding a stick: off-white silhouette, the stick out of the top of the fist, angled in
-        const ix = px + pw - 92;
-        const iy = py + ph / 2 + 26;
+        // a fist holding a stick, in the screen's ink
+        const ix = px + pw - 96;
+        const iy = py + ph / 2 + 20;
         g.save();
         g.translate(ix, iy);
-        g.strokeStyle = B.ink;
+        g.strokeStyle = NEON.ink;
         g.lineWidth = 12;
         g.beginPath();
         g.moveTo(-26, 26);
         g.lineTo(34, -92);
         g.stroke();
-        g.fillStyle = B.ink;
-        g.beginPath();
-        g.moveTo(-40, -36);
-        g.lineTo(26, -36);
-        g.lineTo(40, -22);
-        g.lineTo(40, 30);
-        g.lineTo(-40, 30);
-        g.closePath();
+        g.fillStyle = NEON.ink;
+        rr(g, -40, -36, 80, 66, 18);
         g.fill();
-        g.strokeStyle = B.plum;
+        g.strokeStyle = DARK;
         g.lineWidth = 4;
         for (const y of [-16, 4]) {
           g.beginPath();
