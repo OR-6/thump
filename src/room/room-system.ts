@@ -90,6 +90,7 @@ import { ApproachRings } from './approach-rings.js';
 import { Hud, type HudSay } from './hud.js';
 import { GuitarHands, HG, SADDLE_X, bodyHalfW, heldMatrix, lapMatrix, stringZ, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
 import { GuitarCues, cueSpot } from './guitar-cues.js';
+import { AIM_FROM, AimMarks } from './aim-marks.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { formOf } from './waterfall-fx.js';
@@ -3121,6 +3122,37 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.airY[p].reset();
   }
   private airOut: AirHit[] = [];
+  /**
+   * Where each hand is about to hit (src/room/aim-marks.ts): its striking point's height over the nearest surface
+   * under it (Infinity: none within reach), the spot on that surface, its normal and its colour.
+   */
+  private aimMarks: AimMarks | null = null;
+  private aimH = [Infinity, Infinity];
+  private aimAt = [new Vector3(), new Vector3()];
+  private aimN = [new Vector3(0, 1, 0), new Vector3(0, 1, 0)];
+  private aimCol = [0xffffff, 0xffffff];
+  /** Hand i's striking point (this.airP, kit frame) against the first `n` surfaces: the lowest it's over is kept. */
+  private aimConsider(i: number, n: number): void {
+    const P = this.airP;
+    for (let j = 0; j < n; j++) {
+      const q = this.airSurf[j];
+      if (q.face !== 'up') continue;
+      const nx = q.nx ?? 0, ny = q.ny ?? 1, nz = q.nz ?? 0;
+      const dx = P.x - q.x, dy = P.y - q.y, dz = P.z - q.z;
+      const h = dx * nx + dy * ny + dz * nz;
+      if (h < -0.01 || h >= AIM_FROM || h >= this.aimH[i]) continue;
+      // (over it: inside its disc, or its rectangle, measured in its own plane)
+      const px = dx - h * nx, py = dy - h * ny, pz = dz - h * nz;
+      if (q.r !== undefined) {
+        if (q.r < 0 || Math.hypot(px, py, pz) > q.r) continue;
+      } else if (Math.abs(px) > (q.w ?? 0) / 2 || Math.abs(pz) > (q.d ?? 0) / 2) continue;
+      this.aimH[i] = Math.max(0, h);
+      this.aimAt[i].set(q.x + px, q.y + py, q.z + pz);
+      this.aimN[i].set(nx, ny, nz);
+      const lane = this.kit.inst === 'drums' ? AIR_LANES[q.id] : undefined;
+      this.aimCol[i] = lane ? LED[lane] : instDef(this.kit.inst).color;
+    }
+  }
   /** The drums' heads as surfaces (kit-local), refreshed each frame from where the pads are. */
   private airSurf: AirSurface[] = Array.from({ length: 32 }, (_, i) => ({ id: i, face: 'up' as const, x: 0, y: 0, z: 0, r: -1 }));
   private airCount = 0;
@@ -3195,8 +3227,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     return (h.indexTip.distanceTo(h.palm) + h.middleTip.distanceTo(h.palm) + h.ringTip.distanceTo(h.palm)) / 3;
   }
   private airTick(dt: number, inv: Matrix4): void {
-    // (paused: nothing you hit plays or counts)
-    if (this.userPaused) return;
+    // (paused: nothing you hit plays or counts; no pick left in the hand)
+    if (this.userPaused) {
+      this.dropPicks();
+      return;
+    }
     if (this.kitOutT < 0 && this.game.found.includes('kit')) this.kitOutT = this.clock.t;
     const out = this.kitOutT >= 0 && this.placement.phase === 'placed';
     const drums = out && this.kit.inst === 'drums';
@@ -3230,6 +3265,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // (the guitar you hold reads its own strings and neck: src/kit/held-guitar.ts)
     const guitar = false;
     if (out && this.kit.inst === 'guitar') this.guitarTick(dt, inv);
+    else this.dropPicks();
     if (congas)
       if (isPan) {
         // the handpan: each field a disc at its height on the dome
@@ -3246,7 +3282,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
       } else
         // (each conga's middle before its edge: a hand in the middle plays the open tone)
-        for (const pass of [0, 1])
+        for (let pass = 0; pass < 2; pass++)
           for (const q of this.kit.instZones) {
             if (q.i % 2 !== pass) continue;
             const s = this.airSurf[n++];
@@ -3300,9 +3336,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     // (the piano not playable now, picked up or moved: what it held lets go)
     if (!piano) for (let p = 0; p < AIR_PTS * 2; p++) this.letGo(p);
+    // (where each hand is about to hit: drums, congas, handpan and marimba)
+    this.aimMarks ??= new AimMarks(this.kit.root);
+    const aimOn = !this.userPaused && (drums || congas || marimba);
     for (let i = 0; i < 2; i++) {
       const h = i === 0 ? hands.left : hands.right;
       const side: Side = i === 0 ? 'left' : 'right';
+      this.aimMarks.hide(i);
+      this.aimH[i] = Infinity;
       if (!h.tracked) {
         // a frame or two of lost tracking mid-stroke is not a new start: forget only after a tenth of a second
         this.airGap[i] += dt;
@@ -3389,6 +3430,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         // (a mallet strikes with the underside of its ball: the moment you see it touch the bar is the hit, not a
         // centimetre later when its centre would reach it)
         if (k === 4 && marimba) this.airP.y -= MALLET_HEAD_R;
+        if (aimOn) this.aimConsider(i, n);
         this.airOut.length = 0;
         // (keys and bars: the height smoothed, so a hovering fingertip's shake isn't a press)
         // (the height smoothed only to tell a key still held down: hits read the raw point, with no lag)
@@ -3401,7 +3443,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
             if (q.id !== this.keyHeld[p]) continue;
             const hw = (q.w ?? (q.r ?? 0) * 2) / 2 + 0.008;
             const hd = (q.d ?? (q.r ?? 0) * 2) / 2 + 0.015;
-            on = heldY < q.y + 0.008 && Math.abs(this.airP.x - q.x) < hw && Math.abs(this.airP.z - q.z) < hd;
+            // (the lower of where it is and its smoothed height: the smoothing lags a firm press by a centimetre or two,
+            // and a key let go the frame after it was struck lost its note)
+            on = Math.min(heldY, this.airP.y) < q.y + 0.008 && Math.abs(this.airP.x - q.x) < hw && Math.abs(this.airP.z - q.z) < hd;
             // (and the key stays down as far as the finger is in it, its 8 mm of travel)
             if (on) this.kit.keyHold(q.id, (q.y - heldY) / 0.008);
             break;
@@ -3427,6 +3471,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           this.airPlay(i, side, hit, guitar, congas || marimba, piano);
         }
       }
+      if (this.aimH[i] < AIM_FROM) this.aimMarks.show(i, this.aimAt[i], this.aimN[i].x, this.aimN[i].y, this.aimN[i].z, this.aimH[i], this.aimCol[i]);
       if (this.airBest.speed >= 0) {
         this.airHit.surface = this.airBest.surface;
         this.airHit.speed = this.airBest.speed;
@@ -4392,6 +4437,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     return this.pickMesh[i];
   }
+  /** No pick in either hand (the guitar put away, paused, or not on the desk). */
+  private dropPicks(): void {
+    this.pickOn[0] = this.pickOn[1] = false;
+    for (const m of this.pickMesh) if (m) m.visible = false;
+  }
   private showPicks(): void {
     for (let i = 0; i < 2; i++) {
       const on = this.pickOn[i] && this.kit.inst === 'guitar';
@@ -4509,7 +4559,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     const up = (h: typeof hands.left) => h.tracked && h.wrist.y > this.head.y - 0.12;
     // (both hands on their way up to fire it: the notes they leave aren't held against your run)
-    const rising = (h: typeof hands.left) => h.tracked && h.wrist.y > this.head.y - 0.35;
+    const rising = (h: typeof hands.left) => h.tracked && h.wrist.y > this.head.y - 0.22;
     this.game.spotRaise = rising(hands.left) && rising(hands.right);
     this.handsUpT = up(hands.left) && up(hands.right) ? this.handsUpT + dt : 0;
     if (this.handsUpT >= 0.25) {
@@ -5579,6 +5629,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** Every hand point starts afresh (after a pause or a blur, a hand that moved meanwhile isn't a hit). */
   private forgetAir(): void {
     for (let p = 0; p < AIR_PTS * 2; p++) this.forgetPt(p);
+    // (and the sticks' click and the clap: a frame back after a gap isn't a knock)
+    this.stickClick.reset();
+    this.clapW.reset();
   }
   private setPaused(p: boolean): void {
     if (p === this.paused) return;

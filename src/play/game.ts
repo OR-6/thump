@@ -1170,6 +1170,11 @@ export class Game {
     this.stage.band({ beat: at, voice: bass ? 'bass' : 'pluck', midi: n.midi, len: n.len ?? 1, vel: Math.max(vel, 0.75 * n.vel), sound: n.sound }, when, this.clock.spb);
   }
 
+  /** A friend in the band plays this stem's part (no set made each frame). */
+  private friendPlays(stem: string): boolean {
+    for (const n of this.friendParts) if (STEM_OF_PART[n] === stem) return true;
+    return false;
+  }
   private stopStems(fade = 0.03): void {
     if (this.stemsPlaying) this.stage.stems?.stop(fade);
     this.stemsPlaying = false;
@@ -1203,7 +1208,7 @@ export class Game {
     }
     const beat = this.clock.beatAt(this.t);
     const mine = STEM_OF[p.inst] ?? '';
-    const friends = new Set([...this.friendParts].map((n) => STEM_OF_PART[n] ?? ''));
+
     const backing = this.stage.setting('band', false);
     const solo = within(p.fills, beat, 0);
     const live = beat >= p.holdFrom ? 1 : 0.8 + 0.2 * this.energy;
@@ -1216,7 +1221,7 @@ export class Game {
     const step = this.listening ? 4 : this.bandStep;
     for (const stem of STEMS) {
       const layer = stem === 'perc' ? 2 : stem === 'strings' ? 3 : stem === 'brass' ? 4 : 1;
-      const v = !backing || stem === mine || friends.has(stem) ? 0 : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : step < layer ? 0 : step >= 4 ? 1 : live;
+      const v = !backing || stem === mine || this.friendPlays(stem) ? 0 : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : step < layer ? 0 : step >= 4 ? 1 : live;
       if (Math.abs((this.stemLevels.get(stem) ?? -1) - v) < 0.02) continue;
       const first = !this.stemLevels.has(stem);
       this.stemLevels.set(stem, v);

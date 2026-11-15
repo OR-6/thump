@@ -123,6 +123,17 @@ put('hand-right', [0.26, 1.1, -0.3], GRIP);
 await wait(400);
 rest = await into(0.1);
 check('pushed 10 cm through, it goes with the hand', rest.moved < 0.002, JSON.stringify(rest));
+// ---- where you're about to hit: a stick 3 cm over the snare shows a ring on it; 15 cm up, nothing
+put('hand-right', [0.26, 1.1, -0.3], GRIP);
+await wait(400);
+await into(-0.03);
+let aim = js(`const m = r.aimMarks?.rings?.[1]; return { on: !!m?.visible, s: m?.scale.x ?? 0 };`);
+check('a stick 3 cm over the snare: a ring on the head under it', aim.on && aim.s > 0.004 && aim.s < 0.015, JSON.stringify(aim));
+put('hand-right', [0.26, 1.1, -0.3], GRIP);
+await wait(400);
+await into(-0.15);
+aim = js(`const m = r.aimMarks?.rings?.[1]; return { on: !!m?.visible };`);
+check('15 cm up: no ring', !aim.on, JSON.stringify(aim));
 // ---- the guitar in your lap: pinch its headstock and carry it; it stays where you let go, and is kept
 js(`r.curl = () => 1; r.putOut('guitar'); return 1;`);
 await wait(1500);

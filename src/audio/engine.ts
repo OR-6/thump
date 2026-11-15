@@ -813,22 +813,36 @@ class Engine {
       const k2 = Math.min(nb - 1, k + 1);
       return env[k] + (env[k2] - env[k]) * (f - k);
     };
-    // the gain that holds the level where the loop takes over (index X), at most 40 dB up
+    // the gain that holds the level where the loop takes over (index X), at most 40 dB up: worked out once per index
+    // (it was worked out afresh inside the seam's search, over a million times on the frame a key was first held)
     const ref = dbAt(X);
-    const gain = (i: number) => Math.min(100, Math.pow(10, (ref - dbAt(i)) / 20));
-    const flat = (d: Float32Array, i: number) => d[A + i] * gain(i);
-    // the loop's length: the end that best continues into the start (correlated over 20 ms), within its last 25 ms
-    const W = Math.floor(0.02 * sr);
+    const G = new Float32Array(L);
+    for (let i = 0; i < L; i++) G[i] = Math.min(100, Math.pow(10, (ref - dbAt(i)) / 20));
+    const flat = (d: Float32Array, i: number) => d[A + i] * G[i];
+    // the loop's length: the end that best continues into the start (correlated over 10 ms), within its last 25 ms;
+    // every fourth sample first, then the best of those to the sample
+    const W = Math.floor(0.01 * sr);
     const d0 = data[0];
-    let N = L - X;
-    let best = -2;
-    for (let n = L - X - Math.floor(0.025 * sr); n <= L - X; n++) {
+    const corr = (n: number) => {
       let ab = 0, aa = 0, bb = 0;
       for (let j = 0; j < W; j++) {
         const a = flat(d0, j), c = flat(d0, n + j);
         ab += a * c; aa += a * a; bb += c * c;
       }
-      const r = ab / Math.sqrt(aa * bb + 1e-12);
+      return ab / Math.sqrt(aa * bb + 1e-12);
+    };
+    const lo = L - X - Math.floor(0.025 * sr);
+    let N = L - X;
+    let best = -2;
+    for (let n = lo; n <= L - X; n += 4) {
+      const r = corr(n);
+      if (r > best) {
+        best = r;
+        N = n;
+      }
+    }
+    for (let n = Math.max(lo, N - 3); n <= Math.min(L - X, N + 3); n++) {
+      const r = corr(n);
       if (r > best) {
         best = r;
         N = n;
