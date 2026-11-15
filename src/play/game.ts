@@ -17,7 +17,7 @@ import { cast, noteKey, wants, type Cast, type RoomInstrument } from '../songs/c
 import { bed } from '../songs/chart.js';
 import { Bandmate } from '../bandmate/bandmate.js';
 import { Looper } from './looper.js';
-import { beatKey, chordAt, chordMidi, finalKeys, scoreBed, scoreChart, scoreParts } from '../songs/score.js';
+import { bandStyle, beatKey, chordAt, chordMidi, finalKeys, scoreBed, scoreChart, scoreParts } from '../songs/score.js';
 import { LOOP_BEATS, SONG_TRACKS, TRACKS, assign, dailyTrack, songDay, ownBar, played, quantise, steps, type MachineNote, type PartDef, type RawHit, type Step, type TrackDef } from './build.js';
 import { FAMILIES, type Family } from '../room/classify.js';
 import { dayKey, type Progress } from '../persistence/progress.js';
@@ -64,6 +64,21 @@ export interface GameStage {
   holdSong?(on: boolean): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
   retune(keyPc: number, minor?: boolean): void;
+  /** A song's mix (its style's: how far the band's held parts dip under its kick, how much room), or the default. */
+  mix?(m: { duck: number; room: number } | null): void;
+  /**
+   * A song's recorded backing track (its stems: drums, perc, bass, lead, guitar, keys…): fetched when picked, played
+   * with beat 0 at game time `zero` from game time `from` (false: not yet: audio isn't running), stopped (fading over
+   * `fade` s), each stem's level. `synced`: the playing stems still have beat 0 at `zero`.
+   */
+  stems?: {
+    load(id: string): void;
+    ready(id: string): boolean;
+    play(id: string, zero: number, from: number): boolean;
+    stop(fade?: number): void;
+    synced(zero: number): boolean;
+    level(stem: string, v: number): void;
+  };
   save(p: Progress): void;
   /** Lights down (a solo) or back up. */
   lightsDown?(on: boolean): void;
@@ -910,6 +925,7 @@ export class Game {
       this.refreshDisplay();
       return;
     }
+    if (track.score) this.stage.stems?.load(track.id);
     const parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[] = [];
     // a written-out song: the band's parts run its whole length (the machine plays them once, not as a loop)
     if (track.score)
@@ -939,6 +955,10 @@ export class Game {
 
   /** When this guest asked the host to start a song (the Songs page says so for a few seconds). */
   bandWait = -9;
+  /** This song's band is its recorded backing track (its stems), not the game's own; and they're playing now. */
+  stemsOn = false;
+  private stemsPlaying = false;
+  private stemLevels = new Map<string, number>();
   /** The song being played now (its id), or '' (listening counts as not playing: it's this headset's own). */
   get perfTrack(): string {
     return this.perf && !this.listening && (this.mode === 'play' || this.mode === 'count') ? this.perf.track.id : '';
@@ -1093,6 +1113,11 @@ export class Game {
     this.encore.length = 0;
     this.encoreAt = -1;
     this.stage.retune(t.key, t.minor);
+    const bs = sc ? bandStyle(sc) : null;
+    this.stage.mix?.(bs ? { duck: bs.duck, room: bs.room } : null);
+    // its recorded backing track, if it's in (at full tempo: Slow is the game's own band, which follows any tempo)
+    this.stopStems();
+    this.stemsOn = !!sc && this.opts.tempo >= 0.999 && !!this.stage.stems?.ready(t.id);
     const spb = secPerBeat(t.bpm, this.opts.tempo);
     this.tempoAtStart = this.opts.tempo;
     this.clock.set(beat0 >= 0 ? beat0 : this.t + 0.4 + 4 * spb, spb);
@@ -1118,9 +1143,56 @@ export class Game {
    * below most of its level.
    */
   private sound(n: MachineNote, at: number, vel: number): void {
-    if (n.midi === undefined) return this.stage.voice(n.key, this.clock.timeAt(at), vel);
+    // (a band note's feel: a few milliseconds off the grid, as its style plays it)
+    const when = this.clock.timeAt(at) + (n.late ?? 0);
+    if (n.midi === undefined) return this.stage.voice(n.key, when, vel);
     const bass = n.key === 'band:bass';
-    this.stage.band({ beat: at, voice: bass ? 'bass' : 'pluck', midi: n.midi, len: n.len ?? 1, vel: Math.max(vel, 0.75 * n.vel) }, this.clock.timeAt(at), this.clock.spb);
+    this.stage.band({ beat: at, voice: bass ? 'bass' : 'pluck', midi: n.midi, len: n.len ?? 1, vel: Math.max(vel, 0.75 * n.vel), sound: n.sound }, when, this.clock.spb);
+  }
+
+  private stopStems(fade = 0.03): void {
+    if (this.stemsPlaying) this.stage.stems?.stop(fade);
+    this.stemsPlaying = false;
+    this.stemLevels.clear();
+  }
+
+  /**
+   * The recorded band, kept in step with the song's clock: playing while the song plays (from beat 0, or from where
+   * the song is after a pause or a lesson's hold), stopped while it's held or paused; the stem of what you're playing
+   * (or a friend in the band is) muted, the band stepping back in a solo and following how it's going.
+   */
+  private stemTick(): void {
+    const st = this.stage.stems;
+    // (the song picked on the Songs page: its stems are fetched now, so they're in by the time it starts)
+    if (st && this.mode === 'discover' && this.menu === 'songs') {
+      const tr = this.tracks[this.songSel];
+      if (tr?.score) st.load(tr.id);
+    }
+    const p = this.perf;
+    if (!st || !this.stemsOn || !p) return;
+    const run = !this.hold && !this.paused && (this.mode === 'play' || this.mode === 'count');
+    if (!run) {
+      if (this.stemsPlaying) this.stopStems(this.hold ? 0.05 : 0.03);
+      return;
+    }
+    const zero = this.clock.timeAt(0);
+    if (!this.stemsPlaying || !st.synced(zero)) {
+      this.stemLevels.clear();
+      this.stemsPlaying = st.play(p.track.id, zero, this.t + 0.05);
+      if (!this.stemsPlaying) return;
+    }
+    const beat = this.clock.beatAt(this.t);
+    const mine = STEM_OF[p.inst] ?? '';
+    const friends = new Set([...this.friendParts].map((n) => STEM_OF_PART[n] ?? ''));
+    const backing = this.stage.setting('band', false);
+    const solo = within(p.fills, beat, 0);
+    const live = beat >= p.holdFrom ? 1 : 0.8 + 0.2 * this.energy;
+    for (const stem of ['drums', 'perc', 'bass', 'lead', 'guitar', 'keys', 'strings', 'brass']) {
+      const v = !backing || stem === mine || friends.has(stem) ? 0 : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : live;
+      if (Math.abs((this.stemLevels.get(stem) ?? -1) - v) < 0.02) continue;
+      this.stemLevels.set(stem, v);
+      st.level(stem, v);
+    }
   }
 
   /** The machine's bed under the performance, and each fill judged as it closes. */
@@ -1149,6 +1221,8 @@ export class Game {
       p.graceTo = -1;
       this.refreshDisplay();
     }
+    // (the recorded band, if its stems came in during the count-in, before anything of the song was scheduled)
+    if (!this.stemsOn && m.track.score && p.sched < 0 && this.opts.tempo >= 0.999 && this.stage.stems?.ready(m.track.id)) this.stemsOn = true;
     const ahead = beat + TIMING.lookAheadS / this.clock.spb;
     const end = (this.song?.bars ?? 20) * 4;
     if (ahead > p.sched) {
@@ -1164,6 +1238,9 @@ export class Game {
           if (p.live.has(part.key) || this.room.muted?.(part.surface) || !backing) continue;
           // a friend in the band is playing this part live: theirs is the one you hear
           if (this.friendParts.has(part.def.name)) continue;
+          // (the recorded band plays it all, but for the notes of a part you play some of: its stem is muted, and the
+          // notes of it that aren't yours play here)
+          if (this.stemsOn && !p.cover?.has(part.key)) continue;
           // (losing the beat drops the extra percussion, never the tune: it's how you find your way back)
           if (thin && part.def.name.startsWith('PERC')) continue;
           const mine = p.cover?.get(part.key);
@@ -1242,6 +1319,8 @@ export class Game {
   }
 
   private endPerform(): void {
+    // (the recorded band rings out under the results)
+    this.stopStems(0.6);
     this.stage.lightsDown?.(false);
     const p = this.perf!;
     const j = this.judge!;
@@ -1902,6 +1981,7 @@ export class Game {
   }
 
   stop(): void {
+    this.stopStems();
     this.stage.lightsDown?.(false);
     this.listening = false;
     this.finalWait = -1;
@@ -1915,6 +1995,7 @@ export class Game {
     this.bedCursor = null;
     this.moteCount = 0;
     this.stage.retune(0);
+    this.stage.mix?.(null);
     this.refreshDisplay();
   }
 
@@ -1993,6 +2074,7 @@ export class Game {
     this.lastTickT = t;
     if (this.hold && passed > 0 && passed < 1 && (this.mode === 'play' || this.mode === 'count')) this.clock.delay(passed);
     this.t = t;
+    this.stemTick();
     // (a lesson's hold ends with the song)
     if (this.hold && this.mode !== 'play' && this.mode !== 'count') this.setHold(null);
     if (this.pad.until > 0 && t >= this.pad.until) {
@@ -2191,6 +2273,7 @@ export class Game {
   }
 
   private leaveResults(): void {
+    this.stage.mix?.(null);
     this.encoreAt = -1;
     this.lap = null;
     this.songSel = this.nextSong();
@@ -2205,7 +2288,8 @@ export class Game {
   private onBed = (e: BedEvent): void => {
     // the count-in: the band's drummer counts you in on sticks, from across the desk (when there's a seat for them)
     if (e.beat < 0 && e.voice === 'shaker' && this.perf && this.stage.countIn?.(e.beat, this.clock.timeAt(e.beat), e.vel)) return;
-    this.stage.band(e, this.clock.timeAt(e.beat), this.clock.spb);
+    // (the recorded band has the song's chords and percussion: the count-in is still the game's)
+    if (!(this.stemsOn && this.perf && e.beat >= 0)) this.stage.band(e, this.clock.timeAt(e.beat), this.clock.spb);
     if (e.voice === 'chord' && this.song && this.mode !== 'jam' && e.beat >= 0) this.accompany(e);
   };
 
@@ -3042,6 +3126,11 @@ function lift(key: string, by: number): string {
 const SONGS_A_PAGE = 4;
 const SWITCH_ORDER = ['drums', 'piano', 'marimba', 'handpan', 'congas', 'guitar'];
 const plays = (inst: string, part: string): boolean => (inst === 'congas' ? part.startsWith('PERC') : PART_INST[part] === (inst === 'marimba' ? 'piano' : inst));
+
+/** The stem of a song's backing track that's yours on each instrument (muted while you play it). */
+const STEM_OF: Record<string, string> = { drums: 'drums', congas: 'perc', piano: 'lead', marimba: 'lead', handpan: 'bass', guitar: 'guitar' };
+/** The stem a friend's live part replaces. */
+const STEM_OF_PART: Record<string, string> = { KICK: 'drums', SNARE: 'drums', HAT: 'drums', PERC: 'perc', KEYS: 'lead', BASS: 'bass' };
 
 /** Things that ring (a hat on them sounds right) and things that knock (a snare). */
 const RINGS = new Set<string>(['bell', 'tubular', 'glock', 'triangle', 'ride', 'cowbell', 'bowl', 'tongue']);

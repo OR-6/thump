@@ -208,6 +208,10 @@ export interface MachineNote {
   midi?: number;
   /** Its length in beats. */
   len?: number;
+  /** Seconds off its beat (the band's feel, in a written-out song). */
+  late?: number;
+  /** A band line's sound (its style's bass or lead). */
+  sound?: string;
 }
 
 /** How far your own timing may move a recorded note off the grid (beats: a 32nd). */

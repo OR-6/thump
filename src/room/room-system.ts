@@ -451,6 +451,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   private stage: GameStage = {
     band: (e, at, spb) => audio.band(e, this.clock.toAudio(at), spb),
+    mix: (m) => audio.mix(m),
+    stems: {
+      load: (id) => audio.stemLoad(id),
+      ready: (id) => audio.stemReady(id),
+      play: (id, zero, from) => this.clock.toAudio(zero) > 0 && audio.stemPlay(id, this.clock.toAudio(zero), this.clock.toAudio(from)),
+      stop: (fade) => audio.stemStop(fade),
+      synced: (zero) => audio.stems.zero > 0 && Math.abs(audio.stems.zero - this.clock.toAudio(zero)) < 0.004,
+      level: (stem, v) => audio.stemLevel(stem, v),
+    },
     light: (key, k) => {
       const r = this.ref(key);
       if (!r) return;
@@ -719,7 +728,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       if (r.kind === 'pad') {
         const p = this.kit.pad(r.lane);
-        audio.drum(r.lane, vel, p ? Math.max(-0.8, Math.min(0.8, p.x / 0.4)) : 0, when);
+        // (the band's drummer is mixed as a record is, the kick in the middle and the kit half as wide; your own
+        // notes played back sit where their drums are)
+        const pan = p ? Math.max(-0.8, Math.min(0.8, p.x / 0.4)) : 0;
+        audio.drum(r.lane, vel, mate || you ? pan : r.lane === 'kick' ? 0 : pan * 0.5, when);
         this.later(at, () => {
           p?.hit(vel * 0.8);
           if (you) p?.perfect();

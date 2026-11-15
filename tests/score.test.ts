@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PIANO_BLACK, PIANO_CHORD, instZones, pianoBlacks, scaleById, scaleMidi } from '../src/kit/shelf.js';
 import { SONG_TRACKS } from '../src/play/build.js';
+import { planBars } from '../src/songs/arrange.js';
 import { EASY_GAP, SCORES, beatKey, chordAt, chordMidi, keyOf, parseChords, parseMelody, pianoKey, scoreBed, scoreChart, scoreParts, zoneOf, type Level, type Score } from '../src/songs/score.js';
 import { TUNES } from '../src/songs/tunes.js';
 
@@ -72,7 +73,8 @@ describe('the songs: classics with modern grooves, and originals', () => {
     expect(names(by('fur-elise'), 9)).toBe('E D# E D# E B D C A');
     expect(names(by('turkish-march'), 9)).toBe('B A G# A C D C B C');
     expect(names(by('mountain-king'), 13)).toBe('B C# D E F# D F# F C# F E C E');
-    expect(names(by('entertainer'), 8)).toBe('D D# E C E C E C');
+    // (the Entertainer in its whole form opens on its intro)
+    expect(names(by('entertainer'), 8)).toBe('D E C A B G D E');
     expect(names(by('korobeiniki'), 12)).toBe('B F# G A G F# E E G B A G');
     expect(names(by('william-tell'), 11)).toBe('A A A A A A A A D E F#');
     expect(names(by('amazing-grace'), 9)).toBe('D G B G B A G E D');
@@ -80,9 +82,9 @@ describe('the songs: classics with modern grooves, and originals', () => {
     expect(names(by('can-can'), 11)).toBe('C D F E D G G G A E F');
     expect(names(by('drunken-sailor'), 12)).toBe('A A A A A A A D F A G G');
     expect(names(by('saints'), 8)).toBe('C E F G C E F G');
-    // rhythm too: Ode to Joy's dotted fourth bar; Für Elise's sixteenths as triplets; the Entertainer's tied C
+    // rhythm too: Ode to Joy's dotted fourth bar; Für Elise's sixteenths; the Entertainer's tied C
     expect(by('ode-to-joy').melody.slice(12, 15).map((n) => n.len)).toEqual([1.5, 0.5, 2]);
-    expect(by('fur-elise').melody[2].len).toBeCloseTo(1 / 3);
+    expect(by('fur-elise').melody[2].len).toBeCloseTo(1 / 2);
     expect(by('entertainer').melody[3].len).toBe(1);
   });
 
@@ -108,16 +110,17 @@ describe('the songs: classics with modern grooves, and originals', () => {
       expect(last.acc).toBe(0);
       expect(s.end).toBe(s.starts[s.starts.length - 1] + last.beat);
       expect(chordAt(s, s.end + 1)).toBe(s.home);
-      expect(s.solos.length).toBe(s.tune.passes - 1);
-      expect(s.solos.length).toBeGreaterThanOrEqual(1);
+      // (a song in its whole form has its solos where its solo sections are; a piano piece played whole, none)
+      if (!s.sections) expect(s.solos.length).toBe(s.tune.passes - 1);
+      else expect(s.solos.length).toBe(s.sections.filter((x) => x.kind === 'solo').length);
       for (const [a, z] of s.solos) {
         expect(z - a).toBeGreaterThanOrEqual(3);
         expect(chordAt(s, a + 1)).toBe(s.soloChord);
       }
-      // 40 seconds to a minute and a half or so
+      // a lesson 40 seconds to a minute and a half or so; a song in its whole form two minutes or so to four
       const secs = (s.end * 60) / s.tune.bpm;
-      expect(secs, s.tune.id).toBeGreaterThan(40);
-      expect(secs, s.tune.id).toBeLessThan(100);
+      expect(secs, s.tune.id).toBeGreaterThan(s.sections ? 100 : 40);
+      expect(secs, s.tune.id).toBeLessThan(s.sections ? 240 : 100);
     }
   });
 
@@ -142,7 +145,7 @@ describe('the songs: classics with modern grooves, and originals', () => {
           }
           for (let i = 1; i < c.notes.length; i++) expect(c.notes[i].beat).toBeGreaterThanOrEqual(c.notes[i - 1].beat);
         }
-  });
+  }, 60000);
 
   it('Easy is never busier than Normal, nor Normal than Hard; Easy is never too quick for a beginner', () => {
     for (const s of SONGS)
@@ -224,6 +227,30 @@ describe('the songs: classics with modern grooves, and originals', () => {
       expect(s.tune.name.length).toBeLessThanOrEqual(16);
       expect(`${s.difficulty} · ${s.tune.by}`.length, s.tune.id).toBeLessThanOrEqual(18);
     }
+  });
+
+  it('a song in its whole form: its sections in order, the verses lighter than the choruses, a fill into each', () => {
+    const s = by('rooftop');
+    expect(s.sections!.map((x) => x.kind)).toEqual(['intro', 'verse', 'chorus', 'verse', 'chorus', 'solo', 'bridge', 'chorus', 'outro']);
+    const plan = planBars(s);
+    const of = (kind: string) => plan.filter((b) => b.kind === kind);
+    expect(Math.max(...of('verse').map((b) => b.level))).toBeLessThan(Math.min(...of('chorus').map((b) => b.level)));
+    // a fill into every section, a crash as each starts
+    for (const x of s.sections!.slice(1)) {
+      expect(plan[x.bar - 1].fill === 2 || plan[x.bar - 1].solo).toBe(true);
+      if (x.kind !== 'solo') expect(plan[x.bar].crash).toBe(true);
+    }
+    // your part follows it: Normal's drums thinner in a verse than in a chorus, and a fill into each section
+    const n = chart(s, 'drums', 'normal').notes;
+    const inBars = (kind: string) => {
+      const bars = of(kind);
+      return n.filter((x) => bars.some((b) => x.beat >= b.beat && x.beat < b.beat + s.meter)).length / bars.length;
+    };
+    expect(inBars('verse')).toBeLessThan(inBars('chorus'));
+    // the classic in its whole form: Für Elise's B section and its pedal-A section are there
+    const fe = by('fur-elise');
+    expect(fe.sections!.filter((x) => x.kind === 'bridge').length).toBe(2);
+    expect((fe.end * 60) / fe.tune.bpm).toBeGreaterThan(120);
   });
 
   it('a lesson for every instrument: each step its own notes, on that instrument only, slow enough to learn', () => {

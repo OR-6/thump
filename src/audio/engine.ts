@@ -14,6 +14,7 @@ import type { BedEvent } from '../songs/chart.js';
 import type { Family } from '../room/classify.js';
 import { MODAL } from './modal.js';
 import { Sampler } from './sampler.js';
+import { StemPlayer } from './stems.js';
 
 export type Voice = Lane | 'knock' | 'rim' | 'clap' | 'block' | 'bell';
 /** The game's own sounds, and how loud each sits in the mix. */
@@ -33,7 +34,21 @@ class Engine {
   private bandTone!: BiquadFilterNode;
   private grooveCut = 20000;
   private clickBus!: GainNode;
+  /** The band's keys (high-passed: the low end is the bass's and the kick's) and its bass (dry: no room on it), each
+   * through a gain the band's kick dips (the pump); the bed's room send. */
+  private compBus!: GainNode;
+  private compDuck!: GainNode;
+  private bassBus!: GainNode;
+  private bassDuck!: GainNode;
+  private bedWet!: GainNode;
+  /** The song's mix (its style's: src/songs/arrange.ts): how far the held parts dip under the kick, how much room. */
+  private duckDepth = 0;
+  private roomSend = 0.16;
+  private reverbOn = true;
   private send!: GainNode;
+  /** A song's recorded backing track (src/audio/stems.ts), into the band's bus. */
+  readonly stems = new StemPlayer();
+  private stemBus!: GainNode;
   private noise!: AudioBuffer;
   private paused = false;
   /** Backing band on/off (the drums always play). */
@@ -80,7 +95,15 @@ class Engine {
   }
 
   setReverb(on: boolean): void {
-    if (this.send) this.send.gain.value = on ? 0.16 : 0;
+    this.reverbOn = on;
+    if (this.send) this.send.gain.value = on ? this.roomSend : 0;
+  }
+
+  /** A song's mix: how far its held parts dip under the kick (0..1) and its room (the reverb send); null, the default. */
+  mix(m: { duck: number; room: number } | null): void {
+    this.duckDepth = m ? Math.max(0, Math.min(0.8, m.duck)) : 0;
+    this.roomSend = m ? m.room : 0.16;
+    if (this.send) this.send.gain.value = this.reverbOn ? this.roomSend : 0;
   }
 
   private build(): void {
@@ -88,6 +111,12 @@ class Engine {
     if (!Ctor) return;
     const ctx = new Ctor({ latencyHint: 'interactive' });
     this.ctx = ctx;
+    this.wire(ctx);
+    this.sampler.load(ctx);
+  }
+
+  /** The mix's buses on a context (the live one, or an offline one for a render). */
+  private wire(ctx: BaseAudioContext): void {
     const clip = ctx.createWaveShaper();
     clip.curve = softClip();
     clip.oversample = '2x';
@@ -121,19 +150,35 @@ class Engine {
     this.bandTone.Q.value = 0.8;
     this.bandBus = ctx.createGain();
     this.bandBus.connect(this.bandTone).connect(this.master);
+    // (the stems are mastered to about −14 LUFS: under the master's gain they sit about −21 LUFS out, under your part)
+    this.stemBus = ctx.createGain();
+    this.stemBus.gain.value = this.bedOn ? STEM_LEVEL : 0;
+    this.stemBus.connect(this.bandBus);
     this.bedBus = ctx.createGain();
     this.bedBus.gain.value = this.bedOn ? 0.55 : 0;
     this.bedBus.connect(this.master);
+    this.compBus = ctx.createGain();
+    const lowCut = ctx.createBiquadFilter();
+    lowCut.type = 'highpass';
+    lowCut.frequency.value = 140;
+    lowCut.Q.value = 0.6;
+    this.compDuck = ctx.createGain();
+    this.compBus.connect(lowCut).connect(this.compDuck).connect(this.bedBus);
+    this.bassBus = ctx.createGain();
+    this.bassBus.gain.value = this.bedOn ? 0.55 : 0;
+    this.bassDuck = ctx.createGain();
+    this.bassBus.connect(this.bassDuck).connect(this.master);
     this.clickBus = ctx.createGain();
     this.clickBus.gain.value = 0.25;
     this.clickBus.connect(this.master);
     const conv = ctx.createConvolver();
     conv.buffer = room(ctx, 1.9);
     this.send = ctx.createGain();
-    this.send.gain.value = 0.16;
+    this.send.gain.value = this.reverbOn ? this.roomSend : 0;
     this.send.connect(conv).connect(this.master);
-    this.bedBus.connect(this.send);
-    this.sampler.load(ctx);
+    this.bedWet = ctx.createGain();
+    this.bedWet.gain.value = 0.7;
+    this.bedBus.connect(this.bedWet).connect(this.send);
     const len = ctx.sampleRate;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -157,9 +202,75 @@ class Engine {
   setBed(on: boolean): void {
     this.bedOn = on;
     if (this.bedBus) this.bedBus.gain.value = on ? 0.55 : 0;
+    if (this.bassBus) this.bassBus.gain.value = on ? 0.55 : 0;
+    if (this.stemBus) this.stemBus.gain.value = on ? STEM_LEVEL : 0;
+  }
+
+  /** Fetch and decode a song's backing track (its stems), if it has one. */
+  stemLoad(id: string): void {
+    if (!this.ctx) this.resume();
+    if (this.ctx) this.stems.load(this.ctx, id);
+  }
+  stemReady(id: string): boolean {
+    return this.stems.ready(id);
+  }
+  /** Play song `id`'s stems, beat 0 at audio time `zero`, from audio time `from`. False: audio isn't running yet. */
+  stemPlay(id: string, zero: number, from: number): boolean {
+    const ctx = this.ready();
+    if (!ctx || this.offline || zero <= 0) return false;
+    this.stems.play(ctx, this.stemBus, id, zero, from);
+    return true;
+  }
+  stemStop(fade = 0.03): void {
+    this.stems.stop(this.ctx, fade);
+  }
+  stemLevel(stem: string, v: number): void {
+    this.stems.level(this.ctx, stem, v);
+  }
+
+  /** The band's kick: the held parts dip under it and swell back (the pump), as deep as the song's style asks. */
+  private duckAt(t: number): void {
+    const d = this.duckDepth;
+    if (!d || !this.compDuck) return;
+    for (const [g, k] of [
+      [this.compDuck, 1],
+      [this.bassDuck, 0.6],
+    ] as const) {
+      g.gain.setTargetAtTime(1 - d * k, t, 0.004);
+      g.gain.setTargetAtTime(1, t + 0.05, 0.07 + 0.08 * d);
+    }
+  }
+
+  /** Rendering offline (tools/render-song.mjs): everything plays into that context, now. */
+  private offline = false;
+
+  /**
+   * Debug (tools/render-song.mjs): `seconds` of whatever `play` schedules (from audio time `t0`), rendered offline
+   * through this same mix, from the clips already loaded. The live context is untouched.
+   */
+  async render(seconds: number, play: (t0: number) => void, rate = 44100): Promise<AudioBuffer | null> {
+    const Off = globalThis.OfflineAudioContext;
+    if (!Off) return null;
+    const off = new Off(2, Math.ceil(seconds * rate), rate);
+    const keep = { ctx: this.ctx, master: this.master, drums: this.drums, bedBus: this.bedBus, bandBus: this.bandBus, bandTone: this.bandTone, clickBus: this.clickBus, send: this.send, noise: this.noise, echoSend: this.echoSend, echoDelay: this.echoDelay, echoFb: this.echoFb, voices: this.voices, voiced: this.voiced, grooveCut: this.grooveCut, compBus: this.compBus, compDuck: this.compDuck, stemBus: this.stemBus, bassBus: this.bassBus, bassDuck: this.bassDuck, bedWet: this.bedWet, organWave: this.organWave };
+    this.voiced = new Map();
+    this.organWave = null;
+    this.ctx = off as unknown as AudioContext;
+    this.offline = true;
+    this.voices = [];
+    this.grooveCut = 20000;
+    try {
+      this.wire(off);
+      play(0.05);
+    } finally {
+      this.offline = false;
+      Object.assign(this, keep);
+    }
+    return off.startRendering();
   }
 
   private ready(): AudioContext | null {
+    if (this.offline) return this.ctx;
     if (!this.ctx) this.resume();
     const c = this.ctx;
     if (c && c.state !== 'running' && !this.paused) void c.resume().catch(() => {});
@@ -222,6 +333,8 @@ class Engine {
     this.lastGain = v;
     this.lastVoice = voice;
     this.lastAt = t;
+    // (the band's held parts dip under a kick)
+    if (voice === 'kick') this.duckAt(t);
     // the floor tom is the tom, bigger and lower
     if (voice === 'floor') size = Math.max(size, 2.2);
     const big = Math.max(1, size);
@@ -750,54 +863,19 @@ class Engine {
     return true;
   }
 
-  /** The band's piano: chords voiced close and led smoothly from the last one, and the bass with a soft sub under it. */
-  private voicing: number[] = [60, 64, 67];
-  private piano(ctx: AudioContext, e: BedEvent, t0: number, len: number, spb: number): void {
-    const t = t0;
-    const note = (midi: number, vel: number, dur: number, level: number, pan: number, t = t0) => {
-      const c = this.sampler.pick('band:piano', { midi, vel, tone: 0, size: 0.5 });
-      if (!c) return;
-      const src = ctx.createBufferSource();
-      src.buffer = c.buffer;
-      src.playbackRate.value = c.rate;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(level * (0.25 + 0.75 * vel), t);
-      // let go at the end of its length (a held chord rings on a little)
-      const off = t + Math.min(c.buffer.duration / c.rate, Math.max(0.12, dur));
-      g.gain.setTargetAtTime(0, off, 0.08);
-      let node: AudioNode = g;
-      if (pan !== 0 && ctx.createStereoPanner) {
-        const p = ctx.createStereoPanner();
-        p.pan.value = pan;
-        g.connect(p);
-        node = p;
-      }
-      node.connect(this.bedBus);
-      src.connect(g);
-      src.start(t);
-      src.stop(off + 0.5);
-    };
-    if (e.voice === 'bass') {
-      note(e.midi, e.vel, len, 0.55, 0);
-      // a sine an octave under: felt more than heard (phone and Quest speakers lose the piano's lowest partials)
-      const o = ctx.createOscillator();
-      o.frequency.value = midiHz(e.midi - 12);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.22 * e.vel, t + 0.015);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.18, Math.min(len, spb * 2)));
-      o.connect(g).connect(this.bedBus);
-      o.start(t);
-      o.stop(t + len + 0.2);
-      return;
-    }
-    // the triad's three notes in whichever inversion moves least from the last chord, inside G3..A4
-    const third = e.minor ? 3 : 4;
-    const pcs = [0, third, 7].map((s) => (((e.midi + s) % 12) + 12) % 12);
-    let best: number[] = this.voicing;
+  /** Each chord sound's last voicing: every chord leads smoothly from its own sound's last one. */
+  private voiced = new Map<string, number[]>();
+
+  /** A triad (`root` a MIDI note of its pitch class) in whichever inversion moves least from `id`'s last chord, its
+   * lowest note in lo..lo+12 and its highest by lo+18. */
+  private voice3(id: string, root: number, minor: boolean, lo: number): number[] {
+    const third = minor ? 3 : 4;
+    const pcs = [0, third, 7].map((s) => (((root + s) % 12) + 12) % 12);
+    const was = this.voiced.get(id) ?? [lo + 8, lo + 12, lo + 15];
+    let best = was;
     let bestCost = Infinity;
     for (let inv = 0; inv < 3; inv++) {
-      for (let base = 52; base <= 64; base++) {
+      for (let base = lo; base <= lo + 12; base++) {
         if (base % 12 !== pcs[inv]) continue;
         const v = [base];
         for (let k = 1; k < 3; k++) {
@@ -806,24 +884,266 @@ class Engine {
           while (m % 12 !== pc) m++;
           v.push(m);
         }
-        if (v[2] > 70) continue;
+        if (v[2] > lo + 18) continue;
         let cost = 0;
-        for (let k = 0; k < 3; k++) cost += Math.abs(v[k] - this.voicing[k]);
+        for (let k = 0; k < 3; k++) cost += Math.abs(v[k] - was[k]);
         if (cost < bestCost) {
           bestCost = cost;
           best = v;
         }
       }
     }
-    this.voicing = best;
-    const hold = len > spb * 1.5;
-    // a held chord rolls very slightly, low to high, like a hand on the keys
-    best.forEach((m, k) => {
-      // (the held chords sit a little up under the tune: at 0.2 they were 16 dB down, felt more than heard)
-      note(m, e.vel * (k === 2 ? 0.9 : 0.8), len, hold ? 0.3 : 0.17, (k - 1) * 0.25, t + (hold ? k * 0.018 : 0));
-    });
+    this.voiced.set(id, best);
+    return best;
   }
 
+  /** One note of the band's piano (a recording), let go at the end of its length, into `bus`. */
+  private pianoNote(ctx: AudioContext, midi: number, vel: number, dur: number, level: number, pan: number, t: number, bus: AudioNode): void {
+    const c = this.sampler.pick('band:piano', { midi, vel, tone: 0, size: 0.5 });
+    if (!c) return;
+    const src = ctx.createBufferSource();
+    src.buffer = c.buffer;
+    src.playbackRate.value = c.rate;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(level * (0.25 + 0.75 * vel), t);
+    // let go at the end of its length (a held chord rings on a little)
+    const off = t + Math.min(c.buffer.duration / c.rate, Math.max(0.12, dur));
+    g.gain.setTargetAtTime(0, off, 0.08);
+    let node: AudioNode = g;
+    if (pan !== 0 && ctx.createStereoPanner) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = pan;
+      g.connect(p);
+      node = p;
+    }
+    node.connect(bus);
+    src.connect(g);
+    src.start(t);
+    src.stop(off + 0.5);
+  }
+
+  /**
+   * The band's bass, dry and under the kick's pump: a played electric (`finger`: a rounded saw whose pluck closes
+   * quickly), a synth (`synth`: brighter, a resonant filter that snaps shut), an 808-style sub (`sub`: a sine that
+   * knocks down onto its note, with an octave over it so a small speaker still says the note), or the piano's low
+   * notes with a sine under them (`piano`, and anything without a sound of its own).
+   */
+  private bandBass(ctx: AudioContext, e: BedEvent, t: number, len: number, spb: number): void {
+    const v = Math.max(0.05, Math.min(1, e.vel));
+    const sound = e.sound ?? 'piano';
+    if (sound === 'piano' && this.sampler.has('band:piano')) {
+      this.pianoNote(ctx, e.midi, v, len, 0.5, 0, t, this.bassBus);
+      // a sine an octave under: felt more than heard (phone and Quest speakers lose the piano's lowest partials)
+      const o = ctx.createOscillator();
+      o.frequency.value = midiHz(e.midi - 12);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.15 * v, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.18, Math.min(len, spb * 2)));
+      o.connect(g).connect(this.bassBus);
+      o.start(t);
+      o.stop(t + len + 0.2);
+      return;
+    }
+    const f = midiHz(e.midi);
+    const dur = Math.max(0.09, len);
+    const sub = sound === 'sub';
+    const syn = sound === 'synth';
+    const peak = (sub ? 0.32 : syn ? 0.22 : 0.21) * (0.55 + 0.45 * v);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.005);
+    g.gain.setTargetAtTime(peak * (sub ? 0.8 : 0.6), t + 0.02, sub ? 0.5 : 0.2);
+    g.gain.setTargetAtTime(0.0001, t + dur, sub ? 0.05 : 0.025);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    const o1 = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    const g2 = ctx.createGain();
+    if (sub) {
+      o1.type = 'sine';
+      o1.frequency.setValueAtTime(f * 1.5, t);
+      o1.frequency.exponentialRampToValueAtTime(f, t + 0.03);
+      o2.type = 'triangle';
+      o2.frequency.value = f * 2;
+      g2.gain.value = 0.3;
+      lp.frequency.value = 900;
+    } else {
+      o1.type = 'sawtooth';
+      o1.frequency.value = f;
+      o2.type = syn ? 'square' : 'sine';
+      o2.frequency.value = f;
+      o2.detune.value = syn ? 9 : 0;
+      g2.gain.value = syn ? 0.5 : 0.9;
+      lp.Q.value = syn ? 5 : 0.7;
+      lp.frequency.setValueAtTime(syn ? 600 + 2600 * v : 380 + 1500 * v, t);
+      lp.frequency.setTargetAtTime(syn ? 320 : 400, t + 0.005, syn ? 0.12 : 0.09);
+    }
+    o1.connect(lp);
+    o2.connect(g2).connect(lp);
+    lp.connect(g).connect(this.bassBus);
+    const end = t + dur + 0.3;
+    o1.start(t);
+    o2.start(t);
+    o1.stop(end);
+    o2.stop(end);
+  }
+
+  private organWave: PeriodicWave | null = null;
+
+  /**
+   * The band's keys: the piano (a recording) close-voiced and led smoothly, short or held (`piano`, and anything
+   * without a sound of its own); a reggae or ska skank (`skank`: the piano high and short); a synth stab (`stab`: saws
+   * through a filter that snaps shut); a pad (`pad`: soft detuned saws; `strings`: brighter and slower to come in);
+   * an organ (`organ`: drawbars). All of it high-passed and under the kick's pump.
+   */
+  private bandChord(ctx: AudioContext, e: BedEvent, t: number, len: number, spb: number): void {
+    const v = Math.max(0.05, Math.min(1, e.vel));
+    const sound = e.sound ?? 'piano';
+    if ((sound === 'piano' || sound === 'skank') && this.sampler.has('band:piano')) {
+      const skank = sound === 'skank';
+      const notes = this.voice3(sound, e.midi, !!e.minor, skank ? 60 : 52);
+      const hold = len > spb * 1.5;
+      // a held chord rolls very slightly, low to high, like a hand on the keys
+      notes.forEach((m, k) => this.pianoNote(ctx, m, v * (k === 2 ? 0.9 : 0.8), skank ? Math.min(len, 0.16) : len, skank ? 0.6 : hold ? 0.45 : 0.5, (k - 1) * 0.25, t + (hold ? k * 0.018 : 0), this.compBus));
+      return;
+    }
+    const pad = sound === 'pad' || sound === 'strings';
+    const organ = sound === 'organ';
+    const stab = !pad && !organ;
+    const notes = this.voice3(sound, e.midi, !!e.minor, stab ? 60 : 55);
+    if (pad) {
+      // (the root under it)
+      let r = 48 + ((e.midi % 12) + 12) % 12;
+      while (r >= notes[0]) r -= 12;
+      notes.unshift(r);
+    }
+    const atk = sound === 'strings' ? 0.35 : pad ? 0.12 : organ ? 0.012 : 0.003;
+    const rel = pad ? 0.3 : organ ? 0.05 : 0.04;
+    const dur = Math.max(atk + 0.05, len);
+    const lvl = (sound === 'strings' ? 0.08 : pad ? 0.085 : organ ? 0.12 : 0.15) * (0.4 + 0.6 * v);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(lvl, t + atk);
+    if (stab) g.gain.setTargetAtTime(lvl * 0.5, t + atk, 0.08);
+    g.gain.setTargetAtTime(0, t + dur, rel / 3);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    if (stab) {
+      lp.Q.value = 2;
+      lp.frequency.setValueAtTime(900 + 4200 * v, t);
+      lp.frequency.setTargetAtTime(800, t + 0.005, 0.07);
+    } else lp.frequency.value = sound === 'strings' ? 2600 : pad ? 1200 : 3200;
+    lp.connect(g).connect(this.compBus);
+    if (organ && !this.organWave) {
+      // drawbars: the fundamental, its octave and twelfth, a little of the two above
+      const real = new Float32Array([0, 1, 0.75, 0.5, 0.3, 0, 0.18, 0, 0.12]);
+      this.organWave = ctx.createPeriodicWave(real, new Float32Array(real.length));
+    }
+    const end = t + dur + rel * 3 + 0.05;
+    for (const m of notes) {
+      const twins = pad ? [-1, 1] : [0];
+      for (const w of twins) {
+        const o = ctx.createOscillator();
+        if (organ && this.organWave) o.setPeriodicWave(this.organWave);
+        else o.type = 'sawtooth';
+        o.frequency.value = midiHz(m);
+        o.detune.value = w * (sound === 'strings' ? 10 : 7) + (stab ? (Math.random() - 0.5) * 8 : 0);
+        o.connect(lp);
+        o.start(t);
+        o.stop(end);
+      }
+    }
+  }
+
+  /**
+   * The band's lead (the tune when it isn't yours), an octave over its note: the tongue drum (`tongue`, and anything
+   * without a sound of its own), the piano (`keys`), the marimba, a bell (the glockenspiel), a synth lead (`lead`: two
+   * oscillators, a touch of vibrato on a long note) or a reed (`reed`: a melodica's nasal buzz).
+   */
+  private lead(ctx: AudioContext, e: BedEvent, t: number, len: number): void {
+    const sound = e.sound ?? 'tongue';
+    const midi = e.midi + 12;
+    const v = Math.max(0.05, Math.min(1, e.vel));
+    const fam = sound === 'keys' ? 'keys' : sound === 'marimba' ? 'marimba' : sound === 'bell' ? 'glock' : sound === 'tongue' ? 'tongue' : '';
+    if (fam && this.sampler.has(fam)) {
+      const level = sound === 'keys' ? 1.6 : sound === 'marimba' ? 1.6 : sound === 'bell' ? 0.9 : 1.1;
+      this.playSample(ctx, fam, midi, 0.5 * v + 0.2, 0, 0.5, -0.15, fam === 'tongue' ? 0.6 : 0.3, level, t, 'band:lead', this.bedBus);
+      return;
+    }
+    if (sound === 'lead' || sound === 'reed') {
+      const reed = sound === 'reed';
+      const f = midiHz(midi);
+      const dur = Math.max(0.1, len * 0.92);
+      const lvl = (reed ? 0.32 : 0.27) * (0.5 + 0.5 * v);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(lvl, t + (reed ? 0.025 : 0.006));
+      g.gain.setTargetAtTime(lvl * 0.72, t + 0.04, 0.18);
+      g.gain.setTargetAtTime(0, t + dur, 0.05);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = reed ? 3 : 0.8;
+      lp.frequency.setValueAtTime(reed ? 2400 : 1800 + 3200 * v, t);
+      lp.frequency.setTargetAtTime(reed ? 1500 : 2200, t + 0.01, 0.15);
+      let node: AudioNode = g;
+      if (ctx.createStereoPanner) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = -0.1;
+        g.connect(p);
+        node = p;
+      }
+      lp.connect(g);
+      node.connect(this.bedBus);
+      const end = t + dur + 0.3;
+      const oscs: OscillatorNode[] = [];
+      for (const [type, det, a] of [
+        ['sawtooth', 0, 1],
+        [reed ? 'square' : 'square', reed ? 0 : 7, reed ? 0.6 : 0.45],
+      ] as const) {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.value = f;
+        o.detune.value = det;
+        const og = ctx.createGain();
+        og.gain.value = a;
+        o.connect(og).connect(lp);
+        o.start(t);
+        o.stop(end);
+        oscs.push(o);
+      }
+      // a long note sings: a little vibrato comes in after it starts
+      if (dur > 0.5) {
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 5.3;
+        const depth = ctx.createGain();
+        depth.gain.setValueAtTime(0, t);
+        depth.gain.linearRampToValueAtTime(0, t + 0.25);
+        depth.gain.linearRampToValueAtTime(14, t + 0.6);
+        lfo.connect(depth);
+        for (const o of oscs) depth.connect(o.detune);
+        lfo.start(t);
+        lfo.stop(end);
+      }
+      return;
+    }
+    // a soft kalimba-ish pluck: sine with a fast-fading bright partial
+    const o = ctx.createOscillator();
+    o.frequency.value = midiHz(midi);
+    const o2 = ctx.createOscillator();
+    o2.type = 'triangle';
+    o2.frequency.value = midiHz(midi + 12);
+    const g = ctx.createGain();
+    this.env(g.gain, t, 0.16 * e.vel, 0.003, 0.5);
+    const g2 = ctx.createGain();
+    this.env(g2.gain, t, 0.05 * e.vel, 0.002, 0.08);
+    o.connect(g).connect(this.bedBus);
+    o2.connect(g2).connect(this.bedBus);
+    o.start(t);
+    o2.start(t);
+    o.stop(t + 0.6);
+    o2.stop(t + 0.2);
+  }
   /** Ringing voices (gongs, bowls): at most 3 per surface and 24 in all; the oldest fades out to make room. */
   private voices: { owner: string; g: GainNode; end: number; oscs: AudioScheduledSourceNode[] | null }[] = [];
   private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: AudioScheduledSourceNode[] | null = null, max = 3): void {
@@ -909,25 +1229,13 @@ class Engine {
     if (!ctx || !this.bedOn) return;
     const t = Math.max(ctx.currentTime, when);
     const len = e.len * spb;
-    if ((e.voice === 'bass' || e.voice === 'chord') && this.sampler.has('band:piano')) return this.piano(ctx, e, t, len, spb);
     switch (e.voice) {
-      case 'bass': {
-        const o = ctx.createOscillator();
-        o.type = 'triangle';
-        o.frequency.value = midiHz(e.midi);
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.frequency.value = 520;
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.5 * e.vel, t + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.12, len));
-        o.connect(lp).connect(g).connect(this.bedBus);
-        o.start(t);
-        o.stop(t + len + 0.1);
-        break;
-      }
+      case 'bass':
+        return this.bandBass(ctx, e, t, len, spb);
       case 'chord': {
+        const sampled = !e.sound || e.sound === 'piano' || e.sound === 'skank';
+        if (!sampled || this.sampler.has('band:piano')) return this.bandChord(ctx, e, t, len, spb);
+        // (until the piano's in: a soft synth chord)
         const third = e.minor ? 3 : 4;
         const g = ctx.createGain();
         const hold = len > spb * 1.5;
@@ -937,17 +1245,23 @@ class Engine {
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.frequency.value = hold ? 900 : 1600;
-        lp.connect(g).connect(this.bedBus);
+        lp.connect(g).connect(this.compBus);
         for (const s of [0, third, 7, 12]) {
           const o = ctx.createOscillator();
           o.type = 'triangle';
-          o.frequency.value = midiHz(e.midi + s - 12);
+          o.frequency.value = midiHz(e.midi + s);
           o.detune.value = (Math.random() - 0.5) * 8;
           o.connect(lp);
           o.start(t);
           o.stop(t + len + 0.2);
         }
-        break;
+        return;
+      }
+      case 'perc': {
+        // the band's shaker or tambourine, off to either side
+        const fam = e.sound === 'tambourine' ? 'tambourine' : 'shaker';
+        if (this.sampler.has(fam)) this.playSample(ctx, fam, null, 0.3 + 0.6 * e.vel, 0, 0.5, fam === 'shaker' ? 0.4 : -0.4, 0.25, fam === 'shaker' ? 0.55 : 0.5, t, '', this.bedBus);
+        return;
       }
       case 'shaker': {
         // a real shaker when its clips are in (soft, off to one side, like a player next to you)
@@ -965,32 +1279,10 @@ class Engine {
         n.connect(bp).connect(g).connect(this.bedBus);
         break;
       }
-      case 'pluck': {
-        if (this.sampler.has('tongue')) {
-          this.playSample(ctx, 'tongue', e.midi + 12, 0.5 * e.vel + 0.2, 0, 0.5, -0.3, 0.6, 0.35, t, '', this.bedBus);
-          break;
-        }
-        // a soft kalimba-ish pluck: sine with a fast-fading bright partial
-        const o = ctx.createOscillator();
-        o.frequency.value = midiHz(e.midi + 12);
-        const o2 = ctx.createOscillator();
-        o2.type = 'triangle';
-        o2.frequency.value = midiHz(e.midi + 24);
-        const g = ctx.createGain();
-        this.env(g.gain, t, 0.16 * e.vel, 0.003, 0.5);
-        const g2 = ctx.createGain();
-        this.env(g2.gain, t, 0.05 * e.vel, 0.002, 0.08);
-        o.connect(g).connect(this.bedBus);
-        o2.connect(g2).connect(this.bedBus);
-        o.start(t);
-        o2.start(t);
-        o.stop(t + 0.6);
-        o2.stop(t + 0.2);
-        break;
-      }
+      case 'pluck':
+        return this.lead(ctx, e, t, len);
     }
   }
-
   /** Sustained shakers, one per soft surface: a looping noise whose level follows how fast the hand brushes. */
   private sustains = new Map<string, { g: GainNode; bp: BiquadFilterNode; src: AudioBufferSourceNode; pan: StereoPannerNode | null }>();
   sustain(id: string, level: number, pan = 0, size = 0.5): void {
@@ -1329,7 +1621,10 @@ const FAMILY_LEVEL: Partial<Record<string, number>> = {
   gong: 0.8, timpani: 0.85, frame: 0.8, congas: 0.75, cajon: 0.8, slit: 0.75, block: 0.6, triangle: 0.4, tambourine: 0.55, shaker: 0.5, stomp: 0.9,
   ride: 0.45, cowbell: 0.55, clap: 0.7, clave: 0.6,
 };
-const DRUM_LEVEL: Partial<Record<string, number>> = { kick: 0.95, snare: 0.75, hat: 0.45, tom: 0.75, floor: 0.8, crash: 0.6, ride: 0.5, rim: 0.6 };
+const DRUM_LEVEL: Partial<Record<string, number>> = { kick: 0.95, snare: 1.2, hat: 0.45, open: 0.4, tom: 0.75, floor: 0.8, crash: 0.6, ride: 0.5, rim: 0.6 };
+
+/** The stems' level into the band's bus. */
+const STEM_LEVEL = 0.7;
 
 /** The shaper's input −1..1 stands for −CLIP_RANGE..CLIP_RANGE. */
 const CLIP_RANGE = 4;

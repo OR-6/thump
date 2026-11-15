@@ -24,7 +24,7 @@ export interface Note {
   vel: number;
 }
 
-export type BedVoice = 'bass' | 'chord' | 'shaker' | 'pluck';
+export type BedVoice = 'bass' | 'chord' | 'shaker' | 'pluck' | 'perc';
 
 export interface BedEvent {
   beat: number;
@@ -36,6 +36,8 @@ export interface BedEvent {
   vel: number;
   /** Chord quality (chord voice): 'maj' or 'min'. */
   minor?: boolean;
+  /** Which of the voice's sounds (a written-out song's style picks them: src/songs/arrange.ts); none, the default. */
+  sound?: string;
 }
 
 export interface Song {

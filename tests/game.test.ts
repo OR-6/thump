@@ -786,6 +786,53 @@ describe('the game', () => {
     expect(g.mode).toBe('results');
   });
 
+  it("a song's recorded band: its stems play from beat 0 on the song's clock, yours muted; the game's own band only counts in", () => {
+    const band: { voice: string; beat: number }[] = [];
+    const voiced: string[] = [];
+    const plays: { id: string; zero: number; from: number }[] = [];
+    const levels = new Map<string, number>();
+    let stops = 0;
+    let ready = false;
+    const loads: string[] = [];
+    const g = new Game(
+      {
+        ...stage([]),
+        voice: (k: string) => voiced.push(k),
+        band: (e: { voice: string; beat: number }) => band.push(e),
+        stems: { load: (id) => loads.push(id), ready: () => ready, play: (id, zero, from) => (plays.push({ id, zero, from }), true), stop: () => stops++, synced: (z) => plays.length > 0 && Math.abs(plays[plays.length - 1].zero - z) < 0.004, level: (st, v) => levels.set(st, v) },
+      },
+      freshProgress(),
+      room([]),
+    );
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.act('nav:songs');
+    ready = true;
+    g.act('play');
+    expect(loads.length).toBeGreaterThan(0);
+    let t = 0;
+    for (let k = 0; k < 600; k++) g.tick((t += 1 / 30));
+    expect(g.stemsOn).toBe(true);
+    expect(plays.length).toBe(1);
+    expect(plays[0].zero).toBeCloseTo(g.clock.timeAt(0), 6);
+    // (you're on the drums: their stem is yours; the rest of the band plays)
+    expect(levels.get('drums')).toBe(0);
+    expect(levels.get('lead')).toBeGreaterThan(0.5);
+    // the game's own band only counts in: nothing of it from beat 0 on
+    expect(band.some((e) => e.beat >= 0 && e.voice !== 'chord' && e.voice !== 'bass')).toBe(false);
+    expect(band.filter((e) => e.beat < 0).length).toBeGreaterThan(0);
+    expect(voiced.length).toBe(0);
+    // a pause stops them; back from it, they pick up where the song is
+    g.paused = true;
+    g.tick((t += 1 / 30));
+    expect(stops).toBeGreaterThan(0);
+    g.paused = false;
+    g.resumed(t);
+    g.tick((t += 1 / 30));
+    expect(plays.length).toBe(2);
+    expect(plays[1].zero).toBeCloseTo(g.clock.timeAt(0), 6);
+  });
+
   it("a friend playing the tune live in the same song: this headset's band leaves out just that part", () => {
     const voiced: string[] = [];
     const band: { voice: string }[] = [];
@@ -797,10 +844,11 @@ describe('the game', () => {
     g.act('play');
     let t = 0;
     for (let k = 0; k < 900; k++) g.tick((t += 1 / 30));
-    // (the tune is the friend's: no lead here; the bass and the congas still play)
+    // (the tune is the friend's: no lead here; the bass and the percussion still play: in this rock lesson the
+    // band's percussion is a tambourine on the bed, not congas)
     expect(band.some((e) => e.voice === 'pluck')).toBe(false);
     expect(band.some((e) => e.voice === 'bass')).toBe(true);
-    expect(voiced.some((k) => k.startsWith('congas:'))).toBe(true);
+    expect(band.some((e) => e.voice === 'perc') || voiced.some((k) => k.startsWith('congas:'))).toBe(true);
   });
 
   it("a song's chords follow it bar by bar, and the solo holds the five", () => {

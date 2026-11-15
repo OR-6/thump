@@ -10,8 +10,9 @@
  * instrument has; two at once at most, never two on one zone. Pure, unit-tested.
  */
 import { PIANO_BLACK, PIANO_CHORD, instZones, pianoBlacks, scaleById, scaleMidi, type InstId } from '../kit/shelf.js';
+import { BAND_STYLES, bassLine, compEvents, congaHits, drumHits, planBars, type BandStyle, type ChordSpan } from './arrange.js';
 import type { BedEvent } from './chart.js';
-import { LESSONS, TUNES, type Style, type Tune } from './tunes.js';
+import { LESSONS, TUNES, type SectionKind, type Style, type Tune } from './tunes.js';
 
 export type Level = 'easy' | 'normal' | 'hard';
 
@@ -52,6 +53,8 @@ export interface Score {
   solos: [number, number][];
   /** The solo's chord. */
   soloChord: Chord;
+  /** A song in its whole form: where each section starts (bars), and what it is. */
+  sections: readonly { bar: number; kind: SectionKind }[] | null;
   /** The home chord (the last one). */
   home: Chord;
   /** The last note's beat: the band holds there and waits for your last hit. */
@@ -199,8 +202,22 @@ export function scoreOf(tune: Tune): Score {
   const lastStart = starts[starts.length - 1];
   const end = lastStart + notes[notes.length - 1].beat;
   // the solo holds the five chord (major), unless the tune says otherwise
-  const soloChord = tune.solo ? chordOf(tune.solo, tune.key, 0, solo) : { beat: 0, len: solo, degree: (home.degree + 4) % 7, semis: (home.semis + 7) % 12, minor: false, borrowed: false };
-  const s: Score = { tune, keyPc: k.pc, scale: k.scale, meter, bars, melody: notes, chords, starts, solos, soloChord, home, end, last: [lastStart, end], rating: 0, difficulty: 'Easy' };
+  let soloChord: Chord = tune.solo ? chordOf(tune.solo, tune.key, 0, solo) : { beat: 0, len: solo, degree: (home.degree + 4) % 7, semis: (home.semis + 7) % 12, minor: false, borrowed: false };
+  // a song in its whole form: its solos are its solo sections (on their own chord), its last time through its last chorus
+  const sec = tune.sections ?? null;
+  let last: [number, number] = [lastStart, end];
+  if (sec) {
+    sec.forEach((x, i) => {
+      if (x.kind !== 'solo') return;
+      const a = x.bar * meter;
+      solos.push([a, (sec[i + 1]?.bar ?? bars) * meter]);
+      const c = chords.find((y) => Math.abs(y.beat - a) < 1e-6);
+      if (c) soloChord = { ...c, beat: 0, len: solos[solos.length - 1][1] - a };
+    });
+    const lc = [...sec].reverse().find((x) => x.kind === 'chorus');
+    if (lc) last = [lc.bar * meter, end];
+  }
+  const s: Score = { tune, keyPc: k.pc, scale: k.scale, meter, bars, melody: notes, chords, starts, solos, soloChord, sections: sec, home, end, last, rating: 0, difficulty: 'Easy' };
   // how hard: the whole melody's notes a second, a little more for a quick tempo
   const n = melodyNotes(s).length;
   s.rating = (n / ((end * 60) / tune.bpm)) * (0.75 + tune.bpm / 400);
@@ -381,6 +398,10 @@ export interface BandNote {
   /** A band line (melody, bass): its MIDI note and length in beats. */
   midi?: number;
   len?: number;
+  /** Seconds off the beat it's on (the band's feel: never your notes). */
+  late?: number;
+  /** A band line's sound (its style's bass, its lead). */
+  sound?: string;
 }
 export interface BandPart {
   name: 'KICK' | 'SNARE' | 'HAT' | 'PERC' | 'KEYS' | 'BASS';
@@ -393,52 +414,51 @@ function grooveOf(s: Score): Groove {
   return s.meter === 3 ? GROOVES.three : GROOVES[s.tune.style];
 }
 
+/** How the band plays a song (its style's arrangement; a song in three plays the one for three). */
+export function bandStyle(s: Score): BandStyle {
+  return s.meter === 3 ? BAND_STYLES.three : BAND_STYLES[s.tune.style];
+}
+
+const spansOf = (s: Score): ChordSpan[] => chordSpans(s).map((c) => ({ beat: c.beat, len: c.len, semis: c.semis, minor: c.minor }));
+
 /**
- * The band's parts through the whole song: the drummer's groove (Hard's), the congas (Normal's), the melody (a
- * plucked lead, its MIDI an octave under where it sounds: the bed's pluck plays an octave up) and the bass on each
- * chord.
+ * The band's parts through the whole song (src/songs/arrange.ts): the drummer in the song's style, verse and chorus
+ * and the fills between, through the solos too; its congas; the melody (a lead in the style's sound, its MIDI an
+ * octave under where it sounds: the bed's pluck plays an octave up); and the bass line on each chord.
  */
 export function scoreParts(s: Score): BandPart[] {
-  const g = grooveOf(s);
+  const st = bandStyle(s);
   const sc = scaleById(s.scale);
-  const cyc = cycles(s, g);
   // (the drummer keeps time through the solos too: the game plays it soft there, unless the drums are yours)
-  const kit = [...cyc.map((c) => c.beat), ...s.solos.flatMap(([a, z]) => Array.from({ length: Math.ceil((z - a) / g.cycle) }, (_, i) => a + i * g.cycle))].sort((a, b) => a - b);
-  const drum = (pat: string, key: string, scale: number): BandNote[] => kit.flatMap((b) => hits(pat, g.cycle).map((h) => ({ beat: b + h.at, key, vel: h.vel * scale }))).filter((n) => n.beat < s.end - 1e-6);
-  const perc = cyc.flatMap((c) => hits(g.congas[1], g.cycle).map((h) => ({ beat: c.beat + h.at, key: `congas:${h.ch}`, vel: 0.6 }))).filter((n) => n.beat < s.end - 1e-6);
+  const plan = planBars(s);
+  const kit = drumHits(st, plan, s.meter, s.end);
+  const drum = (hs: typeof kit.KICK): BandNote[] => hs.map((h) => ({ beat: h.beat, key: h.key, vel: h.vel, late: h.late }));
+  const perc = drum(congaHits(st, plan, s.meter, s.end));
   const root = melodyRoot(s.keyPc);
-  const keys = melodyNotes(s).map((n) => ({ beat: n.beat, key: 'band:melody', vel: n.beat % 2 === 0 ? 0.95 : 0.85, midi: scaleMidi(root, sc, n.degree) + n.acc - 12, len: n.len }));
-  const spans = chordSpans(s);
-  const bass: BandNote[] = [];
-  for (const c of cyc)
-    for (const h of hits(g.bass, g.cycle)) {
-      const b = c.beat + h.at;
-      const ch = spans.find((x) => b >= x.beat - 1e-6 && b < x.beat + x.len - 1e-6);
-      if (!ch) continue;
-      const r = 36 + ((s.keyPc + ch.semis) % 12);
-      bass.push({ beat: b, key: 'band:bass', vel: Math.abs(b - ch.beat) < 1e-6 ? 0.8 : 0.65, midi: r + (h.ch === '5' ? 7 : h.ch === '8' ? 12 : 0), len: Math.min(0.9, (g.cycle / g.bass.length) * 1.8) });
-    }
-  // (each chord's root on its first beat even when the pattern rests there)
-  for (const ch of spans) if (!bass.some((n) => Math.abs(n.beat - ch.beat) < 1e-6)) bass.push({ beat: ch.beat, key: 'band:bass', vel: 0.8, midi: 36 + ((s.keyPc + ch.semis) % 12), len: 0.9 });
-  bass.sort((a, b) => a.beat - b.beat);
+  const keys = melodyNotes(s).map((n) => ({ beat: n.beat, key: 'band:melody', vel: n.beat % 2 === 0 ? 0.95 : 0.85, midi: scaleMidi(root, sc, n.degree) + n.acc - 12, len: n.len, sound: st.lead }));
+  const bass = bassLine(st, plan, s.meter, spansOf(s), s.keyPc, s.end).map((n) => ({ beat: n.beat, key: 'band:bass', vel: n.vel, midi: n.midi, len: n.len, late: n.late, sound: st.bass.sound }));
   return [
-    { name: 'KICK', key: 'kit:kick', notes: drum(g.hardKick, 'kit:kick', 1) },
-    { name: 'SNARE', key: 'kit:snare', notes: drum(g.hardSnare, 'kit:snare', 0.9) },
-    { name: 'HAT', key: 'kit:hat', notes: drum(g.hardHat, 'kit:hat', 0.7) },
+    { name: 'KICK', key: 'kit:kick', notes: drum(kit.KICK) },
+    { name: 'SNARE', key: 'kit:snare', notes: drum(kit.SNARE) },
+    { name: 'HAT', key: 'kit:hat', notes: drum(kit.HAT) },
     { name: 'PERC', key: 'congas:0', notes: perc },
     { name: 'KEYS', key: 'band:melody', notes: keys },
     { name: 'BASS', key: 'band:bass', notes: bass },
   ];
 }
 
-/** The bed: the count-in (four clicks over the home chord), then the chords, a held one each, and each solo's. */
+/**
+ * The bed: the count-in (four clicks over the home chord), then the keys in the style's comping rhythm over a held
+ * chord, the shaker or tambourine, and each solo's chord held.
+ */
 export function scoreBed(s: Score): BedEvent[] {
   const key = s.keyPc;
+  const st = bandStyle(s);
   const out: BedEvent[] = [];
   for (let k = 0; k < 4; k++) out.push({ beat: -4 + k, voice: 'shaker', midi: 0, len: 0.25, vel: k === 0 ? 0.9 : 0.6 });
   out.push({ beat: -4, voice: 'chord', midi: chordMidi(s.home, key), len: 4, vel: 0.3, minor: s.home.minor });
-  for (const c of chordSpans(s)) out.push({ beat: c.beat, voice: 'chord', midi: chordMidi(c, key), len: c.len, vel: 0.4, minor: c.minor });
-  for (const [a, z] of s.solos) out.push({ beat: a, voice: 'chord', midi: chordMidi(s.soloChord, key), len: z - a, vel: 0.3, minor: s.soloChord.minor });
+  const solo = { beat: 0, len: s.meter, semis: s.soloChord.semis, minor: s.soloChord.minor };
+  out.push(...compEvents(st, planBars(s), s.meter, spansOf(s), solo, key, s.end));
   return out.sort((a, b) => a.beat - b.beat);
 }
 
@@ -533,6 +553,15 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
   const mel = melodyNotes(s);
   const chords = chordSpans(s);
   const cyc = cycles(s, g);
+  // a song in its whole form: the verses (and the intro, the breaks, the outro) a step lighter than the choruses and
+  // bridges, and a fill into each section from Normal
+  const plan = s.sections ? planBars(s) : null;
+  const barAt = (b: number) => plan?.find((p) => b >= p.beat - 1e-6 && b < p.beat + s.meter - 1e-6);
+  const calm = (b: number) => {
+    const k = barAt(b)?.kind;
+    return !!k && k !== 'chorus' && k !== 'bridge';
+  };
+  const step = (b: number): Level | 'light' => (!plan || level === 'easy' || !calm(b) ? level : level === 'hard' ? 'normal' : 'light');
   if (inst === 'piano' || inst === 'marimba') {
     for (const n of mel) {
       // Easy: the notes on the strong beats (the band plays the rest of the tune); a note the instrument hasn't got
@@ -577,8 +606,8 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // moves to each new chord on the neck as it comes in
     const up = g.swing ? 2 / 3 : 0.5;
     const pattern = s.meter === 4 ? (t.bpm >= 130 ? [0, 1, 2, 3, 3 + up] : [0, 1, 1 + up, 2 + up, 3, 3 + up]) : s.meter === 3 ? [0, 1, 1 + up, 2, 2 + up] : [0, 1, 1 + up];
-    const offs = level === 'easy' ? (s.meter === 4 ? [0, 2] : [0]) : level === 'normal' ? Array.from({ length: s.meter }, (_, i) => i) : pattern;
-    for (const st of s.starts) for (let b = 0; b < s.bars; b++) for (const o of offs) add(st + b * s.meter + o, 'guitar:9', o % 1 ? 0.6 : o === 0 ? 0.9 : 0.75, 0);
+    const offsAt = (lv: Level | 'light') => (lv === 'easy' || lv === 'light' ? (s.meter === 4 ? [0, 2] : [0]) : lv === 'normal' ? Array.from({ length: s.meter }, (_, i) => i) : pattern);
+    for (const st of s.starts) for (let b = 0; b < s.bars; b++) for (const o of offsAt(step(st + b * s.meter))) add(st + b * s.meter + o, 'guitar:9', o % 1 ? 0.6 : o === 0 ? 0.9 : 0.75, 0);
     if (level !== 'easy') {
       const pad = padsFor(s);
       let was = -1;
@@ -590,8 +619,11 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     }
   } else if (inst === 'congas') {
     live.push('congas:0');
-    const pat = g.congas[level === 'easy' ? 0 : level === 'normal' ? 1 : 2];
-    for (const c of cyc) for (const h of hits(pat, g.cycle)) add(c.beat + h.at, `congas:${h.ch}`, h.ch === '3' || h.ch === '1' ? 0.85 : 0.75, 0);
+    for (const c of cyc) {
+      const lv = step(c.beat);
+      const pat = g.congas[lv === 'easy' || lv === 'light' ? 0 : lv === 'normal' ? 1 : 2];
+      for (const h of hits(pat, g.cycle)) add(c.beat + h.at, `congas:${h.ch}`, h.ch === '3' || h.ch === '1' ? 0.85 : 0.75, 0);
+    }
   } else {
     // the drums: Easy the kick and the snare, Normal the hat too, Hard the full groove and a fill into each phrase
     live.push('kit:kick', 'kit:snare', 'kit:hat');
@@ -599,16 +631,20 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     const fillLen = s.meter === 3 ? 1 : 2;
     for (const c of cyc) {
       const rel = barOf(c.beat);
-      const fill = level === 'hard' && Math.floor(rel / phrase) !== Math.floor((rel + g.cycle) / phrase);
+      const lv = step(c.beat);
+      // (Hard: a fill into each phrase; Normal, in a song in its whole form: one into each section)
+      const intoSection = !!plan && barAt(c.beat + g.cycle - 0.5)?.fill === 2;
+      const fill = (level === 'hard' && Math.floor(rel / phrase) !== Math.floor((rel + g.cycle) / phrase)) || (level === 'normal' && intoSection);
       const cut = g.cycle - fillLen;
-      const kick = hits(level === 'easy' ? g.easy[0] : level === 'hard' ? g.hardKick : g.kick, g.cycle);
-      const snare = hits(level === 'easy' ? g.easy[1] : level === 'hard' ? g.hardSnare : g.snare, g.cycle);
-      const hat = level === 'easy' ? [] : hits(level === 'hard' ? g.hardHat : g.hat, g.cycle);
+      const kick = hits(lv === 'easy' ? g.easy[0] : lv === 'hard' ? g.hardKick : g.kick, g.cycle);
+      const snare = hits(lv === 'easy' ? g.easy[1] : lv === 'hard' ? g.hardSnare : g.snare, g.cycle);
+      // (a light verse's hat on the beat only)
+      const hat = lv === 'easy' ? [] : hits(lv === 'hard' ? g.hardHat : g.hat, g.cycle).filter((h) => lv !== 'light' || Math.abs(h.at - Math.round(h.at)) < 1e-6);
       for (const h of kick) if (!(fill && h.at >= cut)) add(c.beat + h.at, 'kit:kick', h.vel, 0);
       for (const h of snare) if (!(fill && h.at >= cut)) add(c.beat + h.at, 'kit:snare', h.vel, 0);
       for (const h of hat) if (!(fill && h.at >= cut)) add(c.beat + h.at, 'kit:hat', 0.6, 1);
       if (fill)
-        for (let k = 0; k < fillLen * 2; k++) add(c.beat + cut + k / 2, k < fillLen ? 'kit:snare' : opts.tom ? 'kit:tom' : 'kit:snare', k === 0 ? 0.9 : 0.75, 0);
+        for (let k = 0; k < fillLen * 2; k++) add(c.beat + cut + k / 2, k >= fillLen && opts.tom && level === 'hard' ? 'kit:tom' : 'kit:snare', k === 0 ? 0.9 : 0.75, 0);
     }
   }
   // in time order; one note per zone per moment, and two hands: the third at once goes (the lower-ranked first);

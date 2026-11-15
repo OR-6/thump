@@ -1,0 +1,25 @@
+The songs' backing tracks (public/songs/<song>/*.webm)
+
+Rendered offline by tools/stems/make-stems.mjs from arrangements written for the game (tools/stems/arrange-stems.ts),
+with FluidSynth (LGPL-2.1, used as a tool; nothing of it is shipped) playing:
+
+  GeneralUser GS v2.0.3 by S. Christian Collins (https://www.schristiancollins.com/generaluser)
+  Licence (GeneralUser GS License v2.0): "You may use GeneralUser GS without restriction for your own music creation,
+  private or commercial." Its samples allow full use in music production, including recordings made for profit.
+
+The hall reverb's impulse response is made by the same script (no recording).
+
+Scores the classics' arrangements are taken from (their notes, tools/stems/scores/*.json):
+
+  Für Elise (Beethoven, WoO 59): typeset by Stelios Samelis for the Mutopia Project (Mutopia-2015/08/18-931).
+  Public domain.
+  The Entertainer (Joplin): typeset by Chris Sawer for the Mutopia Project (Mutopia-2016/11/25-263). Public domain.
+  Rondo alla turca (Mozart, Sonata K. 331): typeset by Rune Zedeler and Chris Sawer for the Mutopia Project
+  (Mutopia-2015/08/13-108). Public domain.
+  Canon per 3 violini e basso (Pachelbel): typeset by Michael Fischer v. Mollard for the Mutopia Project
+  (www.mutopiaproject.org, Mutopia-2015/09/02-2047), licensed under Creative Commons Attribution 4.0
+  (https://creativecommons.org/licenses/by/4.0/). Changes: re-timed to the game's tempo, its first violin's line taken
+  as the tune you play, rendered as audio.
+
+The other classics are traditional or long out of copyright and arranged here from the melodies in src/songs/tunes.ts.
+The originals are the game's own.
