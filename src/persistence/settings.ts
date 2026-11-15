@@ -65,7 +65,9 @@ export interface Settings {
   taught?: string[];
   /** Where you moved the instruments to, from where they'd stand by themselves (m: further ahead, to the right). */
   /** Your move of the instruments from where they stood by themselves: ahead, left, and up (m). */
-  kitNudge?: { a: number; l: number; h?: number };
+  /** `h2`: the height was saved after the fix for moves made in a resumed session (before it, every such move saved
+   * the most it could, 25 cm up; those heights are dropped). */
+  kitNudge?: { a: number; l: number; h?: number; h2?: true };
 }
 
 const KEY = 'settings.v1';
@@ -99,7 +101,7 @@ export function loadSettings(): Settings {
     ...(typeof s.coach === 'number' && Number.isFinite(s.coach) ? { coach: Math.max(0, Math.min(3, Math.round(s.coach))) } : {}),
     ...(Array.isArray(s.taught) ? { taught: s.taught.filter((x): x is string => typeof x === 'string' && /^[a-z]{1,12}$/.test(x)).slice(0, 12) } : {}),
     ...(s.kitNudge && typeof s.kitNudge === 'object' && [s.kitNudge.a, s.kitNudge.l].every((v) => typeof v === 'number' && Number.isFinite(v))
-      ? { kitNudge: { a: num(s.kitNudge.a, -0.3, 0.3, 0), l: num(s.kitNudge.l, -0.5, 0.5, 0), ...(typeof s.kitNudge.h === 'number' && Number.isFinite(s.kitNudge.h) && s.kitNudge.h !== 0 ? { h: num(s.kitNudge.h, -0.2, 0.25, 0) } : {}) } }
+      ? { kitNudge: { a: num(s.kitNudge.a, -0.3, 0.3, 0), l: num(s.kitNudge.l, -0.5, 0.5, 0), ...(s.kitNudge.h2 === true && typeof s.kitNudge.h === 'number' && Number.isFinite(s.kitNudge.h) && s.kitNudge.h !== 0 ? { h: num(s.kitNudge.h, -0.2, 0.25, 0), h2: true as const } : {}) } }
       : {}),
     ...(s.guitarDesk === true ? { guitarDesk: true } : {}),
     ...(s.guitarAt && typeof s.guitarAt === 'object' && [s.guitarAt.x, s.guitarAt.y, s.guitarAt.z].every((v) => typeof v === 'number' && Number.isFinite(v))

@@ -22,7 +22,7 @@ js(`window.__hudLog = []; window.__holds = []; const h = r.hud; const set = h.se
 const k = (await placeKit()).debug.kitOrigin;
 await wait(1200);
 const coach0 = js(`return { coach: r.settings.coach ?? 0, say: r.hudSay };`);
-check('a newcomer starts at the welcome: tap the desk', coach0.coach === 0 && coach0.say?.big === 'Welcome to Thump' && coach0.say?.foot === 'Tap the desk to begin', JSON.stringify(coach0));
+check('a newcomer starts at the welcome: hit a drum or tap the desk', coach0.coach === 0 && coach0.say?.big === 'Welcome to Thump' && coach0.say?.foot === 'Hit a drum, or tap the desk', JSON.stringify(coach0));
 // the tap that brings the drums (by hand); from there the autoplayer plays, letting the first notes wait as you would
 await slap(await measureHand(), [k[0] + 0.06, DESK_Y, k[2]]);
 js(`r.autoOn = true;`);

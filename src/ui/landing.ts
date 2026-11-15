@@ -24,8 +24,8 @@ const LIVE_URL = 'playthump.pages.dev';
 /** The six, in the page's order: the name, how you play it (in a line), and its picture from the game. */
 const BAND: { id: InstId; label: string; line: string; alt: string }[] = [
   { id: 'drums', label: 'Drums', line: 'Slap the heads with your palms. Make a fist and there’s a stick in it.', alt: 'The drum kit on the desk mid-song, seen from the seat: a ring closing onto the snare, Perfect on the bass drum.' },
-  { id: 'guitar', label: 'Guitar', line: 'On your lap, like a real one. Hold a chord on the neck and strum.', alt: 'The acoustic guitar held across the lap from the seat, chord names along the neck, a Perfect on the strings.' },
-  { id: 'piano', label: 'Piano', line: 'Real-size keys under your fingertips.', alt: 'The piano keyboard on the desk mid-song, a key lit as it is pressed.' },
+  { id: 'guitar', label: 'Guitar', line: 'Across your lap, like a real one. One hand holds the chord, the other strums. Pinch and you’ve got a pick.', alt: 'The acoustic guitar held across the lap from the seat, chord names along the neck, a Perfect on the strings.' },
+  { id: 'piano', label: 'Piano', line: 'Real-size keys. Hold one down and it rings on; drag a finger along them for a glissando.', alt: 'The piano keyboard on the desk mid-song, a key lit as it is pressed.' },
   { id: 'marimba', label: 'Marimba', line: 'Eight rosewood bars. A fist holds a mallet.', alt: 'The rosewood marimba on the desk mid-song, a bar lit as it is hit.' },
   { id: 'congas', label: 'Congas', line: 'Palm in the middle for an open tone, fingers on the edge for a slap.', alt: 'Two congas on the desk mid-song, a ring closing onto one head.' },
   { id: 'handpan', label: 'Handpan', line: 'The deep note in the middle, eight around it.', alt: 'The handpan on the desk mid-song, a note lit as it is played.' },
@@ -87,13 +87,13 @@ export function mountLanding(world: World): void {
         </div>
         <div class="wrap hero-in">
           <h1 id="hero-h">A band on your desk<span class="vh">.</span><span class="beat" aria-hidden="true"><svg class="beat-ring" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false"><circle class="closing" r="40" pathLength="100" stroke-dasharray="78 22" transform="rotate(-20)"/><circle class="burst" r="40" pathLength="100" stroke-dasharray="31 9 15 18" transform="rotate(40)"/></svg></span></h1>
-          <p class="tag">Play real instruments with your bare hands, in VR. Put the controllers down: your desk is the drum kit now.</p>
+          <p class="tag">Play real instruments with your bare hands, in VR. Put the controllers down and look at your desk. There’s a drum kit on it now.</p>
           <div class="cta">
             <button id="enter-xr" class="btn btn-1" type="button">Enter mixed reality</button>
           </div>
           <p class="addr" id="addr">On your Quest, open <button type="button" class="addr-url" id="addr-url">${LIVE_URL}</button></p>
-          <p class="go-note" id="go-note" aria-live="polite">Sit at a desk, controllers down, tap the desk. Nothing to install.</p>
-          <p class="xr-fail" role="alert" hidden>It didn’t start. Say yes to the Quest’s prompts and try again.</p>
+          <p class="go-note" id="go-note" aria-live="polite">Nothing to install. Sit at a desk, put the controllers away and hit a drum to start.</p>
+          <p class="xr-fail" role="alert" hidden>That didn’t start. Say yes to the Quest’s prompts, then try again.</p>
         </div>
       </section>
 
@@ -110,7 +110,7 @@ export function mountLanding(world: World): void {
         <div class="wrap">
           <div class="play-head">
             <h2 class="h2" id="play-h">Go on, hit something.</h2>
-            <p>Same sounds as in the headset. Click, tap, or hold and drag for a run.</p>
+            <p>These are the headset’s own sounds. Click or tap a part, or hold and drag across them for a run.</p>
           </div>
           <ul class="picker" role="group" aria-label="Instrument">
             ${BAND.map((b) => `<li><button type="button" class="pick" data-inst="${b.id}" aria-pressed="false">${b.label}</button></li>`).join('')}
@@ -128,14 +128,14 @@ export function mountLanding(world: World): void {
             <figure class="row-pic">${shot('lesson', 'A drum lesson holding the song still: the ring on the snare, a line from the sign on the desk to it, and the word Now.')}</figure>
             <div class="row-words">
               <h2 class="h3">Lessons that wait for you to get it.</h2>
-              <p>One for each instrument. The song stops on the note you need and says <strong>Now</strong> when it’s time. It waits until you hit it.</p>
+              <p>One for each instrument. The song stops on the note you need and says <strong>Now</strong> when it’s time. Then it waits, for as long as you like, until you hit it.</p>
             </div>
           </div>
           <div class="row row-b">
             <figure class="row-pic">${shot('results', 'The results for Canon in D: grade S with three stars, All perfect, 74,300 points, 200 perfect and no misses.')}</figure>
             <div class="row-words">
               <h2 class="h3">Get an <span class="hot">S</span>. Then do it again on Hard.</h2>
-              <p>Easy, Normal or Hard, on every song. Ten in a row doubles your points, up to ×4. Play the gold bars clean, put both hands up, and the Spotlight doubles them again.</p>
+              <p>Easy, Normal or Hard, on every song. Ten in a row doubles your points, and it climbs to ×4. Play the gold bars clean, throw both hands up, and the Spotlight doubles them again. Every song keeps a world board for each instrument and level. You go on it as a random two-word name, like Silver Harmony. No account.</p>
             </div>
           </div>
         </div>
@@ -145,7 +145,7 @@ export function mountLanding(world: World): void {
         <div class="wrap">
           <div class="set-head">
             <h2 class="title mega" id="setlist-h">${TUNES.length} songs</h2>
-            <p class="set-note">${originals} written for Thump, ${TUNES.length - originals} you already know. Lengths at full speed.</p>
+            <p class="set-note">${originals} written for Thump, ${TUNES.length - originals} you already know, set to new grooves. Lengths at full speed.</p>
           </div>
           <ol class="songs">${songs.map(songRow).join('')}</ol>
           <p class="lessons">Plus a lesson for each instrument (${LESSONS.map((l) => esc(l.name.replace(/^Learn /, ''))).join(', ').replace(/, ([^,]+)$/, ' and $1')}).</p>
@@ -158,7 +158,7 @@ export function mountLanding(world: World): void {
           <div class="together-in">
             <div class="together-words">
               <h2 class="title" id="together-h">Four friends, four rooms, one song.</h2>
-              <p class="big">One of you gets a code. Everyone else types it in.</p>
+              <p class="big">One of you gets a code. Everyone else types it in. The band gets a name of its own, something like The Midnight Coffee Rings, and a board for the songs you play together.</p>
             </div>
             <p class="eg"><span class="eg-cap">e.g.</span><span class="eg-code">PKRW</span></p>
           </div>
@@ -185,7 +185,7 @@ export function mountLanding(world: World): void {
       <section class="prep-sec" id="settings" aria-label="Settings">
         <div class="wrap">
           <details class="prep">
-            <summary>Settings <small>For the Quest’s browser, before you enter. They’re saved there.</small><span class="pm" aria-hidden="true"></span></summary>
+            <summary>Settings <small>Set these in the Quest’s browser before you go in. It remembers them.</small><span class="pm" aria-hidden="true"></span></summary>
             <div class="opts">
               <label class="sel">Lead hand
                 <select data-k="hand"><option value="auto">Whichever you rest first</option><option value="right">Right</option><option value="left">Left</option></select>
@@ -244,7 +244,7 @@ export function mountLanding(world: World): void {
     barBtn.textContent = where === 'xr' ? 'Enter' : where === 'phone' ? 'Send' : 'Watch';
     el.dataset.where = where;
     addr.hidden = where === 'xr';
-    note.textContent = where === 'xr' ? 'Sit at a desk or a tray table and put the controllers down: it’s hands only.' : 'Sit at a desk, controllers down, tap the desk. Nothing to install.';
+    note.textContent = where === 'xr' ? 'Any desk will do, or a tray table on a train. Put the controllers down: it’s hands only.' : 'Nothing to install. Sit at a desk, put the controllers away and hit a drum to start.';
   };
   label();
   if (where === 'xr' && !forced)
@@ -391,7 +391,7 @@ export function mountLanding(world: World): void {
     const p = loadProgress();
     saveProgress({ ...freshProgress(), kit: p.kit, ...(p.me ? { me: p.me } : {}), ...(p.bandWords ? { bandWords: p.bandWords } : {}) });
     window.dispatchEvent(new Event('thump:reset'));
-    b.textContent = 'Done. Progress cleared.';
+    b.textContent = 'Done. Progress cleared; your name and settings stay.';
     b.dataset.sure = '';
   });
 

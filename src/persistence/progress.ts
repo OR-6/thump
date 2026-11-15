@@ -82,6 +82,8 @@ export interface Progress {
   pads?: SavedPad[];
   /** Tracks whose machine you've built. */
   built?: string[];
+  /** The last track you made, kept to play again: its style, and each part's notes (two bars) on what played it. */
+  track?: { id: string; parts: { name: string; surface: string; key: string; notes: { key: string; beat: number; vel: number; filled: boolean; at?: number }[] }[] };
   /** Your band's name, painted on the kick (chosen once, from where you first sat). */
   bandName?: string;
   /** Your name on the world's boards, and your band's (two words each: src/play/names.ts). */
@@ -138,6 +140,17 @@ export function loadProgress(): Progress {
   const k = r.kit as SavedKit | undefined;
   if (k && typeof k.uuid === 'string' && [k.x, k.y, k.z, k.yaw].every((n) => typeof n === 'number' && Number.isFinite(n))) p.kit = { uuid: k.uuid, x: k.x, y: k.y, z: k.z, yaw: k.yaw };
   if (typeof r.desk === 'string' && r.desk.length < 20) p.desk = r.desk;
+  {
+    // (the kept track: a style's id and its parts' notes, each checked; anything off and it's not kept)
+    const t = r.track as { id?: unknown; parts?: unknown } | undefined;
+    const okNote = (n: unknown) => {
+      const o = n as Record<string, unknown>;
+      return !!o && typeof o.key === 'string' && o.key.length < 24 && typeof o.beat === 'number' && o.beat >= 0 && o.beat < 8 && typeof o.vel === 'number' && o.vel >= 0 && o.vel <= 1.5 && typeof o.filled === 'boolean' && (o.at === undefined || (typeof o.at === 'number' && Number.isFinite(o.at)));
+    };
+    if (t && typeof t.id === 'string' && t.id.length < 40 && Array.isArray(t.parts) && t.parts.length > 0 && t.parts.length <= 10)
+      if (t.parts.every((x) => { const o = x as Record<string, unknown>; return !!o && typeof o.name === 'string' && o.name.length < 12 && typeof o.surface === 'string' && o.surface.length < 24 && typeof o.key === 'string' && o.key.length < 24 && Array.isArray(o.notes) && o.notes.length <= 64 && (o.notes as unknown[]).every(okNote); }))
+        p.track = t as Progress['track'];
+  }
   if (Array.isArray(r.built)) p.built = (r.built as unknown[]).filter((x): x is string => typeof x === 'string' && x.length < 40).slice(0, 20);
   if (Array.isArray(r.pads))
     p.pads = (r.pads as SavedPad[])

@@ -197,3 +197,30 @@ describe('repeated strikes on drums, congas and the handpan', () => {
       expect(exact / 200).toBeGreaterThanOrEqual(c.floor ?? 0.9);
     });
 });
+
+describe('a black key over two white ones', () => {
+  // two white keys (top at 0) and a black key between them at the back, 1 cm higher, reaching over both
+  const keys: AirSurface[] = [
+    { id: 30, face: 'up', x: 0, y: 0.0105, z: -0.05, w: 0.0185, d: 0.105, confirm: 0.002, key: true },
+    { id: 0, face: 'up', x: -0.0118, y: 0, z: 0, w: 0.0225, d: 0.175, confirm: 0.002, key: true },
+    { id: 1, face: 'up', x: 0.0118, y: 0, z: 0, w: 0.0225, d: 0.175, confirm: 0.002, key: true },
+  ];
+  it('pressing it deep and repeating it plays only it, never the white keys under it', () => {
+    let whites = 0;
+    let blacks = 0;
+    for (let k = 0; k < 100; k++) {
+      const r = rng(300 + k);
+      const air = new AirHits(1);
+      const out: AirHit[] = [];
+      // (from 3 cm over it, down 2.5 cm past its top: below the white keys' tops; then four repeats, lifting 1.5 cm)
+      const pr = presses(5, 5, -0.025, -0.01, 0.4);
+      for (let t = r() * DT; t < pr.dur; t += DT) {
+        out.length = 0;
+        air.update(0, gauss(r) * TIP, 0.0105 + pr.y(t) + gauss(r) * TIP, -0.05 + gauss(r) * TIP, DT, keys, out, 1, AIR.keyMin);
+        for (const h of out) h.surface === 30 ? blacks++ : whites++;
+      }
+    }
+    expect(whites).toBe(0);
+    expect(blacks / 100).toBeGreaterThanOrEqual(4.8);
+  });
+});

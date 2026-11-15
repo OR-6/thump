@@ -140,7 +140,7 @@ await wait(1500);
 put('hand-left', [-0.5, 1.4, -0.1]);
 put('hand-right', [0.5, 1.4, -0.1]);
 await wait(400);
-const g0 = js(`const V = r.head.constructor; return { lap: r.guitarLap, head: r.heldWorld(-0.6, 0.01, 0, new V()).toArray(), hole: r.heldWorld(0.052, 0, 0, new V()).toArray() };`);
+const g0 = js(`const V = r.head.constructor; return { lap: r.guitarLap, head: r.heldWorld(-0.45 - 0.1 * Math.cos(0.23), 0.007 - 0.1 * Math.sin(0.23), 0, new V()).toArray(), hole: r.heldWorld(0.052, 0, 0, new V()).toArray() };`);
 check('the guitar comes out in your lap', g0.lap === true, JSON.stringify(g0));
 // (the right hand's pinch point onto the headstock: the hand moved by how far its pinch is from it)
 // (the pinch point as it is while pinching: the fingers closing move it)

@@ -465,6 +465,56 @@ export class Game {
     this.refreshDisplay();
   }
 
+  /** Make a track's style on its first page (an index into TRACKS). */
+  makerSel = 0;
+  private makerModel(): { name: string; bpm: number; parts: string[]; saved: string } {
+    const t = TRACKS[Math.max(0, Math.min(TRACKS.length - 1, this.makerSel))];
+    const kept = this.progress.track ? TRACKS.find((x) => x.id === this.progress.track!.id) : undefined;
+    return { name: t.name, bpm: t.bpm, parts: t.parts.map((p) => partName(p.name)), saved: kept ? kept.name : '' };
+  }
+  /** The part screen's middle: what's in, what's being made now, and what's still to come. */
+  private buildInfo(): string {
+    const b = this.bld;
+    if (!b) return '';
+    const names = b.track.parts.map((p) => partName(p.name));
+    if (b.phase === 'run') return `All in: ${names.join(', ')}. Play anything over it.`;
+    const done = names.slice(0, b.part);
+    const rest = names.slice(b.part + 1);
+    return [done.length ? `In: ${done.join(', ')}.` : '', `Now: ${names[b.part]}.`, rest.length ? `Still to come: ${rest.join(', ')}.` : 'Last one.'].filter(Boolean).join(' ');
+  }
+  /** The track you kept, looping again (each part on what played it, or the instrument's own if that's gone). */
+  private restoreTrack(): void {
+    const kept = this.progress.track;
+    const track = kept && TRACKS.find((x) => x.id === kept.id);
+    if (!kept || !track) return this.refreshDisplay();
+    const i = this.buildTracks.indexOf(track);
+    this.beginBuild(i >= 0 ? i : 0);
+    const b = this.bld;
+    if (!b) return;
+    const have = new Set(['kit', 'piano', 'marimba', 'handpan', 'congas', 'guitar', 'keys', ...this.room.instruments().map((x) => x.id)]);
+    for (const kp of kept.parts) {
+      const def = track.parts.find((d) => d.name === kp.name);
+      if (!def) continue;
+      // (a thing on the desk that isn't here today: the part goes back on the instrument it would have been on)
+      const fallback = SUGGEST_DEFAULT[kp.name] ?? 'kit:snare';
+      const fsurf = fallback.slice(0, fallback.indexOf(':'));
+      const here = have.has(kp.surface);
+      const notes = kp.notes.map((n) => ({ ...n, key: here ? n.key : n.key.startsWith(kp.surface + ':') && fsurf !== 'kit' ? `${fsurf}:${n.key.slice(kp.surface.length + 1)}` : fallback }));
+      b.parts.push({ def, surface: here ? kp.surface : fsurf, key: here ? kp.key : fallback, notes });
+    }
+    b.part = b.parts.length;
+    b.phase = 'run';
+    b.dropAt = -1;
+    this.machine = { track, parts: b.parts.slice() };
+    this.pushLabels();
+    this.refreshDisplay();
+  }
+  /** The track just made, kept (one: the last). */
+  private keepTrack(track: TrackDef, parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[]): void {
+    this.progress.track = { id: track.id, parts: parts.map((p) => ({ name: p.def.name, surface: p.surface, key: p.key, notes: p.notes.slice(0, 64).map((n) => ({ key: n.key, beat: n.beat, vel: Math.round(n.vel * 100) / 100, filled: n.filled, ...(n.at !== undefined ? { at: n.at } : {}) })) })) };
+    this.stage.save(this.progress);
+  }
+
   /** Stop building or stop the machine; back to playing freely. */
   private endBuild(): void {
     this.bld = null;
@@ -651,6 +701,11 @@ export class Game {
         this.stage.useInstrument?.(want);
       }
       const sug = beat >= b.guard ? this.suggestFor(b.track.parts[b.part].name) : null;
+      // (no picking: the part goes on its instrument's glowing key and the count-in starts; a clap is still yours)
+      if (sug && beat >= b.guard + 0.5) {
+        this.hitBuild(sug, this.t, 0.8);
+        return;
+      }
       if (sug) this.stage.light(sug, 0.25 + 0.35 * Math.pow(1 - (beat - Math.floor(beat)), 2));
     }
     if (b.phase === 'count' || b.phase === 'rec') {
@@ -740,7 +795,8 @@ export class Game {
           this.machine = { track: b.track, parts: b.parts.slice() };
           const list = this.progress.built ?? (this.progress.built = []);
           if (!list.includes(b.track.id)) list.push(b.track.id);
-          this.stage.save(this.progress);
+          // (kept: it comes back from Make a track's first page, Your track)
+          this.keepTrack(b.track, b.parts);
           // every part is in: one bar of nothing, then the whole machine drops in together
           b.dropAt = Math.ceil((beat + 5) / LOOP_BEATS) * LOOP_BEATS;
           b.verdict = null;
@@ -765,17 +821,17 @@ export class Game {
         d.sub = 'Everything, in…';
         return;
       }
-      d.sub = b.dropAt > 0 ? `${n} parts in` : 'Your track: press Perform it';
+      d.sub = b.dropAt > 0 ? `All ${n} parts in` : "It's kept. Play over it, or Perform it for a score";
       d.pulse = b.dropAt > 0 ? null : 'play';
       return;
     }
-    d.line = `${b.part + 1}/${n}  ${say(def.name)}`;
+    d.line = `Part ${b.part + 1} of ${n}: ${partName(def.name)}`;
     if (b.phase === 'assign') {
       if (b.verdict) {
-        // what just went in, and what's next (hits pick nothing for this bar)
+        // what just went in, and what's next
         const v = b.verdict;
-        d.line = v.hit === -2 ? `${v.name}: in` : v.hit < 0 ? `${v.name}: yours` : v.hit >= v.of ? `${v.name}: every note` : `${v.name}: ${v.hit} of ${v.of}`;
-        d.sub = `Next: ${say(def.name)}`;
+        d.line = v.hit === -2 ? `${v.name} is in` : v.hit < 0 ? `${v.name} is in, your way` : v.hit >= v.of ? `${v.name} is in: every note` : `${v.name} is in: ${v.hit} of ${v.of}`;
+        d.sub = `Next, part ${b.part + 1} of ${n}: ${partName(def.name)}`;
         return;
       }
       d.sub = ASK[def.name];
@@ -783,12 +839,11 @@ export class Game {
     }
     if (b.phase === 'count') {
       d.count = Math.max(1, Math.min(8, Math.ceil(b.recStart - this.clock.beatAt(this.t))));
-      d.sub = b.retried ? 'Once more' : b.moved ? 'This one goes on the keys' : 'Hit when it glows';
-      d.line = say(def.name);
+      d.sub = b.retried ? 'Once more: hit what glows, as it glows' : 'Get ready: a bar lights up to copy';
       return;
     }
-    // the take's second bar: no lights, play what you like
-    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Your turn: play anything' : 'Hit when it glows';
+    // the take: the first bar lights up to copy, the second is yours to play what you like
+    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Your bar: play anything on it' : 'Copy it: hit what glows';
   }
 
   // ---------------------------------------------------------------- perform
@@ -2828,6 +2883,35 @@ export class Game {
   /** Something on the panel was pressed (an item's action id). */
   act(id: string): void {
     if (id.startsWith('key:')) return this.key(id.slice(4) as ModuleKey);
+    // Make a track: its first page (what it is, which style), then the parts one by one
+    if (id === 'nav:build') {
+      if (this.mode === 'results') this.leaveResults();
+      this.makerSel = Math.max(0, Math.min(TRACKS.length - 1, this.makerSel));
+      this.menu = 'maker';
+      this.refreshDisplay();
+      return;
+    }
+    if (id === 'maker:prev' || id === 'maker:next') {
+      this.makerSel = (this.makerSel + (id === 'maker:next' ? 1 : TRACKS.length - 1)) % TRACKS.length;
+      this.refreshDisplay();
+      return;
+    }
+    if (id === 'maker:go') {
+      const i = this.buildTracks.indexOf(TRACKS[this.makerSel]);
+      this.menu = 'free';
+      this.beginBuild(i >= 0 ? i : 0);
+      return;
+    }
+    if (id === 'maker:mine') {
+      this.menu = 'free';
+      this.restoreTrack();
+      return;
+    }
+    if (id === 'back' && this.menu === 'maker' && !this.tuneOpen && !this.settingsOpen) {
+      this.menu = this.found.includes('kit') ? 'free' : 'main';
+      this.refreshDisplay();
+      return;
+    }
     // starting over: from Settings, asked once; back (or Keep everything) returns to Settings
     if (id === 'nav:reset') {
       this.resetBack = this.menu;
@@ -3052,7 +3136,7 @@ export class Game {
     const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
       page: pageId,
-      line: pageId === 'free' ? (this.loopLine() || (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try Songs' : '')) : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Tap the desk to start') : d.line,
+      line: pageId === 'free' ? (this.loopLine() || (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try Songs' : '')) : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Hit a drum to start') : d.line,
       // (the songs page's line: your turn after a listen, or the band being asked)
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
@@ -3065,6 +3149,8 @@ export class Game {
       level: this.level,
       band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode, host: !!band.host, name: this.bandNameNow() },
       name: { title: this.nameFor === 'band' ? "Your band's name" : 'Your name', full: this.nameFor === 'band' ? this.bandNameNow() : this.myName(), words: this.nameWords() },
+      maker: this.makerModel(),
+      buildInfo: this.buildInfo(),
       loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
       settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false), guitarLap: this.stage.setting('guitarLap', false), name: this.myName() },
       next: this.fromPerform ? 'Next\nsong' : '',
@@ -3410,22 +3496,29 @@ const KNOCKS = new Set<string>(['block', 'clave', 'slit', 'cajon', 'frame', 'con
 
 /** What the module asks for each part. */
 const ASK: Record<string, string> = {
-  KICK: 'Hit a drum for BOOM',
-  SNARE: 'Pick the smack',
-  HAT: 'Pick the tick',
-  PERC: 'Tap the glowing note',
-  KEYS: 'Tap the glowing key',
-  BASS: 'Pick the low notes',
-  'PERC 2': 'Another note on this one',
-  CLAP: 'Clap your hands',
-  'KEYS 2': 'A high key this time',
+  KICK: 'The kick drum comes out',
+  SNARE: 'The snare comes out',
+  HAT: 'The hi-hat comes out',
+  PERC: 'The handpan comes out',
+  KEYS: 'The piano comes out',
+  BASS: 'The piano comes out: its low notes',
+  'PERC 2': 'The handpan again',
+  CLAP: 'Clap your hands to start it',
+  'KEYS 2': 'The piano again: a high note',
 };
 
 /** What a part is called where people read it: what it sounds like, not drummer's words. */
-const SAY: Record<string, string> = { KICK: 'BOOM', SNARE: 'SMACK', HAT: 'TICK', CLAP: 'CLAP', PERC: 'EXTRA', 'PERC 2': 'EXTRA 2', KEYS: 'TUNE', 'KEYS 2': 'HIGH TUNE', BASS: 'BASS' };
+const SAY: Record<string, string> = { KICK: 'Kick drum', SNARE: 'Snare', HAT: 'Hi-hat', CLAP: 'Clap', PERC: 'Handpan', 'PERC 2': 'Handpan, again', KEYS: 'Tune', 'KEYS 2': 'High tune', BASS: 'Bass' };
 export function say(part: string): string {
   return SAY[part] ?? part;
 }
+/** A part's name in a sentence ("Part 2 of 6: snare"). */
+function partName(part: string): string {
+  const s = say(part);
+  return s.toLowerCase();
+}
+/** Where a kept part goes when what it was played on isn't here today. */
+const SUGGEST_DEFAULT: Record<string, string> = { KICK: 'kit:kick', SNARE: 'kit:snare', HAT: 'kit:hat', CLAP: 'kit:snare', PERC: 'handpan:1', 'PERC 2': 'handpan:2', KEYS: 'piano:2', 'KEYS 2': 'piano:7', BASS: 'piano:0' };
 
 const NO_KEYS: ModuleKey[] = [];
 const LOOP_LOCKED: ModuleKey[] = ['loop'];

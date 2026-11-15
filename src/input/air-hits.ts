@@ -96,6 +96,8 @@ function over(s: AirSurface, x: number, z: number, grow: number): boolean {
   return Math.abs(x - s.x) <= (s.w ?? 0) / 2 + grow && Math.abs(z - s.z) <= (s.d ?? 0) / 2 + grow;
 }
 const BIG = 1;
+/** Frames after sliding off a key that one slid onto plays (a glissando crosses the gap between keys in a frame or two). */
+const SLIDE_FRAMES = 6;
 
 /** The depth of a point through a surface (+: in front of or above it, −: through it). */
 function side(s: AirSurface, x: number, y: number, z: number): number {
@@ -119,8 +121,9 @@ export class AirHits {
   private sm: Float32Array;
   private ext: Float32Array;
   private age: Uint8Array;
-  /** Per point: the key it holds down (-1: none). */
+  /** Per point: the key it holds down (-1: none); frames left of a slide off one (a glissando's next key plays). */
   private held: Int16Array;
+  private slid: Uint8Array;
   /** Struck surfaces with `relift`, per point and surface: lifted from the deepest, now watching for a stroke down. */
   private rel: Uint8Array;
 
@@ -136,6 +139,7 @@ export class AirHits {
     this.ext = new Float32Array(points * IDS);
     this.age = new Uint8Array(points * IDS);
     this.held = new Int16Array(points).fill(-1);
+    this.slid = new Uint8Array(points);
     this.rel = new Uint8Array(points * IDS);
   }
 
@@ -204,6 +208,11 @@ export class AirHits {
     const moved = Math.hypot(x - px, y - py, z - pz);
     // keys first: the one held let up (or not), then any it's come into
     let keys = false;
+    // (a key let go lately by sliding off it: a key it comes onto was slid into, a glissando)
+    if (this.slid[p] > 0) this.slid[p]--;
+    // (the top of the highest key it's inside, under its top: keys lower than that, under it, can't be pressed from
+    // there; a finger in a black key isn't on the white keys beneath it)
+    let shadow = -Infinity;
     for (const s of surfaces) {
       if (!s.key) continue;
       keys = true;
@@ -211,6 +220,7 @@ export class AirHits {
       const now = side(s, x, y, z);
       const m = (this.sm[t] += (now - this.sm[t]) * 0.4);
       if (this.age[t] < 255) this.age[t]++;
+      if (now < 0 && now > -KEY.deep && s.y > shadow && over(s, x, z, 0)) shadow = s.y;
       if (!this.down[t]) continue;
       // (held: the deepest it's been lately; up as it lifts from there, rises out, or leaves)
       if (m < this.ext[t] || this.age[t] > KEY.liftFrames) {
@@ -224,6 +234,7 @@ export class AirHits {
         // (out of it, to the side or above: in again plays at once; lifted, or gone under it: it has to come down)
         this.ext[t] = gone || now > KEY.out ? BIG : m;
         this.age[t] = 0;
+        if (gone) this.slid[p] = SLIDE_FRAMES;
       }
     }
     if (keys)
@@ -239,9 +250,19 @@ export class AirHits {
           continue;
         }
         if (!over(s, x, z, -KEY.edge / 4)) {
-          if (!over(s, x, z, KEY.edge)) this.ext[t] = BIG;
+          // (off it: coming onto it from above plays at once; from the side, under its top, only in a glissando)
+          if (!over(s, x, z, KEY.edge)) this.ext[t] = m > 0 ? BIG : m;
           continue;
         }
+        // (over it while holding another down, a black key over this white one: it waits for a stroke of its own, so
+        // letting the black key up, still below this one's top, doesn't press it; slid into from one let go this
+        // frame: in from the side)
+        if (this.held[p] >= 0 || s.y < shadow - 0.003) {
+          this.ext[t] = m;
+          this.age[t] = 0;
+          continue;
+        }
+        if (this.slid[p] > 0 && this.ext[t] < BIG && this.ext[t] < 0) this.ext[t] = BIG;
         // (up and over it: the highest it's been lately)
         if (m > this.ext[t] || (this.ext[t] < BIG && this.age[t] > KEY.dropFrames)) {
           this.ext[t] = Math.max(m, this.ext[t] - (this.age[t] > KEY.dropFrames ? 0.0005 : 0));

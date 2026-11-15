@@ -227,7 +227,8 @@ export function scoreOf(tune: Tune): Score {
 
 /** The songs, easiest first. */
 /** (the lessons first, one per instrument, then the songs) */
-export const SCORES: readonly Score[] = [...LESSONS.map(scoreOf), ...TUNES.map(scoreOf).sort((a, b) => a.rating - b.rating)];
+// (the lessons, then the classics everyone knows, then the game's own songs; each easiest first)
+export const SCORES: readonly Score[] = [...LESSONS.map(scoreOf), ...TUNES.map(scoreOf).sort((a, b) => Number(!!a.tune.original) - Number(!!b.tune.original) || a.rating - b.rating)];
 
 /** MIDI of the melody's tonic: where the piano's tune sits (its root between F4 and E5, as the room sets it). */
 export function melodyRoot(key: number): number {

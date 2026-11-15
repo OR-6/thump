@@ -5,7 +5,7 @@
  */
 import { KEYS, SCALES, SHELF, instDef } from '../kit/shelf.js';
 
-export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'join' | 'name' | 'reset' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
+export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'join' | 'name' | 'reset' | 'maker' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
 
 export interface Item {
   id: string;
@@ -67,6 +67,10 @@ export interface MenuInput {
   band: { state: string; code: string; players: number; message?: string; typed?: string; host?: boolean; name?: string };
   /** The name page: what it's naming, the name, its two words (each a button that changes it). */
   name?: { title: string; full: string; words: [string, string] };
+  /** Make a track's first page: the style chosen (its name, tempo, parts in order) and the track you kept, if any. */
+  maker?: { name: string; bpm: number; parts: string[]; saved: string };
+  /** Make a track's part screen: what's in, what's now, what's to come. */
+  buildInfo?: string;
   settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean; panelMoved?: boolean; guitarLap?: boolean; name?: string };
   /** Free play's looper: off, counting in, recording or playing; how many layers it holds. */
   loop?: { state: string; layers: number; recording: boolean };
@@ -122,7 +126,7 @@ function buildPageFor(m: MenuInput): Page {
       const items: Item[] = [
         { id: 'nav:songs', label: 'Songs', sub: nl ? `${n} songs · ${nl} lessons` : `${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
         { id: 'nav:instruments', label: 'Instruments', sub: m.inst.name, icon: m.inst.id, kind: 'tile', x: X3, y: 176, w: C4, h: 480 },
-        { id: 'nav:build', label: 'Make a track', sub: 'Part by part', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h },
+        { id: 'nav:build', label: 'Make a track', sub: 'Build a loop, play on it', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h },
         { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', kind: 'button', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h },
         corner('nav:settings', 'Settings'),
       ];
@@ -275,6 +279,19 @@ function buildPageFor(m: MenuInput): Page {
       items.push({ id: 'back', label: 'Done', kind: 'play', x: 32, y: BOT.y, w: W - 64, h: BOT.h });
       return { id: 'name', title: n.title, line: n.title === 'Your name' ? 'How you show on the world boards' : 'How your band shows on the world boards', items };
     }
+    case 'maker': {
+      // what it is in a sentence, the style to build in (left and right through them), and go; the one you kept
+      const mk = m.maker ?? { name: '', bpm: 0, parts: [], saved: '' };
+      const items: Item[] = [back()];
+      items.push({ id: 'value:makerhow', label: `Build a two-bar loop one part at a time: ${mk.parts.join(', ')}. Each part lights up a bar to copy, then gives you a bar of your own. When they're all in, play over it.`, kind: 'text', x: 32, y: 176, w: W - 64, h: 230 });
+      items.push({ id: 'maker:prev', label: '‹', kind: 'button', x: 32, y: 430, w: 140, h: 200 });
+      items.push({ id: 'value:maker', label: `${mk.name} · ${mk.bpm} bpm`, kind: 'text', x: 188, y: 430, w: W - 376, h: 200 });
+      items.push({ id: 'maker:next', label: '›', kind: 'button', x: W - 172, y: 430, w: 140, h: 200 });
+      const half = (W - 64 - 16) / 2;
+      items.push({ id: 'maker:mine', label: 'Your track', sub: mk.saved || 'None kept yet', off: !mk.saved, kind: 'button', x: 32, y: BOT.y, w: half, h: BOT.h });
+      items.push({ id: 'maker:go', label: 'Start', sub: `Part 1: ${mk.parts[0] ?? ''}`, kind: 'play', x: 32 + half + 16, y: BOT.y, w: half, h: BOT.h });
+      return { id: 'maker', title: 'Make a track', line: 'A loop you build, then play over', items };
+    }
     case 'reset': {
       // starting over: asked once, with keeping it the big button
       const half = (W - 64 - 16) / 2;
@@ -330,6 +347,7 @@ function buildPageFor(m: MenuInput): Page {
             { id: 'stop', label: m.sure ? 'Sure?' : 'Stop', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h },
             { id: 'key:prev', label: 'Back a part', kind: 'button', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h },
           ];
+      if (m.buildInfo) items.push({ id: 'value:build', label: m.buildInfo, kind: 'text', x: 32, y: 196, w: W - 64, h: 200 });
       return { id: 'build', title: m.line, line: m.sub, items, body: 'song' };
     }
     case 'song': {

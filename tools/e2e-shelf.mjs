@@ -155,7 +155,10 @@ shot('shelf-handpan', look);
 await tab('congas');
 s = state();
 check('then congas', s.targets.inst?.[0] === 4 && s.game.display.page?.title === 'Congas', `${s.game.display.page?.title} inst=${s.targets.inst}`);
-// (the congas stand 12 cm tall: a hand down through the high drum's head, in its middle)
+// (the congas stand 12 cm tall: a hand down through the high drum's head, in its middle; first the hand away from
+// the panel it just pressed, as a player's would be)
+xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
+await wait(400);
 await slapAt(s.targets.inst2.map((v, i) => v - (i === 1 ? 0.015 : 0)), [0, 1, 0], { from: 0.08 });
 s = state();
 check('the high drum plays an open tone in its middle', s.debug.lastHit?.family === 'congas' && s.debug.lastHit?.zone === 2, JSON.stringify(s.debug.lastHit));

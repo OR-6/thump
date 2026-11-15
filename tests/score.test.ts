@@ -30,16 +30,18 @@ function pianoMidi(scale: string, zone: number): number {
 }
 
 describe('the songs: classics with modern grooves, and originals', () => {
-  it('a library of about twenty, easiest first, the classics and the originals', () => {
+  it('a library of about twenty: the classics, then the originals, each easiest first', () => {
     expect(SCORES.length).toBeGreaterThanOrEqual(18);
     expect(SONGS.filter((s) => s.tune.original).length).toBe(6);
     expect(new Set(TUNES.map((t) => t.id)).size).toBe(TUNES.length);
     expect(SONG_TRACKS.map((t) => t.id)).toEqual(SCORES.map((s) => s.tune.id));
-    for (let i = 1; i < SONGS.length; i++) expect(SONGS[i].rating).toBeGreaterThanOrEqual(SONGS[i - 1].rating);
-    // each difficulty has songs in it, in order
+    const firstOwn = SONGS.findIndex((s) => s.tune.original);
+    expect(SONGS.slice(firstOwn).every((s) => s.tune.original)).toBe(true);
+    for (let i = 1; i < SONGS.length; i++) if (i !== firstOwn) expect(SONGS[i].rating).toBeGreaterThanOrEqual(SONGS[i - 1].rating);
+    // each difficulty has songs in it
     const d = SCORES.map((s) => s.difficulty);
-    expect(d[0]).toBe('Easy');
-    expect(d[d.length - 1]).toBe('Hard');
+    expect(d.includes('Easy')).toBe(true);
+    expect(d.includes('Hard')).toBe(true);
     expect(d.includes('Medium')).toBe(true);
     // no nursery rhymes
     for (const gone of ['mary', 'twinkle', 'jingle-bells', 'oh-susanna']) expect(TUNES.some((t) => t.id === gone)).toBe(false);

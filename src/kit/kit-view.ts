@@ -25,6 +25,18 @@ import { CONGA, GUITAR, HANDPAN, KEYBOARD, MARIMBA, NECK, instZones, type InstId
 export const KEYS_ROW = { x: 0, z: -0.11 } as const;
 /** The kit's playing area (kit-local): the whole table here is the kit. */
 export const KIT_ZONE = { halfX: 0.34, back: -0.24, front: 0.12 } as const;
+/**
+ * Where the sign (the HUD: tips, your run, your timing) stands for each instrument, kit-local (y up, z toward you):
+ * behind the instrument, over its back edge and under the display's bottom edge, so it's in view while you look at
+ * what you play, not down by your hands. Clear of the drums at the back (the tom's head) and the congas' tops.
+ */
+export const HUD_AT: Record<string, { y: number; z: number }> = {
+  drums: { y: 0.285, z: -0.13 },
+  congas: { y: 0.33, z: -0.14 },
+  piano: { y: 0.16, z: -0.14 },
+  marimba: { y: 0.14, z: -0.14 },
+  handpan: { y: 0.16, z: -0.14 },
+};
 
 let shadowTex: CanvasTexture | null = null;
 function handShadowTexture(): CanvasTexture {
@@ -173,8 +185,8 @@ export class KitView {
     this.instKey = `${id}:`;
     // (only the one that's out shows: the drums put every other model away)
     for (const [k, m] of this.models) m.root.visible = k === id;
-    // the display stands just clear of it
-    this.module.standOver(id === 'drums' ? 0.26 : id === 'congas' ? CONGA.top : id === 'piano' ? 0.105 : id === 'marimba' ? MARIMBA.top : id === 'guitar' ? 0.32 : HANDPAN.rim + HANDPAN.dome);
+    // the display stands just clear of it, with room under its bottom edge for the sign (HUD_AT)
+    this.module.standOver(id === 'drums' ? 0.29 : id === 'congas' ? CONGA.top + 0.05 : id === 'piano' ? 0.165 : id === 'marimba' ? MARIMBA.top + 0.06 : id === 'guitar' ? 0.32 : HANDPAN.rim + HANDPAN.dome + 0.06);
     if (drums) {
       this.instZones = [];
       this.instShadow.visible = false;

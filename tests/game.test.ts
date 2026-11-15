@@ -226,7 +226,7 @@ describe('the game', () => {
     expect(voiced.slice(before).length).toBe(0);
   });
 
-  it('build: ▶ asks for a thing per part; hit one, play two bars along, it loops; six parts and the desk plays it', () => {
+  it('build: each part comes out on its own; copy the lit bar, play your own, it loops; six parts, kept, and the desk plays it', () => {
     const voiced: string[] = [];
     const st = { ...stage([]), voice: (key: string) => voiced.push(key) };
     const p = freshProgress();
@@ -237,55 +237,53 @@ describe('the game', () => {
     expect(g.display.line).toBe('Play a song?');
     g.beginBuild(0);
     expect(g.mode).toBe('build');
-    expect(g.display.sub).toBe('Hit a drum for BOOM');
+    expect(g.display.line).toBe('Part 1 of 6: kick drum');
     let t = 45.1;
-    const parts = ['kit:kick', 'kit:snare', 't1:0', 'keys:0', 'keys:2', 'kit:tom'];
-    for (const key of parts) {
+    // (nothing to pick: each part goes on its glowing key; play every lit note on time until all six are in)
+    for (let k = 0; k < 30 * 120 && !g.buildRunning(); k++) {
+      t += 1 / 30;
       g.tick(t);
-      expect(g.buildAsks()).not.toBeNull();
-      g.hit(key, t, 0.8);
-      // play every lit note on time, until the module asks for the next part
-      for (let k = 0; k < 600 && g.buildAsks() === null && !g.buildRunning(); k++) {
-        t += 1 / 30;
-        g.tick(t);
-        g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
-      }
+      g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
     }
     expect(g.buildRunning()).toBe(true);
     expect(p.built).toContain('kick-start');
+    // (kept, to come back from the first page)
+    expect(p.track?.id).toBe('kick-start');
+    expect(p.track?.parts.length).toBe(6);
     // the machine plays every part on its things
     const before = voiced.length;
     for (let k = 0; k < 120; k++) g.tick((t += 1 / 30));
     const played = voiced.slice(before);
     expect(played.some((k) => k === 'kit:kick')).toBe(true);
     expect(played.some((k) => k.startsWith('t1:'))).toBe(true);
-    expect(played.some((k) => k.startsWith('keys:'))).toBe(true);
+    expect(played.some((k) => k.startsWith('piano:'))).toBe(true);
+    // and it comes back: Your track, on the first page, loops it again
+    const g2 = new Game(st, p, room([]));
+    g2.start(0);
+    g2.discovered('kit', 'table', 0);
+    g2.act('nav:build');
+    expect(g2.display.page?.items.find((i) => i.id === 'maker:mine')?.off).toBeFalsy();
+    g2.act('maker:mine');
+    expect(g2.buildRunning()).toBe(true);
   });
 
-  it('build: a stray tap right after a part goes in picks nothing; the module says what went in and what is next', () => {
+  it('build: the panel says what went in and what is next, and the next part starts by itself', () => {
     const g = new Game(stage([]), freshProgress(), room([{ id: 't1', family: 'bell', zones: 1 }]));
     g.start(0);
     g.discovered('kit', 'table', 0);
     g.tick(45);
     g.beginBuild(0);
     let t = 45.1;
-    g.tick(t);
-    g.hit('kit:kick', t, 0.8);
-    for (let k = 0; k < 600 && g.display.sub !== 'Next: SMACK'; k++) {
+    for (let k = 0; k < 900 && !/^Next, part 2/.test(g.display.sub); k++) {
       t += 1 / 30;
       g.tick(t);
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
     }
-    expect(g.display.line).toMatch(/^BOOM: (yours|every note|\d+ of \d+)$/);
-    // still tapping along on the kick: nothing is picked
-    g.hit('kit:kick', t, 0.8);
-    expect(g.buildAsks()).toBeNull();
-    for (let k = 0; k < 120 && g.buildAsks() === null; k++) g.tick((t += 1 / 30));
-    expect(g.buildAsks()).toBe('SNARE');
-    // the kick again, once: still nothing; twice quickly: it plays the snare too
-    g.hit('kit:kick', t, 0.8);
-    expect(g.buildAsks()).toBe('SNARE');
-    g.hit('kit:kick', t + 0.2, 0.8);
+    expect(g.display.sub).toBe('Next, part 2 of 6: snare');
+    expect(g.display.line).toMatch(/^Kick drum is in/);
+    // a bar later the snare is counting in on its own, nothing picked
+    for (let k = 0; k < 240 && (g.display.line !== 'Part 2 of 6: snare' || g.buildAsks() !== null); k++) g.tick((t += 1 / 30));
+    expect(g.display.line).toBe('Part 2 of 6: snare');
     expect(g.buildAsks()).toBeNull();
   });
 
@@ -324,7 +322,7 @@ describe('the game', () => {
     expect(g.display.stars).not.toBe(-1);
     expect(g.display.result).toBeTruthy();
     g.tick((t += 6.6));
-    expect(g.display.sub).toBe('The tick never missed');
+    expect(g.display.sub).toBe('The hi-hat never missed');
     g.key('play');
     expect(g.mode).toBe('count');
   });
@@ -397,7 +395,7 @@ describe('the game', () => {
       }
     }
     // the tape says what each thing plays
-    expect(labels[labels.length - 1]).toContain('TICK@t1:0');
+    expect(labels[labels.length - 1]).toContain('Hi-hat@t1:0');
     cover = true;
     let from = voiced.length;
     for (let k = 0; k < 180; k++) g.tick((t += 1 / 30));
@@ -613,9 +611,12 @@ describe('the game', () => {
     expect(g.song?.name).toBe(SONG_TRACKS[1].name);
     // Make a track still builds the loop tracks, the first first
     g.stop();
+    // (Make a track opens on its first page: what it is, and the style; Start begins the first part)
     g.act('nav:build');
+    expect(g.display.page?.id).toBe('maker');
+    g.act('maker:go');
     expect(g.mode).toBe('build');
-    expect(g.display.line).toMatch(/BOOM/);
+    expect(g.display.line).toMatch(/^Part 1 of \d+: kick drum$/);
   });
 
   it("a song on the piano: Easy is the tune's notes on 1 and 3, and the band plays the rest of it", () => {

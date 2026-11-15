@@ -48,7 +48,7 @@ import { Placement, kitPose } from '../app/placement.js';
 import { FrameGuard } from '../app/frame-guard.js';
 import { speedToGain, type HandSample, type Point, type Strike } from '../kit/strike.js';
 import { kitLayout, pickPad, type PadSpot } from '../kit/layout.js';
-import { KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
+import { HUD_AT, KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
 import { LED } from '../kit/pad-view.js';
 import { KEYS, type ModuleKey } from '../ui/module.js';
 import { PANEL, itemZone } from '../ui/panel.js';
@@ -1204,7 +1204,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           const a = dx * f.x + dz * f.z;
           const l = dx * -f.z + dz * f.x;
           const hh = Math.max(-0.2, Math.min(0.25, this.moveAt.y - this.kitBaseY));
-          this.settings = { ...this.settings, kitNudge: { a: Math.max(-0.3, Math.min(0.3, a)), l: Math.max(-0.5, Math.min(0.5, l)), ...(Math.abs(hh) > 0.003 ? { h: hh } : {}) } };
+          this.settings = { ...this.settings, kitNudge: { a: Math.max(-0.3, Math.min(0.3, a)), l: Math.max(-0.5, Math.min(0.5, l)), ...(Math.abs(hh) > 0.003 ? { h: hh, h2: true as const } : {}) } };
           saveSettings(this.settings);
           sfx.set();
           this.placeKit(true);
@@ -1262,6 +1262,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private hudFirstT = -9;
   private hudSticksT = -9;
   private coachKitT = -1;
+  private coachHits = 0;
+  private coachGoT = -1;
   private coachSkip = 0;
   /** Where the HUD stands (kit-local): on the desk on your side of the instrument, clear of the kick's front. */
   private hudAt = new Vector3(0, 0.05, 0.24);
@@ -1382,11 +1384,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (coach === 0 && mode === 'discover' && !this.game.paused) {
         // the welcome: tap the desk and the drums arrive, then the first lesson starts by itself
         if (!this.game.found.includes('kit'))
-          say = { kind: 'tip', big: 'Welcome to Thump', small: 'Played before? Pinch and hold to skip', foot: 'Tap the desk to begin' };
+          say = { kind: 'tip', big: 'Welcome to Thump', small: 'Played before? Pinch and hold to skip', foot: 'Hit a drum, or tap the desk' };
         else {
-          say = { kind: 'tip', big: 'Your drums', small: 'Make fists: they are your sticks', icon: 'stick' };
-          if (this.coachKitT < 0) this.coachKitT = this.uiT;
-          if (this.uiT - this.coachKitT > 1.6) {
+          // (play a little first: the first lesson starts after a few hits, or 12 s, counted in on the sign)
+          if (this.coachKitT < 0) {
+            this.coachKitT = this.uiT;
+            this.coachHits = this.debug.hits;
+          }
+          const since = this.uiT - this.coachKitT;
+          const played = this.debug.hits - this.coachHits;
+          if (played >= 8 && this.coachGoT < 0) this.coachGoT = this.uiT;
+          const goAt = Math.min(12, this.coachGoT >= 0 ? this.coachGoT - this.coachKitT + 3 : 12);
+          const left = Math.ceil(goAt - since);
+          say = { kind: 'tip', big: 'Your drums', small: 'Make fists: they are your sticks. Hit anything', icon: 'stick', ...(left <= 3 ? { foot: `First lesson in ${Math.max(1, left)}` } : {}) };
+          if (since > goAt) {
             const i = this.game.tracks.findIndex((t) => t.id === 'learn-drums');
             if (i >= 0) {
               this.coachTo(1);
@@ -1420,8 +1431,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     hud.set(say);
     this.hudSay = say;
-    // (the guitar in your lap is where the sign stands: the sign stands back on the desk, behind it)
-    this.hudAt.z = this.guitarLap && this.kit.inst === 'guitar' ? 0.02 : 0.24;
+    // (the sign stands behind the instrument, over it: in view while you play, not down by your hands; the guitar in
+    // your lap leaves the desk free, and it stands where the instruments would)
+    const ha = this.guitarLap && this.kit.inst === 'guitar' ? null : HUD_AT[this.kit.inst];
+    if (ha) this.hudAt.set(0, ha.y, ha.z);
+    else this.hudAt.set(0, 0.05, this.guitarLap && this.kit.inst === 'guitar' ? 0.02 : 0.24);
     hud.update(dt, this.hudAt, this.head, motion.calm, this.hudTargetOn ? this.hudTarget : null);
   }
 
@@ -3364,7 +3378,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.dropPicks();
       return;
     }
-    if (this.kitOutT < 0 && this.game.found.includes('kit')) this.kitOutT = this.clock.t;
+    // (the instruments play from the moment they're out: a drum hit before the desk was ever tapped finds the kit)
+    if (this.kitOutT < 0 && (this.game.found.includes('kit') || this.placement.phase === 'placed')) this.kitOutT = this.clock.t;
     const out = this.kitOutT >= 0 && this.placement.phase === 'placed';
     const drums = out && this.kit.inst === 'drums';
     const piano = out && this.kit.inst === 'piano';
@@ -3543,9 +3558,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.stickTip[i].copy(this.stickGrip[i]).addScaledVector(this.stickDir[i], STICK_LEN);
       }
       if (!drums && !piano && !congas && !guitar && !marimba) continue;
-      // a hand at the panel (its fingertip within 6 cm of the face) is pressing a button, not playing what's under it
+      // a hand at the panel (its fingertip within 6 cm of the face, over it or 1.5 cm past its edges) is pressing a
+      // button, not playing what's under it
       this.airP.copy(h.indexTip).applyMatrix4(this.moduleSurface.inv);
-      if (!this.kit.module.hidden && Math.abs(this.airP.y) < 0.06 && Math.abs(this.airP.x) < PANEL.w / 2 + 0.03 && Math.abs(this.airP.z) < PANEL.h / 2 + 0.03) {
+      if (!this.kit.module.hidden && Math.abs(this.airP.y) < 0.06 && Math.abs(this.airP.x) < PANEL.w / 2 + 0.03 && Math.abs(this.airP.z) < PANEL.h / 2 + 0.015) {
         for (let k = 0; k < AIR_PTS; k++) this.forgetPt(i * AIR_PTS + k);
         continue;
       }
@@ -3554,8 +3570,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // for the panel: only a stick plays
       // (a pinch is reaching for the screen or a handle only near them: a relaxed slap whose thumb lies along the finger
       // reads as a pinch, and its hits were dropped)
-      this.kit.module.root.getWorldPosition(this.pinchNear);
-      const nearUi = h.indexTip.distanceTo(this.pinchNear) < 0.3 || (this.movePuck?.visible && h.pinchPoint.distanceTo(this.movePuck.getWorldPosition(this.pinchNear2)) < 0.12);
+      // (near the screen: the fingertip within 10 cm of its face, over it; not just somewhere within 30 cm of its middle,
+      // which took in a raised screen's instrument under it)
+      const ui = this.pinchNear.copy(h.indexTip).applyMatrix4(this.moduleSurface.inv);
+      const nearUi = (!this.kit.module.hidden && Math.abs(ui.y) < 0.1 && Math.abs(ui.x) < PANEL.w / 2 + 0.06 && Math.abs(ui.z) < PANEL.h / 2 + 0.03) || (this.movePuck?.visible && h.pinchPoint.distanceTo(this.movePuck.getWorldPosition(this.pinchNear2)) < 0.12);
       const pinching = h.pinch.pinching && !!nearUi;
       // (one hand's points crossing in the same frame: the one that led, deepest through, is the note, off the piano)
       this.airBest.speed = -1;
@@ -3656,8 +3674,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // on the piano: chords)
     // (a mallet dragged along the bars plays each: a shorter wait)
     if (!piano && this.clock.t - this.airLock[i] < (zone && this.kit.inst === 'marimba' ? 0.025 : 0.05)) return;
-    // on the piano, the finger next to the one that pressed, dipping with it, isn't a press of its own
-    if (piano && this.clock.t - this.airLock[i] < 0.06 && hit.speed < 0.8 * this.airLockSpeed[i] && this.besideKey(hit.surface, this.airLockSurf[i])) return;
+    // on the piano, the finger next to the one that pressed, dipping with it, isn't a press of its own (a black key
+    // pressed: the white keys beside it, a moment longer, unless struck harder than it was; in the air there's no key
+    // to stop the hand, and the fingers beside go down with it)
+    if (piano && this.besideKey(hit.surface, this.airLockSurf[i])) {
+      const black = this.airLockSurf[i] >= 30 && hit.surface < 30;
+      const since = this.clock.t - this.airLock[i];
+      if (since < (black ? 0.15 : 0.08) && hit.speed < (black ? 1 : 0.8) * this.airLockSpeed[i]) return;
+    }
     this.airLock[i] = this.clock.t;
     this.airLockSpeed[i] = hit.speed;
     this.airLockSurf[i] = hit.surface;
@@ -3692,6 +3716,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     const lane = AIR_LANES[hit.surface];
     if (!lane || this.flam('air', hit.surface, side, t)) return;
+    // (the first drum hit, before the desk was tapped: that's the kit found, as a tap would)
+    if (!this.kitSurface.discovered) {
+      this.hitAt.x = this.airP.x;
+      this.hitAt.z = this.airP.z;
+      this.quietFind = true;
+      this.discover(this.kitSurface);
+      this.quietFind = false;
+    }
     this.playLane(lane, hit.gain, this.airP.x, t, this.airStrike);
     this.debug.hits++;
   }
@@ -4337,6 +4369,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private guitarHand = -1;
   private guitarOff = new Vector3();
   private guitarPinchWas = [false, false];
+  private fxN2 = new Vector3();
+  private segV = new Vector3();
+  /** How far point p is from the segment a-b. */
+  private segDistTo(p: Vector3, a: Vector3, b: Vector3): number {
+    this.segV.subVectors(b, a);
+    const L = this.segV.lengthSq();
+    const k = L > 0 ? Math.max(0, Math.min(1, this.tmp3.subVectors(p, a).dot(this.segV) / L)) : 0;
+    return this.tmp3.copy(a).addScaledVector(this.segV, k).distanceTo(p);
+  }
   private guitarGrabTick(): void {
     const on = this.guitarLap && this.kit.inst === 'guitar' && this.placement.phase === 'placed' && this.game.mode !== 'play' && this.game.mode !== 'count';
     if (!on) {
@@ -4369,9 +4410,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const started = h.pinch.pinching && !this.guitarPinchWas[i];
       this.guitarPinchWas[i] = h.pinch.pinching;
       if (this.guitarHand >= 0 || !started) continue;
-      // (its headstock: 15 cm past the nut, within 6 cm)
-      this.heldWorld(HG.nut - 0.15, 0.01, 0, this.fxN);
-      if (h.pinchPoint.distanceTo(this.fxN) > 0.06) continue;
+      // (anywhere along its headstock, tipped back 13 degrees from the nut, or the neck's first few centimetres: within
+      // 5 cm of that line)
+      this.heldWorld(HG.nut + 0.04, HG.board, 0, this.fxN);
+      this.heldWorld(HG.nut - 0.18 * Math.cos(0.23), HG.board - 0.18 * Math.sin(0.23), 0, this.fxN2);
+      if (this.segDistTo(h.pinchPoint, this.fxN, this.fxN2) > 0.05) continue;
       this.guitarHand = i;
       this.heldWorld(HG.hole, 0, 0, this.fxN).applyMatrix4(inv);
       this.guitarOff.subVectors(this.fxN, this.tmp);
@@ -4435,7 +4478,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const h = i === 0 ? hands.left : hands.right;
       // (a hand at the panel is pressing a button, not playing)
       this.airP.copy(h.indexTip).applyMatrix4(this.moduleSurface.inv);
-      const atPanel = !this.kit.module.hidden && Math.abs(this.airP.y) < 0.06 && Math.abs(this.airP.x) < PANEL.w / 2 + 0.03 && Math.abs(this.airP.z) < PANEL.h / 2 + 0.03;
+      const atPanel = !this.kit.module.hidden && Math.abs(this.airP.y) < 0.06 && Math.abs(this.airP.x) < PANEL.w / 2 + 0.03 && Math.abs(this.airP.z) < PANEL.h / 2 + 0.015;
       // a pinch with the strumming hand holds a pick (not at the panel, nor moving the guitar by its head)
       const pick = h.tracked && !h.controller && !atPanel && h.pinch.pinching && i === strummer && this.guitarHand !== i;
       // (from fingers to the pick or back: no strum read across the jump between them)
@@ -4968,6 +5011,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     return false;
   }
   private restoring = false;
+  /** The kit being found by a drum hit, not a tap on the desk. */
+  private quietFind = false;
 
   /**
    * The kit's first hit: it blooms out from your palm. Each pad lights up as the bloom reaches it, sounding itself
@@ -5005,7 +5050,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (s === this.kitSurface) {
       this.layout();
       const lanes = this.lanes();
-      if (this.restoring) this.kit.reveal(lanes);
+      // (found by a drum hit, the drums already out: nothing to unveil, the hit just plays)
+      if (this.quietFind) this.kit.revealKeys(this.hitAt.x, this.hitAt.z);
+      else if (this.restoring) this.kit.reveal(lanes);
       else this.bloom(lanes);
       // a player coming back finds the instrument they left out
       if (this.restoring && this.settings.inst !== 'drums') this.useInstrument(null);
@@ -5405,6 +5452,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         pose.yaw = Math.atan2(-(pose.x - this.head.x), -(pose.z - this.head.z));
         pose.y += nu.h ?? 0;
       }
+      // (never at your eyes: at least 20 cm under them, whatever was found or saved)
+      pose.y = Math.min(pose.y, this.head.y - 0.2);
       root.position.set(pose.x, pose.y, pose.z);
       root.rotation.set(0, pose.yaw, 0);
       root.updateMatrixWorld(true);
@@ -5481,7 +5530,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // the first words, at hand height over the table (the module says it too)
       if (!this.settings.noWords && !this.kitSurface.discovered) {
         this.tmp.set(0, 0.12, 0.02).applyMatrix4(root.matrixWorld);
-        this.tag.show('Tap the desk', 0xff5a3c, this.tmp, this.head, 6);
+        this.tag.show('Hit a drum', 0xff5a3c, this.tmp, this.head, 6);
       }
     }
     if (this.placement.source === 'default') this.stage && this.game.refreshDisplay();

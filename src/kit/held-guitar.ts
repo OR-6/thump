@@ -118,10 +118,10 @@ export const LAP = {
   yaw: 0.22,
   /** The top tipped back from upright (facing away), so its strings show over its edge. */
   tilt: 0.6,
-  /** The soundhole from your eyes (m): right, down, forward. */
+  /** The soundhole from your eyes (m): right, down, forward (its back clear of your body: a body 10 cm deep, tipped). */
   right: 0.1,
   down: 0.42,
-  forward: 0.22,
+  forward: 0.3,
 } as const;
 
 /** Where a player's eyes are, seen from the kit, when nothing better is known (seated 45 cm back, eyes 45 cm up). */
