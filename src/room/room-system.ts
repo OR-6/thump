@@ -46,7 +46,6 @@ import { KIT_STYLES, type KitStyle } from '../scene-assets/lib/drums.js';
 import { AIR, AirHits, type AirHit, type AirSurface } from '../input/air-hits.js';
 import { Placement, kitPose } from '../app/placement.js';
 import { FrameGuard } from '../app/frame-guard.js';
-import { occluderState } from '../input/occluders.js';
 import { speedToGain, type HandSample, type Point, type Strike } from '../kit/strike.js';
 import { kitLayout, pickPad, type PadSpot } from '../kit/layout.js';
 import { KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
@@ -5726,7 +5725,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (lvl === null || lvl === this.debug.degrade) return;
     this.debug.degrade = lvl;
     audio.setReverb(lvl < 1);
-    occluderState.enabled = lvl < 2;
+    // (your hands stay seen at every level: losing them is worse than any frame it saves)
     // (lights down costs a blend over both eyes: at the lowest levels the fill keeps only its sound and colours)
     this.dimmer.enabled = lvl < 2;
     this.lightsOut.level = lvl;
