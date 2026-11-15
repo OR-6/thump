@@ -1001,3 +1001,26 @@ describe('forgiving where it is hard to see', () => {
     expect(nearKeys('handpan:1', 'normal')).toEqual([]);
   });
 });
+
+describe('stars are each instrument\'s own', () => {
+  it('three stars on one instrument show on it, not on another; the song still counts as played', () => {
+    let out = 'drums';
+    const st = { ...stage([]), shelf: () => ({ id: out }) } as unknown as GameStage;
+    const p = freshProgress();
+    const g = new Game(st, p, room([]));
+    g.start(0);
+    g.begin(0);
+    play(g, 0, 120, 0.01, (x) => x.mode === 'results');
+    const id = Object.keys(p.stars)[0];
+    expect(id).toBeTruthy();
+    const on = (g as unknown as { starsOn(id: string): number }).starsOn.bind(g);
+    const inst = Object.keys(p.istars ?? {})[0]?.split(':')[1];
+    expect(inst).toBeTruthy();
+    out = inst!;
+    expect(on(id)).toBe(p.stars[id]);
+    out = inst === 'piano' ? 'drums' : 'piano';
+    expect(on(id)).toBe(0);
+    // (what unlocks the next songs is having played it at all)
+    expect(id in p.stars).toBe(true);
+  });
+});

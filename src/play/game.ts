@@ -1120,7 +1120,7 @@ export class Game {
     this.spotReadySaid = false;
     this.trace = [];
     this.overtook = false;
-    this.ghost = this.progress.top?.[`${m.track.id}:${this.level}`]?.trace ?? null;
+    this.ghost = this.progress.top?.[`${m.track.id}:${this.instNow()}:${this.level}`]?.trace ?? null;
     this.finalWait = -1;
     this.domSent = false;
     const t = m.track;
@@ -1402,7 +1402,7 @@ export class Game {
     this.afterListen = false;
     // a number to beat: the share of notes you played, best kept per song and level
     const pct = s.total ? Math.round(((s.perfect + s.good) / s.total) * 100) : 0;
-    const bk = `${p.track.id}:${this.level}`;
+    const bk = `${p.track.id}:${p.inst}:${this.level}`;
     pr.best ??= {};
     const before = pr.best[bk];
     pr.best[bk] = Math.max(before ?? 0, pct);
@@ -1421,6 +1421,11 @@ export class Game {
     this.resultsT0 = this.t;
     pr.stars[p.track.id] = Math.max(pr.stars[p.track.id] ?? 0, stars);
     if (stars === 3 && this.tempoAtStart >= 0.999) pr.gold[p.track.id] = true;
+    // (and on this instrument: the ones you see on the songs page are the instrument's own)
+    const ik = `${p.track.id}:${p.inst}`;
+    pr.istars ??= {};
+    pr.istars[ik] = Math.max(pr.istars[ik] ?? 0, stars);
+    if (stars === 3 && this.tempoAtStart >= 0.999) (pr.igold ??= {})[ik] = true;
     const today = dayKey();
     if (!pr.days.includes(today)) pr.days.push(today);
     pr.introDone = true;
@@ -2038,6 +2043,14 @@ export class Game {
 
   /** You paused the song (the panel's Pause): the panel shows Resume, Restart and Songs. */
   paused = false;
+  /** The instrument a result belongs to: the one in your hands in a song, else the one out. */
+  private instNow(): string {
+    return this.perf?.inst ?? this.stage.shelf?.(0).id ?? 'drums';
+  }
+  /** Your stars for a song on the instrument out (each instrument its own). */
+  private starsOn(id: string): number {
+    return this.progress.istars?.[`${id}:${this.instNow()}`] ?? 0;
+  }
   /** The last judged hit's offset from its note (s; − early, + late). */
   lastOffset = 0;
   /** Your last 10 hits' offsets (s), round the ring: `hitErrN` of them, the next going at `hitErrI`; `hitV` counts. */
@@ -2438,6 +2451,10 @@ export class Game {
     this.stage.casting({});
     p.stars[song.id] = Math.max(p.stars[song.id] ?? 0, s.stars);
     if (s.stars === 3 && this.tempoAtStart >= 0.999) p.gold[song.id] = true;
+    const ik = `${song.id}:${this.instNow()}`;
+    p.istars ??= {};
+    p.istars[ik] = Math.max(p.istars[ik] ?? 0, s.stars);
+    if (s.stars === 3 && this.tempoAtStart >= 0.999) (p.igold ??= {})[ik] = true;
     const today = dayKey();
     if (!p.days.includes(today)) p.days.push(today);
     if (i + 1 > p.next) p.next = Math.min(SONGS.length - 1, i + 1);
@@ -2897,7 +2914,7 @@ export class Game {
       const v = this.stage.shelf?.(0);
       this.songSel = Math.max(0, Math.min(this.songSel, this.tracks.length - 1));
       const tr = this.tracks[this.songSel];
-      d.songCard = { name: tr.name, meta: `${tr.bpm} BPM${tr.minor ? ', minor' : ''}`, pos: `${this.songSel + 1}/${this.tracks.length}`, stars: this.progress.stars[tr.id] ?? 0 };
+      d.songCard = { name: tr.name, meta: `${tr.bpm} BPM${tr.minor ? ', minor' : ''}`, pos: `${this.songSel + 1}/${this.tracks.length}`, stars: this.starsOn(tr.id) };
       const pitched = !!v && v.id !== 'drums';
       d.inst = v ? { id: v.id, name: v.name, detail: this.shelfWhat === 'scale' ? `Notes: ${v.scale}` : this.shelfWhat === 'sound' ? `Sound: ${v.sound}` : pitched ? `${v.scale} notes, ${v.sound}` : v.how } : null;
       d.keys = ['<', 'PLAY', '>', pitched ? 'NOTES' : '', pitched ? 'SOUND' : ''];
@@ -2924,7 +2941,7 @@ export class Game {
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
       // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
-      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false, grade: this.progress.top?.[`${t.id}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const) })),
+      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.starsOn(t.id), locked: false, grade: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const) })),
       songSel: this.songSel,
       songShown: this.shownSongs(),
       songPage: this.shownPage(),
@@ -2955,7 +2972,7 @@ export class Game {
     const sel = this.songAt(this.selected);
     d.count = 0;
     d.day = this.progress.days.length;
-    d.gold = !!this.progress.gold[sel.id];
+    d.gold = !!this.progress.igold?.[`${sel.id}:${this.instNow()}`];
     d.code = this.code;
     d.keyLabels = null;
     const un = this.progress.unlocks as string[];
@@ -3011,7 +3028,7 @@ export class Game {
       d.line = 'Play a song?';
       d.sub = `${song.name}: tap ▶`;
       d.pulse = 'play';
-      d.stars = this.progress.stars[song.id] ?? 0;
+      d.stars = this.starsOn(song.id);
       return;
     }
     switch (this.mode) {
@@ -3034,7 +3051,7 @@ export class Game {
                 ? 'Songs, then Play'
                 : 'Songs, then Play';
           d.pulse = jamNew ? 'jam' : 'play';
-          d.stars = this.progress.stars[sel.id] ?? 0;
+          d.stars = this.starsOn(sel.id);
         }
         break;
       case 'count':

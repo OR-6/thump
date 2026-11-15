@@ -56,6 +56,12 @@ export interface Progress {
   stars: Record<string, number>;
   /** 3 stars at full tempo: the gold felt ribbon. */
   gold: Record<string, boolean>;
+  /**
+   * Stars and gold per song on each instrument ('id:inst'): you can be good on the drums and new to the piano. The
+   * song-only `stars` above is "played it at all" (what unlocks the next songs).
+   */
+  istars?: Record<string, number>;
+  igold?: Record<string, boolean>;
   /** Index of the next song to play in order. */
   next: number;
   /** The crowd remembers its size between sessions. */
@@ -77,9 +83,9 @@ export interface Progress {
   built?: string[];
   /** Your band's name, painted on the kick (chosen once, from where you first sat). */
   bandName?: string;
-  /** Best score (% of notes) per song and level ('kick-start:easy'). */
+  /** Best score (% of notes) per song, instrument and level ('kick-start:drums:easy'). */
   best?: Record<string, number>;
-  /** Best score, accuracy, grade and full combo per song and level ('id:level'). */
+  /** Best score, accuracy, grade and full combo per song, instrument and level ('id:inst:level'). */
   top?: Record<string, import('../songs/scoring.js').BestRun>;
 }
 
@@ -107,6 +113,11 @@ export function loadProgress(): Progress {
     }
   }
   if (r.gold && typeof r.gold === 'object') for (const [k, v] of Object.entries(r.gold)) if (v === true) p.gold[k] = true;
+  if (r.istars && typeof r.istars === 'object') p.istars = numRecord(r.istars, 1, 3);
+  if (r.igold && typeof r.igold === 'object') {
+    p.igold = {};
+    for (const [k, v] of Object.entries(r.igold)) if (v === true) p.igold[k] = true;
+  }
   if (typeof r.next === 'number' && Number.isInteger(r.next) && r.next >= 0 && r.next < 100) p.next = r.next;
   if (typeof r.crowd === 'number' && r.crowd >= 3 && r.crowd <= 12) p.crowd = Math.round(r.crowd);
   if (r.moved && typeof r.moved === 'object') {
