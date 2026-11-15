@@ -321,15 +321,16 @@ export class PadView {
     this.squashT = 0;
     this.squashK = gain;
     this.flash = Math.max(this.flash, 0.4 + 0.6 * gain);
-    for (let k = 0; k < 3; k++) this.rippleAge[k] = -0.08 * k;
+    // (two ripples, the second a beat behind; one when calm)
+    for (let k = 0; k < 3; k++) this.rippleAge[k] = k < (motion.calm ? 1 : 2) ? -0.08 * k : 0.15;
   }
 
   private white = 0;
   private dim = 0;
 
-  /** Hit right on time: a white flash of the ring. */
+  /** Hit right on time: the ring warms toward white for a moment (the hit's own ring says the rest). */
   perfect(): void {
-    this.white = 1;
+    this.white = 0.55;
   }
 
   /** Its note went by unplayed: the ring dims for a moment. */

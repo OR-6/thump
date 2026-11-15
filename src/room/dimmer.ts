@@ -1,8 +1,9 @@
 /**
  * Lights down: during a solo the room above the desk goes dim (a dark cap over you, eased in over a beat: the desk,
  * the tray and your hands below eye level stay as they are), and hits throw a soft wash of their instrument's colour
- * into it, at most three times a second (never a strobe), none at all with calm motion. When the fill lands ("Huge!")
- * the room comes back up.
+ * into it: at most one every 0.6 s, rising over a tenth of a second and fading over most of a second, so the dark
+ * breathes in colour rather than flashing (anything at 3 Hz or more filling the view is a strobe); none at all with
+ * calm motion. When the fill lands ("Huge!") the room comes back up.
  */
 import { BackSide, Color, Mesh, MeshBasicMaterial, SphereGeometry, Vector3 } from '@iwsdk/core';
 
@@ -14,6 +15,7 @@ export class Dimmer {
   private dark = 0;
   private want = 0;
   private burst = 0;
+  private burstWant = 0;
   private burstColor = new Color();
   private lastBurst = -9;
   private t = 0;
@@ -44,14 +46,14 @@ export class Dimmer {
   /** A hit in the dark: a flash of its colour. */
   hit(color: number, gain: number): void {
     this.onHit?.(color, gain);
-    if (this.dark < 0.1 || this.calm || this.t - this.lastBurst < 0.33) return;
+    if (this.dark < 0.1 || this.calm || this.t - this.lastBurst < 0.6) return;
     this.burstColor.setHex(color);
     // (a near-white colour, the snare's, would read as a flash: it washes in as its warm tint instead)
     const hsl = { h: 0, s: 0, l: 0 };
     this.burstColor.getHSL(hsl);
     if (hsl.s < 0.35) this.burstColor.setHSL(0.09, 0.8, 0.5);
     this.lastBurst = this.t;
-    this.burst = Math.max(this.burst, 0.15 + 0.12 * gain);
+    this.burstWant = Math.max(this.burstWant, 0.08 + 0.08 * gain);
   }
 
   update(dt: number, head: Vector3, calm: boolean): void {
@@ -60,7 +62,14 @@ export class Dimmer {
     // down over about half a second, back up quicker
     const rate = this.want > this.dark ? 2.2 : 4;
     this.dark += Math.sign(this.want - this.dark) * Math.min(Math.abs(this.want - this.dark), dt * rate * (calm ? 0.5 : 1));
-    this.burst = Math.max(0, this.burst - dt * 2.5);
+    // (in over a tenth of a second, out over most of one)
+    if (this.burstWant > this.burst) {
+      this.burst = Math.min(this.burstWant, this.burst + dt * 1.6);
+      if (this.burst >= this.burstWant) this.burstWant = 0;
+    } else {
+      this.burstWant = 0;
+      this.burst = Math.max(0, this.burst - dt * 0.22);
+    }
     this.mesh.visible = this.dark > 0.01;
     if (!this.mesh.visible) return;
     this.mesh.position.copy(head);

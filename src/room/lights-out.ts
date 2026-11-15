@@ -50,6 +50,7 @@ import {
 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
 import { audio } from '../audio/engine.js';
+import { sfx } from '../audio/sfx.js';
 import { hands, type HandState } from '../input/hands.js';
 import { BONES } from '../input/occluders.js';
 import type { Game } from '../play/game.js';
@@ -537,8 +538,9 @@ export class LightsOut {
       if ((m.geometry.boundingSphere?.radius ?? 0) * Math.max(_s.x, _s.y, _s.z) >= 0.03) m.layers.enable(KIT_LAYER);
     });
     this.syncRoom();
-    audio.powerDown();
-    audio.kaChunk(STRIKE_S);
+    // (a curtain call lands with the grade's own stamp: only the lamp)
+    if (kind !== 'curtain') sfx.powerDown();
+    sfx.strike(this.calm ? 0.8 : STRIKE_S);
     if (kind === 'song') {
       // the band drops to the drums until the next downbeat after the strike, then comes back with more room
       const spb = this.host.game.clock.spb;
@@ -547,6 +549,8 @@ export class LightsOut {
       const back = audio.now() + (nb - this.fireBeat) * spb;
       audio.bandDrop(back);
       audio.wetter(true, back);
+      // (and the band comes back in on a bloom of the key's chord)
+      sfx.bloom(back);
     }
   }
 
@@ -561,9 +565,9 @@ export class LightsOut {
     if (this.kind === 'song') audio.wetter(false);
   }
 
-  /** A hit (or any coloured moment): the lit area takes its colour, at most three times a second. */
+  /** A hit (or any coloured moment): the lit area takes its colour, at most twice a second (never a flicker). */
   hit(color: number, gain: number): void {
-    if (this.phase !== 'on' || !this.struck || this.t - this.lastTint < 0.33 || this.calm) return;
+    if (this.phase !== 'on' || !this.struck || this.t - this.lastTint < 0.5 || this.calm) return;
     // (the Spotlight's own gold beat pulse is the beam's breath, not a colour)
     if (color === 0xffd36a && gain < 0.5) return;
     this.tintCol.setHex(color);
@@ -610,8 +614,9 @@ export class LightsOut {
     let on = 0;
     if (this.struck) {
       const s = this.t - strikeAt;
+      // (the lamp catching: one quick dip as it strikes, then up; calm, it just eases on)
       if (calm) on = ease(s / 0.25);
-      else on = s < 0.015 ? 1 : s < 0.03 ? 0.18 : s < 0.045 ? 0.85 : s < 0.06 ? 0.35 : 1;
+      else on = s < 0.03 ? 0.9 : s < 0.07 ? 0.55 : Math.min(1, 0.55 + 0.45 * ease((s - 0.07) / 0.12));
     }
 
     // the beat: the beam breathes on it

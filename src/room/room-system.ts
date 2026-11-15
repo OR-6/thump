@@ -51,6 +51,7 @@ import { KEYS, type ModuleKey } from '../ui/module.js';
 import { PANEL, itemZone } from '../ui/panel.js';
 import { Tag, DebugBoard } from '../ui/tag.js';
 import { audio, type Voice } from '../audio/engine.js';
+import { sfx, type Music } from '../audio/sfx.js';
 import { bandNameFor, loadProgress, saveProgress, freshProgress, type Progress, type SavedPad } from '../persistence/progress.js';
 import { loadSettings, saveSettings, type Settings } from '../persistence/settings.js';
 import { motion, prefersReducedMotion } from '../ui/motion.js';
@@ -212,7 +213,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     return true;
   };
-  /** A judged hit lights the part it was on: its outline swells off it (a Perfect brighter and twice). */
+  /**
+   * A judged hit lights the part it was on: one ring swells off its outline (a Perfect brighter, with a moment's glow
+   * of the part; in a ×4 streak half gold, in the Spotlight all gold). No sound of its own: what you played is the
+   * sound.
+   */
   private partFx(g: string, at: Vector3): void {
     if (g !== 'perfect' && g !== 'good') return;
     const s = this.lastPart;
@@ -223,28 +228,42 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       s.round = true;
       this.partCol.setHex(0xffffff);
     }
-    // (the band opens back up as you play: a Perfect more than a Good, and it clicks)
+    // (the band opens back up as you play: a Perfect more than a Good)
     this.grooveAt(this.groove + (g === 'perfect' ? 0.1 : 0.07));
-    if (g === 'perfect') audio.perfectTick(this.panOf(s.at));
-    const spot = this.game.display.spot?.active;
-    const c = spot ? 0xffd23f : this.partCol.getHex();
+    if (this.game.display.spot?.active) this.partCol.setHex(0xffd23f);
+    else if ((this.game.display.mult ?? 1) >= 4) this.partCol.lerp(RoomSystem.GOLD, 0.5);
     if (g === 'perfect' && !(this.settings.taught ?? []).includes('perfect')) {
       // your first Perfect ever: a moment
       this.settings = { ...this.settings, taught: [...(this.settings.taught ?? []), 'perfect'] };
       saveSettings(this.settings);
       this.hudFirstT = this.uiT;
-      audio.cheer(0.7, false);
-      audio.ui('fullcombo', 0.7);
+      sfx.firstPerfect();
       this.dimmer.hit(0xffd36a, 0.9);
       this.kit.module.burst('milestone', 200, 300);
       this.hitFx?.flash('mult', s, 0xffd23f);
     }
-    if (g === 'perfect') {
-      this.hitFx?.flash('perfect', s, c);
-      this.hitFx?.flash('inner', s, hexNum(BRAND.ink), 0.07);
-    } else this.hitFx?.flash('good', s, c);
-    // (the streak warms every hit: from ×3 a third ring, in gold)
-    if ((this.game.display.mult ?? 1) >= 3) this.hitFx?.flash('inner', s, 0xffd23f, 0.14);
+    this.hitFx?.flash(g === 'perfect' ? 'perfect' : 'good', s, this.partCol.getHex());
+  }
+  private static readonly GOLD = new Color(0xffd23f);
+  /** The music now, for the game's own sounds: a song's chord, free play's key, the results' song key (they read C). */
+  private sfxMusic(o: Music): Music {
+    const g = this.game;
+    const results = g.mode === 'results';
+    const h = results ? null : g.harmony();
+    const tonic = results ? this.starRoot : g.mode === 'discover' ? (this.stage.freeHarmony?.().root ?? 0) : g.keyPc;
+    o.tonic = ((tonic % 12) + 12) % 12;
+    o.minor = results ? this.starMinor : !!h?.minor;
+    o.chord = h ? ((h.chord % 12) + 12) % 12 : o.tonic;
+    o.chordMinor = h ? h.chordMinor : o.minor;
+    return o;
+  }
+  /** Audio time of the band's next 1/`div` beat (0: no band playing to land with). */
+  private sfxGrid(div: number): number {
+    const g = this.game;
+    if ((g.mode !== 'play' && g.mode !== 'jam') || g.paused || this.lessonHold || this.userPaused) return 0;
+    const b = g.clock.beatAt(this.clock.t);
+    if (!Number.isFinite(b)) return 0;
+    return this.clock.toAudio(g.clock.timeAt(Math.ceil(b * div + 0.05) / div));
   }
   private fwd = new Vector3();
   private tmp = new Vector3();
@@ -334,6 +353,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.hud = new Hud(this.kit.root);
     this.buildMovePuck();
     this.hitWords.onShow = (g, at) => this.partFx(g, at);
+    // (a Perfect's word only while it's new: a song's first four, a lesson's first dozen; Good, Early and Late always)
+    this.hitWords.wants = (g) => g !== 'perfect' || this.game.graded.perfect <= (this.game.inLesson ? 12 : 4);
+    // the game's own sounds play in the music: the chord under them, landing on the band's grid
+    sfx.music = (o) => this.sfxMusic(o);
+    sfx.grid = (div) => this.sfxGrid(div);
     this.hint = new Tag(0.36, 0.05);
     this.worldRoot.add(this.hint.mesh);
     const dot = new SphereGeometry(0.0035, 8, 6);
@@ -363,7 +387,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       phase: 'waiting', deskY: null, deskSource: null, kitOrigin: null, anchored: false, resumed: false, hits: 0, lastHit: null, surfaces: [],
       planes: 0, meshes: 0, mode: 'discover', found: [], audio: false, offsetMs: Math.round(this.settings.offset * 1000), degrade: 0, fps: 0, fpsMin: 0, tag: '', errors: 0,
     };
-    (window as unknown as { __thump: unknown }).__thump = { debug: this.debug, game: this, hands, audio, targets: () => this.targets() };
+    (window as unknown as { __thump: unknown }).__thump = { debug: this.debug, game: this, hands, audio, sfx, targets: () => this.targets() };
     this.cleanupFuncs.push(
       this.visibilityState.subscribe((s) => {
         this.xrBlurred = s === VisibilityState.VisibleBlurred || s === VisibilityState.Hidden;
@@ -376,8 +400,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
             sess.addEventListener('squeezestart', () => audio.resume());
           }
           audio.resume();
-          // (the game's own sounds fetched now, so none is late the first time it plays)
-          audio.preloadUi();
           if (sess?.updateTargetFrameRate && sess.supportedFrameRates?.includes(72)) sess.updateTargetFrameRate(72).catch(() => {});
         }
         if (s === VisibilityState.NonImmersive) this.endSession();
@@ -491,17 +513,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     useInstrument: (id) => this.useInstrument(id as InstId | null),
     hasPiece: (lane) => this.lanes().includes(lane as Lane),
     shelfSet: (which) => this.shelfChange(which),
-    // the game's moments, said over the panel and in the room (soft: success louder than failure)
+    // the game's moments, said over the panel and in the room (src/audio/sfx.ts: in the song's key, on its beat; soft,
+    // and success louder than failure)
     holdSong: (on) => {
+      // (no sound: the ring beating on the edge and the HUD's Now! say it; a lesson holds a dozen times a minute)
       this.lessonHold = on;
-      if (on) audio.ui('open', 0.6);
     },
     multUp: (m) => {
       this.hudMult = m;
       this.hudMultT = this.uiT;
       this.kit.module.say(`×${m}`, m >= 4 ? 'gold' : 'white');
       if (this.lastPart.w > 0) this.hitFx?.flash('mult', this.lastPart, m >= 4 ? 0xffd23f : 0xffffff);
-      audio.ui('multup', 1, 0.9 + 0.1 * m);
+      sfx.mult(m);
       this.kit.module.burst('mult', 200, 300);
       this.dimmer.hit(m >= 4 ? 0xffd36a : 0xffffff, 0.6);
     },
@@ -509,36 +532,34 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.kit.module.say(`${run} combo`, run >= 100 ? 'gold' : 'white');
       this.hudStreak = run;
       this.hudStreakT = this.uiT;
-      audio.ui('milestone');
-      audio.cheer(Math.min(1, 0.4 + run / 200), run >= 100);
+      sfx.milestone(run);
       this.kit.module.burst('milestone', 200, 300);
       this.dimmer.hit(0xffd36a, 0.8);
     },
     comboBroke: (run) => {
       this.kit.module.say(`Combo ${run} lost`, 'grey');
-      audio.ui('drop', 0.8);
+      // (the miss already thudded: only a long run lost has its own sound)
+      sfx.runLost(run);
     },
     gradeStamp: (letter, fullCombo) => {
       this.kit.module.stamp();
       const high = letter === 'S' || letter === 'A';
-      audio.ui(letter === 'D' ? 'stamp-soft' : 'stamp', high ? 1 : 0.75);
+      sfx.stamp(letter);
       if (high) {
-        audio.crash(0.55);
-        audio.cheer(letter === 'S' ? 1 : 0.7, letter === 'S');
         this.dimmer.hit(letter === 'S' ? 0xffd36a : 0x7be0a0, 1);
         if (letter === 'S') this.lightsOut.fire('curtain');
       }
       void fullCombo;
     },
-    // (the count-up's ticks climb as the score does)
-    countTick: () => audio.ui('tick', 0.8, 1 + Math.min(0.5, (this.game.display.result?.t ?? 0) * 0.4)),
+    // (the count-up's ticks climb the key's own scale as the score does)
+    countTick: () => sfx.count(Math.round((this.game.display.result?.t ?? 0) * 8)),
     newBest: () => {
-      audio.ui('record');
+      sfx.record();
       this.kit.module.burst('record', 700, 210);
     },
     fullCombo: (all) => {
       this.kit.module.say(all ? 'All perfect!!' : 'Full combo!', 'gold');
-      audio.ui('fullcombo');
+      sfx.fullCombo(all);
       this.kit.module.burst('fullcombo');
     },
     spotGain: (m) => {
@@ -546,30 +567,28 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.spotSaid = true;
         this.kit.module.say('Hands up: Spotlight', 'gold');
       } else this.kit.module.say('Spotlight +25%', 'gold');
-      audio.ui('milestone', 0.7, 1.12);
-      this.kit.module.burst('spotlight', 500, 552);
+      // (the meter on the screen fills: a bell a step up the chord, no burst)
+      sfx.spotGain(m);
     },
     spotFire: () => {
       this.spotSaid = false;
       this.kit.module.say('Spotlight!', 'gold');
-      audio.ui('spotlight');
-      audio.crash(0.6);
-      audio.cheer(1, true);
+      // (Lights Out is the sound of it: the power going down, the lamp striking, the band blooming back in)
       this.kit.module.burst('spotlight', 500, 552);
       this.dimmer.hit(0xffd36a, 1);
       this.lightsOut.fire('song');
     },
     spotEnd: () => {
-      audio.whoosh(0);
+      sfx.whoosh(0, true);
       this.lightsOut.end();
     },
     overtake: () => {
       this.kit.module.say('Ahead of your best', 'gold');
-      audio.ui('milestone', 0.8, 1.06);
+      sfx.overtake();
     },
     lessonStep: (title) => {
       this.kit.module.say(title);
-      audio.ui('open', 0.7);
+      sfx.lessonStep();
     },
     starLanded: (i, of) => {
       // each star lands as a note of the song's own chord on its melody instrument (tonic, third, fifth; the ninth
@@ -613,8 +632,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     missed: (key) => {
       // you hear it: a dead knock where the note was, the band chokes, and a run of misses muffles it
-      if (this.shapeOf(key, this.missShape, this.missCol)) audio.missKnock(this.panOf(this.missShape.at));
-      else audio.missKnock(0);
+      sfx.miss(this.shapeOf(key, this.missShape, this.missCol) ? this.panOf(this.missShape.at) : 0);
       this.grooveAt(Math.max(0.35, this.groove - 0.1));
       const r = this.ref(key);
       if (!r) return;
@@ -670,7 +688,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else next.noWords = cur;
       saveSettings(next);
       this.applySettings(next);
-      audio.tick();
+      sfx.toggle(!cur);
       return !cur;
     },
     retune: (pc, minor) => {
@@ -691,7 +709,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (u === 'tom' && this.lanes().includes('tom')) {
         this.layout();
         this.kit.pad('tom')?.appear('slide');
-        audio.whoosh(-0.4);
+        sfx.whoosh(-0.4);
       }
     },
     countIn: (beat, at, vel) => {
@@ -1049,7 +1067,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           const l = dx * -f.z + dz * f.x;
           this.settings = { ...this.settings, kitNudge: { a: Math.max(-0.3, Math.min(0.3, a)), l: Math.max(-0.5, Math.min(0.5, l)) } };
           saveSettings(this.settings);
-          audio.ui('drop', 0.8);
+          sfx.set();
           this.placeKit(true);
           continue;
         }
@@ -1071,7 +1089,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.moveHand = i;
         root.getWorldPosition(this.moveOff).sub(h.pinchPoint);
         this.moveOff.y = 0;
-        audio.ui('press', 0.7);
+        sfx.lift();
       }
     }
     this.moveK += (near - this.moveK) * 0.25;
@@ -1376,7 +1394,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         tune[item.key] = stepValue(item, current(STRIKE_CFG, item.key), dir);
         this.setStrike(tune, this.game.opts.offset);
       }
-      audio.tick();
+      sfx.tick();
     }
     const value = item.key === 'defaults' ? '' : item.key === 'offset' ? fmt(item, this.game.opts.offset) : fmt(item, current(STRIKE_CFG, item.key));
     return {
@@ -1437,7 +1455,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private swapStarted = (s: Surface | 'desk'): void => {
     if (s === 'desk') this.kit.keys.sweep();
     else this.overlays.get(s)?.sweep();
-    audio.tick();
+    sfx.tick();
   };
 
   /** What the desk's bars play; pinch and hold them to change it (saved). */
@@ -3460,7 +3478,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (best !== this.lastHoverItem && (best < 0 || bk > 0.4)) {
       const mode = this.game.mode;
       if (best >= 0 && this.uiT - this.hoverTickT > 0.15 && mode !== 'play' && mode !== 'count') {
-        audio.ui('hover');
+        sfx.hover();
         this.hoverTickT = this.uiT;
       }
       this.lastHoverItem = best;
@@ -3575,7 +3593,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (h.edge === 'start' && dg < 0.04) {
           this.dragging[i] = true;
           m.root.getWorldPosition(this.dragOff[i]).sub(h.pinchPoint);
-          audio.tick(0.1);
+          sfx.tick(0.6);
           continue;
         }
       }
@@ -3588,7 +3606,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (this.handleArmed[i] && d < (m.hidden ? 0.02 : 0.014)) {
         this.handleArmed[i] = false;
         m.setHidden(!m.hidden);
-        audio.tick();
+        sfx.tick();
       }
     }
     m.handleHover(gk, ck, pk);
@@ -3602,7 +3620,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (it.off) {
       if (!it.id.startsWith('label:') && this.uiT - this.panelPressT > 0.15) {
         this.panelPressT = this.uiT;
-        audio.tick(0.08);
+        sfx.denied();
       }
       return;
     }
@@ -3616,8 +3634,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.game.coachFocus = null;
     }
     this.kit.module.pressKey(k);
-    audio.ui(it.id === 'back' || it.id === 'nav:main' ? 'back' : it.id.startsWith('set:') ? 'toggle' : 'press');
-    if (it.id.startsWith('nav:') || it.id === 'play' || it.id === 'learn') this.uiLater(0.05, () => audio.ui('open', 0.8));
+    // (a setting's switch sounds where it's flipped: setting())
+    if (it.id === 'back' || it.id === 'nav:main') sfx.back();
+    else if (!it.id.startsWith('set:') || it.id === 'set:slow' || it.id === 'set:panel') sfx.press();
+    // (a page opening: two small bells after the tap)
+    if (it.id.startsWith('nav:') || it.id === 'play' || it.id === 'learn') sfx.open();
     // a press that changes the page flashes on what you pressed for a moment first
     const moves = it.id.startsWith('nav:') || it.id === 'back' || it.id === 'play' || it.id === 'again' || it.id === 'next' || it.id === 'make' || it.id.startsWith('inst:') || it.id === 'key:play';
     if (moves) this.uiLater(0.09, () => this.panelAction(it.id));
@@ -3757,7 +3778,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private shelfStep(dir: 1 | -1 | 0): ShelfView {
     if (dir !== 0 && this.placement.phase === 'placed') {
       this.putOut(stepShelf(this.kit.inst, dir));
-      audio.tick();
+      sfx.tick();
     }
     return this.shelfView();
   }

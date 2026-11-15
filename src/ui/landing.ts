@@ -213,7 +213,7 @@ export function mountLanding(world: World): void {
         <div class="foot-text">
           <p class="specs">Meta Quest, in its browser. Hands only, seated. 1–4 players. Free, nothing to install.</p>
           <p>Played on a Quest headset; built and tested in the WebXR emulator.</p>
-          <p>Instrument samples from the Versilian Community Sample Library (CC0); the guitar is a Martin HD-28 recorded by Jeff Learman (Discord SFZ GM Bank, CC0). Interface sounds and particles by Kenney (CC0).</p>
+          <p>Instrument samples from the Versilian Community Sample Library (CC0); the guitar is a Martin HD-28 recorded by Jeff Learman (Discord SFZ GM Bank, CC0). Particles by Kenney (CC0).</p>
           <p>An entry in the Meta VR Start Developer Competition 2026 (Gaming).</p>
         </div>
       </div>

@@ -1,8 +1,9 @@
 /**
  * When to hit, at a glance (as a rhythm game's approach circle): each note coming is a ring in the shape of what plays
  * it (round for a drum, a conga, a handpan note; a rounded rectangle for a key, a bar, the strings) that closes onto
- * it, from nearly twice its size two beats ahead to its exact outline on the beat, brightening as it closes, in the
- * part's colour (gold in a spotlight bar) over a dark edge so it reads on a white head. Then the hit flash (hit-fx.ts)
+ * it, from 1.6 times its size two beats ahead to its exact outline on the beat, faint far off and brightening as it
+ * closes (the next note is the brightest ring, so a busy bar still reads in order, and rings round neighbouring drums
+ * don't tangle), in the part's colour (gold in a spotlight bar) over a dark edge so it reads on a white head. Then the hit flash (hit-fx.ts)
  * bursts out of that same outline. One mesh for all of them, its vertices rewritten in place: one draw, nothing
  * allocated per frame.
  */
@@ -13,7 +14,7 @@ import { BRAND, hexNum } from '../ui/theme.js';
 /** Beats ahead a ring appears. */
 export const LEAD_BEATS = 2;
 /** How big it starts (× the part). */
-const START = 1.85;
+const START = 1.6;
 const K = 8;
 const P = 4 * (K + 1);
 const SLOTS = 14;
@@ -122,14 +123,14 @@ export class ApproachRings {
         const hw = (sh.w / 2) * grow;
         const hd = ((sh.round ? sh.w : sh.d) / 2) * grow;
         const r = sh.round ? hw : Math.min(hw, hd) * 0.35;
-        const a = n.ahead < 0 ? Math.max(0, 1 + n.ahead / (miss ? 0.6 : 0.25)) * (miss ? 0.8 : 1) : 0.3 + 0.7 * (1 - u) * (1 - u * 0.3);
+        const a = n.ahead < 0 ? Math.max(0, 1 + n.ahead / (miss ? 0.6 : 0.25)) * (miss ? 0.8 : 1) : 0.2 + 0.8 * Math.pow(1 - u, 1.5);
         // thicker as it lands (5.5 → 7 mm), so the moment it meets the edge is the thing you see
         let w = (calm ? 0.005 : 0.0055) + 0.0015 * (1 - u);
         // (the note a lesson is waiting on: its ring sits on the edge and beats, so it's plainly the one)
         if (waitKey && n.key === waitKey && n.ahead <= 0.05) w *= 1.3 + 0.35 * Math.sin(t * 9);
         // (paused: everything waits, quietly)
         const al = paused ? a * 0.25 : a;
-        this.band(s, 0, sh, hw, hd, r, -0.0015, w + 0.0015, EDGE, al * 0.6);
+        this.band(s, 0, sh, hw, hd, r, -0.0015, w + 0.0015, EDGE, al * 0.45);
         this.band(s, 1, sh, hw, hd, r, 0, w, _c, al);
         s++;
       }

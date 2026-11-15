@@ -226,8 +226,10 @@ export class Waterfall {
    */
   /**
    * Free play, the songs' notes turned around: what you play sends light away from it. A round head (a drum, a
-   * cymbal, a conga, a handpan field, a chord position) sends a ring spreading out from its edge, at its own lean;
-   * a key or a bar sends a bar of light rising off it; a strum, a band of light lifting off the strings. A fixed pool.
+   * cymbal, a conga, a handpan field, a chord position) sends a thin ring a little way out from its edge, at its own
+   * lean; a key or a bar sends a bar of light rising off it; a strum, a band of light lifting off the strings. Soft
+   * hits send fainter light, and it's gone in under half a second: a fast beat is a shimmer round the kit, not a
+   * stack of rings over it. A fixed pool.
    */
   private emits = Array.from({ length: 48 }, () => ({ age: 9, life: 0.6, x: 0, y: 0, z: 0, nx: 0, ny: 1, nz: 0, r: 0, w: 0, d: 0, cr: 1, cg: 1, cb: 1, kind: 0, gain: 1 }));
   private emitNext = 0;
@@ -246,12 +248,12 @@ export class Waterfall {
     e.cr = col.r;
     e.cg = col.g;
     e.cb = col.b;
-    e.gain = Math.max(0.35, Math.min(1, gain));
+    e.gain = 0.2 + 0.6 * Math.max(0, Math.min(1, gain));
     e.kind = form === 'ring' || form === 'disc' || form === 'cymbal' || t.round ? 0 : form === 'strum' ? 2 : 1;
     e.r = Math.max(0.012, t.w / 2);
     e.w = t.w;
     e.d = t.d;
-    e.life = e.kind === 0 ? 0.55 : 0.9;
+    e.life = e.kind === 0 ? 0.4 : 0.7;
   }
   private drawEmits(dt: number, amp: number): void {
     const S = this.shapes;
@@ -263,17 +265,17 @@ export class Waterfall {
       _nrm.set(e.nx, e.ny, e.nz);
       _tmp.set(e.x, e.y, e.z);
       if (e.kind === 0) {
-        // a ring spreading out from the edge, quick, eased out, thinning as it goes
-        const rr = e.r * (1 + 1.3 * amp * (1 - Math.pow(1 - u, 3)));
+        // a thin ring a little way out from the edge (a third of its radius at most), quick, eased out
+        const rr = e.r * (1 + 0.35 * amp * (1 - Math.pow(1 - u, 3)));
         _tmp.addScaledVector(_nrm, 0.003);
-        this.shape(this.shades, _tmp, _nrm, rr * 1.01, rr * 1.01, 1, 1, 1, 3, 0, Math.min(0.5, 0.008 / rr + 0.02), 0);
-        this.shape(this.shades, _tmp, _nrm, rr, rr, e.cr, e.cg, e.cb, 3, 0, Math.min(0.5, 0.004 / rr + 0.01), fade);
-        this.shape(S, _tmp, _nrm, rr, rr, e.cr * fade * 1.4, e.cg * fade * 1.4, e.cb * fade * 1.4, 3, 0, Math.min(0.5, 0.005 / rr + 0.015), 0);
+        // (painted in its colour under the light so it reads on a white head; it fades out, never to black)
+        this.shape(this.shades, _tmp, _nrm, rr, rr, e.cr * fade * 0.5, e.cg * fade * 0.5, e.cb * fade * 0.5, 3, 0, Math.min(0.5, 0.0025 / rr + 0.005), 1);
+        this.shape(S, _tmp, _nrm, rr, rr, e.cr * fade, e.cg * fade, e.cb * fade, 3, 0, Math.min(0.5, 0.003 / rr + 0.006), 0);
       } else if (e.kind === 1) {
-        // a bar of light rising off the key: up 22 cm, slowing, the colour of the instrument
+        // a bar of light rising off the key: up 12 cm, slowing, the colour of the instrument
         const r = Math.min(0.011, Math.max(0.0045, e.w * 0.36));
         const len = 0.018;
-        const up = 0.22 * amp * (1 - Math.pow(1 - u, 2)) + len + 0.004;
+        const up = 0.12 * amp * (1 - Math.pow(1 - u, 2)) + len + 0.004;
         _tmp.addScaledVector(_nrm, up);
         this.shape(S, _tmp, _nrm, r, len, e.cr * fade * 1.5, e.cg * fade * 1.5, e.cb * fade * 1.5, 0, 0, 0, 0);
         _ctr.set(e.x, e.y, e.z).addScaledVector(_nrm, 0.004);
