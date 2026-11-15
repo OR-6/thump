@@ -99,7 +99,7 @@ export function mountLanding(world: World): void {
 
       <section class="pics" id="band" aria-label="The instruments">
         <div class="wrap">
-          <p class="label">Six instruments, all on the desk at once if you like</p>
+          <p class="label">Six instruments. Swap any time, even mid-song</p>
           <ul class="mosaic">
             ${BAND.map((b, i) => `<li class="pic pic-${i + 1}"><figure>${shot(b.id, b.alt)}<figcaption><strong>${b.label}</strong> ${b.line}</figcaption></figure></li>`).join('')}
           </ul>

@@ -47,6 +47,8 @@ export class ApproachRings {
   private col: Float32Array;
   private shape: PartShape = { at: new Vector3(), q: new Quaternion(), w: 0, d: 0, round: true };
   private used = 0;
+  private cx = new Float32Array(4);
+  private cz = new Float32Array(4);
 
   constructor(parent: Object3D) {
     const g = new BufferGeometry();
@@ -75,10 +77,15 @@ export class ApproachRings {
   /** Write one band (from radius offset o0 to o1 past the part's outline) of slot `s`, in colour `c` at alpha `a`. */
   private band(s: number, band: number, sh: PartShape, hw: number, hd: number, r: number, o0: number, o1: number, c: Color, a: number): void {
     const base = s * VPS + band * 2 * P;
-    const cx = [hw - r, -(hw - r), -(hw - r), hw - r];
-    const cz = [hd - r, hd - r, -(hd - r), -(hd - r)];
-    for (const [row, o] of [[0, o0], [1, o1]] as const) {
-      const rr = Math.max(0.0005, r + o);
+    // (the corner centres and the two rows in fixed arrays: nothing allocated per frame)
+    const cx = this.cx;
+    const cz = this.cz;
+    cx[0] = cx[3] = hw - r;
+    cx[1] = cx[2] = -(hw - r);
+    cz[0] = cz[1] = hd - r;
+    cz[2] = cz[3] = -(hd - r);
+    for (let row = 0; row < 2; row++) {
+      const rr = Math.max(0.0005, r + (row ? o1 : o0));
       let n = base + row * P;
       for (let q = 0; q < 4; q++)
         for (let k = 0; k <= K; k++) {

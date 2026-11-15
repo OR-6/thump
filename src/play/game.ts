@@ -83,7 +83,7 @@ export interface GameStage {
   /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
   tempo(t: number): void;
   /** In-headset settings: read and switch (saved by the stage). */
-  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light', flip: boolean): boolean;
+  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved', flip: boolean): boolean;
   /** Playing together: the link's state and how many are in the band. */
   bandState?(): { state: string; players: number; message?: string };
   /** Easy or Normal changed (saved). */
@@ -1491,15 +1491,18 @@ export class Game {
   }
 
   /** Performing: switch to this instrument at the next loop (the stand's tile, or ◀ ▶). */
-  switchTo(id: string): void {
-    if (!this.perf || !this.machine || this.perf.queued || id === this.perf.inst) return;
-    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => PART_INST[p.def.name] === (id === 'marimba' ? 'piano' : id))) return;
+  /** Switch to `id` at the next loop; true when it's queued (or already that one), false when it can't be (too late). */
+  switchTo(id: string): boolean {
+    if (!this.perf || !this.machine) return false;
+    if (this.perf.queued || id === this.perf.inst) return true;
+    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => PART_INST[p.def.name] === (id === 'marimba' ? 'piano' : id))) return false;
     const beat = this.clock.beatAt(this.t);
     const when = Math.max(0, Math.ceil((beat + 2) / LOOP_BEATS) * LOOP_BEATS);
-    if (when >= (this.song?.bars ?? 20) * 4 - 4) return;
+    if (when >= (this.song?.bars ?? 20) * 4 - 4) return false;
     this.perf.queued = id;
     this.perf.switchAt = when;
     this.refreshDisplay();
+    return true;
   }
 
   /** The shelf on the module for a few seconds after a change (and which setting was just changed). */
@@ -2551,6 +2554,8 @@ export class Game {
 
   /** The page the panel shows in free play (the others follow the mode). */
   menu: PageId = 'main';
+  /** The band code typed on the join page so far. */
+  typedCode = '';
   /** Where Instruments was opened from (picking one goes back there). */
   instFrom: PageId = 'free';
   /** Easy (the beat, the tune) or Normal (more of each part). */
@@ -2563,7 +2568,7 @@ export class Game {
       if (this.tuneOpen) this.tuneOpen = false;
       else if (this.settingsOpen) this.settingsOpen = false;
       else {
-        const up: Record<string, PageId> = { inst: 'instruments', instruments: this.instFrom === 'songs' ? 'songs' : this.found.includes('kit') ? 'free' : 'main', songs: 'main', band: 'main', free: 'main', main: 'main' };
+        const up: Record<string, PageId> = { inst: 'instruments', instruments: this.instFrom === 'songs' ? 'songs' : this.found.includes('kit') ? 'free' : 'main', songs: 'main', band: 'main', join: 'band', free: 'main', main: 'main' };
         this.menu = up[this.menu] ?? 'main';
       }
       this.refreshDisplay();
@@ -2580,6 +2585,23 @@ export class Game {
         if (to === 'songs') this.songPage = -1;
         this.menu = to as PageId;
       }
+      this.refreshDisplay();
+      return;
+    }
+    // joining a band in the headset: the keypad's letters, four at most
+    if (id === 'band:join') {
+      this.typedCode = '';
+      this.menu = 'join';
+      this.refreshDisplay();
+      return;
+    }
+    if (id.startsWith('code:') && id.length === 6) {
+      if (this.typedCode.length < 4) this.typedCode += id.slice(5);
+      this.refreshDisplay();
+      return;
+    }
+    if (id === 'code:del') {
+      this.typedCode = this.typedCode.slice(0, -1);
       this.refreshDisplay();
       return;
     }
@@ -2733,9 +2755,9 @@ export class Game {
       songPage: this.shownPage(),
       songFilter: this.songFilter,
       level: this.level,
-      band: { state: band.state, code: this.code, players: band.players, message: band.message },
+      band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode },
       loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
-      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) },
+      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false) },
       next: this.fromPerform ? 'Next\nsong' : '',
       easier: this.mode === 'results' && this.fromPerform && this.lastScore?.letter === 'D' && this.level !== 'easy',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,
