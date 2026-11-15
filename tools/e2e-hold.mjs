@@ -64,10 +64,13 @@ check('a fingertip pressing a key plays it', s.debug.hits > hits && /piano/.test
 await wait(1600);
 let h = held();
 check('held down, the note sounds on past its recording (1.6 s in)', h.held >= 1 && h.gain > 0.05, JSON.stringify(h));
+const keyDown = () => js(`const m = r.kit.models.get('piano'); return Math.max(...m.held);`);
+check('and the key stays down under the finger while it is held', keyDown() > 0.2, `${keyDown()}`);
 await lift(0.03);
 await wait(700);
 h = held();
 check('lifting the finger lets the note go', h.held === 0 && h.gain < 0.02, JSON.stringify(h));
+check('and the key comes back up', keyDown() === 0, `${keyDown()}`);
 
 // a quick tap: a note, gone by itself within about a second and a half
 hits = state().debug.hits;

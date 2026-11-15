@@ -84,7 +84,7 @@ import { BRAND, INST_LIGHT, hexNum, withAlpha } from '../ui/theme.js';
 import { HitFx, type PartShape } from './hit-fx.js';
 import { ApproachRings } from './approach-rings.js';
 import { Hud, type HudSay } from './hud.js';
-import { GuitarHands, HG, heldMatrix, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
+import { GuitarHands, HG, SADDLE_X, heldMatrix, stringZ, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
 import { formOf } from './waterfall-fx.js';
@@ -2075,10 +2075,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.malletOn[i] = h.tracked && !h.controller && this.fist[i] && (this.kit.inst === 'marimba' || stick);
       if (this.malletOn[i]) {
         this.handMallets[i].setKind(stick);
-        this.malletTip[i].copy(this.stickTip[i]);
+        // (drawn resting on what it struck, not sunk through it: hits still read the stick where the hand has it)
+        this.restOnSurface(i, inv, stick ? 0.006 : MALLET_HEAD_R);
         this.sample.pinching = false;
       }
-      this.handMallets[i].set(this.malletOn[i], this.malletOn[i] ? this.stickButt[i] : h.palm, this.malletTip[i], delta);
+      this.handMallets[i].set(this.malletOn[i], this.malletOn[i] ? this.malletButt[i] : h.palm, this.malletTip[i], delta);
       if (pinched && !this.pinchWas[i]) {
         this.pinchStand(h.pinchPoint);
         // with the guitar out, a pinch on the neck holds that chord (the left hand's grip)
@@ -2986,6 +2987,64 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private stickSnap = [false, false];
   /** (light: tracking shake out, the hand's motion kept; at 1.5 Hz the stick trailed the wrist and felt loose) */
   private stickFilt = [new OneEuro3(6, 3, 5), new OneEuro3(6, 3, 5)];
+  /**
+   * The stick (or mallet) as drawn: where the hand has it, unless its tip has gone into a head or a bar, when it pivots
+   * at the grip until its tip rests on the surface, as a real one would stop there. Fully resting up to 3 cm in, easing
+   * back to the hand by 6 cm (past that the hand is somewhere else, and the stick goes with it). `tipR`: the tip's
+   * radius (a mallet's ball rests on its underside). Only what's drawn: hits read the stick where the hand has it.
+   */
+  private malletButt = [new Vector3(), new Vector3()];
+  private restG = new Vector3();
+  private restT = new Vector3();
+  private restN = new Vector3();
+  private restU = new Vector3();
+  private restV = new Vector3();
+  private restM = new Matrix4();
+  private restOnSurface(i: number, inv: Matrix4, tipR: number): void {
+    const tip = this.malletTip[i].copy(this.stickTip[i]);
+    this.malletButt[i].copy(this.stickButt[i]);
+    const G = this.restG.copy(this.stickGrip[i]).applyMatrix4(inv);
+    const T = this.restT.copy(tip).applyMatrix4(inv);
+    const L = G.distanceTo(T);
+    if (L < 0.05) return;
+    let best = -1;
+    let bestDepth = 0;
+    for (let j = 0; j < this.airCount; j++) {
+      const q = this.airSurf[j];
+      if (q.face !== 'up') continue;
+      const nx = q.nx ?? 0, ny = q.ny ?? 1, nz = q.nz ?? 0;
+      const depth = (T.x - q.x) * nx + (T.y - q.y) * ny + (T.z - q.z) * nz - tipR;
+      if (depth >= 0 || depth < -0.06 || depth > bestDepth) continue;
+      // (only over the surface: its disc, or its rectangle, a little wider)
+      if (q.r !== undefined) {
+        if (q.r < 0 || Math.hypot(T.x - q.x, T.z - q.z) > q.r * 1.05) continue;
+      } else if (Math.abs(T.x - q.x) > (q.w ?? 0) / 2 + 0.005 || Math.abs(T.z - q.z) > (q.d ?? 0) / 2 + 0.005) continue;
+      // (the grip has to be above it, with room for the stick to reach down onto it)
+      const above = (G.x - q.x) * nx + (G.y - q.y) * ny + (G.z - q.z) * nz - tipR;
+      if (above <= 0.01 || above >= L) continue;
+      best = j;
+      bestDepth = depth;
+    }
+    if (best < 0) return;
+    const q = this.airSurf[best];
+    const n = this.restN.set(q.nx ?? 0, q.ny ?? 1, q.nz ?? 0);
+    const above = (G.x - q.x) * n.x + (G.y - q.y) * n.y + (G.z - q.z) * n.z - tipR;
+    // the stick's direction across the surface, then tipped down just enough to touch it: |tip - grip| stays L
+    const u = this.restU.subVectors(T, G);
+    u.addScaledVector(n, -u.dot(n));
+    if (u.lengthSq() < 1e-8) return;
+    u.normalize();
+    const b = above / L;
+    const a = Math.sqrt(1 - b * b);
+    u.multiplyScalar(a).addScaledVector(n, -b);
+    // fully resting to 3 cm in, then easing back to the hand by 6
+    const k = bestDepth > -0.03 ? 1 : Math.max(0, (0.06 + bestDepth) / 0.03);
+    T.lerp(this.restV.copy(G).addScaledVector(u, L), k);
+    const world = this.restM.copy(this.kit.root.matrixWorld);
+    tip.copy(T).applyMatrix4(world);
+    // the butt pivots the other way round the grip
+    this.malletButt[i].copy(this.stickGrip[i]).addScaledVector(this.restU.subVectors(this.stickGrip[i], tip).normalize(), 0.1);
+  }
   /** The grip's working points: the heel of the hand, where the thumb holds it, the hand's frame. */
   private gripB = new Vector3();
   private gripF = new Vector3();
@@ -2999,6 +3058,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** The point's held key, let go (the finger lifted, slid off, or stopped being tracked). */
   private letGo(p: number): void {
     if (this.keyHeld[p] < 0) return;
+    this.kit.keyHold(this.keyHeld[p], 0);
     this.keyHeld[p] = -1;
     audio.release(HOLD_OWNER[p]);
   }
@@ -3219,29 +3279,29 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
       } else this.fistHold[i] = 0;
       if (this.fist[i]) {
-        // held as a stick is held: it lies across the palm from the heel of the hand (the little finger's side, by the
-        // wrist) out between the thumb and the index knuckle, where the thumb presses it; so it follows the hand as the
-        // hand is (a cocked wrist tips it down, a turned one turns it), steadied by the hand's own frame (the knuckles
-        // and wrist, which shake less than the thumb), and only lightly smoothed: firm in the hand, not trailing it.
-        // Snapped to the hand the moment the fist closes
-        this.stickSide.subVectors(h.knucklePinky, h.wrist);
-        this.gripB.copy(h.wrist).addScaledVector(this.stickSide, 0.3);
-        this.gripF.copy(h.thumbTip).lerp(h.knuckleIndex, 0.35);
-        this.airP.subVectors(this.gripF, this.gripB);
-        this.stickSide.subVectors(h.knuckleIndex, h.knucklePinky);
+        // held as a stick is held: in the hand's own frame (its knuckles and wrist: they shake less than fingertips),
+        // running forward and across the palm toward the thumb (about 40 degrees in, as a matched grip angles toward
+        // the middle), tipped a little toward the palm's side; so a cocked wrist tips it down and a turned hand turns
+        // it. Gripped where the thumb pad presses it: just under the thumb tip, beside the index knuckle. Only lightly
+        // smoothed (firm in the hand, not trailing it); snapped to the hand the moment the fist closes
         this.gripA.subVectors(h.knuckleMiddle, h.wrist);
-        if (this.airP.lengthSq() > 1e-6 && this.stickSide.lengthSq() > 1e-8 && this.gripA.lengthSq() > 1e-8) {
-          this.airP.normalize();
-          this.gripA.normalize().multiplyScalar(0.77).addScaledVector(this.stickSide.normalize(), 0.64).normalize();
-          this.airP.multiplyScalar(0.65).addScaledVector(this.gripA, 0.35).normalize();
+        this.stickSide.subVectors(h.knuckleIndex, h.knucklePinky);
+        if (this.gripA.lengthSq() > 1e-8 && this.stickSide.lengthSq() > 1e-8) {
+          this.gripA.normalize();
+          this.stickSide.normalize();
+          // (out of the palm: the hand's forward x across, its sign by the hand)
+          this.gripB.crossVectors(this.gripA, this.stickSide).normalize().multiplyScalar(i === 0 ? 1 : -1);
+          this.airP.copy(this.gripA).multiplyScalar(0.77).addScaledVector(this.stickSide, 0.64).addScaledVector(this.gripB, 0.2).normalize();
           if (this.stickSnap[i]) {
             this.stickDir[i].copy(this.airP);
             this.stickFilt[i].reset();
             this.stickSnap[i] = false;
           } else this.stickFilt[i].filter(this.airP, dt, this.stickDir[i]);
           this.stickDir[i].normalize();
-        }
-        // the grip: where the thumb holds it; the butt comes out past the heel of the hand
+          // the grip: halfway between the thumb tip and just past the index knuckle, a stick's half-width toward the palm
+          this.gripF.copy(h.knuckleIndex).addScaledVector(this.stickSide, 0.015).lerp(h.thumbTip, 0.5).addScaledVector(this.gripB, 0.01);
+        } else this.gripF.copy(h.knuckleIndex);
+        // the butt comes out past the heel of the hand
         this.stickGrip[i].copy(this.gripF);
         this.stickButt[i].copy(this.stickGrip[i]).addScaledVector(this.stickDir[i], -0.1);
         this.stickTip[i].copy(this.stickGrip[i]).addScaledVector(this.stickDir[i], STICK_LEN);
@@ -3289,6 +3349,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
             const hw = (q.w ?? (q.r ?? 0) * 2) / 2 + 0.008;
             const hd = (q.d ?? (q.r ?? 0) * 2) / 2 + 0.015;
             on = heldY < q.y + 0.008 && Math.abs(this.airP.x - q.x) < hw && Math.abs(this.airP.z - q.z) < hd;
+            // (and the key stays down as far as the finger is in it, its 8 mm of travel)
+            if (on) this.kit.keyHold(q.id, (q.y - heldY) / 0.008);
             break;
           }
           if (!on) this.letGo(p);
@@ -4053,6 +4115,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         continue;
       }
       const base = i * 5;
+      this.gOk[i] = true;
       const src = [h.indexTip, h.middleTip, h.ringTip, h.thumbTip, h.pinkyTip];
       for (let k = 0; k < 5; k++) this.gTips[base + k].copy(src[k]).applyMatrix4(this.gInv);
       // (a controller: its tip is the one point)
@@ -4067,6 +4130,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const z = this.gh.fret(this.gFretRefs, t);
     if (z >= 0) this.guitarFret(z);
     for (const p of this.plucks) this.guitarPluck(p, Math.max(0, Math.min(dt, p.t - (t - dt))));
+    if (model) this.bowStrings(model);
+    this.gOk[0] = this.gOk[1] = false;
     if (!model) return;
     model.zone = this.gh.zone;
     model.onNeck = this.gh.onNeck;
@@ -4075,6 +4140,51 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.guitarCues(model, dt);
   }
 
+  /**
+   * Strings that give under a fingertip (only what's drawn: plucks and frets read the fingertips as they are). On the
+   * neck, a fingertip below a string's height presses it down toward the fret; where you strum, a fingertip coming at
+   * a string within 4 mm bows it away until it slips over (the pluck, and the string shakes), and one moving off it
+   * doesn't drag it back. One fingertip per string, the one pressing it most; a hand not tracked this frame (or at the
+   * panel) bows nothing from where it was.
+   */
+  private gOk = [false, false];
+  private bowSide = new Int8Array(6);
+  private bowStrings(model: HeldGuitarModel): void {
+    const span = SADDLE_X - HG.nut;
+    for (let si = 0; si < 6; si++) {
+      let near = 9;
+      let px = 0;
+      let py = 0;
+      let pz = 0;
+      let side = 0;
+      for (let i = 0; i < 2; i++) {
+        if (!this.gOk[i]) continue;
+        for (let k = 0; k < 5; k++) {
+          const P = this.gTips[i * 5 + k];
+          if (P.x < HG.nut + 0.05 || P.x > SADDLE_X - 0.02) continue;
+          const f = (P.x - HG.nut) / span;
+          const sy = HG.board + 0.0045 + (0.0125 - HG.board - 0.0045) * f;
+          const dz = P.z - stringZ(si, P.x);
+          const dy = P.y - sy;
+          if (Math.abs(dz) > 0.004 || dy > 0.006 || dy < -0.012) continue;
+          if (Math.abs(dz) >= near) continue;
+          near = Math.abs(dz);
+          px = P.x;
+          side = dz >= 0 ? 1 : -1;
+          // (fretting, on the neck: pressed down; strumming: pushed across)
+          const neck = P.x < HG.strikeX - 0.12;
+          py = dy < 0.0015 ? dy - 0.0015 : 0;
+          pz = neck ? 0 : -side * (0.004 - Math.abs(dz));
+        }
+      }
+      // (across only from the side the fingertip came from, decided while it was still clear of the string: once it's
+      // past, the string lets go; a fingertip that turns up on top of a string from nowhere bows nothing)
+      if (near >= 9) this.bowSide[si] = 0;
+      else if (near > 0.0035) this.bowSide[si] = side;
+      if (pz !== 0 && side !== this.bowSide[si]) pz = 0;
+      if (near < 9 && (py !== 0 || pz !== 0)) model.press(si, px, py, pz);
+    }
+  }
   /** A string sounds: the chord's note on it (or, with real frets, the note your finger stops), and it shakes. */
   private guitarPluck(p: Pluck, offset: number): void {
     const midi = this.guitarString(p.string);

@@ -17,6 +17,8 @@ const js = (body) => {
 };
 const dbg = () => js(`return { claps: r.debug.claps ?? 0, clicks: r.debug.clicks ?? 0, fists: [r.fist[0], r.fist[1]], errors: r.debug.errors };`);
 const FWD = { pitch: 0, yaw: 0, roll: 0 };
+/** A drummer's fist: pitched down at the drums (the emulator's own hand points a little up). */
+const GRIP = { pitch: -35, yaw: 0, roll: 0 };
 const put = (side, p, o = FWD) => xr('set-transform', { device: side, position: { x: p[0], y: p[1], z: p[2] }, orientation: o });
 const go = (side, p, ms, o = FWD) => xr('animate-to', { device: side, position: { x: p[0], y: p[1], z: p[2] }, orientation: o, duration: ms / 1000 });
 
@@ -67,8 +69,8 @@ check('hands brought together slowly: no clap, no click', n.claps === s.claps &&
 // ---- sticks: both hands fists (the curl read as closed), held in front, then knocked together
 js(`r.curl = () => 0; return 1;`);
 // (held apart, the left a little higher: the sticks, angled in as a grip holds them, pass over each other)
-put('hand-left', [-0.26, 1.17, -0.3]);
-put('hand-right', [0.26, 1.1, -0.3]);
+put('hand-left', [-0.26, 1.17, -0.3], GRIP);
+put('hand-right', [0.26, 1.1, -0.3], GRIP);
 await wait(600);
 n = dbg();
 check('both hands are fists: sticks', n.fists[0] && n.fists[1], JSON.stringify(n.fists));
@@ -83,17 +85,43 @@ check('it runs forward and across the palm toward the thumb (20–70 degrees off
 const mids = js(`const m = (i) => r.stickButt[i].clone().lerp(r.stickTip[i], 0.55); const a = m(0), b = m(1); return { d: [b.x - a.x, b.y - a.y, b.z - a.z] };`);
 const L0 = [-0.26, 1.17, -0.3];
 s = dbg();
-go('hand-left', [L0[0] + mids.d[0], L0[1] + mids.d[1] + 0.004, L0[2] + mids.d[2]], 110);
+go('hand-left', [L0[0] + mids.d[0], L0[1] + mids.d[1] + 0.004, L0[2] + mids.d[2]], 110, GRIP);
 await wait(500);
 n = dbg();
 check('two sticks knocked together: a wood click', n.clicks === s.clicks + 1, `${s.clicks} -> ${n.clicks}`);
 check('and fists meeting are not a clap', n.claps === s.claps, `${s.claps} -> ${n.claps}`);
-go('hand-left', L0, 300);
+go('hand-left', L0, 300, GRIP);
 await wait(500);
 s = dbg();
-go('hand-left', [L0[0] + mids.d[0], L0[1] + mids.d[1] + 0.004, L0[2] + mids.d[2]], 110);
+go('hand-left', [L0[0] + mids.d[0], L0[1] + mids.d[1] + 0.004, L0[2] + mids.d[2]], 110, GRIP);
 await wait(500);
 n = dbg();
 check('and again: one click per knock', n.clicks === s.clicks + 1, `${s.clicks} -> ${n.clicks}`);
+// ---- a stick doesn't sink through a head: pushed 2 cm into the snare, it's drawn resting on it; pushed 10 cm, it
+// goes with the hand
+const into = async (deep) => {
+  const p = js(`const t = r.stickTip[1].clone(), sn = r.kit.pad('snare'); const w = r.kit.root.localToWorld(r.head.clone().set(sn.x, sn.headY, sn.z)); return { tip: t.toArray(), at: w.toArray() };`);
+  const h = js(`return H.right.wrist.toArray();`);
+  // (the hand device sits a little off the wrist; move it by how far the tip has to go)
+  const dev = js(`return 0;`);
+  void dev;
+  const R0 = [0.26, 1.1, -0.3];
+  const target = [R0[0] + p.at[0] - p.tip[0], R0[1] + p.at[1] - p.tip[1] - deep, R0[2] + p.at[2] - p.tip[2]];
+  void h;
+  put('hand-right', target, GRIP);
+  await wait(500);
+  return js(`const inv = r.kit.root.matrixWorld.clone().invert(); const d = r.malletTip[1].clone().applyMatrix4(inv), real = r.stickTip[1].clone().applyMatrix4(inv), sn = r.kit.pad('snare');
+    return { drawnAbove: d.y - sn.headY, realAbove: real.y - sn.headY, len: r.malletTip[1].distanceTo(r.stickGrip[1]), moved: r.malletTip[1].distanceTo(r.stickTip[1]) };`);
+};
+put('hand-left', [-0.4, 1.3, -0.2]);
+put('hand-right', [0.26, 1.1, -0.3], GRIP);
+await wait(500);
+let rest = await into(0.02);
+check('a stick pushed 2 cm into the snare is drawn resting on its head', Math.abs(rest.drawnAbove - 0.006) < 0.004 && rest.realAbove < -0.01 && Math.abs(rest.len - 0.28) < 0.005, JSON.stringify(rest));
+put('hand-right', [0.26, 1.1, -0.3], GRIP);
+await wait(400);
+rest = await into(0.1);
+check('pushed 10 cm through, it goes with the hand', rest.moved < 0.002, JSON.stringify(rest));
+n = dbg();
 check('no frame errors', n.errors === 0, `errors=${n.errors}`);
 done('E2E feel');

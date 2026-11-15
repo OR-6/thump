@@ -358,6 +358,11 @@ export class KitView {
   instStruck(i: number, gain: number): void {
     this.models.get(this.inst)?.struck(i % 20, gain);
   }
+  /** Piano key (or black key 30 + j, or the chord button) `i` held down by a finger, `k` of its travel (0: let go). */
+  keyHold(i: number, k: number): void {
+    // (whatever is out: a key let go as the piano is put away mustn't stay down for when it comes back)
+    this.models.get('piano')?.hold?.(i, k);
+  }
   /** The piano's ebony key j went down. */
   blackStruck(j: number, gain: number): void {
     if (this.inst === 'piano') this.models.get('piano')?.struck(30 + j, gain);

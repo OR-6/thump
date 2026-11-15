@@ -25,6 +25,8 @@ export interface DeskModel {
   struck(i: number, gain: number): void;
   /** Light part i at k (0..1) when a song asks for it, if it lights itself (else the overlay does). */
   light?(i: number, k: number): void;
+  /** Part i held down by a finger, `k` of its travel (0: let go): a key stays down while it's held. */
+  hold?(i: number, k: number): void;
   update(dt: number): void;
   /** The parts that move or light on their own. */
   live?(): (Object3D | null | undefined)[];
@@ -136,6 +138,11 @@ export class PianoModel implements DeskModel {
   live(): (Object3D | null | undefined)[] {
     return [...this.keys, ...this.blacks, this.button, this.root.getObjectByName('Pads'), this.root.getObjectByName('Power')];
   }
+  /** How far each key is held down by a finger (0..1 of its travel), by the same index as the spring. */
+  private held = new Float32Array(64);
+  hold(i: number, k: number): void {
+    if (i >= 0 && i < this.held.length) this.held[i] = Math.max(0, Math.min(1, k));
+  }
   struck(i: number, gain: number): void {
     this.spring.kick(i, 0.35 + 0.3 * gain);
     if (i === PIANO_CHORD) this.padGlow = 0.6 + 0.6 * gain;
@@ -151,10 +158,11 @@ export class PianoModel implements DeskModel {
   update(dt: number): void {
     // down 4 to 8 mm in about 40 ms, back over about 170 (critically damped, no bounce)
     this.spring.step(dt, 625, 50);
-    const press = (k: Group, x: number) => (k.rotation.x = KEY.press * Math.min(1, Math.max(0, -x / 0.008)));
-    for (let i = 0; i < this.keys.length; i++) press(this.keys[i], this.spring.x[i]);
-    for (let j = 0; j < this.blacks.length; j++) press(this.blacks[j], this.spring.x[30 + j]);
-    if (this.button) this.button.position.y = this.buttonY + Math.max(-0.004, Math.min(0, this.spring.x[PIANO_CHORD]));
+    // (struck, a key dips at once; held, it stays as far down as the finger has it, and comes up as the finger does)
+    const press = (k: Group, i: number) => (k.rotation.x = KEY.press * Math.max(this.held[i], Math.min(1, Math.max(0, -this.spring.x[i] / 0.008))));
+    for (let i = 0; i < this.keys.length; i++) press(this.keys[i], i);
+    for (let j = 0; j < this.blacks.length; j++) press(this.blacks[j], 30 + j);
+    if (this.button) this.button.position.y = this.buttonY + Math.min(Math.max(-0.004, Math.min(0, this.spring.x[PIANO_CHORD])), -0.004 * this.held[PIANO_CHORD]);
     // the meter jumps with what you play and falls back; the power light breathes, slowly
     for (let k = 0; k < this.pads.length; k++) {
       if (this.padK[k] <= 0) continue;

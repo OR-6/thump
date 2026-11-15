@@ -9,7 +9,7 @@
  * soundhole, down and up, until you've strummed; in a song, the next chord's place glowing with a ring closing onto
  * it, and arrows (down or up) riding along the strings onto a line where you strum, in time.
  */
-import { BoxGeometry, CanvasTexture, CircleGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Path, PlaneGeometry, RingGeometry, SRGBColorSpace, Shape, SphereGeometry, Vector2, Vector3 } from '@iwsdk/core';
+import { BoxGeometry, CanvasTexture, Quaternion, CircleGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Path, PlaneGeometry, RingGeometry, SRGBColorSpace, Shape, SphereGeometry, Vector2, Vector3 } from '@iwsdk/core';
 import type { Zone } from '../../room/zones.js';
 import { HG, OUTLINE, SADDLE_X, ZONE_FRETS, fretX, heldMatrix, neckW, stringZ, zoneX } from '../../kit/held-guitar.js';
 import { tortoiseShell, woodGrain } from './surfaces.js';
@@ -66,6 +66,20 @@ export class HeldGuitarModel implements DeskModel {
   private strings: Mesh[] = [];
   private stringY: number[] = [];
   private amp = [0, 0, 0, 0, 0, 0];
+  /**
+   * Each string in two halves meeting at a point that can move: a fingertip pressing into a string bows it there (across
+   * as you strum, down as you fret), and a sounding string shakes there, its ends still. Per string: its nut end, its
+   * saddle end, and this frame's bend (where along it, and how far down and across).
+   */
+  private halves: [Mesh, Mesh][] = [];
+  private ends: [Vector3, Vector3][] = [];
+  private bendX = new Float32Array(6);
+  private bendY = new Float32Array(6);
+  private bendZ = new Float32Array(6);
+  private bp = new Vector3();
+  private bd = new Vector3();
+  private bq = new Quaternion();
+  private static readonly UP = new Vector3(0, 1, 0);
   private t = 0;
   private zoneGlow: MeshBasicMaterial[] = [];
   private zoneRing: Mesh[] = [];
@@ -178,6 +192,24 @@ export class HeldGuitarModel implements DeskModel {
   pluck(i: number, vel: number): void {
     if (i >= 0 && i < 6) this.amp[i] = Math.max(this.amp[i], 0.4 + 0.6 * vel);
   }
+  /**
+   * A fingertip pressing string `i` at `x` along it, bowing it `dy` down (fretting) and `dz` across (strumming), metres,
+   * for this frame (called every frame it's pressed; unpressed, the string is straight at once).
+   */
+  press(i: number, x: number, dy: number, dz: number): void {
+    if (i < 0 || i >= 6) return;
+    this.bendX[i] = x;
+    this.bendY[i] = Math.max(-0.003, Math.min(0, dy));
+    this.bendZ[i] = Math.max(-0.003, Math.min(0.003, dz));
+  }
+  /** Lay half `m` from a to b (a unit-length cylinder, stretched). */
+  private span(m: Mesh, a: Vector3, b: Vector3): void {
+    m.position.copy(a).add(b).multiplyScalar(0.5);
+    this.bd.subVectors(b, a);
+    const len = this.bd.length();
+    m.scale.y = Math.max(1e-4, len);
+    if (len > 1e-6) m.quaternion.copy(this.bq.setFromUnitVectors(HeldGuitarModel.UP, this.bd.multiplyScalar(1 / len)));
+  }
 
   layout(_zones: readonly Zone[]): void {
     void _zones;
@@ -186,6 +218,8 @@ export class HeldGuitarModel implements DeskModel {
     this.liveG.name = 'Live';
     this.strings = [];
     this.stringY = [];
+    this.halves = [];
+    this.ends = [];
     this.zoneGlow = [];
     this.zoneRing = [];
     this.dots = [];
@@ -360,13 +394,19 @@ export class HeldGuitarModel implements DeskModel {
       const a = new Vector3(HG.nut, HG.board + 0.0045, stringZ(i, HG.nut));
       const b = new Vector3(SADDLE_X, 0.0125, stringZ(i, SADDLE_X));
       const r = 0.00085 - i * 0.00008;
-      const s = new Mesh(new CylinderGeometry(r, r, a.distanceTo(b), 8), i < 4 ? this.bronze : this.steel);
-      s.position.copy(a).add(b).multiplyScalar(0.5);
-      s.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      const geo = new CylinderGeometry(r, r, 1, 8);
+      const s = new Mesh(geo, i < 4 ? this.bronze : this.steel);
+      const s2 = new Mesh(geo, s.material);
       s.name = `String${i}`;
-      this.liveG.add(s);
+      s2.name = `String${i}b`;
+      this.liveG.add(s, s2);
       this.strings.push(s);
-      this.stringY.push(s.position.y);
+      this.stringY.push(0);
+      this.halves.push([s, s2]);
+      this.ends.push([a, b]);
+      this.bendX[i] = HG.strikeX;
+      this.span(s, a, b.clone().lerp(a, 0.5));
+      this.span(s2, b.clone().lerp(a, 0.5), b);
     }
     // the three chord places: a glow over their frets, the chord's name, a ring that closes onto it in a song
     for (let c = 0; c < 3; c++) {
@@ -443,10 +483,21 @@ export class HeldGuitarModel implements DeskModel {
     // each string shakes as it sounds, a blur dying away over about a second
     for (let i = 0; i < this.strings.length; i++) {
       this.amp[i] *= Math.exp(-dt * 3.2);
-      const s = this.strings[i];
       const a = this.amp[i];
-      s.position.y = this.stringY[i] + a * 0.0011 * Math.sin(this.t * (80 + i * 13));
-      s.scale.x = s.scale.z = 1 + a * 1.4;
+      const [h1, h2] = this.halves[i];
+      const [na, sb] = this.ends[i];
+      // the bend point: where it's pressed (else where it's strummed), bowed by the finger, shaking as it sounds
+      const x = Math.max(na.x + 0.05, Math.min(sb.x - 0.02, this.bendX[i]));
+      const f = (x - na.x) / (sb.x - na.x);
+      this.bp.copy(na).lerp(sb, f);
+      this.bp.y += this.bendY[i] + a * 0.0011 * Math.sin(this.t * (80 + i * 13));
+      this.bp.z += this.bendZ[i];
+      this.span(h1, na, this.bp);
+      this.span(h2, this.bp, sb);
+      h1.scale.x = h1.scale.z = h2.scale.x = h2.scale.z = 1 + a * 1.4;
+      // (pressed only while it's pressed: straight again at once when the finger goes)
+      this.bendY[i] = 0;
+      this.bendZ[i] = 0;
     }
     for (let c = 0; c < 3; c++) {
       this.zoneK[c] *= Math.exp(-dt * 5);
