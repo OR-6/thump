@@ -121,6 +121,13 @@ export class Sampler {
     return !!list && list.some((s) => this.buffers.has(s.file));
   }
 
+  /** How much of the clips fetched first (the drums and the piano) is in, 0 to 1 (1 with nothing asked for). */
+  get firstReady(): number {
+    if (!this.prefetched.size) return 1;
+    let n = 0;
+    for (const f of this.prefetched.keys()) if (this.buffers.has(f)) n++;
+    return n / this.prefetched.size;
+  }
   /** How many clips have loaded (debug). */
   get loaded(): number {
     return this.buffers.size;

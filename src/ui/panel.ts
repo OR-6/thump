@@ -536,6 +536,13 @@ export class Panel {
     this.place();
   }
   private tray = false;
+  /** How far to the side it stands (kit-local x: + right for a right-handed player, − left). */
+  private sideX = 0.26;
+  side(x: number): void {
+    if (x === this.sideX) return;
+    this.sideX = x;
+    this.place();
+  }
   /** How tall the instrument in front of it is: the display stands with its bottom edge 4 cm clear of it (a hand on
    * the back of the instrument stays under it). */
   private clear = 0.19;
@@ -563,9 +570,11 @@ export class Panel {
     const z = Math.min(this.ahead - nearest, Math.max(this.tray ? -0.22 : PANEL.z, this.ahead - flat));
     // (higher rather than nearer at a tray: its bottom edge stays clear of hands at the back of the instrument)
     this.baseY = y;
-    this.root.position.set(0, y, z);
+    // (off to the side of the instrument, turned to you: the sign over the instrument has the middle to itself)
+    const sx = this.sideX;
+    this.root.position.set(sx, y, z);
     this.root.rotation.order = 'YXZ';
-    this.root.rotation.set(-lean, 0, 0);
+    this.root.rotation.set(-lean, Math.atan2(-sx, Math.max(0.05, this.ahead - z)), 0);
     // moved by hand: where you left it, turned to face you
     // (never down onto the instrument: its bottom edge stays over the tallest part, so nothing under it goes dead)
     if (this.userAt) {

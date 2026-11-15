@@ -48,7 +48,7 @@ import { Placement, kitPose } from '../app/placement.js';
 import { FrameGuard } from '../app/frame-guard.js';
 import { speedToGain, type HandSample, type Point, type Strike } from '../kit/strike.js';
 import { kitLayout, pickPad, type PadSpot } from '../kit/layout.js';
-import { HUD_AT, KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
+import { HUD_AT, HUD_X, KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
 import { LED } from '../kit/pad-view.js';
 import { KEYS, type ModuleKey } from '../ui/module.js';
 import { PANEL, itemZone } from '../ui/panel.js';
@@ -232,6 +232,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     s.w = this.fxNt.w;
     s.d = this.fxNt.d;
     s.round = this.fxNt.round;
+    // (the piano's keys: a note slides along its key to the box near its front)
+    s.lane = this.kit.inst === 'piano' && key.startsWith('piano:') && !s.round;
     // (a leaning surface: turned from the kit's up to its normal)
     if (this.fxNt.nx || this.fxNt.ny || this.fxNt.nz) {
       this.fxN.set(this.fxNt.nx ?? 0, this.fxNt.ny ?? 1, this.fxNt.nz ?? 0).normalize();
@@ -305,6 +307,26 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private pageHidden = false;
   private resumePending = false;
   private hint!: Tag;
+  /** While the instruments are getting ready (the first time, the drums' and piano's sounds download): said in front. */
+  private loadTag!: Tag;
+  private loadDone = false;
+  private loadingTick(immersive: boolean): void {
+    if (this.loadDone || !immersive) return;
+    const p = audio.sampler.firstReady;
+    const placed = this.placement.phase === 'placed';
+    // (done once everything's in and the instruments are out, or after 25 s whatever happens: it never sits there)
+    if ((p >= 1 && placed) || this.uiT > 25) {
+      this.loadDone = true;
+      this.loadTag.show('', 0, null, null);
+      return;
+    }
+    if (p >= 1 && !placed) return this.loadTag.show('', 0, null, null);
+    // eye height, 60 cm ahead, wherever you're looking (level)
+    this.forwardFlat(this.fwd);
+    this.tmp.copy(this.head).addScaledVector(this.fwd, 0.6);
+    this.tmp.y = this.head.y - 0.06;
+    this.loadTag.show(placed ? `Tuning the instruments… ${Math.round(p * 100)}%` : 'Setting up your desk…', 0xffb547, this.tmp, this.head, 1);
+  }
   private holdRing!: InstancedMesh;
   private guard = new FrameGuard();
   private kitSaved = false;
@@ -390,6 +412,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     sfx.grid = (div) => this.sfxGrid(div);
     this.hint = new Tag(0.36, 0.05);
     this.worldRoot.add(this.hint.mesh);
+    this.loadTag = new Tag(0.4, 0.055);
+    this.worldRoot.add(this.loadTag.mesh);
     this.lapCues = new GuitarCues(this.worldRoot);
     const dot = new SphereGeometry(0.0035, 8, 6);
     this.holdRing = new InstancedMesh(dot, new MeshBasicMaterial({ color: 0xf2efe6 }), HOLD_DOTS);
@@ -1130,6 +1154,23 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private moveOff = new Vector3();
   private moveAt = new Vector3();
   private moveK = 0;
+  private moveRot = new Vector3();
+  private moveYaw0 = 0;
+  private kitYaw0 = 0;
+  private yawQ = new Quaternion();
+  private yawV = new Vector3();
+  /** Which way a hand points, flat (from the wrist to the middle knuckle), as a yaw. */
+  private handYaw(h: HandState): number {
+    this.yawV.subVectors(h.knuckleMiddle, h.wrist);
+    return Math.atan2(-this.yawV.x, -this.yawV.z);
+  }
+  /** The yaw of an object's parent in the world (a room anchor is turned, level). */
+  private parentYaw(o: Object3D): number {
+    if (!o.parent) return 0;
+    o.parent.getWorldQuaternion(this.yawQ);
+    this.yawV.set(0, 0, -1).applyQuaternion(this.yawQ);
+    return Math.atan2(-this.yawV.x, -this.yawV.z);
+  }
   private buildMovePuck(): void {
     const c = document.createElement('canvas');
     c.width = c.height = 128;
@@ -1210,16 +1251,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           this.placeKit(true);
           continue;
         }
-        // (the pinch carries it across the desk and up or down too, if it doesn't sit right on your real desk: within
-        // 20 cm below and 25 cm above where the desk was found; and it turns to face you as it goes)
-        // (the height kept in the world's frame, then into the parent's: a room anchor's origin can be on the floor)
+        // (held like a tray by its corner: it goes where the pinch goes, the handle stays between your fingers, and it
+        // turns only as your hand turns; across the desk, and up or down within 20 cm below and 25 cm above where the
+        // desk was found; the height kept in the world's frame, then into the parent's: a room anchor's origin can be on
+        // the floor)
         const p = root.parent;
-        this.moveAt.copy(h.pinchPoint).add(this.moveOff);
+        let dy = this.handYaw(h) - this.moveYaw0;
+        dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        this.moveRot.copy(this.moveOff).applyAxisAngle(RoomSystem.UP, dy);
+        this.moveAt.copy(h.pinchPoint).add(this.moveRot);
         this.moveAt.y = Math.max(this.kitBaseY - 0.2, Math.min(this.kitBaseY + 0.25, this.moveAt.y));
         if (p) p.worldToLocal(this.moveAt);
         root.position.copy(this.moveAt);
-        root.getWorldPosition(this.moveAt);
-        root.rotation.y = Math.atan2(-(this.moveAt.x - this.head.x), -(this.moveAt.z - this.head.z));
+        root.rotation.y = this.kitYaw0 + dy - this.parentYaw(root);
         root.updateMatrixWorld(true);
         near = 1;
         continue;
@@ -1230,6 +1274,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (this.moveHand < 0 && h.edge === 'start' && d < 0.06 && !this.dragging[0] && !this.dragging[1]) {
         this.moveHand = i;
         root.getWorldPosition(this.moveOff).sub(h.pinchPoint);
+        this.moveYaw0 = this.handYaw(h);
+        this.kitYaw0 = root.rotation.y + this.parentYaw(root);
         sfx.lift();
       }
     }
@@ -1434,7 +1480,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // (the sign stands behind the instrument, over it: in view while you play, not down by your hands; the guitar in
     // your lap leaves the desk free, and it stands where the instruments would)
     const ha = this.guitarLap && this.kit.inst === 'guitar' ? null : HUD_AT[this.kit.inst];
-    if (ha) this.hudAt.set(0, ha.y, ha.z);
+    if (ha) this.hudAt.set(this.handed() === 'left' ? HUD_X : -HUD_X, ha.y, ha.z);
     else this.hudAt.set(0, 0.05, this.guitarLap && this.kit.inst === 'guitar' ? 0.02 : 0.24);
     hud.update(dt, this.hudAt, this.head, motion.calm, this.hudTargetOn ? this.hudTarget : null);
   }
@@ -1920,6 +1966,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.player.head.getWorldPosition(this.head);
     this.tag.update(dt);
     this.hint.update(dt);
+    this.loadTag.update(dt);
+    this.loadingTick(immersive);
     this.stand.update(dt);
     if (!this.standShown && this.placement.phase === 'placed') this.refreshStand();
     if (this.placement.phase !== 'placed') {
@@ -3196,7 +3244,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (q.face !== 'up') continue;
       const nx = q.nx ?? 0, ny = q.ny ?? 1, nz = q.nz ?? 0;
       const depth = (T.x - q.x) * nx + (T.y - q.y) * ny + (T.z - q.z) * nz - tipR;
-      if (depth >= 0 || depth < -0.06 || depth > bestDepth) continue;
+      if (depth >= 0 || depth < -0.1 || depth > bestDepth) continue;
       // (only over the surface: its disc, or its rectangle, a little wider)
       if (q.r !== undefined) {
         if (q.r < 0 || Math.hypot(T.x - q.x, T.z - q.z) > q.r * 1.05) continue;
@@ -3219,8 +3267,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const b = above / L;
     const a = Math.sqrt(1 - b * b);
     u.multiplyScalar(a).addScaledVector(n, -b);
-    // fully resting to 3 cm in, then easing back to the hand by 6
-    const k = bestDepth > -0.03 ? 1 : Math.max(0, (0.06 + bestDepth) / 0.03);
+    // fully resting to 6 cm in (a quick stroke goes that far past the bar in the air), then easing back to the hand by 10
+    const k = bestDepth > -0.06 ? 1 : Math.max(0, (0.1 + bestDepth) / 0.04);
     T.lerp(this.restV.copy(G).addScaledVector(u, L), k);
     const world = this.restM.copy(this.kit.root.matrixWorld);
     tip.copy(T).applyMatrix4(world);
@@ -3590,6 +3638,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         // (a mallet strikes with the underside of its ball: the moment you see it touch the bar is the hit, not a
         // centimetre later when its centre would reach it)
         if (k === 4 && marimba) this.airP.y -= MALLET_HEAD_R;
+        // (a fingertip presses with its pad: the tracked joint is the middle of the finger's end, half a centimetre
+        // over the pad you see touch the key; so a key you see touched is pressed, not one pushed a centimetre in)
+        if ((piano || marimba) && k !== 3 && k !== 4 && !h.controller) this.airP.y -= h.tipRadius * 0.6;
         if (aimOn) this.aimConsider(i, n);
         this.airOut.length = 0;
         // (keys and bars: the height smoothed, so a hovering fingertip's shake isn't a press)
@@ -5464,7 +5515,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // (the panel where you last moved it)
       const pa = this.settings.panelAt;
       this.kit.module.moveTo(pa ? this.hRoot.set(pa.x, pa.y, pa.z) : null);
-      // the display stands within reach of where you sit
+      // the display stands within reach of where you sit, to the side of your playing hand
+      this.kit.module.side(this.handed() === 'left' ? -0.26 : 0.26);
       this.kit.module.seat(Math.hypot(pose.x - this.head.x, pose.z - this.head.z), this.head.y - pose.y);
     }
     root.visible = true;

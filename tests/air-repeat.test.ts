@@ -224,3 +224,33 @@ describe('a black key over two white ones', () => {
     expect(blacks / 100).toBeGreaterThanOrEqual(4.8);
   });
 });
+
+describe('fast mallet strokes on the marimba', () => {
+  // three bars side by side, 5.4 cm apart (each taking its whole slot)
+  const bars: AirSurface[] = [-1, 0, 1].map((k, i) => ({ id: i, face: 'up' as const, x: k * 0.054, y: 0, z: 0, w: 0.0495, d: 0.2, confirm: 0.002, key: true, lift: 0.01 }));
+  for (const v of [2, 4, 7])
+    it(`a stroke at ${v} m/s on the middle bar, going 8 cm past it along an arc, plays it once`, () => {
+      let ok = 0;
+      for (let k = 0; k < 100; k++) {
+        const r = rng(500 + k + v);
+        const air = new AirHits(1);
+        const out: AirHit[] = [];
+        const got: number[] = [];
+        // (down at v, sliding 2.5 cm sideways while it falls: the mallet's arc), then back up
+        const t0 = 0.3;
+        for (let t = r() * DT; t < t0 + 0.4; t += DT) {
+          const dn = Math.min(t, t0);
+          const y = t <= t0 ? 0.05 - (v * (dn - (t0 - 0.05 / v))) * (dn > t0 - 0.05 / v ? 1 : 0) : 0;
+          const yy = t < t0 - 0.05 / v ? 0.05 : t <= t0 + 0.08 / v ? 0.05 - v * (t - (t0 - 0.05 / v)) : -0.08 + 0.5 * (t - (t0 + 0.08 / v));
+          const x = -0.012 + Math.max(0, Math.min(0.025, ((0.05 - yy) / 0.13) * 0.025));
+          void y;
+          out.length = 0;
+          air.update(0, x + gauss(r) * STICK, Math.min(0.05, yy) + gauss(r) * STICK, gauss(r) * STICK, DT, bars, out, 6.5, AIR.stickMin);
+          for (const h of out) got.push(h.surface);
+        }
+        if (got.length === 1 && got[0] === 1) ok++;
+        else if (process.env.DBG) console.log("MISS", v, k, got.join());
+      }
+      expect(ok).toBeGreaterThanOrEqual(97);
+    });
+});

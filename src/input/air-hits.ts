@@ -244,16 +244,28 @@ export class AirHits {
         if (this.down[t]) continue;
         const now = side(s, x, y, z);
         const m = this.sm[t];
-        // (not over it, or only on its edge: it'll go down as soon as it's in, from the side or from above)
-        if (now < -KEY.deep) {
+        // (crossed its top this frame, from above: judged where it crossed, however deep it is now; a fast mallet goes
+        // from over a bar to well under it in one frame, and on along its arc, off the bar)
+        const c0 = s.confirm ?? 0;
+        const was0 = side(s, px, py, pz);
+        const crossed = was0 > -c0 && now <= -c0 && was0 > now && this.held[p] < 0;
+        let ox = x;
+        let oz = z;
+        if (crossed) {
+          const f = (was0 + c0) / (was0 - now);
+          ox = px + (x - px) * f;
+          oz = pz + (z - pz) * f;
+        }
+        if (now < -KEY.deep && !crossed) {
           this.ext[t] = m;
           continue;
         }
-        if (!over(s, x, z, -KEY.edge / 4)) {
+        if (!over(s, ox, oz, -KEY.edge / 4)) {
           // (off it: coming onto it from above plays at once; from the side, under its top, only in a glissando)
-          if (!over(s, x, z, KEY.edge)) this.ext[t] = m > 0 ? BIG : m;
+          if (!over(s, ox, oz, KEY.edge)) this.ext[t] = m > 0 ? BIG : m;
           continue;
         }
+        if (crossed && this.ext[t] < BIG && this.ext[t] < 0 && was0 > 0) this.ext[t] = BIG;
         // (over it while holding another down, a black key over this white one: it waits for a stroke of its own, so
         // letting the black key up, still below this one's top, doesn't press it; slid into from one let go this
         // frame: in from the side)
@@ -275,7 +287,8 @@ export class AirHits {
         const span = dt + qdt;
         const speed = span > 0 ? (side(s, qx, qy, qz) - now) / span : 0;
         const fromAbove = this.ext[t] > 0;
-        if (fromAbove ? speed < min && m > -c : this.ext[t] - m < (s.lift ?? KEY.lift) * 0.6) continue;
+        // (a repeat moves down, too: the smoothed depth lags, and goes on falling a moment after a deep stroke turns back up)
+        if (fromAbove ? speed < min && m > -c : this.ext[t] - m < (s.lift ?? KEY.lift) * 0.6 || speed < min * 0.5) continue;
         const was = side(s, px, py, pz);
         const lat = dt > 0 ? Math.sqrt(Math.max(0, moved * moved - (was - now) * (was - now))) / dt : 0;
         const v = Math.max(speed, 0.5 * lat, 0);

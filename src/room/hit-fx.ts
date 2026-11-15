@@ -25,6 +25,8 @@ export interface PartShape {
   w: number;
   d: number;
   round: boolean;
+  /** A key (its length along local Z, toward you +Z): its note comes as a block sliding along it, not a ring. */
+  lane?: boolean;
 }
 
 export type FlashKind = 'perfect' | 'good' | 'mult';

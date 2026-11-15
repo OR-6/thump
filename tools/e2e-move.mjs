@@ -38,12 +38,15 @@ await wait(300);
 xr('set-select-value', { device: HAND, value: 1 });
 await wait(400);
 check('a pinch on it takes hold', js(`return r.moveHand;`) === 1);
+const yaw0 = js(`return r.kit.root.rotation.y;`);
 // carry it 12 cm right, in steps
 for (let i = 1; i <= 6; i++) {
   xr('set-transform', { device: HAND, position: { x: at.x + 0.02 * i, y: at.y, z: at.z }, orientation: POSE });
   await wait(120);
 }
 await wait(300);
+const yaw1 = js(`return r.kit.root.rotation.y;`);
+check('carried without turning the hand, it doesn\'t turn (held like a tray)', Math.abs(yaw1 - yaw0) < 0.03, `${yaw0} -> ${yaw1}`);
 xr('set-select-value', { device: HAND, value: 0 });
 await wait(800);
 s = state();

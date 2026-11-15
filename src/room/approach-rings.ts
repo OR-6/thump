@@ -106,6 +106,43 @@ export class ApproachRings {
     }
   }
 
+  /**
+   * A key's note: a block its key's width sliding along the key toward you, landing on the box near the key's front
+   * (where a finger presses it) on the beat. Its own lane, so neighbours never overlap, and the moment it's due is
+   * the moment it meets the box.
+   */
+  private lane: PartShape = { at: new Vector3(), q: new Quaternion(), w: 0, d: 0, round: false };
+  private laneNote(s: number, sh: PartShape, n: ApproachNote, u: number, miss: boolean, calm: boolean, paused: boolean, waitKey: string, t: number): void {
+    // (the box: 3.5 cm in from a white key's front, 2.5 from a black key's; the block slides 16 cm to it)
+    const land = sh.d > 0.12 ? 0.035 : 0.025;
+    const z0 = sh.d / 2 - land;
+    const travel = 0.18;
+    const hw = sh.w * 0.43;
+    const hd = 0.016;
+    const r = Math.min(hw, hd);
+    const L = this.lane;
+    L.q.copy(sh.q);
+    // (past due: it sits in the box and fades; a miss slides on through, grey)
+    const off = n.ahead >= 0 ? -u * travel : miss ? -n.ahead * 0.06 : 0;
+    _l.set(0, 0, z0 + off).applyQuaternion(sh.q);
+    L.at.copy(sh.at).add(_l);
+    const a = n.ahead < 0 ? Math.max(0, 1 + n.ahead / (miss ? 0.6 : 0.25)) * (miss ? 0.7 : 1) : 0.25 + 0.75 * Math.pow(1 - u, 1.2);
+    const now = miss ? 0 : Math.max(0, 1 - Math.abs(n.ahead) / 0.1);
+    if (now > 0) _c.lerp(WHITE, 0.6 * now);
+    let al = paused ? a * 0.25 : a;
+    if (waitKey && n.key === waitKey && n.ahead <= 0.05) al *= 0.75 + 0.25 * Math.sin(t * 9);
+    // the block, filled (a band from its middle out to its edge), over a dark rim so it reads on a white key
+    this.band(s, 0, L, hw, hd, r, 0, 0.0015, EDGE, al * 0.6);
+    this.band(s, 1, L, hw, hd, r, -r, 0, _c, al * (calm ? 0.85 : 1));
+    // the box it lands in, on the key, still: thin, light, bolder as the block nears
+    _l.set(0, 0, z0).applyQuaternion(sh.q);
+    L.at.copy(sh.at).add(_l);
+    _t.copy(_c).lerp(WHITE, 0.6);
+    const bw = hw + 0.0015;
+    const bd = hd + 0.0015;
+    this.band(s, 2, L, bw, bd, Math.min(bw, bd) * 0.5, 0.0005, 0.0025 + 0.0015 * (1 - u), _t, n.ahead > 0 && !miss ? Math.min(1, 0.3 + 0.7 * (1 - u)) * (paused ? 0.25 : 1) : 0);
+  }
+
   /** `lead`: how many beats ahead a ring appears (the song's tempo sets it: about 1.1 s, 2 to 3 beats). */
   update(feed: ApproachFeed, shapeOf: ShapeOf, calm: boolean, waitKey = '', t = 0, paused = false, lead = LEAD_BEATS): void {
     let s = 0;
@@ -121,6 +158,11 @@ export class ApproachRings {
         if (miss) _c.setRGB(0.55, 0.52, 0.6);
         const sh = this.shape;
         const u = Math.max(0, n.ahead) / lead;
+        if (sh.lane) {
+          this.laneNote(s, sh, n, u, miss, calm, paused, waitKey, t);
+          s++;
+          continue;
+        }
         // (closing: steady in speed, so its last beat reads like a count; past due it holds on the outline and fades)
         const grow = miss && n.ahead < 0 ? Math.max(0.55, 1 + n.ahead * 0.6) : 1 + (START - 1) * u;
         const hw = (sh.w / 2) * grow;
