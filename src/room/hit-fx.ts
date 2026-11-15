@@ -1,13 +1,16 @@
 /**
  * What you hit answers in its own shape (like a hit circle swelling off in osu!, or a target lighting at the strike
- * line): a neon outline of the struck part (round for a drum, a conga or a handpan note; a rounded rectangle for a
- * key, a bar or the strings) swells off it and fades, in the part's own colour, over a dark edge so it reads on a
- * white head. A Perfect adds a white inner ring and a quick fill; the spotlight turns it gold; the streak stepping
- * up sends one big gold ring off the last thing you hit. A small pool, its outlines rewritten in place: nothing
- * allocated per frame.
+ * line): one thin neon outline of the struck part (round for a drum, a conga or a handpan note; a rounded rectangle
+ * for a key, a bar or the strings) swells a little off it and fades in about a third of a second, in the part's own
+ * colour over a faint dark edge so it reads on a white head. A Perfect is brighter, swells further and lights the
+ * part for a moment (a glow, not a white-out); a Good is a fainter, smaller ring. The streak stepping up sends one
+ * bigger ring off the last thing you hit: rare, so it can be big. Small enough that the next note's approach ring
+ * stays readable through it. Calm motion: half the swell, no glow. A small pool, its outlines rewritten in place:
+ * nothing allocated per frame.
  */
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Group, Mesh, MeshBasicMaterial, Quaternion, Vector3, type Object3D } from '@iwsdk/core';
 import { BRAND, hexNum } from '../ui/theme.js';
+import { motion } from '../ui/motion.js';
 
 /** Points round each corner (the perimeter has 4 × (K + 1)). */
 const K = 10;
@@ -24,7 +27,7 @@ export interface PartShape {
   round: boolean;
 }
 
-export type FlashKind = 'perfect' | 'good' | 'inner' | 'mult';
+export type FlashKind = 'perfect' | 'good' | 'mult';
 
 interface Slot {
   ring: Mesh;
@@ -112,13 +115,16 @@ export class HitFx {
     // (a key or a bar: softly rounded corners; a disc: all corner)
     slot.r = s.round ? s.w / 2 : Math.min(slot.hw, slot.hd) * 0.35;
     slot.age = -delay;
-    slot.life = kind === 'mult' ? 0.6 : kind === 'inner' ? 0.3 : 0.42;
+    slot.life = kind === 'mult' ? 0.55 : kind === 'perfect' ? 0.32 : 0.26;
     // (how far it swells past the part, in metres: bigger parts swell further, but never much)
     const size = Math.min(slot.hw, slot.hd);
-    slot.spread = kind === 'mult' ? 0.05 + size * 0.6 : kind === 'perfect' ? 0.012 + size * 0.35 : kind === 'good' ? 0.008 + size * 0.2 : 0.004;
-    slot.width = kind === 'mult' ? 0.006 : kind === 'inner' ? 0.0022 : kind === 'perfect' ? 0.0045 : 0.0032;
-    slot.fillK = kind === 'perfect' ? 0.7 : kind === 'good' ? 0.4 : 0;
+    const calm = motion.calm ? 0.5 : 1;
+    slot.spread = calm * (kind === 'mult' ? 0.03 + size * 0.45 : kind === 'perfect' ? 0.006 + size * 0.2 : 0.004 + size * 0.1);
+    slot.width = kind === 'mult' ? 0.005 : kind === 'perfect' ? 0.0035 : 0.0026;
+    slot.fillK = motion.calm ? 0 : kind === 'perfect' ? 0.28 : 0;
+    // (a Good: the part's colour, dimmer)
     this.col.setHex(color);
+    if (kind === 'good') this.col.multiplyScalar(0.65);
     (slot.ring.material as MeshBasicMaterial).color.copy(this.col);
     (slot.fill.material as MeshBasicMaterial).color.copy(this.col);
     for (const m of [slot.ring, slot.edge, slot.fill]) {
@@ -150,10 +156,10 @@ export class HitFx {
       perimeter(edge.array as Float32Array, P * 3, s.hw, s.hd, s.r, grow + w + 0.0015);
       edge.needsUpdate = true;
       (s.ring.material as MeshBasicMaterial).opacity = 1 - u * u;
-      (s.edge.material as MeshBasicMaterial).opacity = 0.55 * (1 - u);
+      (s.edge.material as MeshBasicMaterial).opacity = 0.35 * (1 - u);
       s.ring.visible = s.edge.visible = true;
-      // the part itself lights for the first 150 ms
-      const f = s.fillK * Math.max(0, 1 - s.age / 0.15);
+      // the part itself glows for the first tenth of a second
+      const f = s.fillK * Math.max(0, 1 - s.age / 0.1);
       s.fill.visible = f > 0.01;
       if (s.fill.visible) {
         const fan = s.fill.geometry.getAttribute('position') as BufferAttribute;

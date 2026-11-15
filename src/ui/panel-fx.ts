@@ -2,9 +2,12 @@
  * The panel's particles and light (Kenney's CC0 Particle Pack, public/fx): stars and sparks that burst from the
  * medal as a grade lands, pink stars for a new record, confetti falling for a full combo, gold sparks for the
  * spotlight, cyan ones as the streak steps up; and a band of light that sweeps across the panel when a page opens.
+ * The edge glows with your playing: it gathers as you play and settles when you stop (never a flash per hit, so a
+ * fast beat doesn't flicker it in the corner of your eye). Calm motion: a third of the particles, no edge glow.
  * In the panel's own plane (x right, y up, z toward you), metres; one pool, nothing allocated per frame.
  */
 import { AdditiveBlending, CanvasTexture, Color, Group, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, TextureLoader, type Texture } from '@iwsdk/core';
+import { motion } from './motion.js';
 
 export type FxKind = 'stamp' | 'stamp-small' | 'record' | 'fullcombo' | 'spotlight' | 'mult' | 'milestone';
 
@@ -35,7 +38,10 @@ export class PanelFx {
   private sweepMesh: Mesh;
   /** The panel's edge: dark at rest, lit in your instrument's colour as you play. */
   private edge: Mesh;
+  /** How much you've been playing (0..1, gathers with each note, ebbs over a second or so), and the glow shown. */
+  private edgeE = 0;
   private edgeK = 0;
+  private edgeCol = new Color();
   private sweepT = 9;
   private seed = 1;
 
@@ -108,10 +114,12 @@ export class PanelFx {
     this.root.add(this.edge);
   }
 
-  /** A note played: the edge lights in the instrument's colour, harder for a harder hit, gone in a quarter second. */
+  /** A note played: the edge's glow gathers a little more, in the instrument's colour. */
   flash(color: number, gain: number): void {
-    (this.edge.material as MeshBasicMaterial).color.setHex(color);
-    this.edgeK = Math.max(this.edgeK, 0.35 + 0.65 * Math.min(1, gain));
+    if (motion.calm) return;
+    this.edgeCol.setHex(color);
+    (this.edge.material as MeshBasicMaterial).color.lerp(this.edgeCol, 0.3);
+    this.edgeE = Math.min(1, this.edgeE + 0.1 + 0.1 * Math.min(1, gain));
   }
 
   private rnd(): number {
@@ -121,7 +129,7 @@ export class PanelFx {
 
   /** A burst of `kind` at (x, y) in the panel's plane. */
   burst(kind: FxKind, x: number, y: number): void {
-    const n = kind === 'stamp' ? 36 : kind === 'fullcombo' ? 40 : kind === 'record' ? 24 : kind === 'spotlight' ? 22 : 10;
+    const n = Math.ceil((kind === 'stamp' ? 36 : kind === 'fullcombo' ? 40 : kind === 'record' ? 24 : kind === 'spotlight' ? 22 : 8) * (motion.calm ? 0.35 : 1));
     const pal = PALETTE[kind];
     for (let k = 0; k < n; k++) {
       const i = this.next++ % N;
@@ -158,8 +166,12 @@ export class PanelFx {
   }
 
   update(dt: number): void {
-    if (this.edgeK > 0) {
-      this.edgeK = Math.max(0, this.edgeK - dt / 0.25);
+    if (this.edgeE > 0 || this.edgeK > 0) {
+      // (ebbs over about a second and a half; the glow follows it, up in a tenth of a second, never past 0.4)
+      this.edgeE = Math.max(0, this.edgeE - dt * 0.7);
+      const want = motion.calm ? 0 : 0.4 * this.edgeE;
+      this.edgeK += (want - this.edgeK) * Math.min(1, dt * (want > this.edgeK ? 10 : 3));
+      if (this.edgeK < 0.004 && this.edgeE === 0) this.edgeK = 0;
       this.edge.visible = this.edgeK > 0;
       (this.edge.material as MeshBasicMaterial).opacity = this.edgeK;
     }
@@ -195,6 +207,3 @@ export class PanelFx {
     }
   }
 }
-
-// (keep the colour type in the import list used: tinting goes through material.color)
-export type { Color };
