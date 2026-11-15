@@ -7,6 +7,12 @@ with FluidSynth (LGPL-2.1, used as a tool; nothing of it is shipped) playing:
   Licence (GeneralUser GS License v2.0): "You may use GeneralUser GS without restriction for your own music creation,
   private or commercial." Its samples allow full use in music production, including recordings made for profit.
 
+and every piano part (the classics' piano pieces, the lessons, the songs' keys) on:
+
+  Salamander Grand Piano (a Yamaha C5) by Alexander Holm, in its SF2 build v3+20200602 assembled by the FreePats
+  project (https://freepats.zenvoid.org). Licence: Creative Commons Attribution 3.0
+  (https://creativecommons.org/licenses/by/3.0/). Changes: rendered as audio, mixed (EQ, compression, reverb).
+
 The hall reverb's impulse response is made by the same script (no recording).
 
 Scores the classics' arrangements are taken from (their notes, tools/stems/scores/*.json):

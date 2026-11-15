@@ -393,10 +393,10 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     guitar: [tr('power chords', 30, power(c, 8, (b) => (b.pass === 2 ? 'x.x.x.x.' : undefined), 40, 0.7), { rev: 25, vol: 88 })],
     drums: [kit('timpani', 48, beat(c, 4, { 41: (b) => (b.pass === 1 ? 'x.x.' : undefined) }, 0.7), { rev: 50, vol: 88 }), kit('rock kit', 16, drummer(c, BAND_STYLES.rock, 0.9, (b) => b.pass === 2), { rev: 30, vol: 92 })],
   }),
-  // folk: a nylon guitar picking each chord, the flute on the tune; strings, a soft bass and a frame drum the second time
+  // folk: a steel-string guitar picking each chord, the flute on the tune (then the fiddle); strings, a soft bass and a frame drum the second time
   'scarborough-fair': (c) => ({
-    lead: [tr('flute', 73, tune(c, 0, 0.95), { rev: 65, vol: 112 })],
-    guitar: [tr('nylon', 24, arp(c, 6, (b) => (b.solo ? 'r5835.' : 'r58358'), 40, 0.58, 2.4), { rev: 50, vol: 100, pan: 44 })],
+    lead: [tr('flute', 73, tune(c, 0, 0.95, pass(0)), { rev: 65, vol: 112 }), tr('fiddle', 40, tune(c, 0, 0.95, fromPass(1)), { rev: 60, vol: 110 })],
+    guitar: [tr('steel', 25, arp(c, 6, (b) => (b.solo ? 'r5835.' : 'r58358'), 40, 0.58, 2.4), { rev: 50, vol: 100, pan: 44 })],
     strings: [tr('strings', 49, pad(c, 52, 0.34, fromPass(1)), { rev: 80, vol: 72, pan: 84 })],
     bass: [tr('bass', 32, bassPat(c, 6, (b) => (b.pass >= 1 ? '1-----' : undefined), 36, 0.6, 0.95), { rev: 20, vol: 92 })],
     drums: [kit('frame drum', 48, beat(c, 6, { 45: (b) => (b.pass >= 1 ? 'x.....' : undefined), 82: (b) => (b.pass >= 1 ? '-.x.x.' : undefined) }, 0.5), { rev: 55, vol: 80 })],
@@ -543,12 +543,17 @@ for (const s of SCORES) {
     }
   const dir = `artifacts/stems/${id}`;
   mkdirSync(dir, { recursive: true });
-  const list: { id: string; notes: number }[] = [];
+  const list: { id: string; notes: number; gm: boolean; grand: boolean }[] = [];
   for (const [stem, tracks] of Object.entries(stems) as [StemId, Track[]][]) {
     const ts = tracks.filter((t) => t.notes.length);
     if (!ts.length) continue;
-    writeFileSync(`${dir}/${stem}.mid`, smf(s.tune.bpm, ts));
-    list.push({ id: stem, notes: ts.reduce((a, t) => a + t.notes.length, 0) });
+    // (the piano is a real concert grand, from its own SoundFont: those tracks go in a file of their own)
+    const grand = ts.filter((t) => !t.drums && t.program === 0);
+    const gm = ts.filter((t) => !grand.includes(t));
+    if (gm.length) writeFileSync(`${dir}/${stem}.mid`, smf(s.tune.bpm, gm));
+    // (played into its brighter layers: the grand's softest are very dark; the mix sets the level, not the touch)
+    if (grand.length) writeFileSync(`${dir}/${stem}.grand.mid`, smf(s.tune.bpm, grand.map((t) => ({ ...t, notes: t.notes.map((n) => ({ ...n, vel: Math.min(1, 0.3 + 0.8 * n.vel) })) }))));
+    list.push({ id: stem, notes: ts.reduce((a, t) => a + t.notes.length, 0), gm: gm.length > 0, grand: grand.length > 0 });
   }
   // the kick on its own (not a stem: what the bass and the keys duck under)
   const kicks = (stems.drums ?? []).flatMap((t) => t.notes.filter((n) => n.midi === 36));

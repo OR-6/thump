@@ -8,7 +8,8 @@
  * time 0 is: the count-in bar is the intro). The full mix, limited as a finished track, goes to
  * artifacts/listen/<id>-mix.mp3; tools/stems/check-mix.mjs reads them all back.
  *
- *   node tools/stems/make-stems.mjs [song-id …] --sf2 path/to/GeneralUser-GS.sf2
+ *   node tools/stems/make-stems.mjs [song-id …] --sf2 path/to/GeneralUser-GS.sf2 --grand path/to/SalamanderGrandPiano.sf2
+ *        [--remix: only mix again from the stems already rendered]
  *
  * Needs fluidsynth and ffmpeg (with libopus) on the PATH.
  */
@@ -88,6 +89,21 @@ const FX = {
   strings: 'highpass=f=120,equalizer=f=300:t=q:w=1:g=-2,acompressor=threshold=-20dB:ratio=2:attack=20:release=250',
   brass: 'highpass=f=120,equalizer=f=300:t=q:w=1:g=-2,acompressor=threshold=-18dB:ratio=2.5:attack=10:release=180',
 };
+/** The grand's top end: a shelf from 2.5 kHz and air from 8 kHz. */
+const GRAND_EQ = 'highshelf=f=2500:g=6:t=q:w=0.7,highshelf=f=8000:g=6:t=q:w=0.7';
+/** A song's own touches: Scarborough Fair's guitar opened up (the General MIDI bank's are dark), a lighter low end where
+ * it crowded the piano. */
+const BALLAD_EQ = { bass: 'volume=-3dB', keys: 'highshelf=f=3000:g=4:t=q:w=0.7' };
+const SONG_EQ = {
+  'scarborough-fair': { guitar: 'highshelf=f=2000:g=8:t=q:w=0.7,highshelf=f=7000:g=4:t=q:w=0.7' },
+  // (the hymn's organ and basses less heavy, the room for the grand)
+  'amazing-grace': { keys: 'highpass=f=220,highshelf=f=3000:g=4:t=q:w=0.7', bass: 'volume=-3dB', strings: 'highpass=f=200' },
+  // (the ballad lessons' bass and pads a step back)
+  'learn-piano': BALLAD_EQ,
+  'learn-marimba': BALLAD_EQ,
+  'learn-guitar': BALLAD_EQ,
+  'learn-handpan': BALLAD_EQ,
+};
 /** How much of each goes to the hall. */
 const WET = { drums: 0.1, perc: 0.16, bass: 0, lead: 0.2, guitar: 0.2, keys: 0.28, strings: 0.34, brass: 0.24 };
 /** Which duck under the kick, and how hard (ratio). */
@@ -105,7 +121,11 @@ const root = 'artifacts/stems';
 mkdirSync('artifacts/listen', { recursive: true });
 const IR = `${root}/hall.wav`;
 hall(IR);
-const fluid = (mid, wav) => run('fluidsynth', ['-ni', '-q', '-g', '0.6', '-r', String(RATE), '-O', 'float', '-T', 'wav', '-o', 'synth.reverb.room-size=0.4', '-o', 'synth.reverb.damp=0.4', '-o', 'synth.reverb.width=0.8', '-o', 'synth.reverb.level=0.3', '-o', 'synth.chorus.depth=3.6', '-o', 'synth.chorus.level=0.55', '-o', 'synth.chorus.nr=4', '-o', 'synth.chorus.speed=0.36', '-o', 'synth.polyphony=512', '-F', wav, sf2, mid]);
+/** The concert grand (Salamander Grand Piano, an SF2 build of it) for every piano part, and its level against the
+ * General MIDI bank's (dB). */
+const grandSf2 = opt('grand', process.env.THUMP_GRAND ?? '');
+const GRAND_DB = Number(opt('grand-db', '0'));
+const fluid = (mid, wav, font = sf2, db = 0) => run('fluidsynth', ['-ni', '-q', '-g', (0.6 * Math.pow(10, db / 20)).toFixed(3), '-r', String(RATE), '-O', 'float', '-T', 'wav', '-o', 'synth.reverb.room-size=0.4', '-o', 'synth.reverb.damp=0.4', '-o', 'synth.reverb.width=0.8', '-o', 'synth.reverb.level=0.3', '-o', 'synth.chorus.depth=3.6', '-o', 'synth.chorus.level=0.55', '-o', 'synth.chorus.nr=4', '-o', 'synth.chorus.speed=0.36', '-o', 'synth.polyphony=512', '-F', wav, font, mid]);
 
 for (const id of readdirSync(root)) {
   if (ids.length && !ids.includes(id)) continue;
@@ -122,13 +142,27 @@ for (const id of readdirSync(root)) {
       continue;
     }
     const raw = `${dir}/${st.id}.raw.wav`;
-    fluid(`${dir}/${st.id}.mid`, raw);
+    // the General MIDI part and the grand's, rendered apart and laid together
+    const gmPart = st.gm !== false;
+    const grandPart = !!st.grand && !!grandSf2;
+    if (gmPart && !grandPart) fluid(`${dir}/${st.id}.mid`, raw);
+    else if (grandPart && !gmPart) fluid(`${dir}/${st.id}.grand.mid`, raw, grandSf2, GRAND_DB);
+    else {
+      fluid(`${dir}/${st.id}.mid`, `${dir}/${st.id}.gm.wav`);
+      fluid(`${dir}/${st.id}.grand.mid`, `${dir}/${st.id}.grand.wav`, grandSf2, GRAND_DB);
+      ff(['-i', `${dir}/${st.id}.gm.wav`, '-i', `${dir}/${st.id}.grand.wav`, '-filter_complex', 'amix=inputs=2:normalize=0:duration=longest', '-c:a', 'pcm_f32le', raw]);
+      rmSync(`${dir}/${st.id}.gm.wav`);
+      rmSync(`${dir}/${st.id}.grand.wav`);
+    }
+    if (st.grand && !grandSf2) throw new Error(`${id}: its piano needs --grand <Salamander Grand Piano .sf2>`);
     const mixed = `${dir}/${st.id}.wav`;
     const wet = WET[st.id] ?? 0.15;
     const duck = plan.key && DUCK[st.id];
     // the channel: EQ and compression, the duck under the kick, then the dry and its hall send together
     const inputs = ['-i', raw, '-i', IR, ...(duck ? ['-i', key] : [])];
-    let g = `[0:a]${FX[st.id] ?? 'anull'},apad=whole_dur=${secs}[eq];`;
+    // (the grand opened up: its sparkle and air lifted a little, gently)
+    const fx = (FX[st.id] ?? 'anull') + (st.grand ? `,${GRAND_EQ}` : '') + (SONG_EQ[id]?.[st.id] ? `,${SONG_EQ[id][st.id]}` : '');
+    let g = `[0:a]${fx},apad=whole_dur=${secs}[eq];`;
     g += duck ? `[2:a]apad=whole_dur=${secs}[k];[eq][k]sidechaincompress=threshold=0.04:ratio=${duck}:attack=4:release=160:makeup=1[ch];` : `[eq]anull[ch];`;
     g += wet > 0 ? `[ch]asplit=2[dry][send];[send]highpass=f=250[s2];[s2][1:a]afir=dry=0:wet=1:length=1[rv];[dry][rv]amix=inputs=2:weights=1 ${wet}:normalize=0,volume=${LEVEL[st.id] ?? 0}dB[out]` : `[ch]volume=${LEVEL[st.id] ?? 0}dB[out]`;
     ff([...inputs, '-filter_complex', g, '-map', '[out]', '-t', secs, '-ar', String(RATE), '-ac', '2', '-c:a', 'pcm_f32le', mixed]);
