@@ -3216,7 +3216,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private stickSnap = [false, false];
   /** (light: tracking shake out, the hand's motion kept; at 1.5 Hz the stick trailed the wrist and felt loose) */
   // (firm in the hand: light smoothing at rest, almost none moving)
-  private stickFilt = [new OneEuro3(9, 5, 5), new OneEuro3(9, 5, 5)];
+  private stickFilt = [new OneEuro3(16, 10, 8), new OneEuro3(16, 10, 8)];
   /**
    * The stick (or mallet) as drawn: where the hand has it, unless its tip has gone into a head or a bar, when it pivots
    * at the grip until its tip rests on the surface, as a real one would stop there. Fully resting up to 3 cm in, easing
@@ -3581,8 +3581,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         // held as a stick is held: in the hand's own frame (its knuckles and wrist: they shake less than fingertips),
         // running forward and across the palm toward the thumb (about 40 degrees in, as a matched grip angles toward
         // the middle), tipped a little toward the palm's side; so a cocked wrist tips it down and a turned hand turns
-        // it. Gripped where the thumb pad presses it: just under the thumb tip, beside the index knuckle. Only lightly
-        // smoothed (firm in the hand, not trailing it); snapped to the hand the moment the fist closes
+        // it. Held in the middle of the curled fingers (the hollow of the fist: between the palm, the knuckles and the
+        // curled fingertips; nothing of the thumb, which moves about on its own). Barely smoothed (firm in the hand,
+        // not trailing it: the fist's hollow, an average of six joints, is steadier than any one); snapped to the hand
+        // the moment the fist closes
         this.gripA.subVectors(h.knuckleMiddle, h.wrist);
         this.stickSide.subVectors(h.knuckleIndex, h.knucklePinky);
         if (this.gripA.lengthSq() > 1e-8 && this.stickSide.lengthSq() > 1e-8) {
@@ -3597,8 +3599,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
             this.stickSnap[i] = false;
           } else this.stickFilt[i].filter(this.airP, dt, this.stickDir[i]);
           this.stickDir[i].normalize();
-          // the grip: halfway between the thumb tip and just past the index knuckle, a stick's half-width toward the palm
-          this.gripF.copy(h.knuckleIndex).addScaledVector(this.stickSide, 0.015).lerp(h.thumbTip, 0.5).addScaledVector(this.gripB, 0.01);
+          // the grip: the fist's hollow (the palm, the curled index, middle and ring tips, the index and little knuckles)
+          this.gripF.copy(h.palm).add(h.indexTip).add(h.middleTip).add(h.ringTip).add(h.knuckleIndex).add(h.knucklePinky).multiplyScalar(1 / 6);
         } else this.gripF.copy(h.knuckleIndex);
         // the butt comes out past the heel of the hand
         this.stickGrip[i].copy(this.gripF);

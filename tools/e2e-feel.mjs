@@ -78,9 +78,11 @@ check('both hands are fists: sticks', n.fists[0] && n.fists[1], JSON.stringify(n
 // where the stick sits in the right hand
 const g = js(`const i = 1, h = H.right; const tip = r.stickTip[i], grip = r.stickGrip[i], dir = r.stickDir[i];
   const fwd = h.knuckleMiddle.clone().sub(h.wrist).normalize(); const across = h.knuckleIndex.clone().sub(h.knucklePinky).normalize();
-  return { reach: tip.distanceTo(grip), toThumb: grip.distanceTo(h.thumbTip), angle: Math.acos(Math.max(-1, Math.min(1, dir.dot(fwd)))) * 180 / Math.PI, towardThumb: dir.dot(across) };`);
+  return { reach: tip.distanceTo(grip), toThumb: grip.distanceTo(h.thumbTip), toPalm: grip.distanceTo(h.palm), toKnuckles: grip.distanceTo(h.knuckleIndex.clone().add(h.knucklePinky).multiplyScalar(0.5)), angle: Math.acos(Math.max(-1, Math.min(1, dir.dot(fwd)))) * 180 / Math.PI, towardThumb: dir.dot(across) };`);
 check('the stick reaches 28 cm past the grip', Math.abs(g.reach - 0.28) < 0.005, `${g.reach}`);
-check('the grip is where the thumb holds it (within 3 cm of the thumb tip)', g.toThumb < 0.03, `${g.toThumb}`);
+// (in the hollow of the fist, not on the thumb, which moves about on its own: within 7 cm of the palm's middle and of
+// the knuckles' line on the emulator's open hand read as a fist; nearer in a real fist, its fingers curled in)
+check('the grip is in the hollow of the hand, between the palm and the knuckles', g.toPalm < 0.07 && g.toKnuckles < 0.07, JSON.stringify(g));
 check('it runs forward and across the palm toward the thumb (20–70 degrees off the hand)', g.angle > 20 && g.angle < 70 && g.towardThumb > 0.2, JSON.stringify(g));
 // knock: the left stick's middle onto the right stick's middle, fast
 const mids = js(`const m = (i) => r.stickButt[i].clone().lerp(r.stickTip[i], 0.55); const a = m(0), b = m(1); return { d: [b.x - a.x, b.y - a.y, b.z - a.z] };`);
