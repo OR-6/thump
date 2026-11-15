@@ -87,7 +87,7 @@ export function mountLanding(world: World): void {
         </div>
         <div class="wrap hero-in">
           <h1 id="hero-h">A band on your desk<span class="vh">.</span><span class="beat" aria-hidden="true"><svg class="beat-ring" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false"><circle class="closing" r="40" pathLength="100" stroke-dasharray="78 22" transform="rotate(-20)"/><circle class="burst" r="40" pathLength="100" stroke-dasharray="31 9 15 18" transform="rotate(40)"/></svg></span></h1>
-          <p class="tag">Put the controllers down. Your desk is the drum kit now.</p>
+          <p class="tag">Play real instruments with your bare hands, in VR. Put the controllers down: your desk is the drum kit now.</p>
           <div class="cta">
             <button id="enter-xr" class="btn btn-1" type="button">Enter mixed reality</button>
           </div>
