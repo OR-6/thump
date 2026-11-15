@@ -89,7 +89,7 @@ import { ApproachRings } from './approach-rings.js';
 import { Hud, type HudSay } from './hud.js';
 import { GuitarHands, HG, SADDLE_X, bodyHalfW, heldMatrix, lapMatrix, stringZ, stringsOf, zoneX, type Pluck } from '../kit/held-guitar.js';
 import { GuitarCues, cueSpot } from './guitar-cues.js';
-import { postScore } from '../net/scores.js';
+import { boardTop, postScore } from '../net/scores.js';
 import { AIM_FROM, AimMarks } from './aim-marks.js';
 import type { HeldGuitarModel } from '../scene-assets/lib/held-guitar-model.js';
 import { Waterfall, type NoteTarget } from './waterfall.js';
@@ -751,6 +751,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     postScore: (p, done) => {
       if (this.autoOn) return done(null);
       void postScore(p).then(done);
+    },
+    boardTop: (board, done) => {
+      if (this.autoOn) return done(null);
+      void boardTop(board).then(done);
     },
     save: (p) => {
       saveProgress(p);

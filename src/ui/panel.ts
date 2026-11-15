@@ -748,7 +748,7 @@ export class Panel {
     if (p === this.page && d.count > 0 === this.lastCount > 0 && (d.stars === this.lastStars || !!d.result) && !(p.body === 'song' && d.map && !this.sig)) return;
     this.lastCount = d.count;
     this.lastStars = d.stars;
-    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, d.result ? 'r' : '', p.card ? `${p.card.name}|${p.card.best}|${p.card.grade}` : '', p.band ? `${p.band.code}|${p.band.players}` : '', p.body === 'pause' ? `${d.score}` : '', p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}|${i.grade ?? ''}`).join(',')].join('~');
+    const sig = [p.id, p.title, p.line, d.count > 0, d.stars, d.gold, d.code, d.best?.run, d.best?.better, d.map?.beats ?? 0, d.result ? 'r' : '', p.card ? `${p.card.name}|${p.card.best}|${p.card.grade}|${p.card.meta}` : '', p.band ? `${p.band.code}|${p.band.players}` : '', p.body === 'pause' ? `${d.score}` : '', p.items.map((i) => `${i.id}|${i.label}|${i.sub}|${i.on}|${i.off}|${i.stars}|${i.grade ?? ''}`).join(',')].join('~');
     if (sig === this.sig) return;
     this.sig = sig;
     if (p.id !== this.pageId) {

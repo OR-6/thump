@@ -114,6 +114,8 @@ export interface GameStage {
   save(p: Progress): void;
   /** Post a song's score to its world board; `done` hears where it put you (null: no server, or not posted). */
   postScore?(p: { board: string; name: string; score: number; acc: number; grade: string; fc: boolean; notes: number }, done: (w: { rank: number; total: number } | null) => void): void;
+  /** A world board's best and where you are on it; `done` gets null with no server. */
+  boardTop?(board: string, done: (b: { top: { name: string; score: number }[]; total: number; rank: number; mine: boolean } | null) => void): void;
   /** Lights down (a solo) or back up. */
   lightsDown?(on: boolean): void;
   /** Something new: the tom slides onto the table, JAM lights up… */
@@ -2064,6 +2066,26 @@ export class Game {
   private starsOn(id: string): number {
     return this.progress.istars?.[`${id}:${this.instNow()}`] ?? 0;
   }
+  /**
+   * What the song card says about the world's board for the song chosen, on the instrument out at the level set: you're
+   * on it, its best, or no one yet (asked for at most once a minute a board, only on the Songs page; nothing said with
+   * no server).
+   */
+  private worldLines = new Map<string, { line: string; t: number }>();
+  private worldLine(songId: string): string | undefined {
+    const board = boardOf(songId, this.instNow(), this.level, dayKey());
+    const have = this.worldLines.get(board);
+    if (this.stage.boardTop && (!have || this.t - have.t > 60)) {
+      this.worldLines.set(board, { line: have?.line ?? '', t: this.t });
+      this.stage.boardTop(board, (b) => {
+        if (!b) return;
+        const line = b.mine ? `You're #${b.rank} of ${b.total} in the world` : b.top.length ? `World best ${b.top[0].score.toLocaleString('en-GB')} · ${b.top[0].name}` : "No one's on the board yet. Be the first";
+        this.worldLines.set(board, { line, t: this.t });
+        if (this.mode === 'discover' && this.menu === 'songs') this.refreshDisplay();
+      });
+    }
+    return have?.line || undefined;
+  }
   /** Where your last song put you on its world board (null: not in yet, or no server). */
   world: { rank: number; total: number; inst: string } | null = null;
   /** The last judged hit's offset from its note (s; − early, + late). */
@@ -2956,7 +2978,7 @@ export class Game {
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
       // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
-      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.starsOn(t.id), locked: false, grade: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const) })),
+      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.starsOn(t.id), locked: false, grade: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const), world: i === this.songSel && pageId === 'songs' && !t.score?.tune.lesson ? this.worldLine(t.id) : undefined })),
       songSel: this.songSel,
       songShown: this.shownSongs(),
       songPage: this.shownPage(),

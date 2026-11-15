@@ -1024,3 +1024,36 @@ describe('stars are each instrument\'s own', () => {
     expect(id in p.stars).toBe(true);
   });
 });
+
+describe("the song card says where the world's board stands", () => {
+  it('its best, once the board is in; nothing changes with no server', () => {
+    const asked: string[] = [];
+    const st = {
+      ...stage([]),
+      shelf: () => ({ id: 'drums' }),
+      boardTop: (board: string, done: (b: { top: { name: string; score: number }[]; total: number; rank: number; mine: boolean } | null) => void) => {
+        asked.push(board);
+        done({ top: [{ name: 'Night Owls', score: 52000 }], total: 3, rank: 0, mine: false });
+      },
+    } as unknown as GameStage;
+    const g = new Game(st, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.menu = 'songs';
+    const i = g.tracks.findIndex((t) => t.score && !t.score.tune.lesson);
+    g.songSel = i;
+    g.refreshDisplay();
+    g.refreshDisplay();
+    expect(asked.length).toBe(1);
+    expect(asked[0]).toMatch(/:drums:easy$/);
+    expect(g.display.page?.card?.meta).toBe('World best 52,000 · Night Owls');
+    // (no server: the card keeps its own line)
+    const g2 = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, freshProgress(), room([]));
+    g2.start(0);
+    g2.discovered('kit', 'table', 0);
+    g2.menu = 'songs';
+    g2.songSel = i;
+    g2.refreshDisplay();
+    expect(g2.display.page?.card?.meta).not.toMatch(/World/);
+  });
+});

@@ -55,7 +55,7 @@ export interface MenuInput {
   line: string;
   sub: string;
   inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full'; frets?: 'easy' | 'real' };
-  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string; best?: number; kind?: 'song' | 'lesson' | 'daily' }[];
+  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string; best?: number; kind?: 'song' | 'lesson' | 'daily'; world?: string }[];
   songSel: number;
   /** Which six songs show (more than six: a button in the corner turns the page). */
   songPage?: number;
@@ -215,7 +215,7 @@ function buildPageFor(m: MenuInput): Page {
       items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 408, y: BOT.y, w: 360, h: BOT.h });
       items.push({ id: 'play', label: 'Play', kind: 'play', x: 784, y: BOT.y, w: W - 32 - 784, h: BOT.h });
       const sel = m.songs[m.songSel];
-      return { id: 'songs', title: 'Songs', line: m.sub, items, body: 'songs', card: sel ? { name: sel.name, meta: sel.meta, stars: sel.stars, grade: sel.grade ?? '', best: sel.best ?? -1 } : undefined };
+      return { id: 'songs', title: 'Songs', line: m.sub, items, body: 'songs', card: sel ? { name: sel.name, meta: sel.world ?? sel.meta, stars: sel.stars, grade: sel.grade ?? '', best: sel.best ?? -1 } : undefined };
     }
     case 'band': {
       const on = m.band.state === 'hosting' || m.band.state === 'connected';
