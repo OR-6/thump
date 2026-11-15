@@ -222,6 +222,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       s.round = true;
       this.partCol.setHex(0xffffff);
     }
+    // (the band opens back up as you play: a Perfect more than a Good, and it clicks)
+    this.grooveAt(this.groove + (g === 'perfect' ? 0.07 : 0.045));
+    if (g === 'perfect') audio.perfectTick(this.panOf(s.at));
     const spot = this.game.display.spot?.active;
     const c = spot ? 0xffd23f : this.partCol.getHex();
     if (g === 'perfect' && !(this.settings.taught ?? []).includes('perfect')) {
@@ -603,6 +606,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.kit.keys.rest = used ? 0.55 : 0.35;
     },
     missed: (key) => {
+      // you hear it: a dead knock where the note was, the band chokes, and a run of misses muffles it
+      if (this.shapeOf(key, this.missShape, this.missCol)) audio.missKnock(this.panOf(this.missShape.at));
+      else audio.missKnock(0);
+      this.grooveAt(this.groove - 0.2);
       const r = this.ref(key);
       if (!r) return;
       if (r.kind === 'pad') this.kit.pad(r.lane)?.miss();
@@ -1098,6 +1105,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.root.worldToLocal(this.hudTarget);
     this.hudTargetOn = true;
   }
+  /** How the band is with you in a song (1: all there; it falls as you miss and comes back as you play). */
+  private groove = 1;
+  private missShape: PartShape = { at: new Vector3(), q: new Quaternion(), w: 0, d: 0, round: true };
+  private missCol = new Color();
+  private grooveAt(h: number): void {
+    const v = Math.max(0, Math.min(1, h));
+    if (Math.abs(v - this.groove) < 1e-3) return;
+    this.groove = v;
+    audio.groove(v);
+  }
+  private grooveMode = '';
   private coachTo(n: number): void {
     if ((this.settings.coach ?? 0) >= n) return;
     this.settings = { ...this.settings, coach: n };
@@ -1118,6 +1136,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const mode = this.game.mode;
     const d = this.game.display;
     const inSong = mode === 'play' || mode === 'count';
+    // a song starts with the band all there, and leaves it that way
+    if (mode !== this.grooveMode) {
+      if (mode === 'count' || !inSong) {
+        this.groove = 0;
+        this.grooveAt(1);
+      }
+      this.grooveMode = mode;
+    }
     let say: HudSay = { kind: 'none' };
     if (placed) {
       const ctl = (hands.left.tracked && hands.left.controller) || (hands.right.tracked && hands.right.controller);

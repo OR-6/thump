@@ -27,6 +27,11 @@ class Engine {
   private master!: GainNode;
   private drums!: GainNode;
   private bedBus!: GainNode;
+  /** The band in a song (whatever's scheduled ahead, not what you play this moment), through a filter your playing
+   * opens and your misses close. */
+  private bandBus!: GainNode;
+  private bandTone!: BiquadFilterNode;
+  private grooveCut = 20000;
   private clickBus!: GainNode;
   private send!: GainNode;
   private noise!: AudioBuffer;
@@ -110,6 +115,12 @@ class Engine {
     thin.frequency.value = 350;
     this.drums.connect(this.echoSend).connect(thin).connect(this.echoDelay).connect(tone).connect(this.master);
     tone.connect(fb).connect(this.echoDelay);
+    this.bandTone = ctx.createBiquadFilter();
+    this.bandTone.type = 'lowpass';
+    this.bandTone.frequency.value = 20000;
+    this.bandTone.Q.value = 0.8;
+    this.bandBus = ctx.createGain();
+    this.bandBus.connect(this.bandTone).connect(this.master);
     this.bedBus = ctx.createGain();
     this.bedBus.gain.value = this.bedOn ? 0.55 : 0;
     this.bedBus.connect(this.master);
@@ -157,6 +168,8 @@ class Engine {
 
   /** A gain → (pan) → bus chain; returns the gain to feed. */
   private out(ctx: AudioContext, bus: AudioNode, pan: number, wet: number, when: number, level: number): GainNode {
+    // (the band: anything scheduled ahead goes through the band's filter; what you play now goes straight out)
+    if (this.bandBus && (bus === this.master || bus === this.drums) && when > ctx.currentTime + 0.012) bus = this.bandBus;
     const g = ctx.createGain();
     g.gain.setValueAtTime(level, when);
     let node: AudioNode = g;
@@ -1130,6 +1143,73 @@ class Engine {
   }
 
   /** The crowd cheering: a patter of tiny claps and a happy "ooh", by size (3–12). */
+  /**
+   * How the band sounds with you (0..1): all there and bright when you're on it, muffled and quieter as you miss
+   * (the filter falls from 20 kHz toward 600 Hz, the level to 60 %).
+   */
+  groove(health: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.bandTone) return;
+    const h = Math.max(0, Math.min(1, health));
+    this.grooveCut = 600 * Math.pow(2, h * 5.05);
+    const t = ctx.currentTime;
+    this.bandTone.frequency.cancelScheduledValues(t);
+    this.bandTone.frequency.setTargetAtTime(this.grooveCut, t, 0.18);
+    this.bandBus.gain.cancelScheduledValues(t);
+    this.bandBus.gain.setTargetAtTime(0.6 + 0.4 * h, t, 0.18);
+  }
+  /** A miss: a dead knock where the note should have been, and the band chokes for a moment. */
+  missKnock(pan = 0): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.noise) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 420;
+    const g = this.out(ctx, this.master, pan, 0, t, 0);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.32, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    src.connect(lp).connect(g);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + 0.15);
+    const o = ctx.createOscillator();
+    o.frequency.setValueAtTime(95, t);
+    o.frequency.exponentialRampToValueAtTime(55, t + 0.1);
+    const og = this.out(ctx, this.master, pan, 0, t, 0);
+    og.gain.setValueAtTime(0.28, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    o.connect(og);
+    o.start(t);
+    o.stop(t + 0.13);
+    if (this.bandTone) {
+      const f = this.bandTone.frequency;
+      f.cancelScheduledValues(t);
+      f.setValueAtTime(Math.min(f.value, this.grooveCut), t);
+      f.linearRampToValueAtTime(520, t + 0.03);
+      f.setTargetAtTime(this.grooveCut, t + 0.08, 0.14);
+    }
+  }
+  /** A Perfect: a crisp stick click on top of what you played (Good is just the sound). */
+  perfectTick(pan = 0): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.noise) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 4500;
+    const g = this.out(ctx, this.master, pan, 0.05, t, 0);
+    g.gain.setValueAtTime(0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    src.connect(hp).connect(g);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + 0.03);
+  }
+
   cheer(size: number, big = false): void {
     const ctx = this.ready();
     if (!ctx) return;
