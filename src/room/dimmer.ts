@@ -22,7 +22,9 @@ export class Dimmer {
   calm = false;
 
   constructor() {
-    this.mat = new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, side: BackSide, depthWrite: false, toneMapped: false });
+    // (no depth test: the hands' depth-only occluder spheres would cut it, and your hands showed in the dark as a
+    // cluster of bright balls; the room dims with your hands in it, and everything on the desk still draws over it)
+    this.mat = new MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, side: BackSide, depthWrite: false, depthTest: false, toneMapped: false });
     // a cap: from straight up to a little under eye level (the desk below stays in the real light)
     this.mesh = new Mesh(new SphereGeometry(2.4, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.22), this.mat);
     this.mesh.name = 'LightsDown';
