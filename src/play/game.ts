@@ -60,6 +60,8 @@ export interface GameStage {
   overtake?(): void;
   /** A lesson's next step began. */
   lessonStep?(title: string): void;
+  /** Whether the kit on the desk has this piece (a small kit has no tom: the chart doesn't ask for one). */
+  hasPiece?(lane: string): boolean;
   /** A lesson holds the song still for you (true) or lets it go on (false). */
   holdSong?(on: boolean): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
@@ -96,7 +98,7 @@ export interface GameStage {
   /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
   tempo(t: number): void;
   /** In-headset settings: read and switch (saved by the stage). */
-  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light', flip: boolean): boolean;
+  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved', flip: boolean): boolean;
   /** Playing together: the link's state and how many are in the band. */
   bandState?(): { state: string; players: number; message?: string };
   /** Easy or Normal changed (saved). */
@@ -193,6 +195,8 @@ export interface GameOptions {
 }
 
 const MAX_MOTES = 40;
+/** A band that joins your free play once you keep a steady beat (off: free play is just you). */
+const FREE_BAND = false;
 
 export class Game {
   mode: Mode = 'discover';
@@ -231,7 +235,7 @@ export class Game {
   }
   /** The beat now (song or jam), or NaN outside music. */
   get beatNow(): number {
-    return this.mode === 'play' || this.mode === 'count' || this.mode === 'jam' ? this.clock.beatAt(this.t) : Number.NaN;
+    return this.mode === 'play' || this.mode === 'count' || this.mode === 'jam' ? this.clock.beatAt(this.t - this.opts.offset) : Number.NaN;
   }
   /** BPM now (for the phone's light). */
   get bpmNow(): number {
@@ -785,7 +789,7 @@ export class Game {
     const m = this.machine!;
     if (m.track.score) {
       // a written-out song: your part of it, by instrument and level (src/songs/score.ts)
-      const c = scoreChart(m.track.score, inst, this.level, from, to, fills, { tom: (this.progress.unlocks as string[]).includes('tom') });
+      const c = scoreChart(m.track.score, inst, this.level, from, to, fills, { tom: (this.progress.unlocks as string[]).includes('tom') && (this.stage.hasPiece?.('tom') ?? true) });
       return { notes: c.notes.map((n) => ({ beat: n.beat, part: n.key as never, degree: -1, vel: n.vel })), live: new Set(c.live), found: '', cover: c.cover };
     }
     const notes: Note[] = [];
@@ -1485,6 +1489,10 @@ export class Game {
    */
   private groove: { root: number; chords: readonly (readonly number[])[]; inst: string; sched: number; last: number } | null = null;
   private groovePlayed(key: string, t: number): void {
+    // (free play is yours: no band starts up behind you because you kept a steady beat)
+    void key;
+    void t;
+    if (!FREE_BAND) return;
     const f = this.stage.freeHarmony?.();
     if (!this.stage.setting('band', false)) return;
     if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('pluck:') || key.startsWith('handpan:') || key.startsWith('congas:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
@@ -1562,15 +1570,18 @@ export class Game {
   }
 
   /** Performing: switch to this instrument at the next loop (the stand's tile, or ◀ ▶). */
-  switchTo(id: string): void {
-    if (!this.perf || !this.machine || this.perf.queued || id === this.perf.inst) return;
-    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => PART_INST[p.def.name] === (id === 'marimba' ? 'piano' : id))) return;
+  /** Switch to `id` at the next loop; true when it's queued (or already that one), false when it can't be (too late). */
+  switchTo(id: string): boolean {
+    if (!this.perf || !this.machine) return false;
+    if (this.perf.queued || id === this.perf.inst) return true;
+    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => PART_INST[p.def.name] === (id === 'marimba' ? 'piano' : id))) return false;
     const beat = this.clock.beatAt(this.t);
     const when = Math.max(0, Math.ceil((beat + 2) / LOOP_BEATS) * LOOP_BEATS);
-    if (when >= (this.song?.bars ?? 20) * 4 - 4) return;
+    if (when >= (this.song?.bars ?? 20) * 4 - 4) return false;
     this.perf.queued = id;
     this.perf.switchAt = when;
     this.refreshDisplay();
+    return true;
   }
 
   /** The shelf on the module for a few seconds after a change (and which setting was just changed). */
@@ -2008,7 +2019,7 @@ export class Game {
 
   hit(key: string, t: number, gain: number): Grade | 'extra' | 'early' | 'late' | null {
     // (playing along with the machine's replay just plays; once it's done and the choice is up, a hit moves on)
-    if (this.mode === 'results' && t - this.modeT > 4 && !this.lap && this.resultsStage >= 4) this.leaveResults();
+    // (the results stay until you press something on the screen: a drum hit while you read them doesn't take them away)
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
     if (this.mode === 'build') return this.hitBuild(key, t, gain);
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
@@ -2017,6 +2028,8 @@ export class Game {
     if (this.hold && (this.mode === 'play' || this.mode === 'count')) {
       if (gain < 0.15) return null;
       if (this.hold.kind === 'read') {
+        // (a moment to read it first; and the drum it names, when it names one: a resting hand doesn't skip it)
+        if (t - this.holdAt < 0.9 || (this.hold.key && key !== this.hold.key)) return null;
         this.setHold(null);
         this.waitsLeft = 3;
         return null;
@@ -2199,9 +2212,12 @@ export class Game {
     } else if (this.mode === 'count' && Math.ceil(-beat) !== this.display.count) this.refreshDisplay();
     const j = this.judge!;
     j.sweep(t - this.opts.offset - this.clock.start, this.onMiss);
+    // (what you see is timed as you're judged: the learned offset moves the rings and the lights with the judge, or a
+    // ring would still be wide when the judge wants the hit)
+    const seen = this.clock.beatAt(t - this.opts.offset);
     let k = 0;
     for (const n of j.notes) {
-      const d = n.beat - beat;
+      const d = n.beat - seen;
       if (d > TIMING.travelBeats + 0.01) break;
       if (d < -0.6 && !(n.grade === 'perfect' || n.grade === 'good')) continue;
       if (d < -1) continue;
@@ -2468,6 +2484,14 @@ export class Game {
     this.spotMeter = Math.min(1, this.spotMeter + 0.25);
     this.stage.spotGain?.(this.spotMeter);
   }
+  /** Beats of the spotlight still to run (0 when it's off). */
+  get spotLeft(): number {
+    return Math.max(0, this.spotUntil - this.clock.beatAt(this.t));
+  }
+  /** A lesson is out (no spotlight, no curtain call). */
+  get inLesson(): boolean {
+    return !!this.perf?.track.score?.tune.lesson;
+  }
   /** Both hands up: the spotlight comes on, if it's half full or more. */
   fireSpotlight(): boolean {
     const beat = this.clock.beatAt(this.t);
@@ -2528,9 +2552,11 @@ export class Game {
   get lessonWaits(): number {
     return this.hold?.kind === 'read' ? 3 : this.waitsLeft;
   }
+  private holdAt = 0;
   private setHold(h: Game['hold']): void {
     const was = !!this.hold;
     this.hold = h;
+    if (h) this.holdAt = this.t;
     if (was !== !!h) {
       this.stage.holdSong?.(!!h);
       this.refreshDisplay();
@@ -2612,6 +2638,8 @@ export class Game {
 
   /** The page the panel shows in free play (the others follow the mode). */
   menu: PageId = 'main';
+  /** The band code typed on the join page so far. */
+  typedCode = '';
   /** Where Instruments was opened from (picking one goes back there). */
   instFrom: PageId = 'free';
   /** Easy (the beat, the tune) or Normal (more of each part). */
@@ -2624,7 +2652,7 @@ export class Game {
       if (this.tuneOpen) this.tuneOpen = false;
       else if (this.settingsOpen) this.settingsOpen = false;
       else {
-        const up: Record<string, PageId> = { inst: 'instruments', instruments: this.instFrom === 'songs' ? 'songs' : this.found.includes('kit') ? 'free' : 'main', songs: 'main', band: 'main', free: 'main', main: 'main' };
+        const up: Record<string, PageId> = { inst: 'instruments', instruments: this.instFrom === 'songs' ? 'songs' : this.found.includes('kit') ? 'free' : 'main', songs: 'main', band: 'main', join: 'band', free: 'main', main: 'main' };
         this.menu = up[this.menu] ?? 'main';
       }
       this.refreshDisplay();
@@ -2641,6 +2669,23 @@ export class Game {
         if (to === 'songs') this.songPage = -1;
         this.menu = to as PageId;
       }
+      this.refreshDisplay();
+      return;
+    }
+    // joining a band in the headset: the keypad's letters, four at most
+    if (id === 'band:join') {
+      this.typedCode = '';
+      this.menu = 'join';
+      this.refreshDisplay();
+      return;
+    }
+    if (id.startsWith('code:') && id.length === 6) {
+      if (this.typedCode.length < 4) this.typedCode += id.slice(5);
+      this.refreshDisplay();
+      return;
+    }
+    if (id === 'code:del') {
+      this.typedCode = this.typedCode.slice(0, -1);
       this.refreshDisplay();
       return;
     }
@@ -2788,15 +2833,15 @@ export class Game {
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
       // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
-      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false, grade: this.progress.top?.[`${t.id}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.level}`]?.score })),
+      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.progress.stars[t.id] ?? 0, locked: false, grade: this.progress.top?.[`${t.id}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const) })),
       songSel: this.songSel,
       songShown: this.shownSongs(),
       songPage: this.shownPage(),
       songFilter: this.songFilter,
       level: this.level,
-      band: { state: band.state, code: this.code, players: band.players, message: band.message },
+      band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode },
       loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
-      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) },
+      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false) },
       next: this.fromPerform ? 'Next\nsong' : '',
       easier: this.mode === 'results' && this.fromPerform && this.lastScore?.letter === 'D' && this.level !== 'easy',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,

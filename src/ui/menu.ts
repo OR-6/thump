@@ -5,7 +5,7 @@
  */
 import { KEYS, SCALES, SHELF, instDef } from '../kit/shelf.js';
 
-export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
+export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'join' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
 
 export interface Item {
   id: string;
@@ -55,7 +55,7 @@ export interface MenuInput {
   line: string;
   sub: string;
   inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full'; frets?: 'easy' | 'real' };
-  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string; best?: number }[];
+  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string; best?: number; kind?: 'song' | 'lesson' | 'daily' }[];
   songSel: number;
   /** Which six songs show (more than six: a button in the corner turns the page). */
   songPage?: number;
@@ -63,8 +63,8 @@ export interface MenuInput {
   songShown?: number[];
   songFilter?: 'all' | 'classics' | 'originals' | 'lessons';
   level: 'easy' | 'normal' | 'hard';
-  band: { state: string; code: string; players: number; message?: string };
-  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean };
+  band: { state: string; code: string; players: number; message?: string; typed?: string };
+  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean; panelMoved?: boolean };
   /** Free play's looper: off, counting in, recording or playing; how many layers it holds. */
   loop?: { state: string; layers: number; recording: boolean };
   /** Results: the next song's button ('' none), and whether MAKE IT YOURS is offered. */
@@ -113,9 +113,11 @@ function buildPageFor(m: MenuInput): Page {
   switch (m.page) {
     case 'main': {
       // the songs, large: what most people came for; the instrument that's out beside them; the rest below
-      const n = m.songs.length;
+      // (the songs and the lessons counted apart, as the site does: not the daily one-off)
+      const n = m.songs.filter((x) => (x.kind ?? 'song') === 'song').length;
+      const nl = m.songs.filter((x) => x.kind === 'lesson').length;
       const items: Item[] = [
-        { id: 'nav:songs', label: 'Songs', sub: `Play along · ${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
+        { id: 'nav:songs', label: 'Songs', sub: nl ? `${n} songs · ${nl} lessons` : `${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
         { id: 'nav:instruments', label: 'Instruments', sub: m.inst.name, icon: m.inst.id, kind: 'tile', x: X3, y: 176, w: C4, h: 480 },
         { id: 'nav:build', label: 'Make a track', sub: 'Part by part', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h },
         { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', kind: 'button', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h },
@@ -163,8 +165,9 @@ function buildPageFor(m: MenuInput): Page {
           const si = Math.max(0, SCALES.findIndex((s) => s.name === m.inst.scale));
           stepper(`scale:${SCALES[(si + SCALES.length - 1) % SCALES.length].id}`, `scale:${SCALES[(si + 1) % SCALES.length].id}`, SCALES[si].name, ys[k++]);
           items.push(label('Key', ys[k]));
-          const pc = KEYS.find((x) => x.name === (m.inst.key || 'C'))?.pc ?? 0;
-          stepper(`key:${(pc + 11) % 12}`, `key:${(pc + 1) % 12}`, m.inst.key || 'C', ys[k++]);
+          // (stepped through the keys there are, not by semitone: a key that isn't one of them fell back to C, for ever)
+          const ki = Math.max(0, KEYS.findIndex((x) => x.name === (m.inst.key || 'C')));
+          stepper(`key:${KEYS[(ki + KEYS.length - 1) % KEYS.length].pc}`, `key:${KEYS[(ki + 1) % KEYS.length].pc}`, KEYS[ki].name, ys[k++]);
         }
         items.push(label('Sound', ys[k]));
         across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), ys[k++]);
@@ -217,7 +220,12 @@ function buildPageFor(m: MenuInput): Page {
     case 'band': {
       const on = m.band.state === 'hosting' || m.band.state === 'connected';
       const items: Item[] = [back()];
-      if (!on) items.push({ id: 'band:start', label: 'Start a band', sub: 'Friends type its code on the Thump page', kind: 'play', x: 32, y: BOT.y, w: W - 64, h: BOT.h });
+      if (!on) {
+        // start one (you get the code) or join a friend's (type theirs, here in the headset)
+        const half = (W - 64 - 16) / 2;
+        items.push({ id: 'band:join', label: 'Join with a code', sub: 'Type your friend’s four letters', kind: 'button', x: 32, y: BOT.y, w: half, h: BOT.h });
+        items.push({ id: 'band:start', label: 'Start a band', sub: 'You get a code to share', kind: 'play', x: 32 + half + 16, y: BOT.y, w: half, h: BOT.h });
+      }
       else {
         items.push({ id: 'band:leave', label: 'Leave', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h });
         items.push({ id: 'nav:songs', label: 'Pick a song', sub: 'Everyone plays it, on one beat', kind: 'play', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h });
@@ -236,12 +244,27 @@ function buildPageFor(m: MenuInput): Page {
                 : 'Play with friends, wherever they are';
       return { id: 'band', title: 'Play together', line, items, body: 'band', band: { code: on && !msg.startsWith('Connecting') ? m.band.code : '', players: m.band.players } };
     }
+    case 'join': {
+      // a keypad of the code's letters, five across; the four typed so far in the line; Join once there are four
+      const typed = m.band.typed ?? '';
+      const LETTERS = 'CDFHJKMNPRTVWXY';
+      const items: Item[] = [back()];
+      const cw = (W - 64 - 4 * 16) / 5;
+      for (let i = 0; i < LETTERS.length; i++) {
+        const c = LETTERS[i];
+        items.push({ id: `code:${c}`, label: c, kind: 'button', x: 32 + (i % 5) * (cw + 16), y: 186 + Math.floor(i / 5) * 166, w: cw, h: 150, off: typed.length >= 4 });
+      }
+      items.push({ id: 'code:del', label: 'Delete', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h, off: !typed.length });
+      items.push({ id: 'code:go', label: 'Join', sub: typed.length === 4 ? `Band ${typed}` : 'Four letters', kind: 'play', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h, off: typed.length !== 4 });
+      const slots = Array.from({ length: 4 }, (_, i) => typed[i] ?? '_').join(' ');
+      return { id: 'join', title: 'Join a band', line: slots, items };
+    }
     case 'settings': {
       // two columns of switches; putting the panel back is an action, beside Done
       const items: Item[] = [back()];
       const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, on, kind: 'toggle', x: i % 2 ? 32 + C6 + 16 : 32, y: 176 + Math.floor(i / 2) * 116, w: C6, h: 104 });
       items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in the room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when you play', m.settings.light !== false, 5));
-      items.push({ id: 'set:panel', label: 'Panel back in place', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h });
+      items.push({ id: 'set:panel', label: 'Panel back in place', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h, off: !m.settings.panelMoved });
       // (the back tile and Done both close it)
       items.push({ id: 'back', label: 'Done', kind: 'play', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h });
       return { id: 'settings', title: 'Settings', line: '', items };

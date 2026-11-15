@@ -17,9 +17,6 @@ import { Sampler } from './sampler.js';
 import { StemPlayer } from './stems.js';
 
 export type Voice = Lane | 'knock' | 'rim' | 'clap' | 'block' | 'bell';
-/** The game's own sounds, and how loud each sits in the mix. */
-const UI_LEVEL = { hover: 0.25, press: 0.5, open: 0.35, back: 0.35, toggle: 0.45, tick: 0.35, stamp: 0.9, 'stamp-soft': 0.6, drop: 0.45, record: 0.8, fullcombo: 0.8, spotlight: 0.85, milestone: 0.6, multup: 0.5 } as const;
-export type UiSound = keyof typeof UI_LEVEL;
 
 const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
@@ -603,7 +600,7 @@ class Engine {
    * A tuned instrument from the room (DESIGN.md §3.4): `midi` its note, `vel` 0..1, `size` 0..1 the surface's
    * size within its family (bigger: lower partial decay, longer ring).
    */
-  modal(family: Family, midi: number, vel: number, pan = 0, when = 0, size = 0.5, owner = '', tone = 0): void {
+  modal(family: Family, midi: number, vel: number, pan = 0, when = 0, size = 0.5, owner = '', tone = 0, hold = false): void {
     const sctx = this.ready();
     if (sctx && this.sampler.has(family)) {
       const t = Math.max(sctx.currentTime, when || sctx.currentTime);
@@ -614,7 +611,7 @@ class Engine {
       this.lastAt = t;
       const pitched = !UNPITCHED.has(family);
       const wet = MODAL[family]?.wet ?? MODAL[ALIAS[family] ?? 'marimba']?.wet ?? 1;
-      this.playSample(sctx, family, pitched ? midi : null, v, tone, size, pan, wet, FAMILY_LEVEL[family] ?? 0.7, t, owner || family);
+      this.playSample(sctx, family, pitched ? midi : null, v, tone, size, pan, wet, FAMILY_LEVEL[family] ?? 0.7, t, owner || family, this.drums, hold);
       return;
     }
     if (family === 'stomp') return this.stomp(vel, pan, when);
@@ -687,7 +684,12 @@ class Engine {
   }
 
   /** A recorded clip: on its note, louder and brighter with the hit (soft hits are darker), through the room. */
-  private playSample(ctx: AudioContext, key: string, midi: number | null, v: number, tone: number, size: number, pan: number, wet: number, level: number, t: number, owner: string, bus: AudioNode = this.drums): void {
+  /**
+   * `hold`: a key held down (the piano). The recording plays, then crossfades in phase into a seamless loop of its own
+   * middle, which fades as a held piano note does (about 8 s), until `release(owner)` lifts the key. Without it, the
+   * recording plays to its end as before.
+   */
+  private playSample(ctx: AudioContext, key: string, midi: number | null, v: number, tone: number, size: number, pan: number, wet: number, level: number, t: number, owner: string, bus: AudioNode = this.drums, hold = false): void {
     const c = this.sampler.pick(key, { midi, vel: v, tone, size });
     if (!c) return;
     const src = ctx.createBufferSource();
@@ -695,16 +697,163 @@ class Engine {
     src.playbackRate.value = c.rate * Math.pow(2, ((Math.random() - 0.5) * 8) / 1200);
     const g = this.out(ctx, bus, pan, wet, t, level * (0.12 + 0.88 * v));
     // a soft hit is darker as well as quieter (the recordings have 2–3 layers; this fills between them)
+    let dst: AudioNode = g;
     if (v < 0.75) {
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
       lp.frequency.value = 2500 + 15000 * v * v;
-      src.connect(lp).connect(g);
-    } else src.connect(g);
+      lp.connect(g);
+      dst = lp;
+    }
+    const rate = src.playbackRate.value;
+    let end = t + c.buffer.duration / rate;
+    const loop = hold && owner ? this.loopOf(ctx, c.buffer) : null;
+    if (!loop) {
+      src.connect(dst);
+      src.start(t);
+      src.stop(end + 0.02);
+      if (owner) this.claimVoice(owner, g, t, end, [src]);
+      return;
+    }
+    // the hand-over, where the loop's own samples are the recording's (so the two are in phase): 40 ms crossfade
+    const gm = ctx.createGain();
+    const gl = ctx.createGain();
+    src.connect(gm).connect(dst);
+    const ls = ctx.createBufferSource();
+    ls.buffer = loop.buf;
+    ls.loop = true;
+    ls.playbackRate.value = rate;
+    ls.connect(gl).connect(dst);
+    const at = t + loop.at / rate;
+    gm.gain.setValueAtTime(1, at);
+    gm.gain.linearRampToValueAtTime(0, at + 0.04);
+    gl.gain.setValueAtTime(0, at);
+    gl.gain.linearRampToValueAtTime(1, at + 0.04);
+    // (held, a piano note fades slowly: about 60% gone in 2.5 s; silent by 15 s)
+    gl.gain.setTargetAtTime(0, at + 0.04, 2.5);
     src.start(t);
-    const end = t + c.buffer.duration / c.rate;
-    src.stop(end + 0.02);
-    if (owner) this.claimVoice(owner, g, t, end, [src]);
+    src.stop(Math.min(end, at + 0.06) + 0.02);
+    ls.start(at, loop.off);
+    end = t + 15;
+    ls.stop(end);
+    this.claimVoice(owner, g, t, end, [src, ls]);
+    const mine = this.voices[this.voices.length - 1];
+    if (mine?.g === g) {
+      mine.t = t;
+      mine.held = true;
+    }
+  }
+
+  /**
+   * A held key lifted: its notes damp, as a piano's damper falls (not before 0.2 s after the strike, so a quick tap is
+   * still a note, then gone in about half a second).
+   */
+  release(owner: string): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    for (const v of this.voices) {
+      if (v.owner !== owner || !v.held) continue;
+      v.held = false;
+      const at = Math.max(now, (v.t ?? now) + 0.2);
+      const gp = v.g.gain as AudioParam & { cancelAndHoldAtTime?: (t: number) => void };
+      if (gp.cancelAndHoldAtTime) gp.cancelAndHoldAtTime(at);
+      else {
+        gp.cancelScheduledValues(at);
+        gp.setValueAtTime(gp.value, at);
+      }
+      gp.setTargetAtTime(0, at, 0.12);
+      v.end = at + 0.8;
+      if (v.oscs) for (const o of v.oscs) try { o.stop(v.end); } catch { /* already stopped */ }
+    }
+  }
+
+  /**
+   * A recording made into a seamless loop, once per recording: about 0.3 s from 0.12 s in, its decay taken out (a
+   * straight line in dB fitted to it, so the loop neither pulses nor wobbles), its length chosen so its end runs on
+   * into its start in phase, and the two crossfaded. Levelled to where it takes over from the recording, so the hand-
+   * over doesn't jump. `at`: where in the recording (s) it takes over; `off`: where in the loop that is.
+   */
+  private loops = new WeakMap<AudioBuffer, { buf: AudioBuffer; at: number; off: number } | null>();
+  private loopOf(ctx: AudioContext, b: AudioBuffer): { buf: AudioBuffer; at: number; off: number } | null {
+    if (this.loops.has(b)) return this.loops.get(b)!;
+    const sr = b.sampleRate;
+    const A = Math.floor(0.12 * sr);
+    const L = Math.min(Math.floor(0.32 * sr), b.length - A - Math.floor(0.03 * sr));
+    const X = Math.floor(0.05 * sr);
+    if (L < Math.floor(0.15 * sr)) {
+      this.loops.set(b, null);
+      return null;
+    }
+    const chs = b.numberOfChannels;
+    const data: Float32Array[] = [];
+    for (let ch = 0; ch < chs; ch++) data.push(b.getChannelData(ch));
+    // the decay: dB over 10 ms blocks, smoothed over 70 ms (it follows the bend of a note's early decay, and is too
+    // slow to ripple with the pitch)
+    const B = Math.floor(0.01 * sr);
+    const nb = Math.floor(L / B);
+    const raw = new Float32Array(nb);
+    for (let k = 0; k < nb; k++) {
+      let e = 0;
+      for (const d of data) for (let i = A + k * B; i < A + (k + 1) * B; i++) e += d[i] * d[i];
+      raw[k] = 10 * Math.log10(e / (B * chs) + 1e-12);
+    }
+    const env = new Float32Array(nb);
+    for (let k = 0; k < nb; k++) {
+      let sum = 0, n = 0;
+      for (let j = Math.max(0, k - 3); j <= Math.min(nb - 1, k + 3); j++) {
+        sum += raw[j];
+        n++;
+      }
+      env[k] = sum / n;
+    }
+    const dbAt = (i: number) => {
+      const f = Math.max(0, Math.min(nb - 1, i / B - 0.5));
+      const k = Math.floor(f);
+      const k2 = Math.min(nb - 1, k + 1);
+      return env[k] + (env[k2] - env[k]) * (f - k);
+    };
+    // the gain that holds the level where the loop takes over (index X), at most 40 dB up
+    const ref = dbAt(X);
+    const gain = (i: number) => Math.min(100, Math.pow(10, (ref - dbAt(i)) / 20));
+    const flat = (d: Float32Array, i: number) => d[A + i] * gain(i);
+    // the loop's length: the end that best continues into the start (correlated over 20 ms), within its last 25 ms
+    const W = Math.floor(0.02 * sr);
+    const d0 = data[0];
+    let N = L - X;
+    let best = -2;
+    for (let n = L - X - Math.floor(0.025 * sr); n <= L - X; n++) {
+      let ab = 0, aa = 0, bb = 0;
+      for (let j = 0; j < W; j++) {
+        const a = flat(d0, j), c = flat(d0, n + j);
+        ab += a * c; aa += a * a; bb += c * c;
+      }
+      const r = ab / Math.sqrt(aa * bb + 1e-12);
+      if (r > best) {
+        best = r;
+        N = n;
+      }
+    }
+    const out = ctx.createBuffer(chs, N, sr);
+    const lin = best > 0.6;
+    for (let ch = 0; ch < chs; ch++) {
+      const d = data[ch];
+      const o = out.getChannelData(ch);
+      for (let i = 0; i < N; i++) {
+        const a = flat(d, i);
+        if (i >= X) {
+          o[i] = a;
+          continue;
+        }
+        // (in phase, a straight crossfade; else equal power: the loop's last sample runs on into its first)
+        const w = i / X;
+        const c = flat(d, N + i);
+        o[i] = lin ? a * w + c * (1 - w) : a * Math.sin(w * Math.PI * 0.5) + c * Math.cos(w * Math.PI * 0.5);
+      }
+    }
+    const r = { buf: out, at: (A + X) / sr, off: X / sr };
+    this.loops.set(b, r);
+    return r;
   }
 
   /**
@@ -1145,7 +1294,7 @@ class Engine {
     o2.stop(t + 0.2);
   }
   /** Ringing voices (gongs, bowls): at most 3 per surface and 24 in all; the oldest fades out to make room. */
-  private voices: { owner: string; g: GainNode; end: number; oscs: AudioScheduledSourceNode[] | null }[] = [];
+  private voices: { owner: string; g: GainNode; end: number; oscs: AudioScheduledSourceNode[] | null; t?: number; held?: boolean }[] = [];
   private claimVoice(owner: string, g: GainNode, t: number, end: number, oscs: AudioScheduledSourceNode[] | null = null, max = 3): void {
     const ctx = this.ctx!;
     const now = ctx.currentTime;
@@ -1372,24 +1521,6 @@ class Engine {
     o.stop(t + 0.06);
   }
 
-  /** A felt pad sliding onto the table: a soft brushed whoosh, rising. */
-  whoosh(pan = 0): void {
-    const ctx = this.ready();
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const n = this.noiseSrc(ctx, t, 0.45);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 1.4;
-    bp.frequency.setValueAtTime(500, t);
-    bp.frequency.exponentialRampToValueAtTime(2400, t + 0.4);
-    const g = this.out(ctx, this.master, pan, 0.5, t, 1);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.16, t + 0.25);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
-    n.connect(bp).connect(g);
-  }
-
   /** The bar before a drop: noise rising through a narrowing band, louder to the end (`dur` seconds from now). */
   riser(dur: number): void {
     const ctx = this.ready();
@@ -1409,6 +1540,26 @@ class Engine {
     g.gain.exponentialRampToValueAtTime(0.22, t + dur * 0.97);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.04);
     n.connect(bp).connect(g);
+  }
+
+  /** The band drops out (the drums go on) now, and comes back at audio time `back`. */
+  bandDrop(back: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.bedBus || !this.bedOn) return;
+    const t = ctx.currentTime;
+    const gain = this.bedBus.gain;
+    gain.cancelScheduledValues(t);
+    gain.setValueAtTime(gain.value, t);
+    gain.linearRampToValueAtTime(0, t + 0.06);
+    gain.setValueAtTime(0, Math.max(t + 0.07, back - 0.01));
+    gain.linearRampToValueAtTime(0.55, Math.max(t + 0.08, back));
+  }
+
+  /** More room on everything (from audio time `at`), or back to the usual. Nothing while the room is off (the low levels). */
+  wetter(on: boolean, at = 0): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.send || this.send.gain.value === 0) return;
+    this.send.gain.setTargetAtTime(on ? 0.3 : 0.16, Math.max(ctx.currentTime, at), 0.08);
   }
 
   /** The one after a drop: a crash (bright noise ringing out) and a sub thump you feel. */
@@ -1434,7 +1585,6 @@ class Engine {
     o.stop(t + 0.7);
   }
 
-  /** The crowd cheering: a patter of tiny claps and a happy "ooh", by size (3–12). */
   /**
    * How the band sounds with you (0..1): all there and bright when you're on it, muffled and quieter as you miss
    * (the filter falls from 20 kHz toward 600 Hz, the level to 60 %).
@@ -1450,164 +1600,30 @@ class Engine {
     this.bandBus.gain.cancelScheduledValues(t);
     this.bandBus.gain.setTargetAtTime(0.6 + 0.4 * h, t, 0.18);
   }
-  /** A miss: a dead knock where the note should have been, and the band chokes for a moment. */
-  missKnock(pan = 0): void {
-    const ctx = this.ctx;
-    if (!ctx || !this.noise) return;
-    const t = ctx.currentTime;
-    const src = ctx.createBufferSource();
-    src.buffer = this.noise;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 420;
-    const g = this.out(ctx, this.master, pan, 0, t, 0);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.32, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
-    src.connect(lp).connect(g);
-    src.start(t, Math.random() * 0.5);
-    src.stop(t + 0.15);
-    const o = ctx.createOscillator();
-    o.frequency.setValueAtTime(95, t);
-    o.frequency.exponentialRampToValueAtTime(55, t + 0.1);
-    const og = this.out(ctx, this.master, pan, 0, t, 0);
-    og.gain.setValueAtTime(0.28, t);
-    og.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-    o.connect(og);
-    o.start(t);
-    o.stop(t + 0.13);
-    if (this.bandTone) {
-      const f = this.bandTone.frequency;
-      f.cancelScheduledValues(t);
-      f.setValueAtTime(Math.min(f.value, this.grooveCut), t);
-      f.linearRampToValueAtTime(520, t + 0.03);
-      f.setTargetAtTime(this.grooveCut, t + 0.08, 0.14);
-    }
-  }
-  /** A Perfect: a crisp stick click on top of what you played (Good is just the sound). */
-  perfectTick(pan = 0): void {
-    const ctx = this.ctx;
-    if (!ctx || !this.noise) return;
-    const t = ctx.currentTime;
-    const src = ctx.createBufferSource();
-    src.buffer = this.noise;
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 4500;
-    const g = this.out(ctx, this.master, pan, 0.05, t, 0);
-    g.gain.setValueAtTime(0.16, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
-    src.connect(hp).connect(g);
-    src.start(t, Math.random() * 0.5);
-    src.stop(t + 0.03);
-  }
-
-  cheer(size: number, big = false): void {
-    const ctx = this.ready();
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const claps = Math.round((big ? 14 : 5) + size * (big ? 2 : 0.6));
-    for (let k = 0; k < claps; k++) {
-      const at = t + Math.random() * (big ? 1.4 : 0.5);
-      const n = this.noiseSrc(ctx, at, 0.02);
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 1400 + Math.random() * 1600;
-      bp.Q.value = 2;
-      const g = this.out(ctx, this.master, (Math.random() - 0.5) * 0.6, 0.6, at, 1);
-      this.env(g.gain, at, 0.05 + Math.random() * 0.05, 0.001, 0.018);
-      n.connect(bp).connect(g);
-    }
-    if (big) this.chime([72, 76, 79, 84], 0.12);
-  }
-
   /**
-   * The game's own sounds (recorded, Kenney's CC0 packs, public/sounds/ui): a hover, a press, a page opening or
-   * closing, a switch, the results' tick and stamp, a run lost, a new record, a full combo, the spotlight. Loaded on
-   * first use; `rate` pitches it (the count-up's ticks climb).
+   * A miss: the band dips for a moment (its filter halfway down toward where your misses are taking it, and back over
+   * a tenth of a second), at most twice a second: a run of misses is one dip, not a stutter.
    */
-  ui(name: UiSound, level = 1, rate = 1, pan = 0): void {
-    const ctx = this.ready();
-    if (!ctx) return;
-    const buf = this.uiBufs.get(name);
-    if (!buf) {
-      this.loadUi(ctx, name);
-      return;
-    }
+  bandDip(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.bandTone) return;
     const t = ctx.currentTime;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.playbackRate.value = rate;
-    const g = this.out(ctx, this.master, pan, name === 'record' || name === 'fullcombo' || name === 'spotlight' ? 0.35 : 0.12, t, UI_LEVEL[name] * level);
-    src.connect(g);
-    src.start(t);
-    src.stop(t + buf.duration / rate + 0.05);
+    if (t - this.dipAt < 0.5) return;
+    this.dipAt = t;
+    const f = this.bandTone.frequency;
+    f.cancelScheduledValues(t);
+    f.setValueAtTime(Math.min(f.value, this.grooveCut), t);
+    f.exponentialRampToValueAtTime(Math.max(1400, this.grooveCut * 0.3), t + 0.04);
+    f.setTargetAtTime(this.grooveCut, t + 0.06, 0.1);
   }
-  private uiBufs = new Map<UiSound, AudioBuffer>();
-  private uiLoading = new Set<UiSound>();
-  private loadUi(ctx: AudioContext, name: UiSound): void {
-    if (this.uiLoading.has(name)) return;
-    this.uiLoading.add(name);
-    fetch(`${import.meta.env.BASE_URL}sounds/ui/${name}.mp3`)
-      .then((r) => r.arrayBuffer())
-      .then((b) => ctx.decodeAudioData(b))
-      .then((buf) => this.uiBufs.set(name, buf))
-      .catch(() => this.uiLoading.delete(name));
-  }
-  /** Fetch every one of the game's own sounds now (after the first touch), so none is late the first time. */
-  preloadUi(): void {
+  private dipAt = -9;
+  private fx: { ctx: AudioContext; master: GainNode; send: GainNode } | null = null;
+  /** The game's own sounds' way out (src/audio/sfx.ts): the running context, the master and the room's send. */
+  fxOut(): { ctx: AudioContext; master: GainNode; send: GainNode } | null {
     const ctx = this.ready();
-    if (ctx) for (const n of Object.keys(UI_LEVEL) as UiSound[]) this.loadUi(ctx, n);
-  }
-
-  /** A little rising chime (stars, an unlock). */
-  chime(notes: readonly number[], step = 0.1, level = 1): void {
-    const ctx = this.ready();
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    notes.forEach((m, i) => {
-      const at = t + i * step;
-      const o = ctx.createOscillator();
-      o.frequency.value = midiHz(m);
-      const g = this.out(ctx, this.master, 0, 1, at, 1);
-      this.env(g.gain, at, 0.14 * level, 0.003, 0.6);
-      o.connect(g);
-      o.start(at);
-      o.stop(at + 0.7);
-    });
-  }
-
-  /** The bandmate's chirp (happy: up; your turn: up-down). */
-  chirp(kind: 'happy' | 'turn' | 'hello'): void {
-    const ctx = this.ready();
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    o.type = 'sine';
-    const f = kind === 'happy' ? [1700, 2600] : kind === 'turn' ? [2200, 1500] : [1500, 2300];
-    o.frequency.setValueAtTime(f[0], t);
-    o.frequency.exponentialRampToValueAtTime(f[1], t + 0.09);
-    if (kind !== 'happy') o.frequency.exponentialRampToValueAtTime(f[0], t + 0.18);
-    const g = this.out(ctx, this.master, 0, 0.5, t, 1);
-    this.env(g.gain, t, 0.12, 0.01, 0.17);
-    o.connect(g);
-    o.start(t);
-    o.stop(t + 0.25);
-  }
-
-  /** A soft card tap (choosing a song, a setting). */
-  /** A control's tick: a press at full (−15 dB), a hover at `level` 0.12 (about −18 dB), lower and shorter. */
-  tick(level = 0.18): void {
-    const ctx = this.ready();
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const n = this.noiseSrc(ctx, t, 0.02);
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = level < 0.15 ? 3200 : 2200;
-    const g = this.out(ctx, this.master, 0, 0.2, t, 1);
-    this.env(g.gain, t, level, 0.001, level < 0.15 ? 0.015 : 0.025);
-    n.connect(bp).connect(g);
+    if (!ctx) return null;
+    if (this.fx?.ctx !== ctx) this.fx = { ctx, master: this.master, send: this.send };
+    return this.fx;
   }
 }
 

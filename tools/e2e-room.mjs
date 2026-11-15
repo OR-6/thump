@@ -190,9 +190,11 @@ check('SONGS, then PLAY, plays a song', (s.game.mode === 'count' || s.game.mode 
 // (a lesson first holds to say its first step: a hit on the drums goes on, as a player would after reading it)
 const hand = await measureHand();
 for (let i = 0; i < 6 && !(state().game.motes > 0); i++) {
-  await wait(700);
+  await wait(1100);
   // (from well above the heads, as a hand comes down onto a drum)
-  await slap(hand, [s.debug.kitOrigin[0] + 0.06, DESK_Y, s.debug.kitOrigin[2]], { from: 0.25, speed: 1.5 });
+  // (the step names the snare: hit it to go on)
+  const sn = state().targets.snare ?? [s.debug.kitOrigin[0] + 0.06, DESK_Y, s.debug.kitOrigin[2]];
+  await slap(hand, [sn[0], DESK_Y, sn[2]], { from: 0.25, speed: 1.5 });
   await until((x) => x.game.motes > 0, 1500);
 }
 s = await until((x) => x.game.motes > 0, 8000);

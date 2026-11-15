@@ -528,37 +528,7 @@ describe('the game', () => {
     expect(g.last!.stars).toBeGreaterThanOrEqual(2);
   });
 
-  it('free play: the band takes your tempo from three steady notes (90 when they wander)', () => {
-    const st = { ...stage([]), freeHarmony: () => ({ inst: 'piano', root: 48, chords: [[0, 4, 7], [9, 12, 16], [5, 9, 12]] }) };
-    const g = new Game(st, freshProgress(), room([]));
-    g.start(0);
-    g.discovered('kit', 'table', 0);
-    for (const t of [1, 1.5, 2.0]) {
-      g.tick(t);
-      g.hit('piano:2', t, 0.7);
-    }
-    expect(60 / g.clock.spb).toBeCloseTo(120, 0);
-    expect(g.display.page?.line).toBe("The band's with you, 120 bpm");
-    // then you drag a little behind: the band leans back with you
-    const start = g.clock.start;
-    for (let k = 0; k < 6; k++) {
-      const t = g.clock.timeAt(4 + k) + 0.05;
-      g.tick(t);
-      g.hit('piano:2', t, 0.7);
-    }
-    expect(g.clock.start).toBeGreaterThan(start + 0.02);
-    // a wandering three: the steady default
-    const h = new Game(st, freshProgress(), room([]));
-    h.start(0);
-    h.discovered('kit', 'table', 0);
-    for (const t of [1, 1.3, 2.4]) {
-      h.tick(t);
-      h.hit('piano:2', t, 0.7);
-    }
-    expect(60 / h.clock.spb).toBeCloseTo(90, 0);
-  });
-
-  it('free play: your first notes bring a soft band in under you; two quiet bars and it lets go', () => {
+  it('free play is yours: steady notes bring no band in behind you', () => {
     const band: string[] = [];
     const voiced: string[] = [];
     const st = {
@@ -571,30 +541,17 @@ describe('the game', () => {
     g.start(0);
     g.discovered('kit', 'table', 0);
     let t = 1;
-    g.tick(t);
-    expect(g.harmony()).toBeNull();
-    g.hit('piano:2', t, 0.7);
-    for (let k = 0; k < 90; k++) {
+    for (let k = 0; k < 120; k++) {
       t += 1 / 30;
-      if (k % 20 === 0) g.hit('piano:3', t, 0.7);
+      if (k % 15 === 0) g.hit('piano:2', t, 0.7);
       g.tick(t);
     }
-    expect(band).toContain('chord');
-    expect(band).toContain('bass');
-    expect(voiced).toContain('kit:kick');
-    // its chord is the one the chord pad and the strums follow, in your scale (not a song's)
-    expect(g.harmony()?.song).toBe(false);
-    expect(g.harmony()?.chord).toBe(48);
-    const n = band.length;
-    for (let k = 0; k < 300; k++) g.tick((t += 1 / 30));
+    expect(band).toEqual([]);
+    expect(voiced).toEqual([]);
     expect(g.harmony()).toBeNull();
-    const after = band.length;
-    for (let k = 0; k < 60; k++) g.tick((t += 1 / 30));
-    expect(band.length).toBe(after);
-    expect(after).toBeGreaterThan(n);
   });
 
-  it('a lesson holds still for you: each step to read (any hit goes on, unscored), then its first notes at their moment (their own hit, right on time)', () => {
+  it('a lesson holds still for you: each step to read (its drum goes on, after a moment, unscored), then its first notes at their moment (their own hit, right on time)', () => {
     const holds: boolean[] = [];
     const g = new Game({ ...stage([]), holdSong: (on) => holds.push(on) }, freshProgress(), room([]));
     g.start(0);
@@ -607,7 +564,13 @@ describe('the game', () => {
     for (let k = 0; k < 600 && !g.hold; k++) g.tick((t += 1 / 30));
     expect(g.hold?.kind).toBe('read');
     expect(holds).toEqual([true]);
+    // (a moment to read it: a hit at once doesn't go on; nor, after, a drum other than the one it names)
+    expect(g.hit('kit:snare', t, 0.8)).toBeNull();
+    expect(g.hold?.kind).toBe('read');
+    for (let k = 0; k < 30; k++) g.tick((t += 1 / 30));
     expect(g.hit('kit:kick', t, 0.8)).toBeNull();
+    expect(g.hold?.kind).toBe('read');
+    expect(g.hit('kit:snare', t, 0.8)).toBeNull();
     expect(g.hold).toBeNull();
     expect(holds).toEqual([true, false]);
     // the first note's moment: it waits for the snare; another drum doesn't let it go
