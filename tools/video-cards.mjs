@@ -28,7 +28,7 @@ export default async function run({ page, frame }) {
       g.fillRect(W / 2 - 60, 720, 120, 8);
     };
     make('00-title', full('Thump', 'A band on your desk.'));
-    make('99-end', full('or-6.github.io/thump', 'Open it in your Quest browser'));
+    make('99-end', full('playthump.pages.dev', 'Open it in your Quest browser'));
     const caption = (text) => (g) => {
       g.font = `600 64px ${FONT}`;
       const w = g.measureText(text).width + 100;

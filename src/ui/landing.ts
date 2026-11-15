@@ -18,7 +18,7 @@ import { scoreOf } from '../songs/score.js';
 import { ringMarkSvg, wordmarkSvg } from './brand.js';
 import { PAGE_ROOT, PAGE_SCALE, VIEW, centreOnTray, deskSvg, viewFor } from './landing-drawing.js';
 
-const LIVE_URL = 'or-6.github.io/thump';
+const LIVE_URL = 'playthump.pages.dev';
 
 /** The band, in the page's order: its name, a few words on it, how you play it, and its capture from the game. */
 const BAND: { id: InstId; label: string; what: string; line: string; alt: string }[] = [

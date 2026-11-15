@@ -2863,7 +2863,7 @@ export class Game {
         break;
       case 'jam':
         d.line = 'Jam';
-        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? (this.code ? "Friend's phone: or-6.github.io/thump" : 'Listen') : 'Listen';
+        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? (this.code ? "Friend's phone: playthump.pages.dev" : 'Listen') : 'Listen';
         d.pulse = 'jam';
         d.meter = this.jamShares.length ? this.jamShares[this.jamShares.length - 1] : -1;
         break;

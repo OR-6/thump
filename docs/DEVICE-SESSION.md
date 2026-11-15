@@ -7,8 +7,8 @@ Until this session, everything has only been checked in the IWER emulator, by un
 ## Before the clock starts (5 min, not counted)
 
 - Quest 3 charged, lenses clean, hand tracking on, controllers out of reach.
-- Quest Browser: `https://or-6.github.io/thump/?debug=1` → *Enter mixed reality* → allow what it asks.
-- For step 6: a second Quest, or a laptop with `https://or-6.github.io/thump/` open (no headset needed on that side).
+- Quest Browser: `https://playthump.pages.dev/?debug=1` → *Enter mixed reality* → allow what it asks.
+- For step 6: a second Quest, or a laptop with `https://playthump.pages.dev/` open (no headset needed on that side).
 - For step 1c, if you can: your phone propped up filming in slow motion (240 fps).
 
 ### What you'll be reading

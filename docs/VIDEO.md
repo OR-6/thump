@@ -8,7 +8,7 @@ About 90 seconds. Real passthrough recorded in a Quest 3, real hands, the game's
 - Headset: charged, lenses clean, hand tracking on, controllers out of reach.
 - Recording: Meta button → Camera → Record video, landscape, highest resolution, microphone on. The knock of your hand on the table under the sound is part of it.
 - Move slowly. Turn your head half as fast as feels natural. Hold each shot a beat before and after the action. Poke the panel slowly enough that the light on an item shows before it presses.
-- Address: `https://or-6.github.io/thump/` (no `?debug`). For shot 1 do a fresh start: on the 2D page, Settings → *Start over*.
+- Address: `https://playthump.pages.dev/` (no `?debug`). For shot 1 do a fresh start: on the 2D page, Settings → *Start over*.
 - Shots 4 and 5 use Kick Start on EASY, which is open from the start.
 - For shot 7 you need a second player. A second Quest is best. If there isn't one, join from a laptop on the 2D page (its pads play into the band) and film the laptop with a phone.
 
@@ -40,7 +40,7 @@ In the Shot column, quoted lines and capital-letter labels are exactly what the 
 | 5 | 0:40–0:52 | Mid-song, poke the DRUMS card: "Drums next", the drums come out at the next loop, "Find it, then join in", the notes start falling on the drums. Then "Solo!": the room above dims and a fast fill washes it in colour. At the end "Bring it home": the band holds, one big hit and they land on it with you. Then the results and "That was you" as your best two bars play back in gold | Straight on from shot 4 | "Swap mid-song." |
 | 6 | 0:52–1:10 | MAKE A TRACK. "1/6  BOOM", "Hit when it glows", the lit bar copied, "Your turn: play anything", a bar of your own. Cut to TUNE: the piano comes out by itself. Cut to the last part, "Everything, in…": a silent bar, the riser, then the whole track drops in at once | MENU, then MAKE A TRACK | "Make it yours." |
 | 7 | 1:10–1:25 | Two people at two desks. On the panel PLAY TOGETHER, START A BAND, "Code …: friends type it on the Thump page". The friend types it on their Thump page and taps *Join*, then "2 in the band" on the panel. PICK A SONG: it starts on both at once; the friend is a light across the desk in their instrument's colour that swells as they play, and their notes come from that side | See *Before you record* | "Play together, from anywhere." |
-| 8 | 1:25–1:30 | End card | Title card | "or-6.github.io/thump" |
+| 8 | 1:25–1:30 | End card | Title card | "playthump.pages.dev" |
 
 Shoot two or three takes of each. Keep your head still during the action and move only between shots. Don't stage the results: use whatever you get.
 
