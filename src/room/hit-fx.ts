@@ -7,6 +7,7 @@
  * allocated per frame.
  */
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Group, Mesh, MeshBasicMaterial, Quaternion, Vector3, type Object3D } from '@iwsdk/core';
+import { BRAND, hexNum } from '../ui/theme.js';
 
 /** Points round each corner (the perimeter has 4 × (K + 1)). */
 const K = 10;
@@ -88,7 +89,7 @@ export class HitFx {
       const edge = new Mesh(frameGeometry(), mat(0));
       const ring = new Mesh(frameGeometry(), mat(0));
       const fill = new Mesh(fanGeometry(), mat(0));
-      (edge.material as MeshBasicMaterial).color.setHex(0x1d0b2c);
+      (edge.material as MeshBasicMaterial).color.setHex(hexNum(BRAND.plum));
       edge.renderOrder = 12;
       fill.renderOrder = 12;
       ring.renderOrder = 13;

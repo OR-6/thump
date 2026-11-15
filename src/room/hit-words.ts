@@ -5,11 +5,13 @@
  * A small pool of planes, each a word drawn once.
  */
 import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
-import { FONT, whenFonts } from '../ui/fonts.js';
+import { DISPLAY, whenFonts } from '../ui/fonts.js';
+import { BRAND } from '../ui/theme.js';
 
 const WORDS = ['PERFECT', 'GOOD', 'EARLY', 'LATE'] as const;
-/** Each word's own neon (a cyan Perfect, a green Good, an orange Early, a violet Late). */
-const INK: Record<string, [string, string]> = { PERFECT: ['#ffffff', '#33e1ff'], GOOD: ['#e6fff4', '#3cf0a0'], EARLY: ['#fff0dd', '#ff9a3c'], LATE: ['#efe6ff', '#8a5cff'] };
+/** Each word's colour, by what it means (the brand's: Perfect the hot red-orange of a hit, Good off-white, early and late
+ * a quiet grey), and how big it is next to Perfect. */
+const INK: Record<string, [string, number]> = { PERFECT: [BRAND.hot, 1], GOOD: [BRAND.ink, 0.9], EARLY: [BRAND.ink2, 0.72], LATE: [BRAND.ink2, 0.72] };
 const POOL = 6;
 
 function wordTexture(word: string): CanvasTexture {
@@ -21,26 +23,19 @@ function wordTexture(word: string): CanvasTexture {
   const draw = () => {
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, 512, 144);
-    g.font = `italic 900 92px ${FONT}`;
+    const [col, k] = INK[word] ?? [BRAND.ink, 1];
+    g.font = `900 ${Math.round(104 * k)}px ${DISPLAY}`;
     g.textBaseline = 'middle';
     const w = g.measureText(word).width;
     const x = (512 - w) / 2;
-    const y = 70;
-    // the screen's own look (src/ui/theme.ts): the judgement's colour as a light-to-colour gradient, a dark outline so
-    // it reads over a bright desk, a glow in its colour
+    const y = 74;
+    // upright, solid, a thick plum outline so it reads over a white head or a bright room; no glow, no gradient
     g.lineJoin = 'round';
-    g.strokeStyle = '#1a0b2e';
-    g.lineWidth = 18;
+    g.strokeStyle = BRAND.plum;
+    g.lineWidth = 16;
     g.strokeText(word, x, y);
-    const [a, b] = INK[word] ?? ['#ffffff', '#ffffff'];
-    const gr = g.createLinearGradient(0, y - 46, 0, y + 46);
-    gr.addColorStop(0, a);
-    gr.addColorStop(1, b);
-    g.shadowColor = b;
-    g.shadowBlur = 20;
-    g.fillStyle = gr;
+    g.fillStyle = col;
     g.fillText(word, x, y);
-    g.shadowBlur = 0;
     tex.needsUpdate = true;
   };
   draw();

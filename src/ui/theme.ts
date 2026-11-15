@@ -23,6 +23,14 @@ export const BRAND = {
   gold: '#ffc93c',
 } as const;
 
+/** A token's colour at `a` opacity, as a CSS colour (canvas fills over the room). */
+export function withAlpha(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+/** A token's colour as a number (three.js). */
+export const hexNum = (hex: string): number => parseInt(hex.slice(1), 16);
+
 export const NEON = {
   bg0: '#150a30',
   bg1: '#2a0c44',

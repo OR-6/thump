@@ -37,7 +37,7 @@ check('the HUD said welcome first', log[0] === 'Welcome to Thump' || log.include
 check('then "Your drums" (make fists: sticks)', log.includes('Your drums'), log.slice(0, 6).join(' / '));
 check('each step held to read (four steps)', holds.filter((k) => k === 'read').length === 4, holds.join(','));
 check('the first notes of each step waited at their moment', holds.filter((k) => k === 'note').length >= 8, `${holds.filter((k) => k === 'note').length} note holds`);
-check('the HUD said Now! at a held note', log.includes('Now!'), log.join(' / ').slice(0, 300));
+check('the HUD said Now at a held note', log.includes('Now'), log.join(' / ').slice(0, 300));
 check('the first Perfect was said', log.includes('First Perfect!'), '');
 await wait(1500);
 const after = js(`return { coach: r.settings.coach, say: r.hudSay, focus: r.game.display.focus };`);

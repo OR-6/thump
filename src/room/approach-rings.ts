@@ -8,6 +8,7 @@
  */
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Mesh, MeshBasicMaterial, Quaternion, Vector3, type Object3D } from '@iwsdk/core';
 import type { PartShape } from './hit-fx.js';
+import { BRAND, hexNum } from '../ui/theme.js';
 
 /** Beats ahead a ring appears. */
 export const LEAD_BEATS = 2;
@@ -38,7 +39,7 @@ export type ShapeOf = (key: string, s: PartShape, col: Color) => boolean;
 const _l = new Vector3();
 const _c = new Color();
 const GOLD = new Color(0xffd23f);
-const EDGE = new Color(0x1d0b2c);
+const EDGE = new Color(hexNum(BRAND.plum));
 
 export class ApproachRings {
   readonly mesh: Mesh;
@@ -95,7 +96,7 @@ export class ApproachRings {
     }
   }
 
-  update(feed: ApproachFeed, shapeOf: ShapeOf, calm: boolean, waitKey = '', t = 0): void {
+  update(feed: ApproachFeed, shapeOf: ShapeOf, calm: boolean, waitKey = '', t = 0, paused = false): void {
     let s = 0;
     if (feed.mode === 'play' || feed.mode === 'count') {
       const count = Math.min(feed.moteCount, feed.motes.length);
@@ -119,8 +120,10 @@ export class ApproachRings {
         let w = (calm ? 0.005 : 0.0055) + 0.0015 * (1 - u);
         // (the note a lesson is waiting on: its ring sits on the edge and beats, so it's plainly the one)
         if (waitKey && n.key === waitKey && n.ahead <= 0.05) w *= 1.3 + 0.35 * Math.sin(t * 9);
-        this.band(s, 0, sh, hw, hd, r, -0.0015, w + 0.0015, EDGE, a * 0.6);
-        this.band(s, 1, sh, hw, hd, r, 0, w, _c, a);
+        // (paused: everything waits, quietly)
+        const al = paused ? a * 0.25 : a;
+        this.band(s, 0, sh, hw, hd, r, -0.0015, w + 0.0015, EDGE, al * 0.6);
+        this.band(s, 1, sh, hw, hd, r, 0, w, _c, al);
         s++;
       }
     }

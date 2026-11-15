@@ -78,7 +78,7 @@ import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R, MALLET_LEN, STICK_LEN } from './hand-mallet.js';
 import { KICK_DEPTH } from '../kit/pad-view.js';
-import { INST_LIGHT } from '../ui/theme.js';
+import { BRAND, INST_LIGHT, hexNum, withAlpha } from '../ui/theme.js';
 import { HitFx, type PartShape } from './hit-fx.js';
 import { ApproachRings } from './approach-rings.js';
 import { Hud, type HudSay } from './hud.js';
@@ -237,7 +237,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     if (g === 'perfect') {
       this.hitFx?.flash('perfect', s, c);
-      this.hitFx?.flash('inner', s, 0xffffff, 0.07);
+      this.hitFx?.flash('inner', s, hexNum(BRAND.ink), 0.07);
     } else this.hitFx?.flash('good', s, c);
     // (the streak warms every hit: from ×3 a third ring, in gold)
     if ((this.game.display.mult ?? 1) >= 3) this.hitFx?.flash('inner', s, 0xffd23f, 0.14);
@@ -452,7 +452,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const r = this.ref(key);
       if (!r) return;
       // (in a song the approach ring says when; the glow only hints which, softly, so the two don't blur together)
-      if (this.game.mode === 'play' || this.game.mode === 'count') k *= 0.45;
+      if (this.game.mode === 'play' || this.game.mode === 'count') k *= this.game.paused ? 0 : 0.2;
       if (r.kind === 'pad') this.kit.pad(r.lane)?.setGlow(k);
       else if (r.kind === 'keys') this.kit.keys.light(r.zone, k);
       else if (r.kind === 'inst') {
@@ -967,17 +967,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     c.width = c.height = 128;
     const g = c.getContext('2d')!;
     // a disc with four short arrows: move me
-    // (the screen's plate: its indigo, its solid edge, its ink)
-    g.fillStyle = 'rgba(26,13,56,0.94)';
+    // (the brand's plate: plum, its line, off-white)
+    g.fillStyle = withAlpha(BRAND.plum, 0.94);
     g.beginPath();
     g.arc(64, 64, 60, 0, Math.PI * 2);
     g.fill();
-    g.strokeStyle = '#3b2670';
+    g.strokeStyle = BRAND.line;
     g.lineWidth = 5;
     g.beginPath();
     g.arc(64, 64, 57, 0, Math.PI * 2);
     g.stroke();
-    g.strokeStyle = '#fbf7ff';
+    g.strokeStyle = BRAND.ink;
     g.lineWidth = 7;
     g.lineCap = 'round';
     g.lineJoin = 'round';
@@ -1087,6 +1087,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private coachSkip = 0;
   /** Where the HUD stands (kit-local): on the desk on your side of the instrument, clear of the kick's front. */
   private hudAt = new Vector3(0, 0.05, 0.24);
+  /** Where the HUD's leader points (kit-local): the part `key` plays. */
+  private hudTarget = new Vector3();
+  private hudTargetOn = false;
+  private hudShape: PartShape = { at: new Vector3(), q: new Quaternion(), w: 0, d: 0, round: true };
+  private hudCol = new Color();
+  private hudPoint(key: string): void {
+    if (!this.shapeOf(key, this.hudShape, this.hudCol)) return;
+    this.hudTarget.copy(this.hudShape.at);
+    this.kit.root.worldToLocal(this.hudTarget);
+    this.hudTargetOn = true;
+  }
   private coachTo(n: number): void {
     if ((this.settings.coach ?? 0) >= n) return;
     this.settings = { ...this.settings, coach: n };
@@ -1098,10 +1109,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (!hud) return;
     // (what it says is worked out 20 times a second, not every frame: it's words, and nothing here needs a frame)
     if (this.uiT - this.hudCalcT < 0.05) {
-      hud.update(dt, this.hudAt, this.head, motion.calm);
+      hud.update(dt, this.hudAt, this.head, motion.calm, this.hudTargetOn ? this.hudTarget : null);
       return;
     }
     this.hudCalcT = this.uiT;
+    this.hudTargetOn = false;
     const placed = this.placement.phase === 'placed';
     const mode = this.game.mode;
     const d = this.game.display;
@@ -1119,9 +1131,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (inSong && this.game.hold?.kind === 'read') {
         const h = this.game.hold;
         say = { kind: 'tip', big: h.title, small: h.say, foot: h.key ? `Hit the ${partName(h.key)} to go on` : 'Hit anything to go on', icon: this.kit.inst === 'drums' || this.kit.inst === 'marimba' ? 'stick' : undefined };
+        if (h.key) this.hudPoint(h.key);
       } else if (this.uiT - this.hudFirstT < 1.1) say = { kind: 'tip', big: 'First Perfect!', small: 'Right on the beat. Keep doing that', gold: true };
       else if (this.uiT - this.hudSticksT < 1.4) say = { kind: 'tip', big: 'Sticks!', small: 'Open your hand to let go', icon: 'stick' };
-      else if (inSong && this.game.hold?.kind === 'note') say = { kind: 'tip', big: 'Now!', small: `The ring is on the ${partName(this.game.hold.key)}: hit it`, gold: true };
+      else if (inSong && this.game.hold?.kind === 'note') {
+        say = { kind: 'tip', big: 'Now', small: `Hit the ${partName(this.game.hold.key)}`, hot: true };
+        this.hudPoint(this.game.hold.key);
+      }
       else if (d.count > 0 && (mode === 'count' || this.game.looper.state === 'count')) say = { kind: 'count', n: d.count };
       else if (inSong && this.uiT - this.hudGoT < 0.6) say = { kind: 'go' };
       else if (inSong && d.spot?.ready && !d.spot.active) say = { kind: 'tip', big: 'Hands up!', small: 'Raise both hands for double points', gold: true };
@@ -1170,7 +1186,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     hud.set(say);
     this.hudSay = say;
-    hud.update(dt, this.hudAt, this.head, motion.calm);
+    hud.update(dt, this.hudAt, this.head, motion.calm, this.hudTargetOn ? this.hudTarget : null);
   }
 
   /** The panel's clock (real time, never paused) and what's waiting on it. */
@@ -1784,8 +1800,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.tmp2.set(0, 0.13, -0.05);
     this.kit.module.root.localToWorld(this.tmp2);
     // the song's notes fall onto what plays them
-    this.waterfall.update(dt, this.game, this.kit.root, this.resolveNote);
-    this.approach?.update(this.game, this.shapeOf, motion.calm, this.game.hold?.kind === 'note' ? this.game.hold.key : '', this.uiT);
+    // (in a song one cue says when: the approach ring; the falling notes are for free play)
+    const inSongNow = this.game.mode === 'play' || this.game.mode === 'count';
+    this.waterfall.root.visible = !inSongNow;
+    if (!inSongNow) this.waterfall.update(dt, this.game, this.kit.root, this.resolveNote);
+    this.approach?.update(this.game, this.shapeOf, motion.calm, this.game.hold?.kind === 'note' ? this.game.hold.key : '', this.uiT, this.game.paused);
     this.dimmer.update(dt, this.head, motion.calm);
     audio.idle();
     this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
