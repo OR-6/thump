@@ -165,8 +165,9 @@ function buildPageFor(m: MenuInput): Page {
           const si = Math.max(0, SCALES.findIndex((s) => s.name === m.inst.scale));
           stepper(`scale:${SCALES[(si + SCALES.length - 1) % SCALES.length].id}`, `scale:${SCALES[(si + 1) % SCALES.length].id}`, SCALES[si].name, ys[k++]);
           items.push(label('Key', ys[k]));
-          const pc = KEYS.find((x) => x.name === (m.inst.key || 'C'))?.pc ?? 0;
-          stepper(`key:${(pc + 11) % 12}`, `key:${(pc + 1) % 12}`, m.inst.key || 'C', ys[k++]);
+          // (stepped through the keys there are, not by semitone: a key that isn't one of them fell back to C, for ever)
+          const ki = Math.max(0, KEYS.findIndex((x) => x.name === (m.inst.key || 'C')));
+          stepper(`key:${KEYS[(ki + KEYS.length - 1) % KEYS.length].pc}`, `key:${KEYS[(ki + 1) % KEYS.length].pc}`, KEYS[ki].name, ys[k++]);
         }
         items.push(label('Sound', ys[k]));
         across(d.sounds.map((s) => ({ id: `sound:${s.id}`, label: s.name, on: s.name === m.inst.sound })), ys[k++]);

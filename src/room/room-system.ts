@@ -224,7 +224,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.partCol.setHex(0xffffff);
     }
     // (the band opens back up as you play: a Perfect more than a Good, and it clicks)
-    this.grooveAt(this.groove + (g === 'perfect' ? 0.07 : 0.045));
+    this.grooveAt(this.groove + (g === 'perfect' ? 0.1 : 0.07));
     if (g === 'perfect') audio.perfectTick(this.panOf(s.at));
     const spot = this.game.display.spot?.active;
     const c = spot ? 0xffd23f : this.partCol.getHex();
@@ -489,6 +489,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return { inst: id, root: 48 + (id === 'drums' ? 0 : this.keyOf(id)), chords: sc.chords };
     },
     useInstrument: (id) => this.useInstrument(id as InstId | null),
+    hasPiece: (lane) => this.lanes().includes(lane as Lane),
     shelfSet: (which) => this.shelfChange(which),
     // the game's moments, said over the panel and in the room (soft: success louder than failure)
     holdSong: (on) => {
@@ -614,7 +615,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // you hear it: a dead knock where the note was, the band chokes, and a run of misses muffles it
       if (this.shapeOf(key, this.missShape, this.missCol)) audio.missKnock(this.panOf(this.missShape.at));
       else audio.missKnock(0);
-      this.grooveAt(this.groove - 0.2);
+      this.grooveAt(Math.max(0.35, this.groove - 0.1));
       const r = this.ref(key);
       if (!r) return;
       if (r.kind === 'pad') this.kit.pad(r.lane)?.miss();
@@ -1093,6 +1094,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private hudHitsAt = -1;
   private hudSay: HudSay = { kind: 'none' };
   private hudCalcT = -9;
+  private ctlSince = -1;
   private hudFirstT = -9;
   private hudSticksT = -9;
   private coachKitT = -1;
@@ -1143,6 +1145,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const inSong = mode === 'play' || mode === 'count';
     // a song starts with the band all there, and leaves it that way
     if (mode !== this.grooveMode) {
+      if (!inSong && this.userPaused) this.clearUserPause();
+      // (a new song: the guitar's hand place starts unknown, so the first chord change is an event to hit)
+      if (mode === 'count') this.gh.zone = -1;
       if (mode === 'count' || !inSong) {
         this.groove = 0;
         this.grooveAt(1);
@@ -1157,7 +1162,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const step = this.game.lessonStepNow();
       const beat = this.game.songBeat;
       const coach = NO_COACH ? 3 : (this.settings.coach ?? 0);
-      if (ctl && !inSong) say = { kind: 'tip', big: 'Put the controllers down', small: 'You play Thump with your bare hands' };
+      if (ctl && this.ctlSince < 0) this.ctlSince = this.uiT;
+      if (!ctl) this.ctlSince = -1;
+      if (ctl && !inSong && this.uiT - this.ctlSince < 5) say = { kind: 'tip', big: 'Put the controllers down', small: 'You play Thump with your bare hands' };
       else if (inSong && this.game.paused) say = { kind: 'none' };
       else if (inSong && this.game.hold?.kind === 'read') {
         const h = this.game.hold;
@@ -2916,7 +2923,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private kitOutT = -1;
   /** Points per hand: three fingertips, the palm, the stick's tip, the thumb and the pinky. */
   private air = new AirHits(AIR_PTS * 2);
-  private airSig = '';
+  private airInst = '';
+  private airN = -1;
+  private airSong = false;
   private airGap = [0, 0];
   private airLock = [-9, -9];
   private airLockSpeed = [0, 0];
@@ -3095,10 +3104,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.airSurf[k].w = undefined;
     }
     // (the instrument or the piano's song state changed: every point starts afresh, so none fires from where it was)
-    const sig = `${this.kit.inst}|${n}|${this.game.harmony()?.song ? 1 : 0}`;
-    if (sig !== this.airSig) {
-      this.airSig = sig;
-      for (let p = 0; p < AIR_PTS * 2; p++) this.forgetPt(p);
+    const songNow = this.game.mode === 'play' || this.game.mode === 'count';
+    if (this.kit.inst !== this.airInst || n !== this.airN || songNow !== this.airSong) {
+      this.airInst = this.kit.inst;
+      this.airN = n;
+      this.airSong = songNow;
+      this.forgetAir();
     }
     for (let i = 0; i < 2; i++) {
       const h = i === 0 ? hands.left : hands.right;
@@ -3596,6 +3607,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (id === 'pause:restart') {
       this.setUserPaused(false);
       this.game.restartSong();
+      // (a restart counts itself in: not the resume's two clicks on top)
+      this.resumePending = false;
       return;
     }
     if (id === 'pause:songs') {
@@ -5010,6 +5023,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (p && !playing) return;
     this.userPaused = p;
     this.game.paused = p;
+    this.forgetAir();
     // (the song's clock holds; the sound keeps running so the panel still clicks; what was ringing stops)
     this.clock.hold();
     if (p) audio.stopSustain();
@@ -5019,16 +5033,31 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.game.refreshDisplay();
   }
 
+  /** The song's pause, gone (the song ended or stopped under it): the clock and your hands are free again. */
+  private clearUserPause(): void {
+    this.userPaused = false;
+    this.game.paused = false;
+    this.resumePending = false;
+    this.forgetAir();
+    this.game.refreshDisplay();
+  }
+  /** Every hand point starts afresh (after a pause or a blur, a hand that moved meanwhile isn't a hit). */
+  private forgetAir(): void {
+    for (let p = 0; p < AIR_PTS * 2; p++) this.forgetPt(p);
+  }
   private setPaused(p: boolean): void {
     if (p === this.paused) return;
     this.paused = p;
     audio.setPaused(p);
+    this.forgetAir();
     // the count-in waits until the audio is really running again
     if (!p) this.resumePending = true;
   }
 
   private endSession(): void {
     this.sessionTime = 0;
+    // (out of the headset while paused: the pause goes with the song, or you'd come back to a game frozen with no Resume)
+    if (this.userPaused) this.clearUserPause();
     if (this.placement.phase !== 'placed') return;
     if (this.game.mode === 'play' || this.game.mode === 'count') this.game.stop();
     // nothing keeps playing while you're out of the headset (and nothing catches up all at once on return)

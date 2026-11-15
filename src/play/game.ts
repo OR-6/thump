@@ -60,6 +60,8 @@ export interface GameStage {
   overtake?(): void;
   /** A lesson's next step began. */
   lessonStep?(title: string): void;
+  /** Whether the kit on the desk has this piece (a small kit has no tom: the chart doesn't ask for one). */
+  hasPiece?(lane: string): boolean;
   /** A lesson holds the song still for you (true) or lets it go on (false). */
   holdSong?(on: boolean): void;
   /** Re-pitch the room's melodic instruments into a key (pitch class), in its minor or major. */
@@ -178,6 +180,8 @@ export interface GameOptions {
 }
 
 const MAX_MOTES = 40;
+/** A band that joins your free play once you keep a steady beat (off: free play is just you). */
+const FREE_BAND = false;
 
 export class Game {
   mode: Mode = 'discover';
@@ -216,7 +220,7 @@ export class Game {
   }
   /** The beat now (song or jam), or NaN outside music. */
   get beatNow(): number {
-    return this.mode === 'play' || this.mode === 'count' || this.mode === 'jam' ? this.clock.beatAt(this.t) : Number.NaN;
+    return this.mode === 'play' || this.mode === 'count' || this.mode === 'jam' ? this.clock.beatAt(this.t - this.opts.offset) : Number.NaN;
   }
   /** BPM now (for the phone's light). */
   get bpmNow(): number {
@@ -770,7 +774,7 @@ export class Game {
     const m = this.machine!;
     if (m.track.score) {
       // a written-out song: your part of it, by instrument and level (src/songs/score.ts)
-      const c = scoreChart(m.track.score, inst, this.level, from, to, fills, { tom: (this.progress.unlocks as string[]).includes('tom') });
+      const c = scoreChart(m.track.score, inst, this.level, from, to, fills, { tom: (this.progress.unlocks as string[]).includes('tom') && (this.stage.hasPiece?.('tom') ?? true) });
       return { notes: c.notes.map((n) => ({ beat: n.beat, part: n.key as never, degree: -1, vel: n.vel })), live: new Set(c.live), found: '', cover: c.cover };
     }
     const notes: Note[] = [];
@@ -1406,6 +1410,10 @@ export class Game {
    */
   private groove: { root: number; chords: readonly (readonly number[])[]; inst: string; sched: number; last: number } | null = null;
   private groovePlayed(key: string, t: number): void {
+    // (free play is yours: no band starts up behind you because you kept a steady beat)
+    void key;
+    void t;
+    if (!FREE_BAND) return;
     const f = this.stage.freeHarmony?.();
     if (!this.stage.setting('band', false)) return;
     if (!f || !(key.startsWith('piano:') || key.startsWith('guitar:') || key.startsWith('pluck:') || key.startsWith('handpan:') || key.startsWith('congas:') || key.startsWith('kit:') || key.startsWith('keys:'))) return;
@@ -1927,7 +1935,7 @@ export class Game {
 
   hit(key: string, t: number, gain: number): Grade | 'extra' | 'early' | 'late' | null {
     // (playing along with the machine's replay just plays; once it's done and the choice is up, a hit moves on)
-    if (this.mode === 'results' && t - this.modeT > 4 && !this.lap && this.resultsStage >= 4) this.leaveResults();
+    // (the results stay until you press something on the screen: a drum hit while you read them doesn't take them away)
     if (this.mode === 'jam' && this.mate) return this.hitJam(key, t, gain);
     if (this.mode === 'build') return this.hitBuild(key, t, gain);
     if (this.mode === 'discover' && this.looper.recording) this.looper.hear(this.loopClock.beatAt(t - this.opts.offset), key, gain);
@@ -1936,6 +1944,8 @@ export class Game {
     if (this.hold && (this.mode === 'play' || this.mode === 'count')) {
       if (gain < 0.15) return null;
       if (this.hold.kind === 'read') {
+        // (a moment to read it first; and the drum it names, when it names one: a resting hand doesn't skip it)
+        if (t - this.holdAt < 0.9 || (this.hold.key && key !== this.hold.key)) return null;
         this.setHold(null);
         this.waitsLeft = 3;
         return null;
@@ -2117,9 +2127,12 @@ export class Game {
     } else if (this.mode === 'count' && Math.ceil(-beat) !== this.display.count) this.refreshDisplay();
     const j = this.judge!;
     j.sweep(t - this.opts.offset - this.clock.start, this.onMiss);
+    // (what you see is timed as you're judged: the learned offset moves the rings and the lights with the judge, or a
+    // ring would still be wide when the judge wants the hit)
+    const seen = this.clock.beatAt(t - this.opts.offset);
     let k = 0;
     for (const n of j.notes) {
-      const d = n.beat - beat;
+      const d = n.beat - seen;
       if (d > TIMING.travelBeats + 0.01) break;
       if (d < -0.6 && !(n.grade === 'perfect' || n.grade === 'good')) continue;
       if (d < -1) continue;
@@ -2452,9 +2465,11 @@ export class Game {
   get lessonWaits(): number {
     return this.hold?.kind === 'read' ? 3 : this.waitsLeft;
   }
+  private holdAt = 0;
   private setHold(h: Game['hold']): void {
     const was = !!this.hold;
     this.hold = h;
+    if (h) this.holdAt = this.t;
     if (was !== !!h) {
       this.stage.holdSong?.(!!h);
       this.refreshDisplay();
