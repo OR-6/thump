@@ -125,10 +125,10 @@ export function mountLanding(world: World): void {
       <section class="learn" id="learn" aria-label="Lessons and grades">
         <div class="wrap">
           <div class="row row-a">
-            <figure class="row-pic">${shot('lesson', 'A drum lesson holding the song still: the ring on the snare and a card saying Now! The ring is on the snare: hit it.')}</figure>
+            <figure class="row-pic">${shot('lesson', 'A drum lesson holding the song still: the ring on the snare, a line from the sign on the desk to it, and the word Now.')}</figure>
             <div class="row-words">
               <h2 class="h3">Lessons that wait for you to get it.</h2>
-              <p>One for each instrument. The song stops on the note you need and says <strong>Now!</strong> when it’s time. Miss it and it waits.</p>
+              <p>One for each instrument. The song stops on the note you need and says <strong>Now</strong> when it’s time. It waits until you hit it.</p>
             </div>
           </div>
           <div class="row row-b">
