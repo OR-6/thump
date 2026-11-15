@@ -55,7 +55,7 @@ export interface MenuInput {
   line: string;
   sub: string;
   inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full'; frets?: 'easy' | 'real' };
-  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string; best?: number }[];
+  songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string; best?: number; kind?: 'song' | 'lesson' | 'daily' }[];
   songSel: number;
   /** Which six songs show (more than six: a button in the corner turns the page). */
   songPage?: number;
@@ -113,9 +113,11 @@ function buildPageFor(m: MenuInput): Page {
   switch (m.page) {
     case 'main': {
       // the songs, large: what most people came for; the instrument that's out beside them; the rest below
-      const n = m.songs.length;
+      // (the songs and the lessons counted apart, as the site does: not the daily one-off)
+      const n = m.songs.filter((x) => (x.kind ?? 'song') === 'song').length;
+      const nl = m.songs.filter((x) => x.kind === 'lesson').length;
       const items: Item[] = [
-        { id: 'nav:songs', label: 'Songs', sub: `Play along · ${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
+        { id: 'nav:songs', label: 'Songs', sub: nl ? `${n} songs · ${nl} lessons` : `${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
         { id: 'nav:instruments', label: 'Instruments', sub: m.inst.name, icon: m.inst.id, kind: 'tile', x: X3, y: 176, w: C4, h: 480 },
         { id: 'nav:build', label: 'Make a track', sub: 'Part by part', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h },
         { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', kind: 'button', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h },
