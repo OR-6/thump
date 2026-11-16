@@ -606,9 +606,10 @@ describe('the game', () => {
     g.tick((t += 8));
     // the results: again, the next song, or the menu (a written-out song has no loop of its own to build)
     expect(g.display.page?.items.map((i) => i.id)).toEqual(['nav:main', 'next', 'again']);
+    // (after the first lesson, Next is the best song you haven't played, not the next instrument's lesson)
     g.act('next');
     expect(g.mode).toBe('count');
-    expect(g.song?.name).toBe(SONG_TRACKS[1].name);
+    expect(g.song?.name).toBe('Mango Season');
     // Make a track still builds the loop tracks, the first first
     g.stop();
     // (Make a track opens on its first page: what it is, and the style; Start begins the first part)
@@ -1137,5 +1138,15 @@ describe('names and band boards', () => {
     g.playSong(g.tracks.findIndex((t) => t.id === 'mango-season'));
     for (let t = 0.1; t < 6; t += 0.1) g.tick(t);
     expect(g.switchTo('congas')).toBe(true);
+  });
+  it('switching instruments mid-song: the latest choice wins', () => {
+    const g = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.playSong(g.tracks.findIndex((t) => t.id === 'mango-season'));
+    for (let t = 0.1; t < 6; t += 0.1) g.tick(t);
+    expect(g.switchTo('guitar')).toBe(true);
+    expect(g.switchTo('piano')).toBe(true);
+    expect(g.pendingSwitch()?.inst).toBe('piano');
   });
 });

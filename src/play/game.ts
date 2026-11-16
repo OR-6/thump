@@ -1726,7 +1726,20 @@ export class Game {
   /** Switch to `id` at the next loop; true when it's queued (or already that one), false when it can't be (too late). */
   switchTo(id: string): boolean {
     if (!this.perf || !this.machine) return false;
-    if (this.perf.queued || id === this.perf.inst) return true;
+    // (the one you're on: nothing pending any more; another while one's pending: the latest choice wins)
+    if (id === this.perf.inst) {
+      if (this.perf.queued) {
+        this.perf.queued = null;
+        this.refreshDisplay();
+      }
+      return true;
+    }
+    if (this.perf.queued) {
+      if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => plays(id, p.def.name))) return false;
+      this.perf.queued = id;
+      this.refreshDisplay();
+      return true;
+    }
     // (the same rule the switch bar offers by: the congas play a song's percussion)
     if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => plays(id, p.def.name))) return false;
     const beat = this.clock.beatAt(this.t);
@@ -2819,16 +2832,23 @@ export class Game {
       while (i + 1 < ls.steps.length && beat >= due(ls.steps[i + 1].bar)) i++;
       this.readDone = i;
       const st = ls.steps[i];
+      // (the step read out is the step now: its words stay up, not the last step's)
+      if (i > this.lessonIdx) {
+        this.lessonIdx = i;
+        this.stage.lessonStep?.(st.title);
+      }
       this.setHold({ kind: 'read', key: st.only?.[0] ?? '', title: st.title, say: st.say });
       return;
     }
     // a note's moment, in the first three of a step: wait for its hit (heard as you'll play it: the latency offset in)
     if (this.waitsLeft <= 0 || !this.judge || this.mode !== 'play') return;
     const now = this.clock.beatAt(t - this.opts.offset);
+    // (only this step's own notes wait: the last step's tail, still due as the new one is read out, plays on)
+    const from = s.starts[0] + (ls.steps[Math.max(0, this.readDone)]?.bar ?? 0) * s.meter - 1e-6;
     for (const n of this.judge.notes) {
       if (n.grade !== null) continue;
       if (n.beat > now) break;
-      if (n.beat > now - 0.2) this.setHold({ kind: 'note', key: n.lane, title: '', say: '' });
+      if (n.beat > now - 0.2 && n.beat >= from) this.setHold({ kind: 'note', key: n.lane, title: '', say: '' });
       break;
     }
   }
@@ -3075,8 +3095,21 @@ export class Game {
       return this.key('play');
     }
     if (id === 'next') {
-      // the next song as written (after any)
-      const i = this.machine ? (this.tracks.indexOf(this.machine.track) + 1) % this.tracks.length : this.nextSong();
+      // the next song (after a lesson: the best song you haven't played, not the next instrument's lesson; after a song,
+      // the next song in the list, lessons skipped)
+      const at = this.machine ? this.tracks.indexOf(this.machine.track) : -1;
+      const song = (k: number) => !!this.tracks[k]?.score && !this.tracks[k].score!.tune.lesson;
+      let i = this.nextSong();
+      if (at >= 0 && this.tracks[at].score?.tune.lesson) {
+        const j = this.tracks.findIndex((t, k) => song(k) && !this.performed(t.id));
+        i = j >= 0 ? j : this.tracks.findIndex((_, k) => song(k));
+      } else if (at >= 0) {
+        i = at;
+        for (let n = 0; n < this.tracks.length; n++) {
+          i = (i + 1) % this.tracks.length;
+          if (song(i) || !this.tracks[i].score) break;
+        }
+      }
       this.leaveResults();
       this.songSel = i;
       return this.playSong(i);
@@ -3410,6 +3443,12 @@ export class Game {
   prefetchNext(): void {
     const t = this.tracks.find((x) => x.score && !x.score.tune.lesson && !this.performed(x.id));
     if (t) this.stage.stems?.prefetch?.(t.id);
+  }
+
+  /** A switch of instrument waiting for the next phrase: which, and in how many seconds (null: none). */
+  pendingSwitch(): { inst: string; inS: number } | null {
+    if (!this.perf?.queued || (this.mode !== 'play' && this.mode !== 'count')) return null;
+    return { inst: this.perf.queued, inS: Math.max(0, (this.perf.switchAt - this.clock.beatAt(this.t)) * this.clock.spb) };
   }
 
   /** Seconds until your next note in the song (Infinity: none left, or not in a song). */

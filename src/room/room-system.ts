@@ -1437,6 +1437,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (inSong && this.uiT - this.hudStreakT < 1.5 && this.hudStreak > 0) say = { kind: 'streak', n: this.hudStreak };
       else if (step) say = { kind: 'tip', big: step.title, small: step.say };
       else if (inSong && beat >= 0 && beat < 8 && coach < 3) say = { kind: 'tip', big: 'Hit as the ring closes', small: 'Each note is a ring shrinking onto what plays it' };
+      // (an instrument asked for mid-song: which, and when it comes in, so a switch never seems ignored)
+      else if (inSong && mode === 'play' && !this.game.paused && this.game.pendingSwitch()) {
+        const ps = this.game.pendingSwitch()!;
+        say = { kind: 'tip', big: `${instDef(ps.inst as InstId).name} next`, small: `In ${Math.max(1, Math.ceil(ps.inS))} s, at the next phrase` };
+      }
       // (a long wait for your next note, the band playing on: when you come in, counted down, so nobody wonders if it's
       // stopped working)
       else if (inSong && mode === 'play' && !this.game.paused && !this.game.listening && this.longWait(this.game.nextNoteIn())) {

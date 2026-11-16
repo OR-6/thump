@@ -283,7 +283,7 @@ function buildPageFor(m: MenuInput): Page {
       // what it is in a sentence, the style to build in (left and right through them), and go; the one you kept
       const mk = m.maker ?? { name: '', bpm: 0, parts: [], saved: '' };
       const items: Item[] = [back()];
-      items.push({ id: 'value:makerhow', label: `Build a two-bar loop one part at a time: ${mk.parts.join(', ')}. Each part lights up a bar to copy, then gives you a bar of your own. When they're all in, play over it.`, kind: 'text', x: 32, y: 176, w: W - 64, h: 230 });
+      items.push({ id: 'value:makerhow', label: `A loop, one part at a time: copy a bar, then play your own. ${mk.parts.length} parts, then play over it.`, kind: 'text', x: 32, y: 176, w: W - 64, h: 230 });
       items.push({ id: 'maker:prev', label: '‹', kind: 'button', x: 32, y: 430, w: 140, h: 200 });
       items.push({ id: 'value:maker', label: `${mk.name} · ${mk.bpm} bpm`, kind: 'text', x: 188, y: 430, w: W - 376, h: 200 });
       items.push({ id: 'maker:next', label: '›', kind: 'button', x: W - 172, y: 430, w: 140, h: 200 });
