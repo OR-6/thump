@@ -1727,7 +1727,8 @@ export class Game {
   switchTo(id: string): boolean {
     if (!this.perf || !this.machine) return false;
     if (this.perf.queued || id === this.perf.inst) return true;
-    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => PART_INST[p.def.name] === (id === 'marimba' ? 'piano' : id))) return false;
+    // (the same rule the switch bar offers by: the congas play a song's percussion)
+    if (id !== 'drums' && id !== 'guitar' && !this.machine.parts.some((p) => plays(id, p.def.name))) return false;
     const beat = this.clock.beatAt(this.t);
     const when = Math.max(0, Math.ceil((beat + 2) / LOOP_BEATS) * LOOP_BEATS);
     if (when >= (this.song?.bars ?? 20) * 4 - 4) return false;
@@ -2851,7 +2852,9 @@ export class Game {
     const bar = Math.floor((beat - s.starts[0]) / s.meter);
     let i = 0;
     while (i + 1 < ls.steps.length && ls.steps[i + 1].bar <= bar) i++;
-    if (i === this.lessonIdx) return;
+    // (only ever forward: a lesson waiting on your note holds its clock a hair short of a step's bar, and the step it
+    // had moved on to must not flick back)
+    if (i <= this.lessonIdx) return;
     this.lessonIdx = i;
     this.stage.lessonStep?.(ls.steps[i].title);
     this.refreshDisplay();
@@ -3159,7 +3162,7 @@ export class Game {
       sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
       // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
-      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty} · ${t.score.tune.by}` : 'New every day', stars: this.starsOn(t.id), locked: false, grade: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const), world: i === this.songSel && pageId === 'songs' && !t.score?.tune.lesson ? this.worldLine(t.id) : undefined })),
+      songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty === 'Easy' ? 'A gentle one' : t.score.difficulty === 'Medium' ? 'Medium pace' : 'A fast one'} · ${t.score.tune.by}` : 'New every day', stars: this.starsOn(t.id), locked: false, grade: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const), world: i === this.songSel && pageId === 'songs' && !t.score?.tune.lesson ? this.worldLine(t.id) : undefined })),
       songSel: this.songSel,
       songShown: this.shownSongs(),
       songPage: this.shownPage(),
@@ -3523,7 +3526,8 @@ function lift(key: string, by: number): string {
 }
 /** Which instruments a song can be switched to mid-song, in order, and whether one plays a written part. */
 /** Songs on a page of the panel (two across, three down). */
-const SONGS_A_PAGE = 4;
+/** Songs a page of the list (the menu draws as many: src/ui/menu.ts). */
+export const SONGS_A_PAGE = 5;
 const SWITCH_ORDER = ['drums', 'piano', 'marimba', 'handpan', 'congas', 'guitar'];
 const plays = (inst: string, part: string): boolean => (inst === 'congas' ? part.startsWith('PERC') : PART_INST[part] === (inst === 'marimba' ? 'piano' : inst));
 

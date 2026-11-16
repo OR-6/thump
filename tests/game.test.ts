@@ -676,8 +676,8 @@ describe('the game', () => {
     // (All songs: the drums' lesson first, then every song; the other lessons on their own page)
     const songs = g.tracks.map((t, i) => (t.score?.tune.lesson ? -1 : i)).filter((i) => i >= 0);
     const all = [0, ...songs];
-    const pages = Math.ceil(all.length / 4);
-    expect(tiles().map((i) => i.label)).toEqual(all.slice(0, 4).map((i) => SONG_TRACKS[i].name));
+    const pages = Math.ceil(all.length / 5);
+    expect(tiles().map((i) => i.label)).toEqual(all.slice(0, 5).map((i) => SONG_TRACKS[i].name));
     // (each row is its name and best grade; what it is shows on the chosen one's card)
     expect(g.display.page?.card?.meta).toBe('Start here');
     expect(tiles()[1].grade).toBe('—');
@@ -703,7 +703,7 @@ describe('the game', () => {
     expect(tiles().map((i) => g.tracks[Number(i.id.slice(5))].score?.tune.original)).toEqual(tiles().map(() => true));
     g.act('songs:filter');
     expect(lit()).toBe('Lessons');
-    expect(tiles().length).toBe(4);
+    expect(tiles().length).toBe(5);
     g.act('songs:filter:all');
     expect(lit()).toBe('All');
   });
@@ -1129,5 +1129,13 @@ describe('names and band boards', () => {
     g.songSel = g.tracks.findIndex((t) => t.id === 'learn-drums');
     g.act('nav:songs');
     expect(g.tracks[g.songSel].id).toBe('mango-season');
+  });
+  it('mid-song, the congas can be switched to (as the switch bar offers them)', () => {
+    const g = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, freshProgress(), room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.playSong(g.tracks.findIndex((t) => t.id === 'mango-season'));
+    for (let t = 0.1; t < 6; t += 0.1) g.tick(t);
+    expect(g.switchTo('congas')).toBe(true);
   });
 });

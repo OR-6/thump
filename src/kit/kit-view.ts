@@ -31,7 +31,7 @@ export const KIT_ZONE = { halfX: 0.34, back: -0.24, front: 0.12 } as const;
  * what you play, not down by your hands. Clear of the drums at the back (the tom's head) and the congas' tops.
  */
 /** (a little to the side away from the display, which stands to the side of the instrument) */
-export const HUD_X = 0.1;
+export const HUD_X = 0.12;
 export const HUD_AT: Record<string, { y: number; z: number }> = {
   drums: { y: 0.325, z: -0.13 },
   congas: { y: 0.37, z: -0.14 },

@@ -1486,7 +1486,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (!(hands.left.pinch.pinching || hands.right.pinch.pinching)) this.coachSkip = 0;
         if (this.coachSkip >= 0.8) this.coachTo(3);
       } else if (coach === 1 && !inSong) this.coachTo(2);
-      else if (coach === 2 && !inSong) say = { kind: 'tip', big: mode === 'results' ? 'Poke Next on the screen' : 'Poke Songs on the screen', small: 'The screen behind the drums is your menu: poke it with a fingertip' };
+      else if (coach === 2 && !inSong) say = { kind: 'tip', big: mode === 'results' ? 'Poke Next on the screen' : 'Poke Songs on the screen', small: `The screen to your ${this.handed() === 'left' ? 'left' : 'right'} is your menu: poke it with a fingertip` };
       else if (mode === 'discover' && !this.game.paused) {
         const inst = this.kit.inst;
         // a new instrument out: how to play it, for 7 s, the first time
@@ -5556,7 +5556,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const pa = this.settings.panelAt;
       this.kit.module.moveTo(pa ? this.hRoot.set(pa.x, pa.y, pa.z) : null);
       // the display stands within reach of where you sit, to the side of your playing hand
-      this.kit.module.side(this.handed() === 'left' ? -0.3 : 0.3);
+      this.kit.module.side(this.handed() === 'left' ? -0.24 : 0.24);
       this.kit.module.seat(Math.hypot(pose.x - this.head.x, pose.z - this.head.z), this.head.y - pose.y);
     }
     root.visible = true;

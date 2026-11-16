@@ -47,14 +47,14 @@ describe('the panel pages', () => {
     expect(p.items.find((i) => i.id.startsWith('level:') && i.on)?.label).toBe('EASY');
     expect(p.items.some((i) => i.id === 'play')).toBe(true);
   });
-  it('songs: four to a page beside the chosen one\'s card; More turns the page; filters as pills; nothing overlaps', () => {
+  it('songs: five to a page beside the chosen one\'s card; More turns the page; filters as pills; nothing overlaps', () => {
     const songs = Array.from({ length: 6 }, (_, i) => ({ name: `Song ${i}`, meta: 'Traditional', stars: 0, locked: i > 1 }));
     const first = buildPage({ ...base('songs'), songs });
-    expect(first.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:0', 'song:1', 'song:2', 'song:3']);
+    expect(first.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:0', 'song:1', 'song:2', 'song:3', 'song:4']);
     expect(first.items.find((i) => i.id === 'songs:more')?.sub).toBe('1 of 2');
     expect(first.card?.name).toBe('Song 0');
     const second = buildPage({ ...base('songs'), songs, songPage: 1 });
-    expect(second.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:4', 'song:5']);
+    expect(second.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:5']);
     expect(second.items.find((i) => i.id === 'songs:more')?.sub).toBe('2 of 2');
     // a filter: only the songs it lets through, paged the same way; its pill lit
     const some = buildPage({ ...base('songs'), songs, songShown: [1, 4], songFilter: 'originals' });
