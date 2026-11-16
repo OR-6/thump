@@ -2619,6 +2619,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (k >= 0) this.record(s, k, gain, st, null);
       return;
     }
+    // (the room's own walls and furniture aren't instruments any more: the instruments are on the shelf; a hand
+    // brushing a wall or a monitor drew rings and bars on it, and cost frames; ?objects=1 turns it back on)
+    if (s !== this.kitSurface && !FIND_OBJECTS && !s.discovered) return;
     if (!s.discovered) this.discover(s);
     if (s === this.kitSurface) return this.hitKit(side, gain, st, t);
     const z = zoneAt(s.zones, this.hitAt.x, this.hitAt.z);
@@ -5074,6 +5077,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     const a = this.roomAnchor();
     const list = a ? this.progress.rooms[a.uuid] : undefined;
     if (!a || !list || !s.voice || s.discovered) return false;
+    // (only the kit comes back, unless finding things by touch is on)
+    if (s !== this.kitSurface && !FIND_OBJECTS) return false;
     a.group.updateMatrixWorld(true);
     if (s === this.kitSurface) {
       if (!list.some((i) => i.family === 'kit')) return false;
@@ -5387,7 +5392,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private rebuildSheens(): void {
     for (const s of this.surfaces) {
       if (s.source === 'module' || s.source === 'kit') continue;
-      const want = !s.discovered && !!s.voice && s.reach <= SEATED_M;
+      const want = FIND_OBJECTS && !s.discovered && !!s.voice && s.reach <= SEATED_M;
       const has = this.sheens.get(s);
       if (want && !has) {
         const sh = new Sheen(s, s.voice ? FAMILIES[s.voice.family].color : 0xffffff);

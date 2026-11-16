@@ -2,7 +2,7 @@
 /** Come back to the same room: what you found is already drawn (the room map is saved under the room anchor). */
 import { run, state, wait, check, done, goto, placeKit, until } from './e2e-lib.mjs';
 
-await goto('autoplay=1&debug=1');
+await goto('autoplay=1&debug=1&objects=1');
 let s = await placeKit();
 s = await until((x) => x.game.found.length >= 2, 15000, 500);
 const first = s.game.found.slice();
@@ -13,7 +13,7 @@ check('a found instrument swapped', !!swapped && swapped.family !== swapped.natu
 await wait(500);
 const firstNow = state().game.found.slice();
 // come back: same storage, no autoplay
-await goto('debug=1', { clear: false });
+await goto('debug=1&objects=1', { clear: false });
 s = await placeKit();
 s = await until((x) => firstNow.every((f) => x.game.found.includes(f)), 6000, 500);
 check('second visit: they come back already drawn', firstNow.every((f) => s.game.found.includes(f)), `${JSON.stringify(firstNow)} → ${JSON.stringify(s.game.found)} anchored=${s.debug.anchored}`);

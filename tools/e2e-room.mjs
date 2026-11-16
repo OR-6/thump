@@ -204,7 +204,7 @@ s = state();
 check('no frame errors', s.debug.errors === 0, `errors=${s.debug.errors}`);
 
 if (SONG) {
-  await goto('autoplay=1&debug=1');
+  await goto('autoplay=1&debug=1&objects=1');
   s = await placeKit();
   s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 60000, 500);
   check('autoplay plays the first song', s.game.mode === 'count' || s.game.mode === 'play', `${s.game.mode} ${s.game.display.line}`);
