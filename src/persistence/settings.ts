@@ -28,6 +28,9 @@ export interface Settings {
   oneHand: boolean;
   /** The guitar held facing you over the desk, as it first was (unset: in your lap, facing away, as it's really held). */
   guitarDesk?: boolean;
+  /** The instruments stand up on the desk rather than set into it (on the table, the default, every hit lands on the
+   * desk's wood). */
+  tableOff?: boolean;
   /** The timing's first guess has been made (the headset's sound delay and its hand tracking's), once, ever. */
   offsetSeeded?: boolean;
   /** Where you put the guitar in your lap (the kit's frame: its soundhole), when you've moved it. */
@@ -104,6 +107,7 @@ export function loadSettings(): Settings {
       ? { kitNudge: { a: num(s.kitNudge.a, -0.3, 0.3, 0), l: num(s.kitNudge.l, -0.5, 0.5, 0), ...(s.kitNudge.h2 === true && typeof s.kitNudge.h === 'number' && Number.isFinite(s.kitNudge.h) && s.kitNudge.h !== 0 ? { h: num(s.kitNudge.h, -0.2, 0.25, 0), h2: true as const } : {}) } }
       : {}),
     ...(s.guitarDesk === true ? { guitarDesk: true } : {}),
+    ...(s.tableOff === true ? { tableOff: true } : {}),
     ...(s.guitarAt && typeof s.guitarAt === 'object' && [s.guitarAt.x, s.guitarAt.y, s.guitarAt.z].every((v) => typeof v === 'number' && Number.isFinite(v))
       ? { guitarAt: { x: num(s.guitarAt.x, -0.6, 0.6, 0.1), y: num(s.guitarAt.y, -0.5, 0.4, 0), z: num(s.guitarAt.z, -0.4, 0.8, 0.2) } }
       : {}),

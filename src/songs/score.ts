@@ -10,7 +10,7 @@
  * instrument has; two at once at most, never two on one zone. Pure, unit-tested.
  */
 import { PIANO_BLACK, PIANO_CHORD, instZones, pianoBlacks, scaleById, scaleMidi, type InstId } from '../kit/shelf.js';
-import { BAND_STYLES, bassLine, compEvents, congaHits, drumHits, planBars, type BandStyle, type ChordSpan } from './arrange.js';
+import { BAND_STYLES, bassLine, compEvents, congaHits, drumHits, pick, planBars, type BandStyle, type ChordSpan } from './arrange.js';
 import type { BedEvent } from './chart.js';
 import { LESSONS, TUNES, type SectionKind, type Style, type Tune } from './tunes.js';
 
@@ -582,11 +582,35 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
   };
   const step = (b: number): Level | 'light' => (!plan || level === 'easy' || !calm(b) ? level : level === 'hard' ? 'normal' : 'light');
   if (inst === 'piano' || inst === 'marimba') {
-    for (const n of mel) {
-      // Easy: the notes on the strong beats, Normal on every beat, Hard all of them (the band plays the rest of the
-      // tune); a note the instrument hasn't got (the marimba has no notes outside the scale) is the band's
-      if (level === 'easy' && !strong(n.beat)) continue;
-      if (level === 'normal' && !onBeat(n.beat)) continue;
+    // Easy and Normal: the notes a listener would hum, most telling first (a phrase's first note, the downbeats, the
+    // long notes, then the strong beats; on Normal every beat and any note held a beat or more), kept while they're
+    // no closer than the level's gap to one already kept; Hard all of them (the band plays the rest of the tune)
+    const keepMel = new Set<number>();
+    if (level !== 'hard') {
+      const spb = 60 / t.bpm;
+      const gapS = level === 'easy' ? EASY_GAP : NORMAL_GAP;
+      const rank = (n: MelNote, i: number) => {
+        const prev = mel[i - 1];
+        const starts = !prev || prev.beat + prev.len <= n.beat - 1 + 1e-6;
+        const down = Math.abs(barOf(n.beat) % s.meter) < 1e-6;
+        if (starts) return 5;
+        if (down) return 4;
+        if (n.len >= 1.5 - 1e-6) return 3;
+        if (strong(n.beat)) return 2;
+        if (level === 'normal' && (onBeat(n.beat) || n.len >= 1 - 1e-6)) return 1;
+        return 0;
+      };
+      const order = mel.map((n, i) => ({ i, r: rank(n, i) })).filter((x) => x.r > (level === 'easy' ? 1 : 0)).sort((a, b) => b.r - a.r || mel[a.i].beat - mel[b.i].beat);
+      const kept: number[] = [];
+      for (const { i } of order) if (kept.every((b) => Math.abs(b - mel[i].beat) * spb >= gapS - 1e-6)) {
+        kept.push(mel[i].beat);
+        keepMel.add(i);
+      }
+    }
+    for (let mi = 0; mi < mel.length; mi++) {
+      const n = mel[mi];
+      if (level !== 'hard' && !keepMel.has(mi)) continue;
+      // (a note the instrument hasn't got, the marimba having no notes outside the scale, is the band's)
       const z = inst === 'piano' ? pianoKey(s.scale, n.degree, n.acc) : n.acc === 0 ? zoneOf('marimba', s.scale, n.degree) : -1;
       if (z >= 0) add(n.beat, `${inst}:${z}`, strong(n.beat) ? 0.9 : 0.8, 0, 'band:melody');
       // Hard on the marimba: the other mallet a chord tone under a long note on a strong beat
@@ -603,24 +627,68 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     }
     // Hard on the piano: your other hand on the chord key as each chord comes in
     if (level === 'hard' && inst === 'piano') for (const c of chords) add(c.beat, `piano:${PIANO_CHORD}`, 0.7, 1);
-  } else if (inst === 'handpan') {
-    // the bass: each chord's root as it comes in; Normal adds its fifth halfway; Hard the tune's strong notes above
-    // (a root outside the scale is the band's)
-    for (const c of chords) {
-      const r = c.semis === scaleById(s.scale).steps[c.degree] ? handpanZone(s.scale, c.degree, true) : -1;
-      if (r >= 0) add(c.beat, `handpan:${r}`, 0.9, 0, 'band:bass');
-      const half = Math.floor(c.len / 2);
-      if (level !== 'easy' && half >= 1 && r >= 0) {
-        const f = handpanZone(s.scale, c.degree + 4, true);
-        if (f >= 0) add(c.beat + half, `handpan:${f}`, 0.75, 0, 'band:bass');
-      }
-    }
-    if (level === 'hard')
-      for (const n of mel)
-        if (onBeat(n.beat) && n.acc === 0) {
-          const z = handpanZone(s.scale, n.degree, false);
-          if (z >= 0) add(n.beat, `handpan:${z}`, 0.8, 1);
+    // (a solo's bars, played through: the tune rests there, so the solo's chord on each downbeat, its fifth halfway from
+    // Normal; the melody's band line doesn't cover these)
+    if (!fills.length)
+      for (const [a, z] of s.solos)
+        for (let b = a; b < z - 1e-6; b += s.meter) {
+          const deg = s.soloChord.degree;
+          const key = (d: number) => (inst === 'piano' ? pianoKey(s.scale, d, 0) : zoneOf('marimba', s.scale, d));
+          const r = key(deg);
+          if (r >= 0) add(b, `${inst}:${r}`, 0.85, 0);
+          const f = key(deg + 4);
+          if (level !== 'easy' && s.meter >= 3 && f >= 0) add(b + Math.floor(s.meter / 2), `${inst}:${f}`, 0.75, 0);
         }
+  } else if (inst === 'handpan') {
+    // the bass player's part (the handpan stands in for it): an original's bass line as its band plays it; a classic's
+    // its own arrangement's bass, a bar at a time on its chords (a tuba's root and fifth); else each chord's root as it
+    // comes in, its fifth halfway. Each note on the handpan's field for it (a note outside its scale is the band's).
+    // Easy the downbeats, Normal the beats and each chord as it comes in, Hard all of it, each thinned by time
+    const sc = scaleById(s.scale);
+    type B = { beat: number; degree: number; strong: number };
+    const bs: B[] = [];
+    const posOf = (b: number) => barOf(b) % s.meter;
+    const strongness = (b: number, isChord: boolean) => {
+      const x = posOf(b);
+      return Math.abs(x) < 1e-6 ? 3 : isChord ? 2 : Math.abs(x - Math.round(x)) < 1e-6 ? (s.meter === 4 && Math.abs(x - 2) < 1e-6 ? 2 : 1) : 0;
+    };
+    const chordStart = (b: number) => chords.some((c) => Math.abs(c.beat - b) < 1e-6);
+    if (t.bass) {
+      const steps = t.bass.length;
+      for (const st of s.starts)
+        for (let b = 0; b < s.bars; b++)
+          for (let i = 0; i < steps; i++) {
+            const ch = t.bass[i];
+            if (ch !== '1' && ch !== '5' && ch !== '8') continue;
+            const at = st + b * s.meter + (i * s.meter) / steps;
+            const c = chords.find((x) => at >= x.beat - 1e-6 && at < x.beat + x.len - 1e-6);
+            if (!c || c.semis !== sc.steps[c.degree]) continue;
+            bs.push({ beat: at, degree: c.degree + (ch === '5' ? 4 : ch === '8' ? 7 : 0), strong: strongness(at, chordStart(at)) });
+          }
+    } else if (t.original) {
+      for (const n of bassLine(bandStyle(s), planBars(s), s.meter, spansOf(s), s.keyPc, s.end)) {
+        const d = sc.steps.indexOf((((n.midi - s.keyPc) % 12) + 12) % 12);
+        if (d < 0) continue;
+        bs.push({ beat: n.beat, degree: d, strong: strongness(n.beat, chordStart(n.beat)) });
+      }
+    } else
+      for (const c of chords) {
+        if (c.semis !== sc.steps[c.degree]) continue;
+        bs.push({ beat: c.beat, degree: c.degree, strong: 3 });
+        const half = Math.floor(c.len / 2);
+        if (half >= 1) bs.push({ beat: c.beat + half, degree: c.degree + 4, strong: 1 });
+      }
+    // (the strongest first, then what fits round them: none closer than the level's gap)
+    const need = level === 'easy' ? 2 : level === 'normal' ? 1 : 0;
+    const gapS = level === 'easy' ? EASY_GAP : level === 'normal' ? NORMAL_GAP : HARD_GAP;
+    const spb = 60 / t.bpm;
+    const kept: B[] = [];
+    for (const n of [...bs].filter((x) => x.strong >= need).sort((a, b) => b.strong - a.strong || a.beat - b.beat))
+      if (kept.every((k) => Math.abs(k.beat - n.beat) * spb >= gapS - 1e-6)) kept.push(n);
+    for (const n of kept) {
+      const z = handpanZone(s.scale, n.degree, true);
+      if (z >= 0) add(n.beat, `handpan:${z}`, n.strong >= 2 ? 0.9 : 0.75, 0, 'band:bass');
+    }
   } else if (inst === 'guitar') {
     // strums on the strong beats (Easy), every beat (Normal), a strum pattern (Hard); from Normal your other hand
     // moves to each new chord on the neck as it comes in
@@ -629,14 +697,44 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     const offsAt = (lv: Level | 'light') => (lv === 'easy' || lv === 'light' ? (s.meter === 4 ? [0, 2] : [0]) : lv === 'normal' ? Array.from({ length: s.meter }, (_, i) => i) : pattern);
     // (a phrase of four bars ends on one strum left to ring; on Easy a verse is a strum a bar, its chorus two)
     const bands = planBars(s);
-    for (const st of s.starts)
-      for (let b = 0; b < s.bars; b++) {
-        const at = st + b * s.meter;
-        // (the ring-out on the band's own phrase ends: where its drummer fills)
-        const ends = bands.some((p) => p.fill && Math.abs(p.beat - at) < 1e-6);
-        const offs = ends ? [0] : level === 'easy' && plan && calm(at) ? [0] : offsAt(step(at));
-        for (const o of offs) add(at + o, 'guitar:9', o % 1 ? 0.6 : o === 0 ? 0.9 : 0.75, 0);
-      }
+    // the song's own rhythm part, where it has one (a classic's recording, an original's band comping): strums where it
+    // plays, the downbeats first, then the beats, then the rest, a level's gap apart; a fill bar rings out on its one
+    const bst = bandStyle(s);
+    const own = t.rhythm ?? (t.original ? '' : undefined);
+    if (own !== undefined) {
+      type R = { beat: number; r: number };
+      const cands: R[] = [];
+      bands.forEach((p, n) => {
+        if (p.solo) return;
+        if (p.fill) {
+          cands.push({ beat: p.beat, r: 3 });
+          return;
+        }
+        // (Hard keeps time as a guitarist does: a strum on every beat as well as the part's own)
+        if (level === 'hard') for (let k = 1; k < s.meter; k++) cands.push({ beat: p.beat + k, r: 2 });
+        const pat = own || pick(p.chorus ? bst.comp.chorus : bst.comp.verse, n);
+        for (let i = 0; i < pat.length; i++) {
+          if (pat[i] !== 'x' && pat[i] !== 'X') continue;
+          const off = (i * s.meter) / pat.length;
+          cands.push({ beat: p.beat + off, r: off === 0 ? 3 : Math.abs(off - Math.round(off)) < 1e-6 ? 2 : 1 });
+        }
+      });
+      const spb = 60 / t.bpm;
+      const gapS = level === 'easy' ? EASY_GAP : level === 'normal' ? NORMAL_GAP : HARD_GAP;
+      // (Easy keeps to the beats, unless a bar's part is all off-beats: a skank on Easy is still a skank)
+      const kept: R[] = [];
+      for (const c of [...cands].sort((a, b) => b.r - a.r || a.beat - b.beat))
+        if (kept.every((k) => Math.abs(k.beat - c.beat) * spb >= gapS - 1e-6)) kept.push(c);
+      for (const c of kept) add(c.beat, 'guitar:9', c.r === 3 ? 0.9 : c.r === 2 ? 0.75 : 0.65, 0);
+    } else
+      for (const st of s.starts)
+        for (let b = 0; b < s.bars; b++) {
+          const at = st + b * s.meter;
+          // (the ring-out on the band's own phrase ends: where its drummer fills)
+          const ends = bands.some((p) => p.fill && Math.abs(p.beat - at) < 1e-6);
+          const offs = ends ? [0] : level === 'easy' && plan && calm(at) ? [0] : offsAt(step(at));
+          for (const o of offs) add(at + o, 'guitar:9', o % 1 ? 0.6 : o === 0 ? 0.9 : 0.75, 0);
+        }
     // your other hand moves to each new chord on the neck as it comes in (on Easy too: getting there early counts)
     {
       const pad = padsFor(s);
@@ -659,12 +757,17 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // Hard a sixteenth at 100 bpm; in four only: a pattern of sixteen steps squeezed into a bar of two is all off-beats)
     const cg = (level === 'normal' ? NORMAL_GAP : HARD_GAP) * (t.bpm / 60);
     let lastC = -Infinity;
-    const mine = level === 'easy' || s.meter !== 4 ? [] : own.filter((h) => {
-      if (h.beat - lastC < cg - 1e-6) return false;
-      lastC = h.beat;
-      return true;
-    });
-    if (mine.length >= s.bars * s.starts.length * 0.75) {
+    void lastC;
+    // (Easy too: the conga player's notes on the beat first, then the ones that fit round them, a beginner's gap apart)
+    const gapC = level === 'easy' ? (EASY_GAP * t.bpm) / 60 : cg;
+    const onB = (h: (typeof own)[number]) => h.at !== undefined && Math.abs(h.at - Math.round(h.at)) < 1e-6;
+    const mine: typeof own = [];
+    if (s.meter === 4) {
+      const order = [...own].sort((a, b) => Number(onB(b)) - Number(onB(a)) || a.beat - b.beat);
+      for (const h of order) if (mine.every((k) => Math.abs(k.beat - h.beat) >= gapC - 1e-6)) mine.push(h);
+      mine.sort((a, b) => a.beat - b.beat);
+    }
+    if (mine.length >= s.bars * s.starts.length * (level === 'easy' ? 1.2 : 0.75)) {
       for (const h of mine) add(h.beat, h.key, Number(h.key.slice(7)) % 2 ? 0.85 : 0.75, 0);
       // (and the low drum on the drummer's downbeats under it, so it's never sparser than Easy)
       for (const h of drumHits(bandStyle(s), planBars(s), s.meter, s.end).KICK) if (h.at !== undefined && h.mark === 'X' && Math.abs(h.at - Math.round(h.at)) < 1e-6) add(h.beat, 'congas:0', 0.8, 1);

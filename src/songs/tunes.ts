@@ -44,6 +44,12 @@ export interface Tune {
   drumsFrom?: number;
   /** Its recording's drummer keeps time on the beat (a street band's ride and pedal hat), not the style's off-beats. */
   hatsOnBeat?: boolean;
+  /** Its recording's bass player, a bar at a time (a classic's own arrangement: a tuba's '1.5.', root then fifth; its
+   * steps spread over the bar; 1 the chord's root, 5 its fifth, 8 its octave), which the handpan plays. */
+  bass?: string;
+  /** Its recording's rhythm part, a bar at a time (a banjo's '.x.x' on two and four, a band's off-beat 'pah'), which
+   * the guitar strums with. */
+  rhythm?: string;
   /** Where each section starts (bars from the first): a song in its whole form (a `solo` section is a solo: its bars
    * are rests, anything goes). Without them, each pass's first half is its verse and its second half its chorus. */
   sections?: readonly { bar: number; kind: SectionKind }[];
@@ -243,6 +249,7 @@ export const TUNES: readonly Tune[] = [
   {
     // Symphony No. 9 (1824), the theme as it's usually sung
     id: 'ode-to-joy',
+    bass: '1.1.',
     name: 'Ode to Joy',
     by: 'Beethoven',
     bpm: 108,
@@ -263,6 +270,8 @@ export const TUNES: readonly Tune[] = [
     // Galop infernal from Orpheus in the Underworld (1858), its famous theme, checked against a violin transcription
     // (which opens on two Cs; the orchestral first bar is one held C, as here)
     id: 'can-can',
+    rhythm: '.x.x.x.x',
+    bass: '1.5.1.5.',
     name: 'Can-can',
     by: 'Offenbach',
     bpm: 150,
@@ -283,6 +292,8 @@ export const TUNES: readonly Tune[] = [
   {
     // the sea shanty, Dorian on D (the white keys from D), a verse and the chorus; checked against a session tunebook
     id: 'drunken-sailor',
+    rhythm: 'X.x.X.x.',
+    bass: '1.5.',
     name: 'Drunken Sailor',
     by: 'Shanty',
     bpm: 132,
@@ -309,6 +320,8 @@ export const TUNES: readonly Tune[] = [
   {
     // the traditional spiritual; checked against a published lead sheet
     id: 'saints',
+    rhythm: '.x.x',
+    bass: '1.5.',
     hatsOnBeat: true,
     name: 'When the Saints',
     by: 'Trad., ska',
@@ -330,6 +343,8 @@ export const TUNES: readonly Tune[] = [
   {
     // the Russian folk song (1861), checked against a session transcription: its tune twice through
     id: 'korobeiniki',
+    rhythm: '.x.x.x.x',
+    bass: '1.5.1.5.',
     name: 'Korobeiniki',
     by: 'Folk dance',
     bpm: 136,
@@ -350,6 +365,8 @@ export const TUNES: readonly Tune[] = [
   {
     // Peer Gynt (1875): its theme, twice, landing home (from memory; not checked against a score)
     id: 'mountain-king',
+    rhythm: 'x.x.',
+    bass: '1.1.',
     name: 'Mountain King',
     by: 'Grieg, rock',
     bpm: 120,
@@ -405,6 +422,8 @@ export const TUNES: readonly Tune[] = [
   {
     // the overture's finale (1829), checked against an 1844 tune book
     id: 'william-tell',
+    rhythm: '.x.x',
+    bass: '1.5.',
     name: 'William Tell',
     by: 'Rossini',
     // (in its own 2/4, its sixteenths sixteenths: a gallop at 104 a quarter, under the Allegro vivace's 150 or so but
@@ -482,6 +501,7 @@ export const TUNES: readonly Tune[] = [
   {
     // the English ballad, Dorian on E, checked against a session tunebook; in three
     id: 'scarborough-fair',
+    rhythm: 'x.x.x.',
     drumsFrom: 19,
     name: 'Scarborough Fair',
     by: 'Trad. folk',

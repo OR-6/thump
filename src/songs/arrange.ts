@@ -251,7 +251,7 @@ function hash(beat: number, salt: number): number {
 const jitter = (beat: number, salt: number, amount: number) => (hash(beat, salt) * 2 - 1) * amount;
 
 /** One bar of a pattern that may alternate (`a|b`). */
-function pick(pattern: string | undefined, n: number): string {
+export function pick(pattern: string | undefined, n: number): string {
   if (!pattern) return '';
   const bars = pattern.split('|');
   return bars[n % bars.length];

@@ -31,7 +31,7 @@ export const KIT_ZONE = { halfX: 0.34, back: -0.24, front: 0.12 } as const;
  * what you play, not down by your hands. Clear of the drums at the back (the tom's head) and the congas' tops.
  */
 /** (a little to the side away from the display, which stands to the side of the instrument) */
-export const HUD_X = 0.06;
+export const HUD_X = 0.1;
 export const HUD_AT: Record<string, { y: number; z: number }> = {
   drums: { y: 0.325, z: -0.13 },
   congas: { y: 0.37, z: -0.14 },
@@ -128,17 +128,25 @@ export class KitView {
     this.keyZones = zonesFor('keys', { minX: -0.3, maxX: 0.3, minZ: -0.1, maxZ: 0.3 }, { x: KEYS_ROW.x, z: -KEYS_ROW.z }, 0.5);
     this.keys.group.visible = false;
     this.keys.rest = 0.35;
-    // (the panel floats: no stand)
-    this.root.add(this.padRoot, this.keys.group, this.module.root, this.module.handle);
+    // (the panel floats: no stand; the instruments in their own layer, set into the table when they're on it)
+    this.instRoot.name = 'Instruments';
+    this.root.add(this.padRoot, this.keys.group, this.module.root, this.module.handle, this.instRoot);
     for (const o of this.shelf.values()) {
       o.group.visible = false;
       o.rest = 0.45;
-      this.root.add(o.group);
+      this.instRoot.add(o.group);
     }
     for (const m of this.models.values()) {
       m.root.visible = false;
-      this.root.add(m.root);
+      this.instRoot.add(m.root);
     }
+    // the table itself, unseen: anything of an instrument under the desk's top stays hidden there (it's in the wood)
+    this.tableTop.name = 'TableTop';
+    this.tableTop.rotation.x = -Math.PI / 2;
+    this.tableTop.position.set(0, -0.0006, -0.05);
+    this.tableTop.renderOrder = -10;
+    this.tableTop.visible = false;
+    this.root.add(this.tableTop);
     this.chordTag.mesh.visible = false;
     this.root.add(this.chordTag.mesh);
     const g = new PlaneGeometry(1, 1);
@@ -151,6 +159,31 @@ export class KitView {
       this.root.add(m);
     }
     this.root.visible = false;
+  }
+
+  /** The instruments' layer (the drums stand apart, each sinking on its own). */
+  readonly instRoot = new Group();
+  private tableTop = new Mesh(new PlaneGeometry(1.0, 0.75), new MeshBasicMaterial({ colorWrite: false, depthWrite: true }));
+  /** On the table: each instrument set into the desk, its playing surface just over the wood, so every hit lands on
+   * something real (a key on the desk's top, a drum a pad on it). */
+  onTable = false;
+  /** How far the instrument out is set into the table (m). */
+  sink = 0;
+  setTable(on: boolean): void {
+    this.onTable = on;
+    for (const p of this.pads.values()) p.setFlat(on);
+    this.applySink();
+  }
+  private applySink(): void {
+    const id = this.inst;
+    // (its playing surface a few millimetres over the wood: the keys' tops, the bars', the congas' near edges, the
+    // handpan's rim; the guitar is in your lap; the drums sink pad by pad)
+    this.sink = !this.onTable ? 0 : id === 'piano' ? KEYBOARD.top - 0.004 : id === 'marimba' ? MARIMBA.top - 0.004 : id === 'congas' ? CONGA.top - 0.018 : id === 'handpan' ? HANDPAN.rim - 0.004 : 0;
+    this.instRoot.position.y = -this.sink;
+    this.instRoot.updateMatrixWorld(true);
+    this.tableTop.visible = this.onTable;
+    const top = id === 'drums' ? (this.onTable ? 0.06 : 0.29) : id === 'congas' ? CONGA.top + 0.05 : id === 'piano' ? 0.165 : id === 'marimba' ? MARIMBA.top + 0.06 : id === 'guitar' ? 0.32 : HANDPAN.rim + HANDPAN.dome + 0.06;
+    this.module.standOver(Math.max(0.06, top - this.sink));
   }
 
   pad(lane: Lane): PadView | undefined {
@@ -187,8 +220,9 @@ export class KitView {
     this.instKey = `${id}:`;
     // (only the one that's out shows: the drums put every other model away)
     for (const [k, m] of this.models) m.root.visible = k === id;
-    // the display stands just clear of it, with room under its bottom edge for the sign (HUD_AT)
-    this.module.standOver(id === 'drums' ? 0.29 : id === 'congas' ? CONGA.top + 0.05 : id === 'piano' ? 0.165 : id === 'marimba' ? MARIMBA.top + 0.06 : id === 'guitar' ? 0.32 : HANDPAN.rim + HANDPAN.dome + 0.06);
+    // the display stands just clear of it, with room under its bottom edge for the sign (HUD_AT); set into the table
+    // if it's on it
+    this.applySink();
     if (drums) {
       this.instZones = [];
       this.instShadow.visible = false;
@@ -282,6 +316,8 @@ export class KitView {
       const p = new PadView(lane, false, style);
       p.x = old.x;
       p.z = old.z;
+      // (on the table still, if it was)
+      p.flat = this.onTable;
       p.aim();
       if (old.visible) p.appear('fade');
       this.padRoot.remove(old.group);

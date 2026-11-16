@@ -103,7 +103,7 @@ check('and again: one click per knock', n.clicks === s.clicks + 1, `${s.clicks} 
 // ---- a stick doesn't sink through a head: pushed 2 cm into the snare, it's drawn resting on it; pushed 10 cm, it
 // goes with the hand
 const into = async (deep) => {
-  const p = js(`const t = r.stickTip[1].clone(), sn = r.kit.pad('snare'); const w = r.kit.root.localToWorld(r.head.clone().set(sn.x, sn.headY, sn.z)); return { tip: t.toArray(), at: w.toArray() };`);
+  const p = js(`const t = r.stickTip[1].clone(), sn = r.kit.pad('snare'); const w = r.kit.root.localToWorld(r.head.clone().set(sn.x, sn.topY, sn.z)); return { tip: t.toArray(), at: w.toArray() };`);
   const h = js(`return H.right.wrist.toArray();`);
   // (the hand device sits a little off the wrist; move it by how far the tip has to go)
   const dev = js(`return 0;`);
@@ -114,7 +114,7 @@ const into = async (deep) => {
   put('hand-right', target, GRIP);
   await wait(500);
   return js(`const inv = r.kit.root.matrixWorld.clone().invert(); const d = r.malletTip[1].clone().applyMatrix4(inv), real = r.stickTip[1].clone().applyMatrix4(inv), sn = r.kit.pad('snare');
-    return { drawnAbove: d.y - sn.headY, realAbove: real.y - sn.headY, len: r.malletTip[1].distanceTo(r.stickGrip[1]), moved: r.malletTip[1].distanceTo(r.stickTip[1]) };`);
+    return { drawnAbove: d.y - sn.topY, realAbove: real.y - sn.topY, len: r.malletTip[1].distanceTo(r.stickGrip[1]), moved: r.malletTip[1].distanceTo(r.stickTip[1]) };`);
 };
 put('hand-left', [-0.4, 1.3, -0.2]);
 put('hand-right', [0.26, 1.1, -0.3], GRIP);

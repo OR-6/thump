@@ -537,7 +537,7 @@ export class Panel {
   }
   private tray = false;
   /** How far to the side it stands (kit-local x: + right for a right-handed player, − left). */
-  private sideX = 0.26;
+  private sideX = 0.3;
   side(x: number): void {
     if (x === this.sideX) return;
     this.sideX = x;

@@ -71,7 +71,7 @@ export interface MenuInput {
   maker?: { name: string; bpm: number; parts: string[]; saved: string };
   /** Make a track's part screen: what's in, what's now, what's to come. */
   buildInfo?: string;
-  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean; panelMoved?: boolean; guitarLap?: boolean; name?: string };
+  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean; panelMoved?: boolean; guitarLap?: boolean; onTable?: boolean; name?: string };
   /** Free play's looper: off, counting in, recording or playing; how many layers it holds. */
   loop?: { state: string; layers: number; recording: boolean };
   /** Results: the next song's button ('' none), and whether MAKE IT YOURS is offered. */
@@ -304,10 +304,10 @@ function buildPageFor(m: MenuInput): Page {
     case 'settings': {
       // two columns of switches; putting the panel back is an action, beside Done
       const items: Item[] = [back()];
-      const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, on, kind: 'toggle', x: i % 2 ? 32 + C6 + 16 : 32, y: 176 + Math.floor(i / 2) * 116, w: C6, h: 104 });
-      items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in the room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when you play', m.settings.light !== false, 5), t('set:guitarlap', 'Guitar in your lap', m.settings.guitarLap !== false, 6));
+      const t = (id: string, label: string, on: boolean, i: number): Item => ({ id, label, on, kind: 'toggle', x: i % 2 ? 32 + C6 + 16 : 32, y: 176 + Math.floor(i / 2) * 100, w: C6, h: 90 });
+      items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in the room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when you play', m.settings.light !== false, 5), t('set:guitarlap', 'Guitar in your lap', m.settings.guitarLap !== false, 6), t('set:table', 'On the table', m.settings.onTable !== false, 7));
       // (your name on the world's boards: a page to change it)
-      items.push({ id: 'nav:name', label: 'Your name', sub: m.settings.name, kind: 'button', x: 32 + C6 + 16, y: 176 + 3 * 116, w: C6, h: 104 });
+      items.push({ id: 'nav:name', label: 'Your name', sub: m.settings.name, kind: 'button', x: 32, y: 176 + 4 * 100, w: W - 64, h: 90 });
       // (putting the panel back, and starting over, share the left half)
       const hw = (C6 - 16) / 2;
       items.push({ id: 'set:panel', label: 'Panel', sub: 'Put back', kind: 'button', x: 32, y: BOT.y, w: hw, h: BOT.h, off: !m.settings.panelMoved });

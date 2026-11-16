@@ -140,7 +140,7 @@ export interface GameStage {
   /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
   tempo(t: number): void;
   /** In-headset settings: read and switch (saved by the stage). */
-  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved' | 'guitarLap', flip: boolean): boolean;
+  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved' | 'guitarLap' | 'onTable', flip: boolean): boolean;
   /** Playing together: the link's state and how many are in the band. */
   bandState?(): { state: string; players: number; message?: string; host?: boolean };
   /** Easy or Normal changed (saved). */
@@ -1197,8 +1197,10 @@ export class Game {
     // (a written-out song: its passes with a solo bar between, to its last note: its "bars" can end mid-bar)
     const sc = t.score;
     const bars = sc ? sc.end / 4 : 20;
+    // (a song plays straight through its solo bars, the band at full: a solo left you nothing to do while the band
+    // stepped back, and read as everything shutting down)
     const fills: [number, number][] = sc
-      ? sc.solos.map(([a, z]) => [a, z] as [number, number])
+      ? []
       : [
           [28, 32],
           [52, 56],
@@ -3095,6 +3097,7 @@ export class Game {
       else if (id === 'set:backing') this.stage.setting('band', true);
       else if (id === 'set:light') this.stage.setting('light', true);
       else if (id === 'set:guitarlap') this.stage.setting('guitarLap', true);
+      else if (id === 'set:table') this.stage.setting('onTable', true);
       this.refreshDisplay();
     }
   }
@@ -3152,7 +3155,7 @@ export class Game {
       maker: this.makerModel(),
       buildInfo: this.buildInfo(),
       loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
-      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false), guitarLap: this.stage.setting('guitarLap', false), name: this.myName() },
+      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false), guitarLap: this.stage.setting('guitarLap', false), onTable: this.stage.setting('onTable', false), name: this.myName() },
       next: this.fromPerform ? 'Next\nsong' : '',
       easier: this.mode === 'results' && this.fromPerform && this.lastScore?.letter === 'D' && this.level !== 'easy',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,

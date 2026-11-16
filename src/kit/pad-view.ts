@@ -167,6 +167,21 @@ export class PadView {
   x = 0;
   z = 0;
   lift = 0;
+  /** Lying in the table (on the table: its head flush with the desk, level, a practice pad). */
+  flat = false;
+  /** Its head's height off the desk, as it stands now (the head itself, less however far it's sunk). */
+  get topY(): number {
+    return this.headY + this.down;
+  }
+  /** How far it's set into the table (its head 7 mm over the desk), or 0 standing. */
+  get down(): number {
+    return this.flat ? -(this.headY - 0.007) : 0;
+  }
+  /** Set into the table or standing on it. */
+  setFlat(on: boolean): void {
+    this.flat = on;
+    this.aim();
+  }
 
   /** The ring at its foot and its glow on the desk: drawn only while lit. */
   private ledMesh: Mesh | null = null;
@@ -185,7 +200,7 @@ export class PadView {
    * centre (the stand follows the drum's foot). */
   aim(): void {
     const lane = this.lane;
-    this.tilt = TILT[lane];
+    this.tilt = this.flat ? 0 : TILT[lane];
     this.yaw = Math.atan2(-this.x, PLAYER_Z - this.z);
     const t = this.tilt;
     const ps = this.yaw;
@@ -350,7 +365,7 @@ export class PadView {
       const b = this.appearT - 1;
       s = 0.4 + 0.6 * (1 + 2.0 * b * b * b + 1.0 * b * b);
     }
-    this.group.position.set(this.x, this.lift, this.z);
+    this.group.position.set(this.x, this.lift + this.down, this.z);
     let sy = 1;
     let sxz = 1;
     if (this.squashT < SQUASH_S) {

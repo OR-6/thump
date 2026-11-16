@@ -387,6 +387,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     audio.setBed(this.settings.band);
     this.kit = new KitView();
     this.kit.setContrast(this.settings.highContrast);
+    // (on the table unless you've stood them up: every hit lands on the desk)
+    this.kit.setTable(!this.settings.tableOff);
     this.kitEntity = this.world.createTransformEntity(this.kit.root);
     this.kit.root.add(this.stand.root);
     for (const m of this.handMallets) this.worldRoot.add(m.group);
@@ -742,6 +744,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     setting: (name, flip) => {
       const s = this.settings;
       if (name === 'panelMoved') return !!s.panelAt;
+      if (name === 'onTable') {
+        const on = !s.tableOff;
+        if (!flip) return on;
+        this.settings = { ...s, ...(on ? { tableOff: true } : {}) };
+        if (!on) delete this.settings.tableOff;
+        saveSettings(this.settings);
+        sfx.toggle(!on);
+        this.kit.setTable(!on);
+        this.forgetAir();
+        return !on;
+      }
       if (name === 'guitarLap') {
         const lap = !s.guitarDesk;
         if (!flip) return lap;
@@ -1480,7 +1493,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // (the sign stands behind the instrument, over it: in view while you play, not down by your hands; the guitar in
     // your lap leaves the desk free, and it stands where the instruments would)
     const ha = this.guitarLap && this.kit.inst === 'guitar' ? null : HUD_AT[this.kit.inst];
-    if (ha) this.hudAt.set(this.handed() === 'left' ? HUD_X : -HUD_X, ha.y, ha.z);
+    if (ha) this.hudAt.set(this.handed() === 'left' ? HUD_X : -HUD_X, Math.max(0.12, ha.y - (this.kit.inst === 'drums' && this.kit.onTable ? 0.15 : this.kit.sink)), ha.z);
     else this.hudAt.set(0, 0.05, this.guitarLap && this.kit.inst === 'guitar' ? 0.02 : 0.24);
     hud.update(dt, this.hudAt, this.head, motion.calm, this.hudTargetOn ? this.hudTarget : null);
   }
@@ -1810,6 +1823,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   // ------------------------------------------------------------------ settings
 
   applySettings(s: Settings): void {
+    if (!!s.tableOff === this.kit.onTable) {
+      this.kit.setTable(!s.tableOff);
+      this.forgetAir();
+    }
     const was = this.settings;
     this.settings = s;
     motion.calm = s.calmMotion ?? prefersReducedMotion();
@@ -2178,7 +2195,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const p = this.kit.pad(r.lane);
       if (!p || !p.visible || this.kit.inst !== 'drums') return false;
       // (on the head, where it's struck, at its tilt)
-      out.set(p.x, p.headY + 0.002, p.z);
+      out.set(p.x, p.topY + 0.002, p.z);
       root.localToWorld(out);
       col.setHex(LED[r.lane]);
       t.w = p.radius * 2;
@@ -2206,7 +2223,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const bk = this.kit.inst === 'piano' && r.zone >= PIANO_BLACK ? this.blacksNow[r.zone - PIANO_BLACK] : null;
       if (bk) {
         out.set(bk.x, KEYBOARD.blackTop + 0.001, -bk.z);
-        root.localToWorld(out);
+        this.kit.instRoot.localToWorld(out);
         col.setHex(instDef('piano').color);
         t.round = false;
         t.w = bk.w;
@@ -2217,7 +2234,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!z) return false;
       const hp = this.kit.inst === 'handpan' ? handpanShape(this.kit.instZones) : null;
       out.set(z.x, this.kit.inst === 'marimba' ? MARIMBA.top + 0.002 : hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) + 0.003 : this.kit.inst === 'congas' ? CONGA.top + 0.002 : this.kit.inst === 'piano' ? KEYBOARD.top + 0.001 : 0.013, -z.z);
-      root.localToWorld(out);
+      this.kit.instRoot.localToWorld(out);
       col.setHex(instDef(this.kit.inst).color);
       t.round = z.shape === 'disc';
       t.w = t.round ? z.w * 2 : z.w;
@@ -2252,7 +2269,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (r.kind === 'pad') {
       const p = this.kit.pad(r.lane);
       if (!p || !p.visible) return false;
-      out.set(p.x, 0.022, p.z);
+      out.set(p.x, p.topY + 0.01, p.z);
       this.kit.root.localToWorld(out);
       col.setHex(LED[r.lane]);
       return true;
@@ -2274,11 +2291,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   };
 
   /** Hands → each surface near them → strikes; the nearest surface's strike plays. */
+  private instInv = new Matrix4();
   private readHands(delta: number): void {
     const t = this.clock.t;
     const inv = this.tmpM.copy(this.kit.root.matrixWorld).invert();
-    // fists and sticks, and the drums' heads struck in the air
-    this.airTick(delta, inv);
+    // fists and sticks, and the drums' heads struck in the air (in the instruments' own layer: set into the table, it
+    // sits lower than the kit)
+    this.airTick(delta, this.instInv.copy(this.kit.instRoot.matrixWorld).invert());
     this.spotGesture(delta);
     for (let i = 0; i < 2; i++) {
       const side = SIDES[i];
@@ -3192,7 +3211,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     const pad = lane !== 'rim' ? this.kit.pad(lane) : undefined;
     if (pad && g) {
-      this.wordAt.set(pad.x, pad.headY, pad.z);
+      this.wordAt.set(pad.x, pad.topY, pad.z);
       this.hitWords?.show(g, this.kit.root.localToWorld(this.wordAt), this.head, LED[lane as Lane]);
     }
     this.record(this.kitSurface, 0, gain, st, g, lane);
@@ -3270,7 +3289,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // fully resting to 6 cm in (a quick stroke goes that far past the bar in the air), then easing back to the hand by 10
     const k = bestDepth > -0.06 ? 1 : Math.max(0, (0.1 + bestDepth) / 0.04);
     T.lerp(this.restV.copy(G).addScaledVector(u, L), k);
-    const world = this.restM.copy(this.kit.root.matrixWorld);
+    const world = this.restM.copy(this.kit.instRoot.matrixWorld);
     tip.copy(T).applyMatrix4(world);
     // the butt pivots the other way round the grip
     this.malletButt[i].copy(this.stickGrip[i]).addScaledVector(this.restU.subVectors(this.stickGrip[i], tip).normalize(), 0.1);
@@ -3514,7 +3533,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         // (each head as it is aimed: tipped toward you; a cymbal is struck where it sits, a little wider)
         s.face = 'up';
         s.x = p.x;
-        s.y = p.headY;
+        s.y = p.topY;
         s.z = p.z;
         s.r = r * (lane === 'crash' || lane === 'ride' ? 1.15 : 1.1);
         // (a stick comes down in an arc: half of its motion into the head is enough)
@@ -3542,7 +3561,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // (the piano not playable now, picked up or moved: what it held lets go)
     if (!piano) for (let p = 0; p < AIR_PTS * 2; p++) this.letGo(p);
     // (where each hand is about to hit: drums, congas, handpan and marimba)
-    this.aimMarks ??= new AimMarks(this.kit.root);
+    this.aimMarks ??= new AimMarks(this.kit.instRoot);
     const aimOn = !this.userPaused && (drums || congas || marimba);
     for (let i = 0; i < 2; i++) {
       const h = i === 0 ? hands.left : hands.right;
@@ -5518,7 +5537,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const pa = this.settings.panelAt;
       this.kit.module.moveTo(pa ? this.hRoot.set(pa.x, pa.y, pa.z) : null);
       // the display stands within reach of where you sit, to the side of your playing hand
-      this.kit.module.side(this.handed() === 'left' ? -0.26 : 0.26);
+      this.kit.module.side(this.handed() === 'left' ? -0.3 : 0.3);
       this.kit.module.seat(Math.hypot(pose.x - this.head.x, pose.z - this.head.z), this.head.y - pose.y);
     }
     root.visible = true;
@@ -6011,7 +6030,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     root.updateMatrixWorld(true);
     // (each drum's head, or cymbal, where it is struck: all face up)
     for (const [lane, p] of this.kit.pads)
-      if (p.visible) out[lane] = root.localToWorld(this.tmp.set(p.x, p.headY, p.z)).toArray().map(r4);
+      if (p.visible) out[lane] = root.localToWorld(this.tmp.set(p.x, p.topY, p.z)).toArray().map(r4);
     out.table = root.localToWorld(this.tmp.set(0, 0, 0)).toArray().map(r4);
     KEYS.forEach((k, i) => {
       const z = this.moduleSurface.zones[i];
@@ -6022,7 +6041,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // (each where it's struck: the piano's keys are up in its case)
     const top = this.kit.inst === 'piano' ? KEYBOARD.top : this.kit.inst === 'congas' ? CONGA.top : this.kit.inst === 'guitar' ? GUITAR.board : this.kit.inst === 'marimba' ? MARIMBA.top : 0;
     const hp = this.kit.inst === 'handpan' ? handpanShape(this.kit.instZones) : null;
-    this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = root.localToWorld(this.tmp.set(z.x, hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) : top, -z.z)).toArray().map(r4)));
+    this.kit.instZones.forEach((z, i) => (out[`inst${i}`] = this.kit.instRoot.localToWorld(this.tmp.set(z.x, hp ? handpanY(Math.hypot(z.x - hp.x, z.z - hp.z), hp.R) : top, -z.z)).toArray().map(r4)));
     if (this.kit.inst === 'guitar') {
       // the held guitar: its three chord places on the fretboard, where a strum crosses the strings, which way is down
       // across them (toward the high E), and which way its top faces
