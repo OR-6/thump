@@ -1,0 +1,15 @@
+{
+  "name": "Thump: a band on your desk",
+  "short_name": "Thump",
+  "description": "A mixed-reality music game for Meta Quest 3, played with your bare hands at your desk.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1d0b2c",
+  "theme_color": "#1d0b2c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
