@@ -627,6 +627,30 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     }
     // Hard on the piano: your other hand on the chord key as each chord comes in
     if (level === 'hard' && inst === 'piano') for (const c of chords) add(c.beat, `piano:${PIANO_CHORD}`, 0.7, 1);
+    // (where the tune leaves you two bars or more with nothing, an intro above all: the chords, as the band's keys play
+    // them, their root on each downbeat and from Normal their fifth halfway, so nobody waits with nothing to play)
+    {
+      // (the tune's own rests: measured on all of its notes, not just the ones a level keeps)
+      const kept = mel.map((n) => n.beat).sort((a, b) => a - b);
+      const keyOf = (d: number) => (inst === 'piano' ? pianoKey(s.scale, d, 0) : zoneOf('marimba', s.scale, d));
+      const fillGap = (a: number, z: number) => {
+        for (let b = Math.ceil((a + 1e-6) / s.meter) * s.meter; b < z - s.meter + 1e-6; b += s.meter) {
+          if (barOf(b) % s.meter > 1e-6) continue;
+          const c = chords.find((x) => b >= x.beat - 1e-6 && b < x.beat + x.len - 1e-6);
+          if (!c || c.semis !== scaleById(s.scale).steps[c.degree]) continue;
+          const r = keyOf(c.degree);
+          if (r >= 0) add(b, `${inst}:${r}`, 0.8, 0);
+          const f = keyOf(c.degree + 4);
+          if (level !== 'easy' && s.meter >= 3 && f >= 0) add(b + Math.floor(s.meter / 2), `${inst}:${f}`, 0.7, 0);
+        }
+      };
+      const gap = 2 * s.meter;
+      let prev = 0;
+      for (const b of [...kept, s.end]) {
+        if (b - prev >= gap + 1e-6) fillGap(prev, b);
+        prev = b;
+      }
+    }
     // (a solo's bars, played through: the tune rests there, so the solo's chord on each downbeat, its fifth halfway from
     // Normal; the melody's band line doesn't cover these)
     if (!fills.length)

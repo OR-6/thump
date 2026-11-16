@@ -106,6 +106,8 @@ export interface GameStage {
    */
   stems?: {
     load(id: string): void;
+    /** Into the cache, not decoded: a song likely next. */
+    prefetch?(id: string): void;
     ready(id: string): boolean;
     play(id: string, zero: number, from: number): boolean;
     stop(fade?: number): void;
@@ -1027,6 +1029,8 @@ export class Game {
       return;
     }
     if (track.score) this.stage.stems?.load(track.id);
+    // (a lesson: the first song after it starts downloading while it plays)
+    if (track.score?.tune.lesson) this.prefetchNext();
     const parts: { def: PartDef; surface: string; key: string; notes: MachineNote[] }[] = [];
     // a written-out song: the band's parts run its whole length (the machine plays them once, not as a loop)
     if (track.score)
@@ -2975,7 +2979,16 @@ export class Game {
       else {
         if (to === 'instruments' && this.menu !== 'instruments') this.instFrom = this.menu === 'songs' ? 'songs' : 'free';
         // (the songs open on the page with the one picked)
-        if (to === 'songs') this.songPage = -1;
+        if (to === 'songs') {
+          this.songPage = -1;
+          // (a lesson you've done picked: the first song you haven't played, the best of them leading the list)
+          const cur = this.tracks[this.songSel];
+          if (!cur || (cur.score?.tune.lesson && this.performed(cur.id))) {
+            const j = this.tracks.findIndex((t) => t.score && !t.score.tune.lesson && !this.performed(t.id));
+            if (j >= 0) this.songSel = j;
+          }
+          this.prefetchSel();
+        }
         this.menu = to as PageId;
       }
       this.refreshDisplay();
@@ -3018,6 +3031,8 @@ export class Game {
       // (every song is open: it's a library, not a ladder)
       const i = Number(id.slice(5));
       if (i >= 0 && i < this.tracks.length) this.songSel = i;
+      // (the one picked starts downloading now: by Play, its recording is here)
+      this.prefetchSel();
       this.refreshDisplay();
       return;
     }
@@ -3380,6 +3395,30 @@ export class Game {
       const due = n.t + this.clock.start + this.opts.offset;
       if (due > a && due <= b) fn(n.lane);
     }
+  }
+
+  /** The song picked on the Songs page, into the cache (a song is 4 to 11 MB: on slow Wi-Fi its first play would
+   * otherwise start on the synthesised band). */
+  private prefetchSel(): void {
+    const t = this.tracks[this.songSel];
+    if (t?.score && !t.score.tune.lesson) this.stage.stems?.prefetch?.(t.id);
+  }
+  /** The first song you haven't played (the best of them first), into the cache: while a lesson plays. */
+  prefetchNext(): void {
+    const t = this.tracks.find((x) => x.score && !x.score.tune.lesson && !this.performed(x.id));
+    if (t) this.stage.stems?.prefetch?.(t.id);
+  }
+
+  /** Seconds until your next note in the song (Infinity: none left, or not in a song). */
+  nextNoteIn(): number {
+    if (!this.judge || (this.mode !== 'play' && this.mode !== 'count')) return Infinity;
+    let best = Infinity;
+    for (const n of this.judge.notes) {
+      if (n.grade !== null) continue;
+      const due = n.t + this.clock.start + this.opts.offset - this.t;
+      if (due >= -0.2 && due < best) best = due;
+    }
+    return best;
   }
 
   /** Back from a pause (headset off and on): the song waits, then two clicks bring it back. */

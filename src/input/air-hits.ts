@@ -38,6 +38,9 @@ export interface AirSurface {
    * (default KEY.lift; a mallet shakes more than a fingertip, so a bar takes more), and down again by 0.6 of that. */
   key?: boolean;
   lift?: number;
+  /** A key set into a table: only a tap goes down (a hand lowered onto the desk to rest presses nothing; the desk stops
+   * every real press, quickly). */
+  tap?: boolean;
   /**
    * A struck surface (not a key) played again without coming back out above it (m; default none): a point that has
    * played and risen this far from the deepest it went strikes again as it comes down by most of that, fast enough
@@ -77,7 +80,7 @@ const WATCH = 6;
  * point more than `deep` under a key isn't playing it (it's under the keyboard). Leaves a key only `edge` past it, so
  * a finger on the line between two keys doesn't flicker between them.
  */
-export const KEY = { lift: 0.005, out: 0.004, minGain: 0.3, edge: 0.002, deep: 0.06, liftFrames: 18, dropFrames: 9 } as const;
+export const KEY = { lift: 0.005, out: 0.004, minGain: 0.3, tapMin: 0.25, edge: 0.002, deep: 0.06, liftFrames: 18, dropFrames: 9 } as const;
 
 /** How hard a crossing at `speed` m/s sounds (0.15 soft to 1 at `full`). */
 export function airGain(speed: number, full: number = AIR.fullSpeed): number {
@@ -233,6 +236,8 @@ export class AirHits {
         this.held[p] = -1;
         // (out of it, to the side or above: in again plays at once; lifted, or gone under it: it has to come down)
         this.ext[t] = gone || now > KEY.out ? BIG : m;
+        // (let up by a lift: a repeat may follow; any other way, it has to come from above again)
+        this.rel[t] = !gone && now <= KEY.out && now >= -KEY.deep ? 1 : 0;
         this.age[t] = 0;
         if (gone) this.slid[p] = SLIDE_FRAMES;
       }
@@ -276,8 +281,10 @@ export class AirHits {
         }
         if (this.slid[p] > 0 && this.ext[t] < BIG && this.ext[t] < 0) this.ext[t] = BIG;
         // (up and over it: the highest it's been lately)
-        if (m > this.ext[t] || (this.ext[t] < BIG && this.age[t] > KEY.dropFrames)) {
-          this.ext[t] = Math.max(m, this.ext[t] - (this.age[t] > KEY.dropFrames ? 0.0005 : 0));
+        // (from under it, gone stale: it starts again from here, so a slow drift never adds up to a press; from above, it
+        // stays from above until it's pressed or left)
+        if (m > this.ext[t] || (this.ext[t] <= 0 && this.age[t] > KEY.dropFrames)) {
+          this.ext[t] = this.age[t] > KEY.dropFrames && this.ext[t] <= 0 ? m : Math.max(m, this.ext[t]);
           if (m >= this.ext[t]) this.age[t] = 0;
         }
         const c = s.confirm ?? 0;
@@ -288,6 +295,10 @@ export class AirHits {
         const speed = span > 0 ? (side(s, qx, qy, qz) - now) / span : 0;
         const fromAbove = this.ext[t] > 0;
         // (a repeat moves down, too: the smoothed depth lags, and goes on falling a moment after a deep stroke turns back up)
+        // (set into a table: a tap, as it comes through the top, or nothing; a finger resting under it never goes down)
+        if (s.tap && fromAbove && (speed < Math.max(min, KEY.tapMin) || side(s, qx, qy, qz) <= -c)) continue;
+        // (a repeat only after a lift from a press: a finger that never pressed it, lowered and resting, isn't one)
+        if (!fromAbove && !this.rel[t]) continue;
         if (fromAbove ? speed < min && m > -c : this.ext[t] - m < (s.lift ?? KEY.lift) * 0.6 || speed < min * 0.5) continue;
         const was = side(s, px, py, pz);
         const lat = dt > 0 ? Math.sqrt(Math.max(0, moved * moved - (was - now) * (was - now))) / dt : 0;
@@ -295,6 +306,7 @@ export class AirHits {
         const f = was + c > 0 && was > now ? (was + c) / (was - now) : 1;
         out.push({ surface: s.id, point: p, speed: v, gain: Math.max(KEY.minGain, airGain(v, full)), depth: -now, ago: (1 - Math.min(1, f)) * dt });
         this.down[t] = 1;
+        this.rel[t] = 0;
         this.held[p] = s.id;
         this.ext[t] = m;
         this.age[t] = 0;
@@ -333,7 +345,7 @@ export class AirHits {
           continue;
         }
         if (m > this.ext[t] || a > KEY.dropFrames) {
-          this.ext[t] = Math.max(m, this.ext[t] - (a > KEY.dropFrames ? 0.0005 : 0));
+          this.ext[t] = a > KEY.dropFrames ? m : Math.max(m, this.ext[t]);
           if (m >= this.ext[t]) this.age[t] = 0;
           continue;
         }

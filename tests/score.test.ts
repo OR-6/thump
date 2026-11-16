@@ -186,8 +186,12 @@ describe('the songs: classics with modern grooves, and originals', () => {
           const c = chart(s, inst, lv);
           const mine = c.cover.get('band:melody') ?? new Set<number>();
           for (const b of mine) expect(tune.has(b)).toBe(true);
-          const melodic = c.notes.filter((n) => n.key !== `piano:${PIANO_CHORD}`);
-          expect(new Set(melodic.map((n) => beatKey(n.beat)))).toEqual(mine);
+          // (every tune note of yours is covered; the rest are the chords filling the tune's long rests, off the tune)
+          const melodic = c.notes.filter((n) => n.key !== `piano:${PIANO_CHORD}` && tune.has(beatKey(n.beat)));
+          for (const n of melodic) expect(mine.has(beatKey(n.beat)), `${s.tune.id} ${inst} ${lv} ${n.beat}`).toBe(true);
+          // (the rest are the chords filling the tune's long rests: never on a beat the tune plays)
+          const fills = c.notes.filter((n) => n.key !== `piano:${PIANO_CHORD}` && !mine.has(beatKey(n.beat)));
+          for (const n of fills) expect(tune.has(beatKey(n.beat)), `${s.tune.id} ${inst} ${lv} fill ${n.beat}`).toBe(false);
         }
       // the marimba has no notes outside the scale: those stay the band's
       const outside = keys.filter((n, i) => {

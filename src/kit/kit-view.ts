@@ -178,7 +178,9 @@ export class KitView {
     const id = this.inst;
     // (its playing surface a few millimetres over the wood: the keys' tops, the bars', the congas' near edges, the
     // handpan's rim; the guitar is in your lap; the drums sink pad by pad)
-    this.sink = !this.onTable ? 0 : id === 'piano' ? KEYBOARD.top - 0.004 : id === 'marimba' ? MARIMBA.top - 0.004 : id === 'congas' ? CONGA.top - 0.018 : id === 'handpan' ? HANDPAN.rim - 0.004 : 0;
+    // (8 mm: a fingertip's middle, which tracking follows, is that far over the wood when its pad touches it, so a
+    // tap reaches the key's top just before the finger meets the desk)
+    this.sink = !this.onTable ? 0 : id === 'piano' ? KEYBOARD.top - 0.008 : id === 'marimba' ? MARIMBA.top - 0.008 : id === 'congas' ? CONGA.top - 0.024 : id === 'handpan' ? HANDPAN.rim - 0.008 : 0;
     this.instRoot.position.y = -this.sink;
     this.instRoot.updateMatrixWorld(true);
     this.tableTop.visible = this.onTable;

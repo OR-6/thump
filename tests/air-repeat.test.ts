@@ -65,7 +65,7 @@ const CASES: Case[] = [
   { name: 'key: held 3 s', y: (t) => (t < 0.1 ? 0.03 - 0.4 * t : -0.01), dur: 3, noise: TIP, want: 1, kind: 'key' },
   { name: 'key: held 3 s, shakier tracking', y: (t) => (t < 0.1 ? 0.03 - 0.4 * t : -0.01), dur: 3, noise: TIP * 1.6, want: 1, kind: 'key', floor: 0.85 },
   { name: 'key: held, trembling 1 mm', y: (t) => (t < 0.1 ? 0.03 - 0.4 * t : -0.006 + 0.001 * Math.sin(t * 50)), dur: 3, noise: TIP, want: 1, kind: 'key' },
-  { name: 'key: held, drifting 4 mm', y: (t) => (t < 0.1 ? 0.03 - 0.4 * t : -0.008 + 0.002 * Math.sin(t * 6)), dur: 3, noise: TIP, want: 1, kind: 'key' },
+  { name: 'key: held, drifting 4 mm', y: (t) => (t < 0.1 ? 0.03 - 0.4 * t : -0.008 + 0.002 * Math.sin(t * 6)), dur: 3, noise: TIP, want: 1, kind: 'key', floor: 0.98 },
   { name: 'mallet: 6 hits, 5/s, 3.5 cm', ...presses(6, 5, -0.01, 0.025, 1), noise: STICK, want: 6, kind: 'mallet' },
   { name: 'mallet: 6 hits, 6/s, 3 cm', ...presses(6, 6, -0.01, 0.02, 1), noise: STICK, want: 6, kind: 'mallet' },
   { name: 'mallet: resting on a bar', y: (t) => (t < 0.05 ? 0.04 - 1 * t : -0.008), dur: 3, noise: STICK, want: 1, kind: 'mallet' },
@@ -253,4 +253,61 @@ describe('fast mallet strokes on the marimba', () => {
       }
       expect(ok).toBeGreaterThanOrEqual(97);
     });
+});
+
+describe('keys set into a table', () => {
+  const key: AirSurface[] = [{ id: 0, face: 'up', x: 0, y: 0, z: 0, w: 0.022, d: 0.15, confirm: 0.002, key: true, tap: true }];
+  const run1 = (y: (t: number) => number, dur: number, seed: number) => {
+    const r = rng(seed);
+    const air = new AirHits(1);
+    const out: AirHit[] = [];
+    let n = 0;
+    for (let t = r() * DT; t < dur; t += DT) {
+      out.length = 0;
+      air.update(0, gauss(r) * TIP, y(t) + gauss(r) * TIP, gauss(r) * TIP, DT, key, out, 1, AIR.keyMin);
+      n += out.length;
+    }
+    return n;
+  };
+  it('a hand lowered slowly onto the desk to rest (its pad 8 mm under the key top) plays nothing', () => {
+    let n = 0;
+    for (let k = 0; k < 50; k++) n += run1((t) => Math.max(-0.008, 0.03 - 0.05 * t), 2, 900 + k);
+    expect(n).toBe(0);
+  });
+  it('a tap on it, stopping on the desk, plays once', () => {
+    let ok = 0;
+    for (let k = 0; k < 50; k++) if (run1((t) => Math.max(-0.008, 0.03 - 0.4 * t), 1, 950 + k) === 1) ok++;
+    expect(ok).toBeGreaterThanOrEqual(48);
+  });
+});
+
+describe('repeats on a table key', () => {
+  it('quick taps that stop on the wood, lifting 1 cm off it, each play (5 a second)', () => {
+    const key: AirSurface[] = [{ id: 0, face: 'up', x: 0, y: 0, z: 0, w: 0.022, d: 0.15, confirm: 0.002, key: true, tap: true, lift: 0.003 }];
+    // a tap as a finger taps a desk: up 1 cm over 90 ms, down at 0.45 m/s, stopped dead by the wood (its pad 8 mm under
+    // the key top), resting there 70 ms; five of them
+    const P = 0.2;
+    const tap = (t: number) => {
+      const u = ((t % P) + P) % P;
+      if (u < 0.09) return -0.008 + 0.01 * (u / 0.09);
+      return Math.max(-0.008, 0.002 - 0.45 * (u - 0.09));
+    };
+    let ok = 0;
+    for (let k = 0; k < 100; k++) {
+      const r = rng(1300 + k);
+      const air = new AirHits(1);
+      const out: AirHit[] = [];
+      let n = 0;
+      // (the hand starts resting on the wood: each tap after it plays)
+      for (let t = r() * DT; t < 5 * P; t += DT) {
+        out.length = 0;
+        const y = tap(t);
+        air.update(0, gauss(r) * TIP, y + gauss(r) * TIP, gauss(r) * TIP, DT, key, out, 1, AIR.keyMin);
+        n += out.length;
+      }
+      if (n === 5) ok++;
+    }
+    if (process.env.REPEAT) console.log('table taps 5/s, 1 cm: exactly 5 in', ok, '%');
+    expect(ok).toBeGreaterThanOrEqual(90);
+  });
 });

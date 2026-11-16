@@ -173,9 +173,10 @@ export class PadView {
   get topY(): number {
     return this.headY + this.down;
   }
-  /** How far it's set into the table (its head 7 mm over the desk), or 0 standing. */
+  /** How far it's set into the table (its head 12 mm over the desk: a fingertip slapped flat on the wood is about
+   * that high, tracked, so it still crosses the head), or 0 standing. */
   get down(): number {
-    return this.flat ? -(this.headY - 0.007) : 0;
+    return this.flat ? -(this.headY - 0.012) : 0;
   }
   /** Set into the table or standing on it. */
   setFlat(on: boolean): void {

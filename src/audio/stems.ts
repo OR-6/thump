@@ -68,6 +68,25 @@ export class StemPlayer {
     })();
   }
 
+  /** Download a song's stems into the browser's cache without decoding them (a song you're likely to play next: its
+   * load later is quick, and nothing held now is touched). Once a song. */
+  private fetched = new Set<string>();
+  prefetch(id: string): void {
+    if (!id || this.id === id || this.fetched.has(id) || this.failed.has(id) || typeof fetch === 'undefined') return;
+    this.fetched.add(id);
+    void (async () => {
+      try {
+        const r = await fetch(`${BASE}${id}/stems.json`);
+        if (!r.ok) return;
+        const m = (await r.json()) as { stems: StemFile[] };
+        // (one file at a time: it mustn't crowd out what's playing)
+        for (const s of m.stems) await fetch(`${BASE}${id}/${s.file}`).then((a) => a.arrayBuffer()).catch(() => undefined);
+      } catch {
+        /* it loads when played */
+      }
+    })();
+  }
+
   ready(id: string): boolean {
     return this.id === id && this.bufs.size > 0;
   }

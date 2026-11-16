@@ -387,8 +387,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     audio.setBed(this.settings.band);
     this.kit = new KitView();
     this.kit.setContrast(this.settings.highContrast);
-    // (on the table unless you've stood them up: every hit lands on the desk)
-    this.kit.setTable(!this.settings.tableOff);
+    // (set into the table if you've asked for it: every hit lands on the desk)
+    this.kit.setTable(!!this.settings.table);
     this.kitEntity = this.world.createTransformEntity(this.kit.root);
     this.kit.root.add(this.stand.root);
     for (const m of this.handMallets) this.worldRoot.add(m.group);
@@ -535,6 +535,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     mix: (m) => audio.mix(m),
     stems: {
       load: (id) => audio.stemLoad(id),
+      prefetch: (id) => audio.stemPrefetch(id),
       ready: (id) => audio.stemReady(id),
       play: (id, zero, from) => this.clock.toAudio(zero) > 0 && audio.stemPlay(id, this.clock.toAudio(zero), this.clock.toAudio(from)),
       stop: (fade) => audio.stemStop(fade),
@@ -745,10 +746,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const s = this.settings;
       if (name === 'panelMoved') return !!s.panelAt;
       if (name === 'onTable') {
-        const on = !s.tableOff;
+        const on = !!s.table;
         if (!flip) return on;
-        this.settings = { ...s, ...(on ? { tableOff: true } : {}) };
-        if (!on) delete this.settings.tableOff;
+        this.settings = { ...s, ...(!on ? { table: true } : {}) };
+        if (on) delete this.settings.table;
         saveSettings(this.settings);
         sfx.toggle(!on);
         this.kit.setTable(!on);
@@ -1321,6 +1322,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private hudFirstT = -9;
   private hudSticksT = -9;
   private coachKitT = -1;
+  /** In a wait of over 4 s for your next note, until it's nearly due. */
+  private waiting = false;
+  private longWait(next: number): boolean {
+    if (next > 4 && next < 120) this.waiting = true;
+    else if (next < 0.4 || next >= 120) this.waiting = false;
+    return this.waiting;
+  }
   private coachHits = 0;
   private coachGoT = -1;
   private coachSkip = 0;
@@ -1429,6 +1437,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (inSong && this.uiT - this.hudStreakT < 1.5 && this.hudStreak > 0) say = { kind: 'streak', n: this.hudStreak };
       else if (step) say = { kind: 'tip', big: step.title, small: step.say };
       else if (inSong && beat >= 0 && beat < 8 && coach < 3) say = { kind: 'tip', big: 'Hit as the ring closes', small: 'Each note is a ring shrinking onto what plays it' };
+      // (a long wait for your next note, the band playing on: when you come in, counted down, so nobody wonders if it's
+      // stopped working)
+      else if (inSong && mode === 'play' && !this.game.paused && !this.game.listening && this.longWait(this.game.nextNoteIn())) {
+        const n = Math.max(1, Math.ceil(this.game.nextNoteIn()));
+        say = { kind: 'tip', big: n <= 3 ? `In ${n}` : 'Listen', small: n <= 3 ? 'Your part comes back in' : `The band plays on: you come in in ${n} s` };
+      }
       // (playing a song with nothing else to say: the run, the multiplier, and how your last hits sat in time)
       else if (inSong && mode === 'play' && !this.game.paused && !this.game.listening) {
         const p = this.hudPlay;
@@ -1455,7 +1469,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           if (played >= 8 && this.coachGoT < 0) this.coachGoT = this.uiT;
           const goAt = Math.min(12, this.coachGoT >= 0 ? this.coachGoT - this.coachKitT + 3 : 12);
           const left = Math.ceil(goAt - since);
-          say = { kind: 'tip', big: 'Your drums', small: 'Make fists: they are your sticks. Hit anything', icon: 'stick', ...(left <= 3 ? { foot: `First lesson in ${Math.max(1, left)}` } : {}) };
+          say = { kind: 'tip', big: 'Your drums', small: this.kit.onTable ? 'Slap the pads: the desk is the drum. Fists hold sticks' : 'Make fists: they are your sticks. Hit anything', icon: this.kit.onTable ? undefined : 'stick', ...(left <= 3 ? { foot: `First lesson in ${Math.max(1, left)}` } : {}) };
           if (since > goAt) {
             const i = this.game.tracks.findIndex((t) => t.id === 'learn-drums');
             if (i >= 0) {
@@ -1823,8 +1837,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   // ------------------------------------------------------------------ settings
 
   applySettings(s: Settings): void {
-    if (!!s.tableOff === this.kit.onTable) {
-      this.kit.setTable(!s.tableOff);
+    if (!!s.table !== this.kit.onTable) {
+      this.kit.setTable(!!s.table);
       this.forgetAir();
     }
     const was = this.settings;
@@ -3382,8 +3396,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // (played as keys: down 2 mm in, at any speed, sliding in from the side too; up as the finger lifts, so a quick
       // repeated note plays: src/input/air-hits.ts)
       s.key = true;
-      s.lift = undefined;
+      // (on the table the wood is the floor: 3 mm up off it lets a key up for the next tap)
+      s.lift = this.kit.onTable ? 0.003 : undefined;
       s.confirm = 0.002;
+      s.tap = this.kit.onTable;
       return s;
     };
     if (this.blacksFor !== this.kit.instZones) {
@@ -3460,6 +3476,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       q.rearm = undefined;
       q.key = undefined;
       q.lift = undefined;
+      q.tap = undefined;
       // (struck surfaces: a quick second stroke that lifts a centimetre or so plays, not only one back out past 2 cm)
       q.relift = 0.012;
       q.nx = q.ny = q.nz = undefined;
@@ -3482,6 +3499,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         s.key = true;
         s.lift = 0.01;
         s.confirm = 0.002;
+        s.tap = this.kit.onTable;
       }
     // (the guitar you hold reads its own strings and neck: src/kit/held-guitar.ts)
     const guitar = false;
@@ -3661,7 +3679,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (k === 4 && marimba) this.airP.y -= MALLET_HEAD_R;
         // (a fingertip presses with its pad: the tracked joint is the middle of the finger's end, half a centimetre
         // over the pad you see touch the key; so a key you see touched is pressed, not one pushed a centimetre in)
-        if ((piano || marimba) && k !== 3 && k !== 4 && !h.controller) this.airP.y -= h.tipRadius * 0.6;
+        // (on the table, all of it: the pad is what meets the wood)
+        if ((piano || marimba) && k !== 3 && k !== 4 && !h.controller) this.airP.y -= h.tipRadius * (this.kit.onTable ? 1 : 0.6);
         if (aimOn) this.aimConsider(i, n);
         this.airOut.length = 0;
         // (keys and bars: the height smoothed, so a hovering fingertip's shake isn't a press)

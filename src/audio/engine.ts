@@ -208,6 +208,9 @@ class Engine {
     if (!this.ctx) this.resume();
     if (this.ctx) this.stems.load(this.ctx, id);
   }
+  stemPrefetch(id: string): void {
+    this.stems.prefetch(id);
+  }
   stemReady(id: string): boolean {
     return this.stems.ready(id);
   }

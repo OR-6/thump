@@ -1120,4 +1120,14 @@ describe('names and band boards', () => {
     g.act('reset:yes');
     expect(over).toBe(1);
   });
+  it('after the first lesson, Songs opens on the best song you have not played (Mango Season)', () => {
+    const p = freshProgress();
+    p.stars['learn-drums'] = 3;
+    const g = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, p, room([]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.songSel = g.tracks.findIndex((t) => t.id === 'learn-drums');
+    g.act('nav:songs');
+    expect(g.tracks[g.songSel].id).toBe('mango-season');
+  });
 });
