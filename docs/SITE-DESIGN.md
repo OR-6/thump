@@ -11,10 +11,12 @@ behaviour); `src/ui/landing-drawing.ts` draws the instruments.
 
 ## The page, top to bottom
 
-1. **Hero:** "A band on your desk." (the only H1, three lines, blue with a pink copy a few pixels off, over a solid
-   pink circle and two halftone circles), one line ("A VR music game you play with just your hands, no controllers, on
-   your actual desk."), the one action, and the address on a black ticket stub at an angle. Then the **video** slot,
-   full width, and three **screenshot** slots.
+1. **Hero:** "A band on your desk." printed small over the H1, "Play real instruments with just your hands." (the only
+   H1, four lines, blue with a pink copy a few pixels off). Beside it the drum kit from the instruments section printed
+   big as riso art (`deskSvg(..., { art: true })`, turned a few degrees) over a solid pink circle and two halftone
+   circles placed on its frame (`.hero-art .inks`), black where the screens cross. Under the line, one line on what it
+   is, the one action; under the kit, the address on a black ticket stub at an angle. Below 900 px it's one column:
+   the line, the kit, the action, the ticket. Then the **video** slot, full width, and three **screenshot** slots.
 2. **How to play:** three numbered steps, left to right (open the link in the Quest browser, sit at your desk, look
    down), and one line on hands only.
 3. **Six instruments:** the six names big, separated by pink slashes like a flyer's lineup; they are the picker
@@ -24,8 +26,11 @@ behaviour); `src/ui/landing-drawing.ts` draws the instruments.
 4. **Songs:** "N songs" and a line that counts the originals and classics from `TUNES` (one original is named; more are
    listed), then a running order in two columns (number, name, dot leaders, length; composer or style and bpm under),
    originals first with their number on a pink spot.
-5. **Make your own track** (a pink sticker) and **Play together** (an inked panel with Start a band and Join a band
-   either side of a dashed tear line). On a phone the band controls are hidden and a line says to open the page on the
+5. **Make your own track** and **Play together** as one bill in two parts (`.bill`), torn along a perforation (a dashed
+   line, a notch bitten out top and bottom): the stub in pink is making a track, with a loop printed on a step grid
+   (four rows, sixteen steps, blue hits, the playhead in yellow); the ticket in paper is playing together, Start a band
+   and Join a band side by side, the code a ticket number ("No.") in a crooked blue stamped box. Stacked on a phone,
+   torn across. On a phone the band controls are hidden and a line says to open the page on the
    Quest.
 6. **Settings** (a disclosure) and **Who made it:** one line, then a plate (Made by, Built with, Runs on, Entered in,
    Sounds), and the mark and the name printed big at the very bottom.
@@ -73,7 +78,7 @@ only (it's paper).
 | `--ink` | `#1d1d1b` | Body text, rules, outlines, the ticket |
 | `--ink-2` / `--ink-3` | `#4f4a42` / `#857e70` | Secondary text (7:1 on paper) / placeholders, dashed slot lines |
 | `--yellow` | `#ffe24a` | The highlighter: the chosen instrument, a toggle that's on, a status line |
-| `--i-*` | (see `index.html`) | The instruments in the drawing, printed in the same inks (a pink kit, yellow cymbals, a blue keyboard case and handpan, pink marimba bars, a yellow guitar top) |
+| (drawing) | the same tokens | The instruments are printed in the page's inks by class (`fp` pink, `fb` blue, `fk` ink, `fy` yellow, `fw` paper; `kk`/`kp`/`kb`/`kw` lines; `x` overprints): solid ink for linework, halftone dot screens (SVG patterns, pink at 15°, blue at 75°, ink at 45°) for form and shade, paper knocked out where a thing must read light (keys, heads, tone fields). A part lights with the other ink (pink parts flash blue) and takes the yellow highlighter under the pointer |
 
 Pink and blue overlap with `mix-blend-mode: multiply`, so where they cross they print a deep purple, as real riso does.
 Pink is never body text (it fails contrast on paper); ink text sits on pink. Halftones are `radial-gradient` dot
@@ -83,7 +88,7 @@ shadows.
 ## Type
 
 - **Bricolage Grotesque** (Google Fonts) 800 for titles, names and buttons, tightly tracked (-0.045em on titles), sentence
-  case. The H1 is `--t-hero` (80 to 188 px, line height 0.84) in three lines; section titles `--t-2` (40 to 72 px).
+  case. The H1 is `--t-hero` (56 to 108 px, line height 0.86) in four lines; section titles `--t-2` (40 to 72 px).
 - Titles are printed off register (`.riso`): the word in blue, a pink copy from `data-t` a few hundredths of an em down
   and right, both multiplied. The pink plate slides into place as the page opens (not under reduced motion).
 - Bricolage Grotesque 400/600 for body (18 px) and small text (15 to 16 px).
@@ -107,7 +112,8 @@ shadows.
 - **Ticket** (`#addr`): black, rotated a few degrees, a perforation (dashed line and two notches) before a "Quest 3"
   stub; the address is a button that copies the link.
 - **Toggles** (Settings): an ink-outlined track; on is yellow with the ink knob at that side.
-- **Code field** (`#band-code`): 3 px ink outline, 800 weight with wide tracking, placeholder ABCD.
+- **Code field** (`#band-code`): a ticket number in a stamped box (a double blue rule, turned a degree and a half),
+  "No." before it, 800 weight with wide tracking, placeholder ABCD.
 - **Disclosure:** between two 3 px rules, a plus in an ink ring.
 
 ## Link preview and icons

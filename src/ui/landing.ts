@@ -61,6 +61,16 @@ const lengthOf = (t: (typeof TUNES)[number]) => {
 /** "a", "a and b", "a, b and c" */
 const andList = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
+/** Make your own track's picture: a loop on a step grid, printed (four rows, sixteen steps, the playhead in yellow). */
+const LOOP: [string, string][] = [
+  ['kick', 'x...x...x...x..x'],
+  ['snare', '....x.......x...'],
+  ['hats', 'x.x.x.x.x.x.x.xx'],
+  ['keys', 'x..x..x...x..x..'],
+];
+const loopGrid = () =>
+  `<div class="loop" aria-hidden="true">${LOOP.map(([name, steps]) => `<span class="loop-name">${name}</span>${[...steps].map((c, i) => `<i class="${c === 'x' ? 'on' : ''}${i === 6 ? ' now' : ''}"></i>`).join('')}`).join('')}</div>`;
+
 /** Where the page is open: the headset's browser (it can enter), a phone (it sends the link on), or a computer. */
 type Where = 'xr' | 'phone' | 'desk';
 
@@ -98,17 +108,20 @@ export function mountLanding(world: World): void {
       <section class="hero" id="top" aria-labelledby="hero-h">
         <div class="wrap hero-in">
           <div class="hero-top">
-          <div class="inks" aria-hidden="true"><span class="ink ink-1"></span><span class="ink ink-2"></span><span class="ink ink-3"></span></div>
-          <h1 id="hero-h"><span class="l riso" ${riso('A band')}>A band</span> <span class="l riso" ${riso('on your')}>on your</span> <span class="l riso" ${riso('desk.')}>desk.</span></h1>
-          <p class="ticket" id="addr"><span class="t-main"><span class="t-top">On your Quest, open</span> <button type="button" class="addr-url" id="addr-url" title="Copy the link">${LIVE_URL}</button></span> <span class="t-stub">Quest 3</span></p>
+          <div class="hero-copy">
+            <p class="kicker riso" ${riso('A band on your desk.')}>A band on your desk.</p>
+            <h1 id="hero-h"><span class="l riso" ${riso('Play real')}>Play real</span> <span class="l riso" ${riso('instruments')}>instruments</span> <span class="l riso" ${riso('with just')}>with just</span> <span class="l riso" ${riso('your hands.')}>your hands.</span></h1>
           </div>
+          <div class="hero-art"><div class="inks" aria-hidden="true"><span class="ink ink-1"></span><span class="ink ink-2"></span><span class="ink ink-3"></span></div><div class="kit">${deskSvg('drums', 'Drums', { art: true, prefix: 'h' })}</div></div>
           <div class="hero-foot">
-            <p class="tag">A VR music game you play with just your hands, no controllers, on your actual desk.</p>
+            <p class="tag">A VR music game for Quest 3. No controllers, you just play the drums, keys and guitar right on your actual desk.</p>
             <div class="go">
               <div class="cta"><button id="enter-xr" class="btn btn-1" type="button">Enter</button></div>
               <p class="go-note" id="go-note" aria-live="polite"></p>
               <p class="xr-fail" role="alert" hidden>That didn’t start. Say yes to the Quest’s prompts, then try again.</p>
             </div>
+          </div>
+          <p class="ticket" id="addr"><span class="t-main"><span class="t-top">On your Quest, open</span> <button type="button" class="addr-url" id="addr-url" title="Copy the link">${LIVE_URL}</button></span> <span class="t-stub">Quest 3</span></p>
           </div>
         </div>
         <div class="wrap">
@@ -165,31 +178,34 @@ export function mountLanding(world: World): void {
       </section>
 
       <section class="more" id="together" aria-label="Make a track and play together">
-        <div class="wrap more-in">
-          <div class="panel track">
-            <h2 class="h2">Make your own track</h2>
-            <p>Build a loop out of the instruments, play over it, and keep the one you like.</p>
-          </div>
-          <div class="panel together">
-            <h2 class="h2 riso" id="together-h" ${riso('Play together')}>Play together</h2>
-            <p class="lede">Play in a band with up to 3 friends! One of you starts a band and gets a <span class="nb">4-letter</span> code, the others type it in, and each of you plays a different instrument.</p>
-            <div class="band-ctl">
-              <div>
-                <h3 class="h3">Start a band</h3>
-                <p class="hint">You get a code to send your friends.</p>
-                <button type="button" id="band-start" class="btn btn-2">Get a code</button>
-              </div>
-              <div>
-                <h3 class="h3"><label for="band-code">Join a band</label></h3>
-                <p class="hint">Type the code your friend sent.</p>
-                <div class="join">
-                  <input id="band-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" />
-                  <button type="button" id="band-join" class="btn btn-2">Join</button>
+        <div class="wrap">
+          <div class="bill">
+            <div class="track">
+              <h2 class="h2">Make your own track</h2>
+              <p>Build a loop out of the instruments, play over it, and keep the ones you like.</p>
+              ${loopGrid()}
+            </div>
+            <div class="together">
+              <h2 class="h2 riso" id="together-h" ${riso('Play together')}>Play together</h2>
+              <p class="lede">Play in a band with up to 3 friends! One of you starts a band and gets a <span class="nb">4-letter</span> code, the others type it in, and each of you plays a different instrument.</p>
+              <div class="band-ctl">
+                <div>
+                  <h3 class="h3">Start a band</h3>
+                  <p class="hint">You get a code to send your friends.</p>
+                  <button type="button" id="band-start" class="btn btn-1">Get a code</button>
+                </div>
+                <div>
+                  <h3 class="h3"><label for="band-code">Join a band</label></h3>
+                  <p class="hint">Type the code your friend sent.</p>
+                  <div class="join">
+                    <span class="stamp"><span class="no" aria-hidden="true">No.</span><input id="band-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" /></span>
+                    <button type="button" id="band-join" class="btn btn-2">Join</button>
+                  </div>
                 </div>
               </div>
+              <p id="band-status" aria-live="polite"></p>
+              <p class="band-phone">Open this page on your Quest to start or join a band.</p>
             </div>
-            <p id="band-status" aria-live="polite"></p>
-            <p class="band-phone">Open this page on your Quest to start or join a band.</p>
           </div>
         </div>
       </section>
@@ -235,6 +251,9 @@ export function mountLanding(world: World): void {
   document.body.appendChild(el);
   // (index.html paints the top of the page while the game loads; this replaces it)
   document.getElementById('landing-boot')?.remove();
+  // (the hero's drum kit, a print to look at: centred in its frame like the playable one)
+  const heroArt = el.querySelector<SVGSVGElement>('.hero-art svg');
+  if (heroArt) centreOnTray(heroArt);
 
   // ---- the hero's inks, printed for real: both halftones on one dot grid, so where the circles cross the dots land
   // on each other, and there they print black (as two riso inks over each other go near-black) ----
@@ -603,8 +622,10 @@ function mountDesk(el: HTMLElement): void {
   /** A ring the shape of the part, from nearly twice its size two beats ahead to its outline on the beat. */
   const closing = (p: Element, lead: number) => {
     const sr = stage.getBoundingClientRect();
-    const b = p.querySelector('.glow > *')?.getBoundingClientRect() ?? p.getBoundingClientRect();
-    const round = /^(circle|ellipse)$/i.test(p.querySelector('.glow > *')?.tagName ?? '');
+    // (onto the part's own shape, or the spot it aims at where its zone has nothing to see: never a bare box)
+    const at = p.querySelector('.aim') ?? p.querySelector('.glow > *');
+    const b = at?.getBoundingClientRect() ?? p.getBoundingClientRect();
+    const round = /^(circle|ellipse)$/i.test(at?.tagName ?? '');
     const ring = document.createElement('span');
     ring.className = `close-ring${round ? ' round' : ''}`;
     ring.style.cssText = `left:${b.left - sr.left}px;top:${b.top - sr.top}px;width:${b.width}px;height:${b.height}px;animation-duration:${lead}s`;

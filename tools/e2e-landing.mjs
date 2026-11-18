@@ -219,7 +219,7 @@ writeFileSync('tools/.probe.mjs',`export default async function run({ page, fram
     drawn[b.dataset.inst] = { parts: el.querySelectorAll('.stage .part').length, lit: !!part?.classList.contains('lit') };
   }
   el.querySelector('.pick[data-inst="drums"]')?.click();
-  return { shown: !!el && !el.hidden, text, enter: !!document.getElementById('enter-xr'), hc: saved.highContrast === true, drawn,
+  return { shown: !!el && !el.hidden, text, h1: el.querySelector('h1')?.textContent ?? '', enter: !!document.getElementById('enter-xr'), hc: saved.highContrast === true, drawn,
     wide: el.scrollWidth > el.clientWidth + 1, boot: !!document.getElementById('landing-boot') };
 }); }\n`);
 const r = run('tools/.probe.mjs');
@@ -227,7 +227,8 @@ const r = run('tools/.probe.mjs');
 const six = { Keyboard: 'piano', Drums: 'drums', Marimba: 'marimba', Guitar: 'guitar', Congas: 'congas', Handpan: 'handpan' };
 check('the page is shown outside the headset', r.shown);
 check('the loading shell is gone', !r.boot);
-check('one line: a band on your desk', /A band on your desk/i.test(r.text), r.text.slice(0, 120));
+check('the headline: play real instruments with just your hands', /^\s*Play real instruments with just your hands\.\s*$/i.test(r.h1.replace(/\s+/g, ' ')), r.h1);
+check('and the line over it: a band on your desk', /A band on your desk/i.test(r.text), r.text.slice(0, 120));
 check('all six instruments are named', Object.keys(six).every((n) => new RegExp(n, 'i').test(r.text)), Object.keys(six).filter((n) => !new RegExp(n, 'i').test(r.text)).join(', '));
 check('each instrument is drawn and plays', Object.values(six).every((id) => r.drawn[id]?.parts > 0 && r.drawn[id]?.lit), JSON.stringify(r.drawn));
 check('play together: start a band or type a code', /Play together/i.test(r.text) && /Start a band/i.test(r.text), r.text.match(/Play together.{0,60}/i)?.[0] ?? '');
