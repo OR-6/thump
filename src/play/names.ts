@@ -6,18 +6,18 @@
  */
 
 export const ADJECTIVES = [
-  'Velvet', 'Midnight', 'Quiet', 'Loud', 'Golden', 'Electric', 'Neon', 'Rusty', 'Lucky', 'Sleepy',
-  'Wild', 'Gentle', 'Brave', 'Cosmic', 'Copper', 'Silver', 'Crimson', 'Indigo', 'Amber', 'Hollow',
-  'Sunny', 'Rainy', 'Late', 'Early', 'Tiny', 'Mighty', 'Restless', 'Steady', 'Groovy', 'Fuzzy',
-  'Polished', 'Wandering', 'Humming', 'Secret', 'Northern', 'Southern', 'Lazy', 'Swift', 'Patient', 'Bright',
+  'Sticky', 'Soggy', 'Quiet', 'Loud', 'Wobbly', 'Borrowed', 'Spare', 'Rusty', 'Lucky', 'Sleepy',
+  'Grumpy', 'Gentle', 'Brave', 'Cheeky', 'Dusty', 'Squeaky', 'Hungry', 'Sweaty', 'Clumsy', 'Tired',
+  'Sunny', 'Rainy', 'Late', 'Early', 'Tiny', 'Massive', 'Fidgety', 'Steady', 'Groovy', 'Fuzzy',
+  'Crumpled', 'Lost', 'Noisy', 'Leftover', 'Bendy', 'Damp', 'Lazy', 'Speedy', 'Patient', 'Bright',
 ] as const;
 
 /** Yours: what you are when you play. */
 export const PLAYERS = [
-  'Snare', 'Thunder', 'Groove', 'Echo', 'Metronome', 'Cymbal', 'Drummer', 'Pianist', 'Strummer', 'Tempo',
-  'Rhythm', 'Backbeat', 'Downbeat', 'Encore', 'Riff', 'Chord', 'Melody', 'Harmony', 'Mallet', 'Drumstick',
-  'Bassline', 'Crescendo', 'Solo', 'Duet', 'Keys', 'Strings', 'Rimshot', 'Shuffle', 'Swing', 'Waltz',
-  'Ballad', 'Busker', 'Conductor', 'Composer', 'Soloist', 'Virtuoso', 'Stomp', 'Clap', 'Beat', 'Tune',
+  'Snare', 'Cowbell', 'Groove', 'Kazoo', 'Metronome', 'Cymbal', 'Drummer', 'Pianist', 'Strummer', 'Tempo',
+  'Rhythm', 'Backbeat', 'Downbeat', 'Encore', 'Riff', 'Chord', 'Tambourine', 'Triangle', 'Mallet', 'Drumstick',
+  'Bassline', 'Roadie', 'Solo', 'Duet', 'Keys', 'Strings', 'Rimshot', 'Shuffle', 'Swing', 'Waltz',
+  'Ballad', 'Busker', 'Conductor', 'Maraca', 'Washboard', 'Bongo', 'Stomp', 'Clap', 'Beat', 'Tune',
 ] as const;
 
 /** A band's: the things on a desk (or a tray table) it was born on. */

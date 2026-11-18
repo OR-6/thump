@@ -124,7 +124,7 @@ function buildPageFor(m: MenuInput): Page {
       const n = m.songs.filter((x) => (x.kind ?? 'song') === 'song').length;
       const nl = m.songs.filter((x) => x.kind === 'lesson').length;
       const items: Item[] = [
-        { id: 'nav:songs', label: 'Songs', sub: nl ? `${n} songs · ${nl} lessons` : `${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
+        { id: 'nav:songs', label: 'Songs', sub: nl ? `${n} songs, ${nl} lessons` : `${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
         { id: 'nav:instruments', label: 'Instruments', sub: m.inst.name, icon: m.inst.id, kind: 'tile', x: X3, y: 176, w: C4, h: 480 },
         { id: 'nav:build', label: 'Make a track', sub: 'Build a loop, play on it', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h },
         { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', kind: 'button', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h },
@@ -230,14 +230,14 @@ function buildPageFor(m: MenuInput): Page {
       if (!on) {
         // start one (you get the code) or join a friend's (type theirs, here in the headset)
         const half = (W - 64 - 16) / 2;
-        items.push({ id: 'band:join', label: 'Join with a code', sub: 'Type your friend’s four letters', kind: 'button', x: 32, y: BOT.y, w: half, h: BOT.h });
+        items.push({ id: 'band:join', label: 'Join with a code', sub: "Type in your friend's code", kind: 'button', x: 32, y: BOT.y, w: half, h: BOT.h });
         items.push({ id: 'band:start', label: 'Start a band', sub: 'You get a code to share', kind: 'play', x: 32 + half + 16, y: BOT.y, w: half, h: BOT.h });
       }
       else {
         // (the band's name, on the world's boards: its host names it)
-        if (m.band.host && m.band.name) items.push({ id: 'band:name', label: m.band.name, sub: 'Your band on the world boards: tap to rename', kind: 'button', x: 32, y: BOT.y - 150, w: W - 64, h: 130 });
+        if (m.band.host && m.band.name) items.push({ id: 'band:name', label: m.band.name, sub: 'Your band name. Tap to change', kind: 'button', x: 32, y: BOT.y - 150, w: W - 64, h: 130 });
         items.push({ id: 'band:leave', label: 'Leave', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h });
-        items.push({ id: 'nav:songs', label: 'Pick a song', sub: 'Everyone plays it, on one beat', kind: 'play', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h });
+        items.push({ id: 'nav:songs', label: 'Pick a song', sub: 'Starts for everyone at once', kind: 'play', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h });
         // (Talk: hear each other, once there's someone to hear; under the seats, clear of the band's name)
         if (m.band.state === 'connected') items.push({ id: 'band:talk', label: 'Talk', on: !!m.band.talk?.on, kind: 'toggle', x: 906.7, y: 416, w: W - 32 - 906.7, h: 84 });
       }
@@ -279,13 +279,13 @@ function buildPageFor(m: MenuInput): Page {
       items.push({ id: 'value:name', label: n.full, kind: 'text', x: 32, y: 176, w: W - 64, h: 120 });
       n.words.forEach((w, i) => items.push({ id: `name:${i}`, label: w, sub: 'Tap for another', kind: 'button', x: 32 + i * (half + 16), y: 316, w: half, h: 200 }));
       items.push({ id: 'back', label: 'Done', kind: 'play', x: 32, y: BOT.y, w: W - 64, h: BOT.h });
-      return { id: 'name', title: n.title, line: n.title === 'Your name' ? 'How you show on the world boards' : 'How your band shows on the world boards', items };
+      return { id: 'name', title: n.title, line: n.title === 'Your name' ? 'This is you on the leaderboards' : 'Your band on the leaderboards', items };
     }
     case 'maker': {
       // what it is in a sentence, the style to build in (left and right through them), and go; the one you kept
       const mk = m.maker ?? { name: '', bpm: 0, parts: [], saved: '' };
       const items: Item[] = [back()];
-      items.push({ id: 'value:makerhow', label: `A loop, one part at a time: copy a bar, then play your own. ${mk.parts.length} parts, then play over it.`, kind: 'text', x: 32, y: 176, w: W - 64, h: 230 });
+      items.push({ id: 'value:makerhow', label: `Copy a bar, then play your own. Do that for all ${mk.parts.length} parts, then jam over the lot.`, kind: 'text', x: 32, y: 176, w: W - 64, h: 230 });
       items.push({ id: 'maker:prev', label: '‹', kind: 'button', x: 32, y: 430, w: 140, h: 200 });
       items.push({ id: 'value:maker', label: `${mk.name} · ${mk.bpm} bpm`, kind: 'text', x: 188, y: 430, w: W - 376, h: 200 });
       items.push({ id: 'maker:next', label: '›', kind: 'button', x: W - 172, y: 430, w: 140, h: 200 });
@@ -298,7 +298,7 @@ function buildPageFor(m: MenuInput): Page {
       // starting over: asked once, with keeping it the big button
       const half = (W - 64 - 16) / 2;
       const items: Item[] = [back()];
-      items.push({ id: 'value:reset', label: "Your stars, best scores and lessons go, as if it were your first time. Your name, your settings and where the instruments stand don't change.", kind: 'text', x: 32, y: 196, w: W - 64, h: 260 });
+      items.push({ id: 'value:reset', label: "This wipes your stars, best scores and lessons. Your name, settings and where the instruments are stay put.", kind: 'text', x: 32, y: 196, w: W - 64, h: 260 });
       items.push({ id: 'reset:yes', label: 'Start over', sub: "Can't be undone", kind: 'button', x: 32, y: BOT.y, w: half, h: BOT.h });
       items.push({ id: 'back', label: 'Keep everything', kind: 'play', x: 32 + half + 16, y: BOT.y, w: half, h: BOT.h });
       return { id: 'reset', title: 'Start over?', line: '', items };
@@ -337,7 +337,7 @@ function buildPageFor(m: MenuInput): Page {
       items.push({ id: 'loop:rec', label: busy ? 'Recording' : lp.layers ? 'Add a layer' : 'Record', sub: busy ? 'Four bars' : lp.layers >= 3 ? 'Replaces the first' : 'Four bars, loops', on: busy, kind: 'button', x: 32, y: 340, w: C4, h: 200, dot: true });
       items.push({ id: lp.state === 'play' || busy ? 'loop:stop' : 'loop:play', label: lp.state === 'play' || busy ? 'Stop loop' : 'Play loop', off: !lp.layers && !busy, kind: 'button', x: X2, y: 340, w: C4, h: 200 });
       items.push({ id: 'loop:clear', label: 'Clear', sub: lp.layers ? `${lp.layers} layer${lp.layers === 1 ? '' : 's'}` : undefined, off: !lp.layers, kind: 'button', x: X3, y: 340, w: C4, h: 200 });
-      return { id: 'free', title: m.inst.name, line: m.line || (m.inst.id === 'drums' || m.inst.id === 'congas' ? 'Hit anything. It all sounds right.' : 'Play anything. Every note fits.'), items, body: 'how', how: m.inst.how ?? '' };
+      return { id: 'free', title: m.inst.name, line: m.line || (m.inst.id === 'drums' || m.inst.id === 'congas' ? 'Just hit stuff.' : 'Play anything. No wrong notes.'), items, body: 'how', how: m.inst.how ?? '' };
     }
     case 'build': {
       const items: Item[] = m.perform

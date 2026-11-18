@@ -105,7 +105,7 @@ describe('the game', () => {
       g.tick(t);
       g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t + 0.004, 0.8));
       if (g.display.line === 'Solo!') sawFill = true;
-      if (g.display.line === 'No lights: keep going') sawHold = true;
+      if (g.display.line === 'From memory now') sawHold = true;
     }
     expect(g.mode).toBe('results');
     // (every note keeps its cue to the end now: no bars played from memory)
@@ -116,13 +116,13 @@ describe('the game', () => {
     expect(g.lastTight).toBeGreaterThan(60);
     // your replay first; then the score, and it stays: the song and its %, then how it sat in time
     const songEnd = voiced.length;
-    for (let k = 0; k < 900 && g.display.line === 'That was you'; k++) g.tick((t += 1 / 30));
+    for (let k = 0; k < 900 && g.display.line === 'Your best bit'; k++) g.tick((t += 1 / 30));
     // (the score counts up and the grade lands first: the stars after 2.1 s)
     g.tick((t += 1.6));
     // (the results name the song; the score, grade and accuracy are on the medal)
-    expect(g.display.line).not.toBe('That was you');
+    expect(g.display.line).not.toBe('Your best bit');
     expect(g.display.result).toBeTruthy();
-    expect(g.display.sub).toMatch(/on the beat|ahead|behind|Listen first/);
+    expect(g.display.sub).toMatch(/Great timing|on the beat|ahead|behind|Listen first/);
     g.tick((t += 1.6));
     expect(g.display.stars).toBe(3);
     expect(g.display.result?.letter).toMatch(/[SABCD]/);
@@ -318,7 +318,7 @@ describe('the game', () => {
     expect(Math.max(...at.values())).toBeLessThanOrEqual(2);
     // straight to the results (no replay of your bars first): they name the song; the score, grade and accuracy are on the medal
     g.tick((t += 1 / 30));
-    expect(g.display.line).not.toBe('That was you');
+    expect(g.display.line).not.toBe('Your best bit');
     expect(g.display.stars).not.toBe(-1);
     expect(g.display.result).toBeTruthy();
     g.tick((t += 6.6));
@@ -345,7 +345,7 @@ describe('the game', () => {
         t += 1 / 30;
         now = t;
         g.tick(t);
-        if (g.display.sub === 'Everything, in…') log.push('silent');
+        if (g.display.sub === 'Here it comes...') log.push('silent');
         g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
       }
     }
@@ -369,7 +369,7 @@ describe('the game', () => {
     }
     // (the song ends on the results: nothing of yours is played back)
     expect(log.filter((x) => x === 'drop').length).toBeGreaterThanOrEqual(1);
-    expect(subs).not.toContain('That was you');
+    expect(subs).not.toContain('Your best bit');
     void end;
   });
 
@@ -1048,7 +1048,7 @@ describe("the song card says where the world's board stands", () => {
     g.refreshDisplay();
     expect(asked.length).toBe(1);
     expect(asked[0]).toMatch(/:drums:easy$/);
-    expect(g.display.page?.card?.world?.split('\n')).toEqual(['World best 52,000 · Night Owls', 'World top 52,000', 'Top 52,000']);
+    expect(g.display.page?.card?.world?.split('\n')).toEqual(['World best 52,000 by Night Owls', 'World top 52,000', 'Top 52,000']);
     // (no server: the card keeps its own line)
     const g2 = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, freshProgress(), room([]));
     g2.start(0);

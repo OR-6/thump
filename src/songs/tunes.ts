@@ -83,9 +83,9 @@ const KEYS_TUNE = 'E4 G4 | A4 E4 | F4 A4 | G8 | C2 D2 E2 G2 | A2 G2 E2 C2 | F2 G
 const KEYS_CHORDS = 'C | Am | F | G | C | Am | F | G | C | Am | F | G | C | Am | G | C';
 const keysSteps = (first: string) => [
   { bar: 0, title: 'Slow notes', say: first, level: 'normal' as const },
-  { bar: 4, title: 'Walk', say: 'Walk along the notes, one after the next', level: 'normal' as const },
-  { bar: 8, title: 'The hook', say: 'The hook: it skips ahead, then lands', level: 'normal' as const },
-  { bar: 12, title: 'Your turn', say: 'All of it: keep with the band', level: 'normal' as const },
+  { bar: 4, title: 'Walk', say: 'Up the notes, one at a time', level: 'normal' as const },
+  { bar: 8, title: 'The hook', say: 'Now the catchy bit', level: 'normal' as const },
+  { bar: 12, title: 'Your turn', say: 'The whole thing, with the band', level: 'normal' as const },
 ];
 export const LESSONS: readonly Tune[] = [
   {
@@ -102,8 +102,8 @@ export const LESSONS: readonly Tune[] = [
     lesson: {
       inst: 'drums',
       steps: [
-        { bar: 0, title: 'Snare', say: 'Fists for sticks: hit the snare as its ring closes', level: 'normal', only: ['kit:snare'] },
-        { bar: 4, title: 'Kick', say: 'Now the big drum in front: the kick', level: 'normal', only: ['kit:kick'] },
+        { bar: 0, title: 'Snare', say: 'Make fists. Hit the snare as its ring closes', level: 'normal', only: ['kit:snare'] },
+        { bar: 4, title: 'Kick', say: 'Now the kick, the big one in front', level: 'normal', only: ['kit:kick'] },
         { bar: 8, title: 'Kick, snare', say: 'Both now: kick, snare, kick, snare', level: 'easy' },
         { bar: 12, title: 'Add the hat', say: 'Add the hi-hat with your other hand', level: 'normal' },
       ],
@@ -133,7 +133,7 @@ export const LESSONS: readonly Tune[] = [
     original: true,
     melody: KEYS_TUNE,
     chords: KEYS_CHORDS,
-    lesson: { inst: 'marimba', steps: keysSteps('Fists are mallets: hit each bar as its ring closes') },
+    lesson: { inst: 'marimba', steps: keysSteps('Make fists. Hit each bar as its ring closes') },
   },
   {
     id: 'learn-guitar',
@@ -150,9 +150,9 @@ export const LESSONS: readonly Tune[] = [
       inst: 'guitar',
       steps: [
         { bar: 0, title: 'Strum', say: 'Brush down across the strings as the ring closes', level: 'easy' },
-        { bar: 4, title: 'Change chord', say: 'Left hand: move to the lit chord on the neck', level: 'normal' },
-        { bar: 8, title: 'Down and up', say: 'Follow the arrows: down, and back up', level: 'hard' },
-        { bar: 12, title: 'Your turn', say: 'All of it: strum and change with the band', level: 'hard' },
+        { bar: 4, title: 'Change chord', say: 'Left hand to the lit chord on the neck', level: 'normal' },
+        { bar: 8, title: 'Down and up', say: 'Follow the arrows, down then up', level: 'hard' },
+        { bar: 12, title: 'Your turn', say: 'The whole thing. Strum and change', level: 'hard' },
       ],
     },
   },
@@ -194,7 +194,7 @@ export const LESSONS: readonly Tune[] = [
         { bar: 0, title: 'Two sounds', say: 'Palm in the middle, fingers on the edge', level: 'easy' },
         { bar: 4, title: 'Both drums', say: 'Now both drums, as their rings close', level: 'normal' },
         { bar: 8, title: 'All four', say: 'Middle and edge of each drum', level: 'hard' },
-        { bar: 12, title: 'Your turn', say: 'All of it: keep the groove', level: 'hard' },
+        { bar: 12, title: 'Your turn', say: 'The whole thing. Keep the groove', level: 'hard' },
       ],
     },
   },

@@ -209,7 +209,7 @@ if (SONG) {
   s = await until((x) => x.game.mode === 'count' || x.game.mode === 'play', 60000, 500);
   check('autoplay plays the first song', s.game.mode === 'count' || s.game.mode === 'play', `${s.game.mode} ${s.game.display.line}`);
   s = await until((x) => x.game.mode === 'results', 120000, 1000);
-  check('to the end: straight to the results, no replay', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && s.game.display.line !== 'That was you', `${s.game.display.line} / ${s.game.display.sub} stars=${s.game.last?.stars}`);
+  check('to the end: straight to the results, no replay', s.game.mode === 'results' && (s.game.last?.stars ?? 0) >= 2 && s.game.display.line !== 'Your best bit', `${s.game.display.line} / ${s.game.display.sub} stars=${s.game.last?.stars}`);
   check('then the score: the song, its grade and score on the medal', !!s.game.display.line && !!s.game.display.result?.letter && s.game.display.result.score > 0, `${s.game.display.line} ${s.game.display.result?.letter} ${s.game.display.result?.score}`);
   shot('room-07-results', [s.debug.kitOrigin[0], DESK_Y, s.debug.kitOrigin[2] - 0.05]);
   // then Make a track (a familiar song has no loop of its own: it starts the first loop track), and the autoplayer builds it

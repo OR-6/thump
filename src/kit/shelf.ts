@@ -36,7 +36,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'piano',
     name: 'Piano',
-    how: 'Press keys with your fingertips. The square on the left plays three at once',
+    how: 'Fingertips on the keys. The square on the left plays a chord',
     sounds: [
       { id: 'piano', name: 'Grand', family: 'keys' },
       { id: 'bowl', name: 'Bowl', family: 'bowl' },
@@ -61,7 +61,7 @@ export const SHELF: readonly InstDef[] = [
   {
     id: 'guitar',
     name: 'Guitar',
-    how: 'Left hand on the neck picks the chord; brush down or up across the strings',
+    how: 'Left hand picks the chord. Strum with the other',
     sounds: [
       { id: 'steel', name: 'Acoustic', string: 'steel' },
       { id: 'nylon', name: 'Nylon', string: 'nylon' },

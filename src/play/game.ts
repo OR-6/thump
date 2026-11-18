@@ -261,7 +261,7 @@ export class Game {
   readonly graded = { perfect: 0, good: 0, extra: 0 };
   readonly offsets: number[] = [];
   /** What the module shows now. */
-  readonly display: Display = { line: 'Tap the desk', sub: 'Anywhere, with your hand', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
+  readonly display: Display = { line: 'Tap the desk', sub: 'Anywhere is fine', found: [], total: 0, meter: -1, stars: -1, pulse: null, count: 0, day: 0, gold: false, code: '', keyLabels: null, locked: [] };
   /** The settings page is up on the module (tap ◀ twice; ▶ closes it). */
   settingsOpen = false;
   /** A pad was just hit: its sound shows on the module and ◀ ▶ change it, for a few seconds. */
@@ -820,10 +820,10 @@ export class Game {
       if (b.dropAt > 0 && left <= 4) {
         // the silent bar before everything drops in
         d.count = Math.max(1, left);
-        d.sub = 'Everything, in…';
+        d.sub = 'Here it comes...';
         return;
       }
-      d.sub = b.dropAt > 0 ? `All ${n} parts in` : "It's kept. Play over it, or Perform it for a score";
+      d.sub = b.dropAt > 0 ? `All ${n} parts in` : "Saved. Jam over it, or Perform it for a score";
       d.pulse = b.dropAt > 0 ? null : 'play';
       return;
     }
@@ -841,11 +841,11 @@ export class Game {
     }
     if (b.phase === 'count') {
       d.count = Math.max(1, Math.min(8, Math.ceil(b.recStart - this.clock.beatAt(this.t))));
-      d.sub = b.retried ? 'Once more: hit what glows, as it glows' : 'Get ready: a bar lights up to copy';
+      d.sub = b.retried ? 'Once more. Copy the lights' : 'Watch the lights, then copy them';
       return;
     }
     // the take: the first bar lights up to copy, the second is yours to play what you like
-    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Your bar: play anything on it' : 'Copy it: hit what glows';
+    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Your bar. Play anything' : 'Copy it. Hit what glows';
   }
 
   // ---------------------------------------------------------------- perform
@@ -2198,7 +2198,7 @@ export class Game {
         if (!b) return;
         // (ways to say it, longest first: the card shows the first that fits its line)
         const n = (v: number) => v.toLocaleString('en-GB');
-        const line = (b.mine ? [`You're #${n(b.rank)} of ${n(b.total)} in the world`, `World #${n(b.rank)} of ${n(b.total)}`, `#${n(b.rank)} of ${n(b.total)}`] : b.top.length ? [`World best ${n(b.top[0].score)} · ${b.top[0].name}`, `World top ${n(b.top[0].score)}`, `Top ${n(b.top[0].score)}`] : ["No one's on the world board yet", 'Be the first on it']).join('\n');
+        const line = (b.mine ? [`You're #${n(b.rank)} of ${n(b.total)} in the world`, `World #${n(b.rank)} of ${n(b.total)}`, `#${n(b.rank)} of ${n(b.total)}`] : b.top.length ? [`World best ${n(b.top[0].score)} by ${b.top[0].name}`, `World top ${n(b.top[0].score)}`, `Top ${n(b.top[0].score)}`] : ["Nobody's on the leaderboard yet", 'Be the first']).join('\n');
         this.worldLines.set(board, { line, t: this.t });
         if (this.mode === 'discover' && this.menu === 'songs') this.refreshDisplay();
       });
@@ -3224,7 +3224,7 @@ export class Game {
       page: pageId,
       line: pageId === 'free' ? (this.loopLine() || (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try Songs' : '')) : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Hit a drum to start') : d.line,
       // (the songs page's line: your turn after a listen, or the band being asked)
-      sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Asking the band to start it' : this.afterListen ? 'Your turn' : '') : d.sub,
+      sub: pageId === 'songs' ? (this.t - this.bandWait < 4 ? 'Waiting on the band' : this.afterListen ? 'Your turn' : '') : d.sub,
       inst: { id: v.id, name: v.name, scale: v.scale, sound: v.sound, oct: v.oct ?? 0, how: v.how, key: v.key ?? '', pieces: v.pieces ?? 'full', frets: v.frets },
       // (each tile: its name, then how hard it is and who wrote it, in what groove; the first says start here)
       songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty === 'Easy' ? 'A gentle one' : t.score.difficulty === 'Medium' ? 'Medium pace' : 'A fast one'} · ${t.score.tune.by}` : 'New every day', stars: this.starsOn(t.id), locked: false, grade: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const), world: i === this.songSel && pageId === 'songs' && !t.score?.tune.lesson ? this.worldLine(t.id) : undefined })),
@@ -3326,7 +3326,7 @@ export class Game {
           // first the desk; once the drums are out, what's on the desk and how to get more
           const out = this.found.includes('kit') && this.stage.shelf ? this.stage.shelf(0) : null;
           d.line = out ? out.name : this.found.includes('kit') ? 'Hit something' : this.stage.shelf ? 'Pick one' : 'Tap the desk';
-          d.sub = out ? 'Instruments swaps it for another' : 'Tap the desk with your hand';
+          d.sub = out ? 'Swap it in Instruments' : 'Tap the desk with your hand';
         } else {
           d.line = sel.name;
           const need = wants(sel.parts);
@@ -3375,10 +3375,10 @@ export class Game {
           }
           if (this.finalWait >= 0) {
             d.line = 'Bring it home';
-            d.sub = 'One big hit on the glowing one';
+            d.sub = 'Hit the glowing one, hard';
             break;
           }
-          d.line = inFill ? 'Solo!' : big ? "Band's back in" : b >= this.perf.holdFrom ? 'No lights: keep going' : this.song!.name;
+          d.line = inFill ? 'Solo!' : big ? "Band's back in" : b >= this.perf.holdFrom ? 'From memory now' : this.song!.name;
           d.sub = inFill ? "They've dropped out. Hit lots, anything" : big ? 'Follow the lights' : b >= this.perf.holdFrom ? this.perf.track.score && this.perf.inst !== 'drums' ? 'You know how it goes' : 'Keep the beat going, any drum' : joins ? `${this.perf.joins} comes in next` : 'Hit what glows';
           d.meter = this.energy;
           break;
@@ -3401,8 +3401,8 @@ export class Game {
         d.best = this.fromPerform ? this.lastBest : null;
         if (this.replaying) {
           // your best two bars come back round with the band: that's all the panel says until they're done
-          d.line = 'That was you';
-          d.sub = 'Your best two bars, with the band';
+          d.line = 'Your best bit';
+          d.sub = 'Played back with the band';
           d.stars = -1;
           d.best = null;
           d.pulse = null;
@@ -3410,7 +3410,7 @@ export class Game {
         }
         d.map = null;
         // how it felt in time: a number when it was close, a word that says which way when it wasn't
-        const feel = this.lastTight >= 70 ? 'Nicely on the beat' : this.lastLean < 0 ? 'A bit ahead of the beat' : this.lastLean > 0 ? 'A bit behind the beat' : 'Try Listen first next time';
+        const feel = this.lastTight >= 70 ? 'Great timing' : this.lastLean < 0 ? 'A bit ahead of the beat' : this.lastLean > 0 ? 'A bit behind the beat' : 'Try Listen first next time';
         // (only what you can see: a tom on the kit; the rest is the old box's and stays quiet)
         const fresh = this.newUnlocks.includes('tom') ? unlockLine('tom') : '';
         const next = this.fromPerform;

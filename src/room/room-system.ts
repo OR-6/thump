@@ -330,7 +330,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.forwardFlat(this.fwd);
     this.tmp.copy(this.head).addScaledVector(this.fwd, 0.6);
     this.tmp.y = this.head.y - 0.06;
-    this.loadTag.show(placed ? `Tuning the instruments… ${Math.round(p * 100)}%` : 'Setting up your desk…', 0xffb547, this.tmp, this.head, 1);
+    this.loadTag.show(placed ? `Tuning up... ${Math.round(p * 100)}%` : 'Setting up...', 0xffb547, this.tmp, this.head, 1);
   }
   private holdRing!: InstancedMesh;
   private guard = new FrameGuard();
@@ -1430,10 +1430,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const ready = !!(inSong && d.spot?.ready && !d.spot.active);
       if (ready && !this.spotWasReady) this.spotReadyT = this.uiT;
       this.spotWasReady = ready;
-      if (this.uiT - this.switchNoT < 1.6) say = { kind: 'tip', big: 'Too late to switch', small: 'The song is nearly over' };
+      if (this.uiT - this.switchNoT < 1.6) say = { kind: 'tip', big: 'Too late to switch', small: "Song's nearly over" };
       if (ctl && this.ctlSince < 0) this.ctlSince = this.uiT;
       if (!ctl) this.ctlSince = -1;
-      if (ctl && !inSong && this.uiT - this.ctlSince < 5) say = { kind: 'tip', big: 'Put the controllers down', small: 'You play Thump with your bare hands' };
+      if (ctl && !inSong && this.uiT - this.ctlSince < 5) say = { kind: 'tip', big: 'Put the controllers down', small: 'Thump is hands only' };
       else if (inSong && this.game.paused) say = { kind: 'none' };
       else if (inSong && this.game.hold?.kind === 'read') {
         const h = this.game.hold;
@@ -1451,17 +1451,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       else if (inSong && this.uiT - this.hudMultT < 1.5 && this.hudMult > 1) say = { kind: 'mult', n: this.hudMult };
       else if (inSong && this.uiT - this.hudStreakT < 1.5 && this.hudStreak > 0) say = { kind: 'streak', n: this.hudStreak };
       else if (step) say = { kind: 'tip', big: step.title, small: step.say };
-      else if (inSong && beat >= 0 && beat < 8 && coach < 3) say = { kind: 'tip', big: 'Hit as the ring closes', small: 'Each note is a ring shrinking onto what plays it' };
+      else if (inSong && beat >= 0 && beat < 8 && coach < 3) say = { kind: 'tip', big: 'Hit when the ring closes', small: 'Each ring shrinks onto what you hit' };
       // (an instrument asked for mid-song: which, and when it comes in, so a switch never seems ignored)
       else if (inSong && mode === 'play' && !this.game.paused && this.game.pendingSwitch()) {
         const ps = this.game.pendingSwitch()!;
-        say = { kind: 'tip', big: `${instDef(ps.inst as InstId).name} next`, small: `In ${Math.max(1, Math.ceil(ps.inS))} s, at the next phrase` };
+        say = { kind: 'tip', big: `${instDef(ps.inst as InstId).name} next`, small: `Switching in ${Math.max(1, Math.ceil(ps.inS))}...` };
       }
       // (a long wait for your next note, the band playing on: when you come in, counted down, so nobody wonders if it's
       // stopped working)
       else if (inSong && mode === 'play' && !this.game.paused && !this.game.listening && this.longWait(this.game.nextNoteIn())) {
         const n = Math.max(1, Math.ceil(this.game.nextNoteIn()));
-        say = { kind: 'tip', big: n <= 3 ? `In ${n}` : 'Listen', small: n <= 3 ? 'Your part comes back in' : `The band plays on: you come in in ${n} s` };
+        say = { kind: 'tip', big: n <= 3 ? `In ${n}` : 'Listen', small: n <= 3 ? 'Get ready' : `Sit tight. You're back in ${n}` };
       }
       // (playing a song with nothing else to say: the run, the multiplier, and how your last hits sat in time)
       else if (inSong && mode === 'play' && !this.game.paused && !this.game.listening) {
@@ -1489,7 +1489,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           if (played >= 8 && this.coachGoT < 0) this.coachGoT = this.uiT;
           const goAt = Math.min(12, this.coachGoT >= 0 ? this.coachGoT - this.coachKitT + 3 : 12);
           const left = Math.ceil(goAt - since);
-          say = { kind: 'tip', big: 'Your drums', small: this.kit.onTable ? 'Slap the pads: the desk is the drum. Fists hold sticks' : 'Make fists: they are your sticks. Hit anything', icon: this.kit.onTable ? undefined : 'stick', ...(left <= 3 ? { foot: `First lesson in ${Math.max(1, left)}` } : {}) };
+          say = { kind: 'tip', big: 'Your drums', small: this.kit.onTable ? 'Slap the pads, or make fists for sticks' : 'Make a fist to grab a stick. Hit anything', icon: this.kit.onTable ? undefined : 'stick', ...(left <= 3 ? { foot: `First lesson in ${Math.max(1, left)}` } : {}) };
           if (since > goAt) {
             const i = this.game.tracks.findIndex((t) => t.id === 'learn-drums');
             if (i >= 0) {
@@ -1506,7 +1506,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (!(hands.left.pinch.pinching || hands.right.pinch.pinching)) this.coachSkip = 0;
         if (this.coachSkip >= 0.8) this.coachTo(3);
       } else if (coach === 1 && !inSong) this.coachTo(2);
-      else if (coach === 2 && !inSong) say = { kind: 'tip', big: mode === 'results' ? 'Poke Next on the screen' : 'Poke Songs on the screen', small: `The screen to your ${this.handed() === 'left' ? 'left' : 'right'} is your menu: poke it with a fingertip` };
+      else if (coach === 2 && !inSong) say = { kind: 'tip', big: mode === 'results' ? 'Poke Next on the screen' : 'Poke Songs on the screen', small: `The menu's on your ${this.handed() === 'left' ? 'left' : 'right'}. Poke it with a finger` };
       else if (mode === 'discover' && !this.game.paused) {
         const inst = this.kit.inst;
         // a new instrument out: how to play it, for 7 s, the first time
@@ -3085,7 +3085,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           if (!this.coverTold && !this.settings.noWords) {
             this.coverTold = true;
             const at = this.labelAt(now);
-            if (at) this.hint.show('Lift your hand: it comes back', 0xfff2dc, at.addScaledVector(this.tmp2.set(0, 1, 0), 0.05), this.head, 2.5);
+            if (at) this.hint.show('Lift your hand and it comes back', 0xfff2dc, at.addScaledVector(this.tmp2.set(0, 1, 0), 0.05), this.head, 2.5);
           }
         }
       }
@@ -3634,13 +3634,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!h.tracked) {
         // a frame or two of lost tracking mid-stroke is not a new start: forget only after a tenth of a second
         this.airGap[i] += dt;
-        if (this.airGap[i] > 0.25) {
-          for (let k = 0; k < AIR_PTS; k++) this.forgetPt(i * AIR_PTS + k);
-          this.fist[i] = false;
-        }
+        if (this.airGap[i] > 0.25) this.fist[i] = false;
+        // (past 80 ms the hand's points start afresh: a stroke made while it was lost would sound a quarter-second
+        // late, which is worse than not at all)
+        if (this.airGap[i] > 0.08) for (let k = 0; k < AIR_PTS; k++) this.forgetPt(i * AIR_PTS + k);
         continue;
       }
-      const step = dt + (this.airGap[i] <= 0.25 ? this.airGap[i] : 0);
+      const step = dt + (this.airGap[i] <= 0.08 ? this.airGap[i] : 0);
       this.airGap[i] = 0;
       // a fist (not a pinch: that's for the panel) holds a stick; it has to stay a fist (or open) for 80 ms to change
       const c = h.controller ? 1 : this.curl(h);
@@ -3721,7 +3721,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.airP.copy(w).applyMatrix4(inv);
         // (a mallet strikes with the underside of its ball: the moment you see it touch the bar is the hit, not a
         // centimetre later when its centre would reach it)
-        if (k === 4 && marimba) this.airP.y -= MALLET_HEAD_R;
+        // (a stick the same: its drawn tip rests on the head 6 mm above where its centre is, and that touch is the hit)
+        if (k === 4) this.airP.y -= marimba ? MALLET_HEAD_R : 0.006;
         // (a fingertip presses with its pad: the tracked joint is the middle of the finger's end, half a centimetre
         // over the pad you see touch the key; so a key you see touched is pressed, not one pushed a centimetre in)
         // (on the table, all of it: the pad is what meets the wood)
@@ -3750,8 +3751,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
         // (the loudness range: a stick moves far faster than a fingertip on a key; and a stick resting over a head
         // isn't struck by its shake: it plays from 1 m/s)
-        const full = k === 4 ? 6.5 : piano ? 1.0 : 2.5;
-        this.air.update(p, this.airP.x, this.airP.y, this.airP.z, step, this.airSurf, this.airOut, full, k === 4 ? AIR.stickMin : piano ? AIR.keyMin : AIR.minSpeed);
+        // (an accent in the air is 2 to 3 m/s: that's the loud end)
+        const full = k === 4 ? 4.5 : piano ? 1.0 : 2.5;
+        this.air.update(p, this.airP.x, this.airP.y, this.airP.z, step, this.airSurf, this.airOut, full, k === 4 ? (marimba ? AIR.stickMin : 0.6) : piano ? AIR.keyMin : AIR.minSpeed);
         for (const hit of this.airOut) {
           if (!piano) {
             if (this.airBest.speed < 0 || hit.depth > this.airBest.depth + 0.002 || (hit.depth > this.airBest.depth - 0.002 && hit.speed > this.airBest.speed)) {

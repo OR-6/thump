@@ -1483,11 +1483,11 @@ export class Panel {
       }
       g.fillStyle = MUTED;
       g.font = `400 48px ${FONT}`;
-      g.fillText('Friends type it on the Thump page', 32, 470);
+      g.fillText('Friends type this in to join', 32, 470);
     } else {
       g.fillStyle = INK;
       g.font = `600 56px ${FONT}`;
-      g.fillText('Up to four of you, one song, one beat', 32, 300);
+      g.fillText('Up to four of you, from anywhere', 32, 300);
     }
     // (the four seats, once there's a band)
     if (!b.code) return;

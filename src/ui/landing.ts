@@ -87,7 +87,7 @@ export function mountLanding(world: World): void {
         </div>
         <div class="wrap hero-in">
           <h1 id="hero-h">A band on your desk<span class="vh">.</span><span class="beat" aria-hidden="true"><svg class="beat-ring" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false"><circle class="closing" r="40" pathLength="100" stroke-dasharray="78 22" transform="rotate(-20)"/><circle class="burst" r="40" pathLength="100" stroke-dasharray="31 9 15 18" transform="rotate(40)"/></svg></span></h1>
-          <p class="tag">Play real instruments with your bare hands, in VR. Put the controllers down and look at your desk. There’s a drum kit on it now.</p>
+          <p class="tag">Put the controllers down and look at your desk. There’s a drum kit on it now. Hit it with your hands.</p>
           <div class="cta">
             <button id="enter-xr" class="btn btn-1" type="button">Enter mixed reality</button>
           </div>
@@ -135,7 +135,7 @@ export function mountLanding(world: World): void {
             <figure class="row-pic">${shot('results', 'The results for Canon in D: grade S with three stars, All perfect, 74,300 points, 200 perfect and no misses.')}</figure>
             <div class="row-words">
               <h2 class="h3">Get an <span class="hot">S</span>. Then do it again on Hard.</h2>
-              <p>Easy, Normal or Hard, on every song. Ten in a row doubles your points, and it climbs to ×4. Play the gold bars clean, throw both hands up, and the Spotlight doubles them again. Every song keeps a world board for each instrument and level. You go on it as a random two-word name, like Silver Harmony. No account.</p>
+              <p>Easy, Normal or Hard, on every song. Ten in a row doubles your points, up to ×4. Play the gold bars clean, throw both hands up, and the Spotlight doubles them again. Each song has a leaderboard for every instrument and level. You get a random two-word name, like Soggy Cowbell. No account needed.</p>
             </div>
           </div>
         </div>
@@ -145,7 +145,7 @@ export function mountLanding(world: World): void {
         <div class="wrap">
           <div class="set-head">
             <h2 class="title mega" id="setlist-h">${TUNES.length} songs</h2>
-            <p class="set-note">${originals} written for Thump, ${TUNES.length - originals} you already know, set to new grooves. Lengths at full speed.</p>
+            <p class="set-note">${originals} written for Thump, ${TUNES.length - originals} you already know, set to new grooves.</p>
           </div>
           <ol class="songs">${songs.map(songRow).join('')}</ol>
           <p class="lessons">Plus a lesson for each instrument (${LESSONS.map((l) => esc(l.name.replace(/^Learn /, ''))).join(', ').replace(/, ([^,]+)$/, ' and $1')}).</p>
@@ -157,8 +157,8 @@ export function mountLanding(world: World): void {
           <p class="label">Play together</p>
           <div class="together-in">
             <div class="together-words">
-              <h2 class="title" id="together-h">Four friends, four rooms, one song.</h2>
-              <p class="big">One of you gets a code. Everyone else types it in. The band gets a name of its own, something like The Midnight Coffee Rings, and a board for the songs you play together.</p>
+              <h2 class="title" id="together-h">Bring up to three friends.</h2>
+              <p class="big">One of you gets a code, the others type it in from wherever they are. Your band gets a silly name, like The Sticky Coffee Rings, and its own leaderboard.</p>
             </div>
             <p class="eg"><span class="eg-cap">e.g.</span><span class="eg-code">PKRW</span></p>
           </div>
@@ -208,7 +208,7 @@ export function mountLanding(world: World): void {
       <div class="wrap foot-in">
         <div class="foot-maker">
           ${wordmarkSvg('currentColor', 'Thump')}
-          <p class="maker">Made by OR-6, after years of drumming on desks that never played back.</p>
+          <p class="maker">Made by OR-6, who drums on desks far too much.</p>
         </div>
         <div class="foot-text">
           <p class="specs">Meta Quest, in its browser. Hands only, seated. 1–4 players. Free, nothing to install.</p>

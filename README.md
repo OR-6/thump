@@ -4,7 +4,7 @@
 
 A music game for Meta Quest 3, played sitting down. Tap your desk (or an airplane tray) and a drum kit comes up under your hands. A display standing at the back of the desk lets you swap it for a piano, a marimba, a guitar, congas or a handpan, pick a song and play your part while a band plays the rest, or make your own track a part at a time. Every note is in the scale, so there's no wrong one. Alone or with up to three friends in their own headsets. Hands only, in passthrough. Design notes: [docs/GAME-V3.md](docs/GAME-V3.md).
 
-**Play:** open **https://or-6.github.io/thump/** in the Quest browser, put the controllers down and press *Enter mixed reality*.
+**Play:** open **https://playthump.pages.dev/** in the Quest browser, put the controllers down and press *Enter mixed reality*.
 
 ## At your desk
 
