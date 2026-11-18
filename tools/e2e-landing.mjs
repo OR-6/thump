@@ -223,16 +223,18 @@ writeFileSync('tools/.probe.mjs',`export default async function run({ page, fram
     wide: el.scrollWidth > el.clientWidth + 1, boot: !!document.getElementById('landing-boot') };
 }); }\n`);
 const r = run('tools/.probe.mjs');
-const six = ['Drums', 'Piano', 'Marimba', 'Guitar', 'Congas', 'Handpan'];
+// (the page's names; the keyboard is the game's piano)
+const six = { Keyboard: 'piano', Drums: 'drums', Marimba: 'marimba', Guitar: 'guitar', Congas: 'congas', Handpan: 'handpan' };
 check('the page is shown outside the headset', r.shown);
 check('the loading shell is gone', !r.boot);
 check('one line: a band on your desk', /A band on your desk/i.test(r.text), r.text.slice(0, 120));
-check('all six instruments are named', six.every((n) => new RegExp(n, 'i').test(r.text)), six.filter((n) => !new RegExp(n, 'i').test(r.text)).join(', '));
-check('each instrument is drawn and plays', six.every((n) => r.drawn[n.toLowerCase()]?.parts > 0 && r.drawn[n.toLowerCase()]?.lit), JSON.stringify(r.drawn));
+check('all six instruments are named', Object.keys(six).every((n) => new RegExp(n, 'i').test(r.text)), Object.keys(six).filter((n) => !new RegExp(n, 'i').test(r.text)).join(', '));
+check('each instrument is drawn and plays', Object.values(six).every((id) => r.drawn[id]?.parts > 0 && r.drawn[id]?.lit), JSON.stringify(r.drawn));
 check('play together: start a band or type a code', /Play together/i.test(r.text) && /Start a band/i.test(r.text), r.text.match(/Play together.{0,60}/i)?.[0] ?? '');
 check('no desk-object pitch left', !/drum machine|your mug|chair arm/i.test(r.text), r.text.match(/drum machine|your mug|chair arm/i)?.[0] ?? '');
 check('no felt-era copy left', !/felt|crowd|plush|loom/i.test(r.text), r.text.match(/felt|crowd|plush|loom/i)?.[0] ?? '');
-check('Enter mixed reality is there', r.enter);
+check('no leaderboard, lessons, scoring or Spotlight on the page', !/leaderboard|\blessons?\b|spotlight|\bscor(e|es|ing)\b|points/i.test(r.text), r.text.match(/leaderboard|\blessons?\b|spotlight|\bscor(e|es|ing)\b|points/i)?.[0] ?? '');
+check('the Enter button is there', r.enter);
 check('a setting writes through', r.hc);
 check('nothing scrolls sideways', !r.wide);
 mkdirSync('artifacts', { recursive: true });
