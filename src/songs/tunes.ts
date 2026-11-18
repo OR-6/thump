@@ -481,6 +481,8 @@ export const TUNES: readonly Tune[] = [
     // the hymn tune New Britain (1835), checked against a session tunebook; in three
     id: 'amazing-grace',
     drumsFrom: 18,
+    // (its basses hold each chord's root from the bar's first beat)
+    bass: '1..',
     name: 'Amazing Grace',
     by: 'Hymn, soul',
     bpm: 84,

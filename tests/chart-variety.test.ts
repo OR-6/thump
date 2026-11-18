@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { TUNES } from '../src/songs/tunes.js';
 import { bandStyle, scoreChart, scoreOf } from '../src/songs/score.js';
 import { drumHits, planBars } from '../src/songs/arrange.js';
+import { CLASSIC_KITS, classicKit } from '../src/songs/classic-kit.js';
 
 const INSTS = ['drums', 'piano', 'marimba', 'guitar', 'handpan', 'congas'] as const;
 const LEVELS = ['easy', 'normal', 'hard'] as const;
@@ -64,8 +65,23 @@ describe('charts vary', () => {
   });
   // (the drums and congas are the band's own drummer's part now: they change where the band changes, verse to chorus
   // and its fills; from Normal up no song repeats the bar before more than 72% of the time on the drums: a dance groove repeats, as its band does)
+  // (a classic's drums are its own recording's drummer, src/songs/classic-kit.ts, who may well keep one pattern: the
+  // can-can's orchestra drum is a galop's kick on one and three all through, and its chart plays what you hear)
   it('drums from Normal up: no song repeats the bar before more than 72% of the time', () => {
-    for (const r of rows) if (r.inst === 'drums' && r.level !== 'easy' && r.bars > 8) expect(r.same, `${r.song} ${r.level}`).toBeLessThanOrEqual(0.72);
+    for (const r of rows) if (r.inst === 'drums' && r.level !== 'easy' && r.bars > 8 && !CLASSIC_KITS[r.song]) expect(r.same, `${r.song} ${r.level}`).toBeLessThanOrEqual(0.72);
+  });
+  // (it used to be the groove's drummer, not the recording's, and a third to a half of Normal's and Hard's drums had
+  // nothing in the music under them)
+  it("a classic's drums and congas are its recording's drummer: every note on one of its hits, or a chord coming in where it rests", () => {
+    for (const tune of TUNES) {
+      if (!CLASSIC_KITS[tune.id]) continue;
+      const s = scoreOf(tune);
+      const kit = classicKit(s)!;
+      const at = new Set([...kit.KICK, ...kit.SNARE, ...kit.HAT].map((h) => Math.round(h.beat * 24)));
+      for (const c of s.starts.flatMap((st) => s.chords.map((x) => st + x.beat))) at.add(Math.round(c * 24));
+      for (const inst of ['drums', 'congas'])
+        for (const level of LEVELS) for (const n of scoreChart(s, inst, level, 0, s.end, []).notes) expect(at.has(Math.round(n.beat * 24)), `${tune.id} ${inst} ${level} beat ${n.beat}`).toBe(true);
+    }
   });
 });
 

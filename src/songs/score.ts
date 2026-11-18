@@ -12,6 +12,7 @@
 import { PIANO_BLACK, PIANO_CHORD, instZones, pianoBlacks, scaleById, scaleMidi, type InstId } from '../kit/shelf.js';
 import { BAND_STYLES, bassLine, compEvents, congaHits, drumHits, pick, planBars, type BandStyle, type ChordSpan } from './arrange.js';
 import type { BedEvent } from './chart.js';
+import { classicKit } from './classic-kit.js';
 import { LESSONS, TUNES, type SectionKind, type Style, type Tune } from './tunes.js';
 
 export type Level = 'easy' | 'normal' | 'hard';
@@ -774,7 +775,9 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // the band's own conga player's part where it has one; else the drummer's, on the two drums: the low drum where the
     // kick is, the high drum on the backbeat, a slap on the accented off-beats (Hard). So what you play is what the
     // music already says; Easy keeps the beats, Normal the eighths, Hard all of it
-    const own = congaHits(bandStyle(s), planBars(s), s.meter, s.end);
+    // (a classic's recording has no conga player: its congas follow its own drums, src/songs/classic-kit.ts)
+    const ck = classicKit(s);
+    const own = ck ? [] : congaHits(bandStyle(s), planBars(s), s.meter, s.end);
     const keep = (at: number) => (level === 'easy' ? Math.abs(at - Math.round(at)) < 1e-6 : level === 'normal' ? Math.abs(at * 2 - Math.round(at * 2)) < 1e-6 : true);
     // (Easy: the drummer's beats, always there; the conga player's part from Normal, if it has enough on the grid)
     // (the conga player's own notes where it plays them, thinned by time between them: Normal a quarter of a second,
@@ -796,7 +799,8 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
       // (and the low drum on the drummer's downbeats under it, so it's never sparser than Easy)
       for (const h of drumHits(bandStyle(s), planBars(s), s.meter, s.end).KICK) if (h.at !== undefined && h.mark === 'X' && Math.abs(h.at - Math.round(h.at)) < 1e-6) add(h.beat, 'congas:0', 0.8, 1);
     } else {
-      const kit = drumHits(bandStyle(s), planBars(s), s.meter, s.end);
+      const kit = ck ?? drumHits(bandStyle(s), planBars(s), s.meter, s.end);
+      if (ck) for (const b of restingChords(s, ck, chords)) add(b, 'congas:0', 0.8, 0);
       for (const h of kit.KICK) if (h.at !== undefined && h.mark !== 'o' && keep(h.at) && (level !== 'easy' || h.mark === 'X' || h.mark === 'c')) add(h.beat, 'congas:0', 0.8, 0);
       for (const h of kit.SNARE) {
         if (h.at === undefined || h.mark === 'o' || h.mark === '-' || !keep(h.at)) continue;
@@ -811,7 +815,10 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // least, and a hat a beat where it marks one; Hard all but its ghost notes. Its fills where it fills, on its own
     // phrase ends
     live.push('kit:kick', 'kit:snare', 'kit:hat');
-    const kit = drumHits(bandStyle(s), planBars(s), s.meter, s.end);
+    // (a classic: the drummer on its own recording, src/songs/classic-kit.ts; where it rests, a kick with each new
+    // chord, as its bass comes in)
+    const ck = classicKit(s);
+    const kit = ck ?? drumHits(bandStyle(s), planBars(s), s.meter, s.end);
     const spb = 60 / t.bpm;
     const beatOf = (at: number) => Math.abs(at - Math.round(at)) < 1e-6;
     type C = { beat: number; key: string; vel: number; rank: number };
@@ -835,6 +842,8 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // (the kick and the snare are two hands: from Normal up the gap is kept within each, so a dembow's snare a
     // sixteenth after its kick stays; Easy keeps it between them too)
     const fits = (c: C) => kept.every((k) => (level !== 'easy' && (k.key === 'kit:kick') !== (c.key === 'kit:kick')) || Math.abs(k.beat - c.beat) < 1e-6 || Math.abs(k.beat - c.beat) * spb >= gapS - 1e-6);
+    if (ck) for (const b of restingChords(s, ck, chords)) ks.push({ beat: b, key: 'kit:kick', vel: 0.8, rank: 0 });
+    ks.sort((a, b) => a.beat - b.beat);
     for (const pass of ['kit:kick', 'snare'] as const)
       for (const c of ks) if ((pass === 'kit:kick') === (c.key === 'kit:kick') && fits(c)) kept.push(c);
     kept.sort((a, b) => a.beat - b.beat);
@@ -862,7 +871,7 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     for (const c of hats) if (!near(c.beat)) add(c.beat, c.key, c.vel, c.rank);
   }
   // (the drums and congas rest until the recording's drums come in)
-  if ((inst === 'drums' || inst === 'congas') && t.drumsFrom) {
+  if ((inst === 'drums' || inst === 'congas') && t.drumsFrom && !classicKit(s)) {
     const from = s.starts[0] + t.drumsFrom * s.meter;
     for (let i = out.length - 1; i >= 0; i--) if (out[i].beat < from - 1e-6) out.splice(i, 1);
   }
@@ -888,6 +897,13 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     }
   }
   return { notes, live, cover };
+}
+
+/** The chords that come in where a classic's recorded drums rest (a bar of theirs with no hit): their beats. */
+function restingChords(s: Score, kit: Record<'KICK' | 'SNARE' | 'HAT', { beat: number }[]>, chords: readonly Chord[]): number[] {
+  const busy = new Set<number>();
+  for (const lane of [kit.KICK, kit.SNARE, kit.HAT]) for (const h of lane) busy.add(Math.floor((h.beat + 1e-6) / s.meter));
+  return chords.filter((c) => c.beat < s.end - 1e-6 && !busy.has(Math.floor((c.beat + 1e-6) / s.meter))).map((c) => c.beat);
 }
 
 /** Where the last hit lights on each instrument: the tonic (or the kick and snare, the low conga, the strum). */

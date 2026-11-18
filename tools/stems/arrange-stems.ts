@@ -11,7 +11,8 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { scaleById, scaleMidi } from '../../src/kit/shelf.js';
-import { BAND_STYLES, bassLine, compEvents, congaHits, drumHits, planBars, type BandStyle, type BarPlan, type ChordSpan } from '../../src/songs/arrange.js';
+import { BAND_STYLES, bassLine, compEvents, congaHits, drumHits, type BandStyle, type BarPlan, type ChordSpan } from '../../src/songs/arrange.js';
+import { CLASSIC_KITS, arrangedPlan } from '../../src/songs/classic-kit.js';
 import { SCORES, bandStyle, melodyRoot, type Score } from '../../src/songs/score.js';
 
 interface N {
@@ -63,9 +64,8 @@ function ctxOf(s: Score): Ctx {
   for (const st of s.starts) for (const c of s.chords) if (st + c.beat < s.end - 1e-6) spans.push({ beat: st + c.beat, len: Math.min(c.len, s.end - st - c.beat), semis: c.semis, minor: c.minor });
   for (const [a, z] of s.solos) spans.push({ beat: a, len: z - a, semis: s.soloChord.semis, minor: s.soloChord.minor });
   spans.sort((a, b) => a.beat - b.beat);
-  const plan = planBars(s);
   // (a song in its whole form: its sections in three stages, early, middle and late, for the arrangements that build)
-  if (s.sections) for (const b of plan) b.pass = Math.min(2, Math.floor((3 * b.pass) / s.sections.length));
+  const plan = arrangedPlan(s);
   return { s, plan, spans, mel, end: s.end, meter: s.meter, key: s.keyPc };
 }
 
@@ -257,6 +257,18 @@ function rolls(c: Ctx, vel = 0.6, note = 38, beats = 1): N[] {
   return out;
 }
 
+/** A classic's drums stem (src/songs/classic-kit.ts: the player's drums and congas chart is the same part). */
+function kitTracks(c: Ctx): Track[] {
+  return (CLASSIC_KITS[c.s.tune.id] ?? []).map((t) =>
+    kit(
+      t.name,
+      t.program,
+      t.parts.flatMap((p) => ('beat' in p ? beat(c, p.beat.steps, p.beat.notes, p.beat.scale) : 'drummer' in p ? drummer(c, BAND_STYLES[p.drummer.style], p.drummer.scale, p.drummer.only) : 'crashes' in p ? crashes(c, p.crashes.vel, p.crashes.note) : rolls(c, p.rolls.vel, p.rolls.note, p.rolls.beats))),
+      { rev: t.rev, vol: t.vol },
+    ),
+  );
+}
+
 // ------------------------------------------------------------------ the arrangements
 
 const all = () => true;
@@ -351,7 +363,7 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
       lead: [tr('piano', 0, sc.lead, { rev: 30, vol: 112 })],
       keys: [tr('piano', 0, [...left, ...sc.voice('right (rest)')], { rev: 30, vol: 104 })],
       bass: [tr('upright', 32, lows.map((n) => ({ ...n, len: Math.min(n.len, 0.9), vel: n.vel * 0.8 })), { rev: 15, vol: 92 })],
-      drums: [kit('brushes', 40, beat(c, 8, { 38: (b) => (b.bar >= 4 ? '..x...x.' : undefined), 42: (b) => (b.bar >= 4 ? 'x.x.x.x.' : undefined), 36: (b) => (b.bar >= 20 ? 'x...x...' : undefined) }, 0.5), { rev: 35, vol: 80 })],
+      drums: kitTracks(c),
     };
   },
   // Mozart's rondo as written; in its A major marches a light Turkish band: bass drum, cymbal and triangle
@@ -360,14 +372,14 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     return {
       lead: [tr('piano', 0, sc.lead, { rev: 35, vol: 112 })],
       keys: [tr('piano', 0, [...sc.voice('left'), ...sc.voice('right (rest)')], { rev: 35, vol: 104 })],
-      drums: [kit('janissary', 48, beat(c, 4, { 36: (b) => (b.chorus ? 'x.x.' : undefined), 81: (b) => (b.chorus ? '.x.x' : undefined), 57: (b) => (b.chorus && b.bar % 2 === 0 ? 'x...' : undefined) }, 0.55), { rev: 45, vol: 82 })],
+      drums: kitTracks(c),
     };
   },
   'william-tell': (c) => ({
     lead: [tr('trumpet', 56, tune(c, 0, 0.8), { rev: 45, vol: 114 }), tr('strings', 48, tune(c, 0, 0.8, fromPass(1), 0.62), { rev: 55, vol: 86, pan: 80 })],
     strings: [tr('off-beats', 48, hits(c, 4, (b) => (b.solo ? undefined : '.x.x'), 55, 0.8, 0.6), { rev: 50, vol: 84, pan: 76 })],
     bass: [tr('tuba', 58, bassPat(c, 4, (b) => (b.solo ? '1...' : '1.5.'), 36, 0.8, 0.5), { rev: 25, vol: 104 })],
-    drums: [kit('orchestra', 48, [...beat(c, 8, { 38: (b) => (b.solo ? 'x...x...' : 'x.xxx.xx'), 36: () => 'x...x...' }, 0.62), ...crashes(c, 0.75, 49)], { rev: 45, vol: 92 })],
+    drums: kitTracks(c),
     brass: [tr('horns', 60, pad(c, 53, 0.4, (b) => b.chorus), { rev: 55, vol: 80 })],
   }),
   // the galop infernal: violins and piccolo on the tune, oom-pah under it (the tuba on the beat, the brass on the
@@ -376,14 +388,14 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     lead: [tr('violins', 40, tune(c, 0, 0.75), { rev: 45, vol: 112 }), tr('piccolo', 72, tune(c, 1, 0.75, all, 0.55), { rev: 50, vol: 80, pan: 84 }), tr('trumpet', 56, tune(c, 0, 0.75, fromPass(1), 0.6), { rev: 45, vol: 84, pan: 44 })],
     bass: [tr('tuba', 58, bassPat(c, 8, (b) => (b.solo ? '1.......' : '1.5.1.5.'), 36, 0.8, 0.6), { rev: 20, vol: 104 })],
     brass: [tr('pah', 61, hits(c, 8, (b) => (b.solo ? undefined : '.x.x.x.x'), 55, 0.7, 0.55), { rev: 40, vol: 84, pan: 76 })],
-    drums: [kit('orchestra', 48, [...beat(c, 8, { 36: () => 'x...x...', 38: (b) => (b.chorus ? '..x...x.' : undefined) }, 0.7), ...crashes(c, 0.8, 49), ...rolls(c, 0.6, 38, 1)], { rev: 45, vol: 92 })],
+    drums: kitTracks(c),
   }),
   // the Ninth's theme: strings the first time, the brass and a choir the second, timpani, and a big kit at the last
   'ode-to-joy': (c) => ({
     lead: [tr('strings', 48, tune(c, 0, 0.98, pass(0)), { rev: 65, vol: 112 }), tr('brass', 61, tune(c, 0, 0.95, fromPass(1)), { rev: 60, vol: 110 }), tr('violins', 48, tune(c, 1, 0.95, fromPass(1), 0.55), { rev: 70, vol: 80 })],
     strings: [tr('pad', 49, pad(c, 50, 0.4, all), { rev: 75, vol: 80 }), tr('choir', 52, pad(c, 55, 0.4, fromPass(1)), { rev: 80, vol: 82, pan: 80 })],
     bass: [tr('basses', 43, bassPat(c, 4, (b) => (b.pass >= 1 ? '1.1.' : '1...'), 38, 0.75, 0.9), { rev: 50, vol: 100 })],
-    drums: [kit('timpani', 48, [...beat(c, 4, { 36: (b) => (b.chorus || b.pass >= 1 ? 'x.x.' : 'x...') }, 0.7), ...crashes(c, 0.7)], { rev: 55, vol: 86 }), kit('kit', 8, drummer(c, BAND_STYLES.anthem, 0.75, (b) => b.pass >= 1), { rev: 40, vol: 86 })],
+    drums: kitTracks(c),
   }),
   'mountain-king': (c) => ({
     lead: [tr('bassoon', 70, tune(c, -1, 0.7, pass(0)), { rev: 45, vol: 112 }), tr('clarinet', 71, tune(c, 0, 0.75, pass(1)), { rev: 45, vol: 108 }), tr('strings', 48, tune(c, 0, 0.8, fromPass(1), 0.55), { rev: 55, vol: 84 }), tr('lead guitar', 29, tune(c, 0, 0.8, pass(2), 0.8), { rev: 40, vol: 100 })],
@@ -391,7 +403,7 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     brass: [tr('horns', 60, pad(c, 50, 0.45, fromPass(1)), { rev: 55, vol: 84 })],
     bass: [tr('cello pizz', 45, bassPat(c, 4, (b) => (b.pass === 0 ? '1.1.' : undefined), 38, 0.7, 0.4), { rev: 35, vol: 100 }), tr('bass', 34, bassPat(c, 8, (b) => (b.pass >= 1 ? '11111111' : undefined), 38, 0.75, 0.7), { rev: 10, vol: 104 })],
     guitar: [tr('power chords', 30, power(c, 8, (b) => (b.pass === 2 ? 'x.x.x.x.' : undefined), 40, 0.7), { rev: 25, vol: 88 })],
-    drums: [kit('timpani', 48, beat(c, 4, { 41: (b) => (b.pass === 1 ? 'x.x.' : undefined) }, 0.7), { rev: 50, vol: 88 }), kit('rock kit', 16, drummer(c, BAND_STYLES.rock, 0.9, (b) => b.pass === 2), { rev: 30, vol: 92 })],
+    drums: kitTracks(c),
   }),
   // folk: a steel-string guitar picking each chord, the flute on the tune (then the fiddle); strings, a soft bass and a frame drum the second time
   'scarborough-fair': (c) => ({
@@ -399,7 +411,7 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     guitar: [tr('steel', 25, arp(c, 6, (b) => (b.solo ? 'r5835.' : 'r58358'), 40, 0.58, 2.4), { rev: 50, vol: 100, pan: 44 })],
     strings: [tr('strings', 49, pad(c, 52, 0.34, fromPass(1)), { rev: 80, vol: 72, pan: 84 })],
     bass: [tr('bass', 32, bassPat(c, 6, (b) => (b.pass >= 1 ? '1-----' : undefined), 36, 0.6, 0.95), { rev: 20, vol: 92 })],
-    drums: [kit('frame drum', 48, beat(c, 6, { 45: (b) => (b.pass >= 1 ? 'x.....' : undefined), 82: (b) => (b.pass >= 1 ? '-.x.x.' : undefined) }, 0.5), { rev: 55, vol: 80 })],
+    drums: kitTracks(c),
   }),
   // the hymn: a church organ and a choir under the piano's tune, the basses on each chord; a soft brushed pulse the
   // second time, the strings doubling the tune
@@ -408,7 +420,7 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     keys: [tr('organ', 19, pad(c, 52, 0.42, all), { rev: 70, vol: 82 })],
     strings: [tr('choir', 52, pad(c, 57, 0.42, fromPass(1)), { rev: 85, vol: 84, pan: 80 })],
     bass: [tr('basses', 43, c.spans.map((x) => ({ beat: x.beat, len: x.len * 0.95, midi: rootFrom(c, x, 36), vel: 0.62 })), { rev: 50, vol: 96 })],
-    drums: [kit('brushes', 40, beat(c, 6, { 36: (b) => (b.pass >= 1 ? 'x.....' : undefined), 38: (b) => (b.pass >= 1 ? '....x.' : undefined), 42: (b) => (b.pass >= 1 ? 'x.x.x.' : undefined) }, 0.5), { rev: 45, vol: 82 })],
+    drums: kitTracks(c),
   }),
   // a New Orleans street band: the trumpet on the tune, the clarinet over it the second time, the banjo on two and
   // four, the tuba on one and three, a jazz kit
@@ -417,7 +429,7 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     guitar: [tr('banjo', 105, hits(c, 4, (b) => (b.solo ? 'x...' : '.x.x'), 55, 0.7, 0.7), { rev: 30, vol: 92, pan: 40 })],
     bass: [tr('tuba', 58, bassPat(c, 4, (b) => (b.solo ? '1...' : '1.5.'), 36, 0.8, 0.75), { rev: 25, vol: 104 })],
     brass: [tr('trombone', 57, pad(c, 48, 0.4, (b) => b.chorus), { rev: 45, vol: 76 })],
-    drums: [kit('jazz kit', 32, [...beat(c, 8, { 36: () => 'x...x...', 38: () => '..x...x.', 44: () => '..x...x.', 51: (b) => (b.pass >= 1 || b.chorus ? 'x.x.x.x.' : undefined) }, 0.62), ...crashes(c, 0.6, 49)], { rev: 35, vol: 88 })],
+    drums: kitTracks(c),
   }),
   // a sea shanty: the accordion on the tune (the fiddle with it the second time), a strummed guitar, the bass on the
   // beat, stomps and claps and a tambourine
@@ -425,7 +437,7 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     lead: [tr('accordion', 21, tune(c, 0, 0.9), { rev: 40, vol: 112 }), tr('fiddle', 110, tune(c, 0, 0.85, fromPass(1), 0.6), { rev: 45, vol: 86, pan: 84 })],
     guitar: [tr('guitar', 25, hits(c, 8, (b) => (b.solo ? 'x.......' : 'X.x.X.x.'), 52, 1.6, 0.6), { rev: 30, vol: 92, pan: 40 })],
     bass: [tr('bass', 32, bassPat(c, 4, (b) => (b.solo ? '1...' : '1.5.'), 36, 0.8, 0.7), { rev: 15, vol: 104 })],
-    drums: [kit('stomp and clap', 8, [...beat(c, 8, { 36: () => 'x...x...', 39: () => '..x...x.', 54: (b) => (b.pass >= 1 || b.chorus ? 'x-x-x-x-' : undefined) }, 0.75), ...crashes(c, 0.55)], { rev: 35, vol: 92 })],
+    drums: kitTracks(c),
   }),
   // the Russian dance (and Tetris): the accordion first, oom-pah under it; the second time four on the floor, a
   // synth bass and the square-wave lead on top
@@ -433,7 +445,7 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     lead: [tr('accordion', 21, tune(c, 0, 0.85), { rev: 40, vol: 110 }), tr('square', 80, tune(c, 0, 0.8, fromPass(1), 0.62), { rev: 40, vol: 86, pan: 40 })],
     keys: [tr('pah', 21, hits(c, 8, (b) => (b.solo ? undefined : '.x.x.x.x'), 55, 0.6, 0.5), { rev: 35, vol: 82, pan: 80 }), tr('pad', 89, pad(c, 52, 0.4, fromPass(1)), { rev: 70, vol: 76 })],
     bass: [tr('oom', 32, bassPat(c, 8, (b) => (b.pass === 0 ? '1.5.1.5.' : undefined), 36, 0.8, 0.6), { rev: 15, vol: 104 }), tr('synth bass', 38, bassPat(c, 8, (b) => (b.pass >= 1 ? '18181818' : undefined), 36, 0.75, 0.5), { rev: 10, vol: 98 })],
-    drums: [kit('folk', 8, beat(c, 8, { 36: (b) => (b.pass === 0 ? 'x...x...' : undefined), 54: (b) => (b.pass === 0 ? '..x...x.' : undefined) }, 0.7), { rev: 35, vol: 88 }), kit('dance kit', 26, drummer(c, BAND_STYLES.dance, 0.85, (b) => b.pass >= 1), { rev: 30, vol: 92 })],
+    drums: kitTracks(c),
   }),
 };
 
