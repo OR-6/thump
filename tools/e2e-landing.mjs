@@ -227,7 +227,7 @@ const r = run('tools/.probe.mjs');
 const six = { Keyboard: 'piano', Drums: 'drums', Marimba: 'marimba', Guitar: 'guitar', Congas: 'congas', Handpan: 'handpan' };
 check('the page is shown outside the headset', r.shown);
 check('the loading shell is gone', !r.boot);
-check('the headline: play real instruments with just your hands', /^\s*Play real instruments with just your hands\.\s*$/i.test(r.h1.replace(/\s+/g, ' ')), r.h1);
+check('the headline: play VR instruments with just your hands', /^\s*Play VR instruments with just your hands\.\s*$/i.test(r.h1.replace(/\s+/g, ' ')), r.h1);
 check('and the line over it: a band on your desk', /A band on your desk/i.test(r.text), r.text.slice(0, 120));
 check('all six instruments are named', Object.keys(six).every((n) => new RegExp(n, 'i').test(r.text)), Object.keys(six).filter((n) => !new RegExp(n, 'i').test(r.text)).join(', '));
 check('each instrument is drawn and plays', Object.values(six).every((id) => r.drawn[id]?.parts > 0 && r.drawn[id]?.lit), JSON.stringify(r.drawn));

@@ -110,7 +110,7 @@ export function mountLanding(world: World): void {
           <div class="hero-top">
           <div class="hero-copy">
             <p class="kicker riso" ${riso('A band on your desk.')}>A band on your desk.</p>
-            <h1 id="hero-h"><span class="l riso" ${riso('Play real')}>Play real</span> <span class="l riso" ${riso('instruments')}>instruments</span> <span class="l riso" ${riso('with just')}>with just</span> <span class="l riso" ${riso('your hands.')}>your hands.</span></h1>
+            <h1 id="hero-h"><span class="l riso" ${riso('Play VR')}>Play VR</span> <span class="l riso" ${riso('instruments')}>instruments</span> <span class="l riso" ${riso('with just')}>with just</span> <span class="l riso" ${riso('your hands.')}>your hands.</span></h1>
           </div>
           <div class="hero-art"><div class="inks" aria-hidden="true"><span class="ink ink-1"></span><span class="ink ink-2"></span><span class="ink ink-3"></span></div><div class="kit">${deskSvg('drums', 'Drums', { art: true, prefix: 'h' })}</div></div>
           <div class="hero-foot">
@@ -127,10 +127,10 @@ export function mountLanding(world: World): void {
         <div class="wrap">
           <div class="media">
             <figure class="slot slot-video" id="video-slot">
-              <video class="fill" id="video" inert controls playsinline preload="metadata" aria-label="${esc(VIDEO.label)}"><source src="${VIDEO.src}#t=0.1" type="video/mp4" /></video>
+              <video class="fill" id="video" inert controls playsinline preload="metadata" aria-label="${esc(VIDEO.label)}"><source src="${VIDEO.src}#t=2" type="video/mp4" /></video>
               ${emptySlot('Video', 'The gameplay video goes here, I’m recording it on my Quest.', true)}
             </figure>
-            ${SHOTS.map((s, i) => `<figure class="slot shot shot-${i + 1}"><img class="fill" src="${s.src}" alt="${esc(s.alt)}" loading="lazy" decoding="async" />${emptySlot(`Screenshot ${i + 1}`, 'Coming soon, from the headset.')}</figure>`).join('')}
+            ${SHOTS.map((s, i) => `<figure class="slot shot shot-${i + 1}"><img class="fill" src="${s.src}" alt="${esc(s.alt)}" decoding="async" />${emptySlot(`Screenshot ${i + 1}`, 'Coming soon, from the headset.')}</figure>`).join('')}
           </div>
         </div>
       </section>
