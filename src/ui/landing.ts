@@ -158,7 +158,7 @@ export function mountLanding(world: World): void {
           <div class="together-in">
             <div class="together-words">
               <h2 class="title" id="together-h">Bring up to three friends.</h2>
-              <p class="big">One of you gets a code, the others type it in from wherever they are. Your band gets a silly name, like The Sticky Coffee Rings, and its own leaderboard.</p>
+              <p class="big">One of you gets a code, the others type it in from wherever they are. Your friends sit across your desk, small, playing their own instruments: you see their hands hit the notes and hear every one. Turn on Talk and you can hear each other too. Your band gets a silly name, like The Sticky Coffee Rings, and its own leaderboard.</p>
             </div>
             <p class="eg"><span class="eg-cap">e.g.</span><span class="eg-code">PKRW</span></p>
           </div>
