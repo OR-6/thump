@@ -43,7 +43,7 @@ export default async function run({ page }) {
     await a.waitForTimeout(2500);
     const beat = (p) => p.evaluate(() => {
       const r = window.__thump.game;
-      return { mode: r.game.mode, beat: r.game.clock.beatAt(r.clock.t), at: performance.now() };
+      return { mode: r.game.mode, beat: r.game.clock.beatAt(r.clock.t), at: performance.timeOrigin + performance.now() };
     });
     const [ra, rb] = await Promise.all([beat(a), beat(b)]);
     out.aMode = ra.mode;
