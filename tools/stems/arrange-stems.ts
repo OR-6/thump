@@ -13,7 +13,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { scaleById, scaleMidi } from '../../src/kit/shelf.js';
 import { BAND_STYLES, bassLine, compEvents, congaHits, drumHits, type BandStyle, type BarPlan, type ChordSpan } from '../../src/songs/arrange.js';
 import { CLASSIC_KITS, arrangedPlan } from '../../src/songs/classic-kit.js';
-import { SCORES, bandStyle, melodyRoot, type Score } from '../../src/songs/score.js';
+import { PRODUCTIONS, prodBars, prodBass, prodComp, prodDrums, prodPerc, type Production } from '../../src/songs/originals.js';
+import { SCORES, bandStyle, melodyRoot, parseMelody, type Score } from '../../src/songs/score.js';
 
 interface N {
   beat: number;
@@ -330,116 +331,245 @@ function styled(c: Ctx, lead?: number): Stems {
   return out;
 }
 
-/** A chord's seventh as a band colours it: a major seventh on the home chord, the four and a borrowed flat six; a minor
- * seventh on a minor chord; a dominant seventh on the five, a borrowed flat seven and a secondary major chord. */
-const seventh = (ch: ChordSpan) => (ch.minor ? 10 : ch.semis === 0 || ch.semis === 5 || ch.semis === 8 ? 11 : 10);
-/** Seventh chords (root, third, fifth, seventh) voiced from `lo` and led smoothly, on a pattern of drum characters,
- * each `len` steps long and rolled a little from the bottom (a keyboard player's hands). */
-function sevenths(c: Ctx, steps: number, pat: (b: BarPlan) => string | undefined, lo: number, len: number, vel: number): N[] {
-  let was: number[] = [];
-  const out: N[] = [];
-  c.plan.forEach((b, n) =>
-    eachStep(c, b, n, pat(b), steps, (beat, chr) => {
-      const k = VEL[chr];
-      if (k === undefined) return;
-      const ch = chordAt(c, beat);
-      const pcs = [0, third(ch), 7, seventh(ch)].map((x) => (pcOf(c, ch) + x) % 12);
-      let best: number[] = [];
-      let cost = Infinity;
-      for (let inv = 0; inv < 4; inv++)
-        for (let base = lo; base < lo + 12; base++) {
-          if (base % 12 !== pcs[inv]) continue;
-          const v = [base];
-          for (let j = 1; j < 4; j++) {
-            let m = v[j - 1] + 1;
-            while (m % 12 !== pcs[(inv + j) % 4]) m++;
-            v.push(m);
-          }
-          const cst = was.length ? v.reduce((a, m, i) => a + Math.abs(m - was[i]), 0) : Math.abs(v[0] - lo - 6);
-          if (cst < cost) {
-            cost = cst;
-            best = v;
-          }
+
+// ------------------------------------------------------------------ the originals produced from scratch
+
+/** A chord of a produced original, as its chart names it: its root's pitch class, minor or not, and its seventh (the
+ * semitones over the root: 10 a flat seventh, 11 a major one; none: a triad). */
+interface Named extends ChordSpan {
+  pc: number;
+  seventh: number | null;
+}
+const PCS: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+/** Its chords by name, bar by bar; `maj7` colours its plain major chords with a major seventh (a disco or house
+ * band's voicing). */
+function namedChords(p: Production, maj7: boolean): Named[] {
+  const out: Named[] = [];
+  let bar = 0;
+  const key = PCS[p.key[0]] + (p.key[1] === '#' ? 1 : p.key[1] === 'b' ? -1 : 0);
+  for (const x of p.sections)
+    for (const text of x.chords.split('|')) {
+      const names = text.trim().split(/\s+/);
+      names.forEach((n, k) => {
+        const each = 4 / names.length;
+        if (n === '.') {
+          out[out.length - 1].len += each;
+          return;
         }
-      was = best;
-      const l = Math.min((len * c.meter) / steps, ch.beat + ch.len - beat) * 0.95;
-      best.forEach((m, i) => out.push({ beat: beat + i * 0.01 + wob(beat, 40 + i, 0.008), len: l, midi: m, vel: vel * k * (0.85 + 0.15 * b.level) + wob(beat, 41 + i, 0.05) }));
-    }),
-  );
-  return out;
-}
-/** Into each chorus: eighth-note chords through the section before it (its last four bars at most; a verse's last
- * bar), growing louder to the downbeat. */
-function build(c: Ctx, lo: number, vel: number): N[] {
-  const out: N[] = [];
-  const v = voicer(lo);
-  const secs = c.s.sections ?? [];
-  secs.forEach((x, i) => {
-    const next = secs[i + 1];
-    if (!next || next.kind !== 'chorus' || x.kind === 'chorus') return;
-    const z = c.s.starts[0] + next.bar * c.meter;
-    const from = x.kind === 'bridge' ? Math.max(c.s.starts[0] + x.bar * c.meter, z - 4 * c.meter) : z - c.meter;
-    for (let bt = from; bt < z - 1e-6; bt += 0.5) {
-      const k = (bt - from) / (z - from);
-      for (const m of v(c, chordAt(c, bt))) out.push({ beat: bt + wob(bt, 50 + m, 0.005), len: 0.38, midi: m, vel: vel * (0.3 + 0.7 * k * k) });
+        const m = /^([A-G])([#b]?)(m?)(7?)$/.exec(n)!;
+        const pc = (PCS[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + 12) % 12;
+        const minor = m[3] === 'm';
+        const seventh = m[4] ? (minor ? 10 : 10) : !minor && maj7 ? 11 : null;
+        out.push({ beat: bar * 4 + k * each, len: each, semis: (pc - key + 12) % 12, minor, pc, seventh });
+      });
+      bar++;
     }
-  });
   return out;
 }
-/** The band's comping rhythm (its style's, the very part the guitar chart strums with), as guitar chords. */
-function compRhythm(c: Ctx, program: number, lo: number, len: number, vel: number): Track {
-  const st = bandStyle(c.s);
-  return tr('guitar', program, hits(c, st.steps, (b) => (b.solo ? undefined : b.chorus ? st.comp.chorus : st.comp.verse), lo, len, vel), { rev: 30, vol: 92, pan: 36 });
+const namedAt = (ch: readonly Named[], b: number) => ch.find((x) => b >= x.beat - 1e-6 && b < x.beat + x.len - 1e-6) ?? ch[ch.length - 1];
+
+/** A voicer for named chords: its tones (`ext` adds the seventh, `nine` the ninth), inside lo..lo+14, led smoothly. */
+function leader(lo: number, opts: { ext?: boolean; nine?: boolean; size?: number } = {}): (ch: Named) => number[] {
+  let was: number[] = [];
+  return (ch) => {
+    const iv = [0, ch.minor ? 3 : 4, 7];
+    if (opts.ext && ch.seventh !== null) iv.push(ch.seventh);
+    if (opts.nine) iv.push(14);
+    const pcs = iv.map((x) => (ch.pc + x) % 12);
+    const size = Math.min(opts.size ?? pcs.length, pcs.length);
+    let best: number[] = [];
+    let cost = Infinity;
+    for (let inv = 0; inv < pcs.length; inv++)
+      for (let base = lo; base < lo + 12; base++) {
+        if (base % 12 !== pcs[inv]) continue;
+        const v = [base];
+        for (let j = 1; j < size; j++) {
+          let m = v[j - 1] + 1;
+          while (m % 12 !== pcs[(inv + j) % pcs.length]) m++;
+          v.push(m);
+        }
+        const k = was.length ? v.reduce((a, m, i) => a + Math.abs(m - (was[i] ?? m)), 0) : Math.abs(v[0] - lo - 5);
+        if (k < cost) {
+          cost = k;
+          best = v;
+        }
+      }
+    was = best;
+    return best;
+  };
 }
 
-/** The originals: each its style's band (styled) with the parts its own style calls for on top. Drums, bass, the
- * tune and any guitar are the parts the charts are made from, so what you play is still what you hear. (The band's
- * extra parts go in its keys stem: seven channels or fewer keeps a song this long decoding at 32 kHz, src/audio/stems.ts.) */
-const ORIGINALS: Record<string, (c: Ctx) => Stems> = {
-  // synth-pop: an FM piano arpeggio in the choruses and the bridge, synth brass building through each pre-chorus, the
-  // square lead doubling the tune in the choruses
-  rooftop: (c) => {
-    const s = styled(c);
-    s.keys!.push(tr('arp', 5, arp(c, 16, (b) => (b.chorus || b.kind === 'bridge' ? 'r58358f5r58358f5' : b.kind === 'verse' ? 'r...5...8...5...' : undefined), 60, 0.36, 0.9), { rev: 55, vol: 84, pan: 88 }));
-    s.keys!.push(tr('build', 62, build(c, 55, 0.55), { rev: 45, vol: 90, pan: 54 }));
-    return s;
-  },
-  // lo-fi: the grand on the tune (darkened in the mix), a Rhodes on seventh chords, a fingered bass, a room kit
-  'late-bus': (c) => {
-    const s = styled(c, 0);
-    s.keys = [tr('rhodes', 4, sevenths(c, 8, (b) => (b.solo ? undefined : b.chorus ? 'x..x..x.' : 'x.....x.'), 52, 3, 0.5), { rev: 50, vol: 96, pan: 52, cho: 30 }), ...s.keys!.filter((t) => t.name === 'pad').map((t) => ({ ...t, vol: 64 }))];
-    s.bass![0].program = 33;
-    s.drums![0].program = 8;
-    return s;
-  },
-  // funk: horns doubling the tune in the choruses and the bridge, and stabbing the off-beats
+/** Which section a beat is in (its name), in a produced original. */
+const secAt = (p: Production, beat: number) => prodBars(p)[Math.max(0, Math.floor(beat / 4 + 1e-6))]?.name ?? '';
+const secKind = (p: Production, beat: number) => prodBars(p)[Math.max(0, Math.floor(beat / 4 + 1e-6))]?.kind ?? 'verse';
+
+/** The drummer's part (and the percussion player's), as General MIDI drum notes, each on its feel. */
+function prodKitNotes(c: Ctx, p: Production): N[] {
+  const spb = 60 / p.bpm;
+  return prodDrums(p, c.end).map((h) => ({ beat: Math.max(0, h.beat + h.late / spb), len: h.note === 49 ? 1.5 : 0.25, midi: h.note, vel: h.vel }));
+}
+function prodPercNotes(c: Ctx, p: Production, scale = 1): N[] {
+  const spb = 60 / p.bpm;
+  return prodPerc(p, c.end).map((h) => ({ beat: Math.max(0, h.beat + h.late / spb), len: 0.2, midi: h.note, vel: Math.min(1, h.vel * scale) }));
+}
+/** The bass player's part (a dead note short and soft), `oct` octaves up. */
+function prodBassNotes(c: Ctx, p: Production, oct = 0, scale = 1): N[] {
+  const spb = 60 / p.bpm;
+  return prodBass(p, c.spans, c.key, c.end).map((n) => ({ beat: Math.max(0, n.beat + n.late / spb), len: n.len, midi: n.midi + 12 * oct, vel: Math.min(1, n.vel * scale) }));
+}
+/** The rhythm part, voiced: `strums` the chords struck, `muted` the scratches; `len` scales each chord's length. */
+function prodCompNotes(c: Ctx, p: Production, ch: readonly Named[], voice: (x: Named) => number[], o: { muted?: boolean; when?: (beat: number) => boolean; len?: (beat: number) => number; vel?: number; roll?: number } = {}): N[] {
+  const spb = 60 / p.bpm;
+  const out: N[] = [];
+  for (const h of prodComp(p, c.end)) {
+    if (h.ghost !== !!o.muted || (o.when && !o.when(h.beat))) continue;
+    const x = namedAt(ch, h.beat);
+    const ms = voice(x);
+    const len = Math.min(h.len * (o.len?.(h.beat) ?? 1), x.beat + x.len - h.beat + 0.05);
+    // (struck down, low string first, a few milliseconds apart; the up-strokes from the top)
+    const up = Math.round(h.at * 2) % 2 === 1;
+    ms.forEach((m, i) => out.push({ beat: Math.max(0, h.beat + h.late / spb + (up ? ms.length - 1 - i : i) * (o.roll ?? 0.012)), len: Math.max(0.06, len), midi: m, vel: Math.min(1, h.vel * (o.vel ?? 1) * (1 - 0.04 * i) + wob(h.beat, 60 + i, 0.03)) }));
+  }
+  return out;
+}
+/** The tune in the sections `when` allows, `oct` octaves off the piano's pitch, each note `legato` of its length. */
+function prodTune(c: Ctx, p: Production, when: (name: string) => boolean, oct = 0, legato = 0.92, vel = 0.82): N[] {
+  const out: N[] = [];
+  for (const n of c.mel) {
+    if (!when(secAt(p, n.beat))) continue;
+    const inBar = n.beat % 4;
+    const strong = Math.abs(inBar) < 1e-6 ? 1 : Math.abs(inBar - Math.round(inBar)) < 1e-6 ? 0.93 : 0.86;
+    out.push({ beat: n.beat + wob(n.beat, 1, 0.006), len: Math.max(0.1, n.len * legato), midi: n.midi + 12 * oct, vel: Math.min(1, vel * strong + wob(n.beat, 2, 0.04)) });
+  }
+  return out;
+}
+/** A line of its own (ABC in the song's key, a unit an eighth), from bar `bar`, at the piano's pitch `oct` octaves off. */
+function prodLine(c: Ctx, p: Production, abc: string, bar: number, oct = 0, vel = 0.6, legato = 0.95): N[] {
+  const sc = scaleById(c.s.scale);
+  const root = melodyRoot(c.key);
+  return parseMelody(abc, p.key).notes.map((n) => ({ beat: bar * 4 + n.beat + wob(n.beat, 3, 0.005), len: n.len * legato, midi: scaleMidi(root, sc, n.degree) + n.acc + 12 * oct, vel: vel + wob(n.beat + bar, 4, 0.04) })).filter((n) => n.beat < c.end - 1e-6);
+}
+/** The tune a diatonic third over itself (a second guitar's harmony), in the sections `when` allows. */
+function prodThirds(c: Ctx, p: Production, when: (name: string) => boolean, oct = 0, vel = 0.55): N[] {
+  const sc = scaleById(c.s.scale);
+  const root = melodyRoot(c.key);
+  const out: N[] = [];
+  for (const st of c.s.starts)
+    for (const n of c.s.melody) {
+      const beat = st + n.beat;
+      if (beat >= c.end - 1e-6 || !when(secAt(p, beat))) continue;
+      out.push({ beat: beat + wob(beat, 5, 0.006), len: n.len * 0.9, midi: scaleMidi(root, sc, n.degree + 2) + 12 * oct, vel: vel + wob(beat, 6, 0.04) });
+    }
+  return out;
+}
+/** Held chords through the sections `when` allows (a pad, a string section), voiced by `voice`. */
+function prodPad(c: Ctx, p: Production, ch: readonly Named[], voice: (x: Named) => number[], when: (name: string) => boolean, vel: number): N[] {
+  const out: N[] = [];
+  for (const x of ch) {
+    if (x.beat >= c.end - 1e-6 || !when(secAt(p, x.beat))) continue;
+    const len = Math.min(x.len, c.end - x.beat);
+    for (const m of voice(x)) out.push({ beat: x.beat + wob(x.beat, m, 0.01), len: len * 0.97, midi: m, vel: vel + wob(x.beat, m + 1, 0.03) });
+  }
+  return out;
+}
+/** Chord stabs on a bar's pattern (drum characters) in the sections `when` allows. */
+function prodStabs(c: Ctx, p: Production, ch: readonly Named[], voice: (x: Named) => number[], pat: (name: string, k: number) => string | undefined, len: number, vel: number): N[] {
+  const out: N[] = [];
+  for (const b of prodBars(p)) {
+    const pt = pat(b.name, b.k);
+    if (!pt) continue;
+    for (let i = 0; i < pt.length; i++) {
+      const v = VEL[pt[i]];
+      if (v === undefined) continue;
+      const beat = b.beat + (i * 4) / pt.length;
+      if (beat >= c.end - 1e-6) continue;
+      const x = namedAt(ch, beat);
+      for (const m of voice(x)) out.push({ beat: beat + wob(beat, m + 9, 0.004), len, midi: m, vel: vel * v + wob(beat, 8, 0.03) });
+    }
+  }
+  return out;
+}
+
+const PRODUCED: Record<string, (c: Ctx) => Stems> = {
+  // Velvet Rope, disco-funk: a room kit, a fingered bass in octaves, a clean guitar's chank with its muted scratches,
+  // a string section on the intro's riff, strings and brass answering the chorus, a high string descant over the
+  // last chorus, a Rhodes under the verses
   'cold-brew': (c) => {
-    const s = styled(c);
-    s.lead!.push(tr('horns', 61, tune(c, 0, 0.7, (b) => b.chorus || b.kind === 'bridge', 0.55), { rev: 40, vol: 88, pan: 74 }));
-    s.keys!.push(tr('stabs', 61, hits(c, 16, (b) => (b.chorus ? '......x.......x.' : b.kind === 'bridge' ? 'x.........x.....' : undefined), 55, 1, 0.5), { rev: 40, vol: 82, pan: 44 }));
-    return s;
+    const p = PRODUCTIONS['cold-brew'];
+    const ch = namedChords(p, true);
+    const chorus = (s: string) => s.includes('chorus') && !s.startsWith('pre');
+    const notIntro = (s: string) => s !== 'intro';
+    return {
+      drums: [kit('kit', 8, prodKitNotes(c, p), { rev: 22, vol: 104 })],
+      perc: [kit('perc', 8, prodPercNotes(c, p), { rev: 30, vol: 92, pan: 84 })],
+      bass: [tr('bass', 33, prodBassNotes(c, p), { rev: 4, vol: 112 })],
+      lead: [tr('riff', 48, prodTune(c, p, (s) => s === 'intro', 0, 0.8, 0.85), { rev: 45, vol: 108, pan: 60 }), tr('sax', 65, prodTune(c, p, notIntro, -1, 0.9, 0.86), { rev: 42, vol: 114 }), tr('sax 8va', 65, prodTune(c, p, (s) => s === 'last chorus' || s === 'outro', 0, 0.85, 0.5), { rev: 50, vol: 80, pan: 52 })],
+      keys: [
+        tr('guitar', 27, prodCompNotes(c, p, ch, leader(60, { ext: true, size: 4 })), { rev: 22, vol: 98, pan: 38 }),
+        tr('scratch', 28, prodCompNotes(c, p, ch, leader(60, { size: 3 }), { muted: true, vel: 0.9 }), { rev: 18, vol: 84, pan: 38 }),
+        tr('rhodes', 4, prodPad(c, p, ch, leader(55, { ext: true, size: 4 }), (s) => s === 'intro' || s.startsWith('verse') || s === 'breakdown', 0.34), { rev: 50, vol: 84, pan: 70, cho: 40 }),
+        tr('strings', 49, [
+          ...prodPad(c, p, ch, leader(64, { size: 3 }), (s) => chorus(s) || s === 'breakdown' || s === 'outro', 0.3),
+          ...[20, 40, 56].flatMap((bar) => prodLine(c, p, 'z8 | z8 | z8 | z4 z e g a | z8 | z8 | z8 | z4 z e g a', bar, 1, 0.5)),
+          ...prodLine(c, p, "c'8 | d'8 | b8 | c'8 | c'8 | d'8 | e'4 d'4 | c'8", 56, 0, 0.4, 1),
+        ], { rev: 70, vol: 88, pan: 82 }),
+        tr('brass', 61, prodStabs(c, p, ch, leader(58, { size: 3 }), (s, k) => (chorus(s) || s === 'outro') && k % 4 !== 3 ? 'x.....X.........' : s.startsWith('pre') && k === 3 ? 'X.X.X.X.X.......' : undefined, 0.3, 0.55), { rev: 40, vol: 86, pan: 50 }),
+      ],
+    };
   },
-  // house: the grand on the stabs, strings in the choruses, the piano in eighths building into each chorus
+  // Night Market, amapiano: an 808 kit, the log drum (a knocking low tom over a sub), a Rhodes on sevenths from the
+  // first bar, a clean guitar's stabs, a flute on the tune (voices an octave under it in the choruses), a vocal pad in
+  // the choruses, a whistle's descant at the end
   'kite-hill': (c) => {
-    const s = styled(c);
-    s.keys!.push(tr('strings', 49, pad(c, 57, 0.36, (b) => b.chorus || b.kind === 'outro'), { rev: 75, vol: 84, pan: 76 }));
-    s.keys!.push(tr('build', 0, build(c, 57, 0.6), { rev: 45, vol: 92, pan: 44 }));
-    return s;
+    const p = PRODUCTIONS['kite-hill'];
+    const ch = namedChords(p, true);
+    const chorus = (s: string) => s.includes('chorus') && !s.startsWith('pre');
+    return {
+      drums: [kit('kit', 26, prodKitNotes(c, p), { rev: 25, vol: 104 })],
+      perc: [kit('perc', 26, prodPercNotes(c, p), { rev: 35, vol: 92, pan: 80 })],
+      bass: [tr('log', 117, prodBassNotes(c, p, 1), { rev: 12, vol: 108 }), tr('sub', 38, prodBassNotes(c, p, 0, 0.8), { rev: 0, vol: 100 })],
+      lead: [tr('flute', 73, prodTune(c, p, () => true, 0, 0.9, 0.85), { rev: 50, vol: 114 }), tr('oohs', 53, prodTune(c, p, chorus, -1, 0.95, 0.5), { rev: 60, vol: 86, pan: 50 })],
+      keys: [
+        tr('rhodes', 4, prodPad(c, p, ch, leader(55, { ext: true, size: 4 }), () => true, 0.55), { rev: 55, vol: 104, pan: 56, cho: 40 }),
+        tr('stabs', 27, prodCompNotes(c, p, ch, leader(62, { ext: true, size: 3 }), { roll: 0.006 }), { rev: 35, vol: 88, pan: 30 }),
+        tr('voices', 54, prodPad(c, p, ch, leader(62, { size: 3 }), (s) => chorus(s) || s === 'outro', 0.32), { rev: 75, vol: 84, pan: 90 }),
+        tr('whistle', 78, prodLine(c, p, 'f8 | e8 | e8 | d4 F4 | f8 | g8 | f4 e4 | d8', 52, -1, 0.42, 1), { rev: 65, vol: 78, pan: 70 }),
+      ],
+    };
   },
-  // reggae: the skank on a clean guitar as well as the piano, the organ's bubble on the off-beats, a flute an octave
-  // over the melodica in the choruses
-  'low-tide': (c) => {
-    const s = styled(c);
-    delete s.guitar;
-    s.keys!.push(compRhythm(c, 27, 57, 1, 0.7));
-    s.keys!.push(tr('bubble', 17, hits(c, 16, (b) => (b.solo ? undefined : '..x...x...x...x.'), 50, 1, 0.42), { rev: 40, vol: 78, pan: 80 }));
-    s.lead!.push(tr('flute', 73, tune(c, 1, 0.9, (b) => b.chorus, 0.45), { rev: 60, vol: 76, pan: 40 }));
-    return s;
+  // Skinned Knees, pop-punk: a power kit, a picked bass, two distorted guitars left and right (palm-muted in the
+  // verses, a clean one ringing through the bridge's first half), the tune on an overdriven lead, a glockenspiel and a
+  // choir on the post-chorus hook, a harmony a third over the tune in the last chorus
+  rooftop: (c) => {
+    const p = PRODUCTIONS.rooftop;
+    const ch = namedChords(p, false);
+    const power = (lo: number) => (x: Named) => {
+      const r = lo + ((x.pc - lo + 120) % 12);
+      return [r, r + 7, r + 12];
+    };
+    const muted = (b: number) => secKind(p, b) === 'verse';
+    const clean = (b: number) => secAt(p, b) === 'half-time bridge' && b < prodBars(p).findIndex((x) => x.name === 'half-time bridge') * 4 + 16;
+    const gtr = (prog: number, lo: number, pan: number, late: number) =>
+      tr(`guitar ${pan}`, prog, prodCompNotes(c, p, ch, power(lo), { when: (b) => !clean(b), len: (b) => (muted(b) ? 0.35 : 1), roll: 0.008 }).map((n) => ({ ...n, beat: n.beat + late, vel: muted(n.beat - late) ? n.vel * 0.85 : n.vel })), { rev: 18, vol: 92, pan });
+    return {
+      drums: [kit('kit', 16, prodKitNotes(c, p), { rev: 20, vol: 106 })],
+      perc: [kit('perc', 16, prodPercNotes(c, p), { rev: 30, vol: 88, pan: 76 })],
+      bass: [tr('bass', 34, prodBassNotes(c, p), { rev: 4, vol: 112 })],
+      lead: [tr('lead', 29, prodTune(c, p, () => true, -1, 0.95, 0.86), { rev: 35, vol: 112 })],
+      keys: [
+        gtr(30, 40, 22, 0),
+        gtr(29, 40, 106, 0.012),
+        tr('clean', 27, prodCompNotes(c, p, ch, leader(52, { size: 4 }), { when: clean, roll: 0.05 }), { rev: 45, vol: 96, pan: 64 }),
+        tr('glock', 9, prodTune(c, p, (s) => s.startsWith('post') || s === 'outro', 0, 0.5, 0.5), { rev: 50, vol: 74, pan: 84 }),
+        tr('choir', 52, prodTune(c, p, (s) => s.startsWith('post') || s === 'last chorus' || s === 'outro', -1, 1, 0.5), { rev: 60, vol: 82, pan: 44 }),
+        tr('harmony', 29, prodThirds(c, p, (s) => s === 'last chorus', -1, 0.5), { rev: 40, vol: 84, pan: 96 }),
+      ],
+    };
   },
 };
 
 const ARR: Record<string, (c: Ctx) => Stems> = {
-  ...ORIGINALS,
+  ...PRODUCED,
   // Für Elise as Beethoven wrote it: the right hand's tune (the lead) and everything else of the score, both hands,
   // with the pedal changed on each harmony
   'fur-elise': (c) => {
@@ -643,7 +773,8 @@ for (const s of SCORES) {
   const c = ctxOf(s);
   const stems = (ARR[id] ?? ((x: Ctx) => styled(x)))(c);
   // the intro (over the count-in): the home chord swelling on the pad or keys, and the drummer's pickup into bar one
-  if (!BARE.has(id)) {
+  // (the originals produced from scratch open as their own arrangements say, on their own first bar)
+  if (!BARE.has(id) && !PRODUCED[id]) {
     const holder = stems.strings?.[0] ?? stems.keys?.find((t) => t.name.includes('pad') || t.name === 'organ') ?? stems.keys?.[0] ?? stems.guitar?.[0];
     if (holder) {
       const home = { beat: -INTRO, len: INTRO, semis: s.home.semis, minor: s.home.minor };

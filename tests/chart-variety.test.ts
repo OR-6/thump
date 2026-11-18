@@ -4,10 +4,11 @@
  * VARIETY=1 prints the table; the floors are asserted.
  */
 import { describe, expect, it } from 'vitest';
-import { TUNES } from '../src/songs/tunes.js';
+import { ALL_TUNES, TUNES } from '../src/songs/tunes.js';
 import { bandStyle, scoreChart, scoreOf } from '../src/songs/score.js';
 import { drumHits, planBars } from '../src/songs/arrange.js';
 import { CLASSIC_KITS, classicKit } from '../src/songs/classic-kit.js';
+import { PRODUCTIONS, prodBars, prodBass, prodComp, prodDrums, prodKit, prodPerc, productionOf } from '../src/songs/originals.js';
 
 const INSTS = ['drums', 'piano', 'marimba', 'guitar', 'handpan', 'congas'] as const;
 const LEVELS = ['easy', 'normal', 'hard'] as const;
@@ -92,13 +93,57 @@ describe('the drums are the band\'s own drummer', () => {
     for (const tune of TUNES) {
       if (tune.lesson) continue;
       const s = scoreOf(tune);
-      const kit = drumHits(bandStyle(s), planBars(s), s.meter, s.end);
+      // (a classic's is its recording's drummer; a produced original's its own; the others their style's)
+      const prod = productionOf(tune.id);
+      const kit = classicKit(s) ?? (prod ? prodKit(prod, s.end) : drumHits(bandStyle(s), planBars(s), s.meter, s.end));
       const band = new Set([...kit.KICK, ...kit.SNARE, ...kit.HAT].map((h) => Math.round(h.beat * 48)));
+      if (CLASSIC_KITS[tune.id]) for (const c of s.starts.flatMap((st) => s.chords.map((x) => st + x.beat))) band.add(Math.round(c * 48));
       for (const level of ['easy', 'normal', 'hard'] as const) {
         const c = scoreChart(s, 'drums', level, 0, s.end, s.solos);
         const off = c.notes.filter((n) => !band.has(Math.round(n.beat * 48)));
         expect(off.length, `${tune.id} ${level}`).toBe(0);
       }
     }
+  });
+});
+
+describe('the originals produced from scratch (src/songs/originals.ts)', () => {
+  const ids = Object.keys(PRODUCTIONS);
+  it('every chart note, on every instrument at every level, is on a note its recording plays', () => {
+    for (const id of ids) {
+      const p = PRODUCTIONS[id];
+      const s = scoreOf(ALL_TUNES.find((t) => t.id === id)!);
+      const at = (xs: readonly { beat: number }[]) => new Set(xs.map((x) => Math.round(x.beat * 48)));
+      const spans = s.starts.flatMap((st) => s.chords.map((c) => ({ beat: st + c.beat, len: c.len, semis: c.semis, minor: c.minor })));
+      const drums = at(prodDrums(p, s.end).filter((h) => h.lane));
+      const perc = at(prodPerc(p, s.end).filter((h) => h.drum === 'congas'));
+      const bass = at(prodBass(p, spans, s.keyPc, s.end).filter((n) => !n.ghost));
+      const comp = at(prodComp(p, s.end).filter((h) => !h.ghost));
+      const chords = at(spans);
+      const under: Record<string, (key: string) => Set<number>> = {
+        drums: () => drums,
+        congas: () => new Set([...perc, ...drums]),
+        handpan: () => bass,
+        // (the guitar's chord changes are its other hand, on the neck, as each chord comes in)
+        guitar: (key) => (key === 'guitar:9' ? comp : chords),
+      };
+      for (const [inst, set] of Object.entries(under))
+        for (const level of LEVELS) for (const n of scoreChart(s, inst, level, 0, s.end, s.solos).notes) expect(set(n.key).has(Math.round(n.beat * 48)), `${id} ${inst} ${level} ${n.key} at ${n.beat}`).toBe(true);
+    }
+  });
+  it('each section but the last ends in a fill into the next, and the three open differently', () => {
+    for (const id of ids) {
+      const p = PRODUCTIONS[id];
+      const s = scoreOf(ALL_TUNES.find((t) => t.id === id)!);
+      const bars = prodBars(p);
+      const hits = prodDrums(p, s.end);
+      for (const x of s.sections!.slice(1)) {
+        const b = bars[x.bar - 1];
+        expect(hits.some((h) => h.mark === 'f' && h.beat >= b.beat && h.beat < b.beat + 4), `${id}: into bar ${x.bar}`).toBe(true);
+      }
+    }
+    // (their first four bars: no two play the same drums, bass and rhythm part)
+    const opens = ids.map((id) => JSON.stringify(prodBars(PRODUCTIONS[id]).slice(0, 4).map((b) => [b.lanes.kick, b.lanes.snare, b.lanes.hat, b.lanes.bass, b.lanes.comp])));
+    expect(new Set(opens).size).toBe(ids.length);
   });
 });

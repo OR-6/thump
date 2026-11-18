@@ -3,7 +3,7 @@
  * Hear a song's band without a headset: renders it offline in the running dev page through the real engine (the
  * clips, the mix, the reverb, the limiter), scheduled as the game schedules it, to WAV and MP3, and measures it.
  *
- *   node tools/render-song.mjs cold-brew low-tide [--out artifacts/audio/after] [--seconds 60]
+ *   node tools/render-song.mjs cold-brew kite-hill [--out artifacts/audio/after] [--seconds 60]
  *        [--player drums|piano|marimba|congas|none] [--as guitar] [--level easy|normal|hard] [--energy 0.8]
  *        [--only KICK,BASS,bed:chord] [--tag name]
  *
