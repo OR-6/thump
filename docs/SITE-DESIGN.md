@@ -10,11 +10,11 @@ The direction is still **the hit** (the icon: deep plum, off-white type, one hot
 2. **Six instruments:** six big captures in an uneven two-column mosaic, each with its name and one line on how it's played. Pictures, no title.
 3. **Go on, hit something.** The desk drawing, big, filled in the instruments' own colours. It plays itself as it scrolls in; click, tap or drag and it plays the headset's sounds.
 4. **Lessons and grades:** two rows, the picture leading and a short head beside it ("Lessons that wait for you to get it.", "Get an S. Then do it again on Hard.").
-5. **Setlist:** "19 songs" as one huge word, then a dense three-column poster, originals first.
+5. **Setlist:** "17 songs" as one huge word, then a dense three-column poster, originals first.
 6. **Play together:** the one hot field. "Four friends, four rooms, one song." Start a band or type a code.
 7. **Settings** (a disclosure) and the **footer:** "Made by OR-6" with the reason it exists, the specs as one line, the status, the credits.
 
-At most **three big titles** on the page: the H1, "19 songs" and "Four friends, four rooms, one song." Everything else is a smaller head (`.h2`, `.h3`) or a label.
+At most **three big titles** on the page: the H1, "17 songs" and "Four friends, four rooms, one song." Everything else is a smaller head (`.h2`, `.h3`) or a label.
 
 ## The one action
 

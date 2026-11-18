@@ -13,6 +13,7 @@ import { PIANO_BLACK, PIANO_CHORD, instZones, pianoBlacks, scaleById, scaleMidi,
 import { BAND_STYLES, bassLine, compEvents, congaHits, drumHits, pick, planBars, type BandStyle, type ChordSpan } from './arrange.js';
 import type { BedEvent } from './chart.js';
 import { classicKit } from './classic-kit.js';
+import { prodBass, prodComp, prodDrums, prodKit, prodPerc, productionOf, type Production } from './originals.js';
 import { LESSONS, TUNES, type SectionKind, type Style, type Tune } from './tunes.js';
 
 export type Level = 'easy' | 'normal' | 'hard';
@@ -233,9 +234,10 @@ export function scoreOf(tune: Tune): Score {
  * its best: measured over all six instruments at every level (each song x instrument out of 100: 40 for chart notes
  * with something in the recording under them, 20 the recording tight on the chart's clock, 20 a level's notes a
  * second in its band, 20 notes on the tune's own notes or the groove's kick, snare and bass), summed. Any song not
- * named here goes after, easiest first.
+ * named here goes after, easiest first. (The three produced from scratch, src/songs/originals.ts, stand after Mango
+ * Season, where the originals they replace stood: not yet measured.)
  */
-export const SONG_ORDER: readonly string[] = ['korobeiniki', 'drunken-sailor', 'can-can', 'mango-season', 'kite-hill', 'rooftop', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'turkish-march', 'canon', 'cold-brew', 'fur-elise', 'scarborough-fair', 'late-bus', 'amazing-grace', 'low-tide'];
+export const SONG_ORDER: readonly string[] = ['korobeiniki', 'drunken-sailor', 'can-can', 'mango-season', 'cold-brew', 'kite-hill', 'rooftop', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'turkish-march', 'canon', 'fur-elise', 'scarborough-fair', 'amazing-grace'];
 const orderOf = (id: string) => {
   const i = SONG_ORDER.indexOf(id);
   return i < 0 ? SONG_ORDER.length : i;
@@ -445,11 +447,27 @@ export function scoreParts(s: Score): BandPart[] {
   const sc = scaleById(s.scale);
   // (the drummer keeps time through the solos too: the game plays it soft there, unless the drums are yours)
   const plan = planBars(s);
+  const root = melodyRoot(s.keyPc);
+  const keys = melodyNotes(s).map((n) => ({ beat: n.beat, key: 'band:melody', vel: n.beat % 2 === 0 ? 0.95 : 0.85, midi: scaleMidi(root, sc, n.degree) + n.acc - 12, len: n.len, sound: st.lead }));
+  // (a song produced from scratch: its own drummer, conga player and bass player, src/songs/originals.ts)
+  const prod = productionOf(s.tune.id);
+  if (prod) {
+    const hits = prodDrums(prod, s.end);
+    const lane = (l: string): BandNote[] => hits.filter((h) => h.lane === l).map((h) => ({ beat: h.beat, key: h.key, vel: h.vel, late: h.late }));
+    const congas = prodPerc(prod, s.end).filter((h) => h.drum === 'congas').map((h) => ({ beat: h.beat, key: h.key, vel: h.vel * 0.16, late: h.late }));
+    const bass = prodBass(prod, spansOf(s), s.keyPc, s.end).filter((n) => !n.ghost).map((n) => ({ beat: n.beat, key: 'band:bass', vel: n.vel, midi: n.midi, len: n.len, late: n.late, sound: st.bass.sound }));
+    return [
+      { name: 'KICK', key: 'kit:kick', notes: lane('KICK') },
+      { name: 'SNARE', key: 'kit:snare', notes: lane('SNARE') },
+      { name: 'HAT', key: 'kit:hat', notes: lane('HAT') },
+      { name: 'PERC', key: 'congas:0', notes: congas },
+      { name: 'KEYS', key: 'band:melody', notes: keys },
+      { name: 'BASS', key: 'band:bass', notes: bass },
+    ];
+  }
   const kit = drumHits(st, plan, s.meter, s.end);
   const drum = (hs: typeof kit.KICK): BandNote[] => hs.map((h) => ({ beat: h.beat, key: h.key, vel: h.vel, late: h.late }));
   const perc = drum(congaHits(st, plan, s.meter, s.end));
-  const root = melodyRoot(s.keyPc);
-  const keys = melodyNotes(s).map((n) => ({ beat: n.beat, key: 'band:melody', vel: n.beat % 2 === 0 ? 0.95 : 0.85, midi: scaleMidi(root, sc, n.degree) + n.acc - 12, len: n.len, sound: st.lead }));
   const bass = bassLine(st, plan, s.meter, spansOf(s), s.keyPc, s.end).map((n) => ({ beat: n.beat, key: 'band:bass', vel: n.vel, midi: n.midi, len: n.len, late: n.late, sound: st.bass.sound }));
   return [
     { name: 'KICK', key: 'kit:kick', notes: drum(kit.KICK) },
@@ -471,6 +489,17 @@ export function scoreBed(s: Score): BedEvent[] {
   const out: BedEvent[] = [];
   for (let k = 0; k < 4; k++) out.push({ beat: -4 + k, voice: 'shaker', midi: 0, len: 0.25, vel: k === 0 ? 0.9 : 0.6 });
   out.push({ beat: -4, voice: 'chord', midi: chordMidi(s.home, key), len: 4, vel: 0.3, minor: s.home.minor });
+  const prod = productionOf(s.tune.id);
+  if (prod) {
+    // (a song produced from scratch: its own rhythm part, and its shaker and tambourine)
+    for (const h of prodComp(prod, s.end)) {
+      if (h.ghost) continue;
+      const c = chordAt(s, h.beat);
+      out.push({ beat: h.beat, voice: 'chord', midi: chordMidi(c, key), len: h.len, vel: h.vel * 0.42, minor: c.minor, sound: st.comp.sound });
+    }
+    for (const h of prodPerc(prod, s.end)) if (h.drum === 'shaker' || h.drum === 'tamb') out.push({ beat: h.beat, voice: 'perc', midi: 0, len: 0.25, vel: h.vel * 0.8, sound: h.drum === 'tamb' ? 'tambourine' : 'shaker' });
+    return out.sort((a, b) => a.beat - b.beat);
+  }
   const solo = { beat: 0, len: s.meter, semis: s.soloChord.semis, minor: s.soloChord.minor };
   out.push(...compEvents(st, planBars(s), s.meter, spansOf(s), solo, key, s.end));
   return out.sort((a, b) => a.beat - b.beat);
@@ -554,6 +583,8 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
   const out: (ChartNote & { rank: number; covers?: string })[] = [];
   const live: string[] = [];
   const g = grooveOf(s);
+  // (a song produced from scratch, src/songs/originals.ts: every part from its own players)
+  const prod = productionOf(t.id);
   const ok = (b: number) => b >= from - 1e-6 && b < to - 1e-6 && b < s.end - 1e-6 && !fills.some(([a, z]) => b >= a - 1e-6 && b < z - 1e-6);
   const add = (beat: number, key: string, vel: number, rank: number, covers?: string) => {
     if (ok(beat)) out.push({ beat, key, vel, rank, covers });
@@ -693,7 +724,8 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
             bs.push({ beat: at, degree: c.degree + (ch === '5' ? 4 : ch === '8' ? 7 : 0), strong: strongness(at, chordStart(at)) });
           }
     } else if (t.original) {
-      for (const n of bassLine(bandStyle(s), planBars(s), s.meter, spansOf(s), s.keyPc, s.end)) {
+      const line = prod ? prodBass(prod, spansOf(s), s.keyPc, s.end).filter((n) => !n.ghost) : bassLine(bandStyle(s), planBars(s), s.meter, spansOf(s), s.keyPc, s.end);
+      for (const n of line) {
         const d = sc.steps.indexOf((((n.midi - s.keyPc) % 12) + 12) % 12);
         if (d < 0) continue;
         bs.push({ beat: n.beat, degree: d, strong: strongness(n.beat, chordStart(n.beat)) });
@@ -728,7 +760,8 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // plays, the downbeats first, then the beats, then the rest, a level's gap apart; a fill bar rings out on its one
     const bst = bandStyle(s);
     const own = t.rhythm ?? (t.original ? '' : undefined);
-    if (own !== undefined) {
+    if (prod) prodStrums(s, prod, level, add);
+    else if (own !== undefined) {
       type R = { beat: number; r: number };
       const cands: R[] = [];
       bands.forEach((p, n) => {
@@ -779,7 +812,7 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // music already says; Easy keeps the beats, Normal the eighths, Hard all of it
     // (a classic's recording has no conga player: its congas follow its own drums, src/songs/classic-kit.ts)
     const ck = classicKit(s);
-    const own = ck ? [] : congaHits(bandStyle(s), planBars(s), s.meter, s.end);
+    const own = ck || prod ? [] : congaHits(bandStyle(s), planBars(s), s.meter, s.end);
     const keep = (at: number) => (level === 'easy' ? Math.abs(at - Math.round(at)) < 1e-6 : level === 'normal' ? Math.abs(at * 2 - Math.round(at * 2)) < 1e-6 : true);
     // (Easy: the drummer's beats, always there; the conga player's part from Normal, if it has enough on the grid)
     // (the conga player's own notes where it plays them, thinned by time between them: Normal a quarter of a second,
@@ -796,7 +829,8 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
       for (const h of order) if (mine.every((k) => Math.abs(k.beat - h.beat) >= gapC - 1e-6)) mine.push(h);
       mine.sort((a, b) => a.beat - b.beat);
     }
-    if (mine.length >= s.bars * s.starts.length * (level === 'easy' ? 1.2 : 0.75)) {
+    if (prod) prodCongas(s, prod, level, add);
+    else if (mine.length >= s.bars * s.starts.length * (level === 'easy' ? 1.2 : 0.75)) {
       for (const h of mine) add(h.beat, h.key, Number(h.key.slice(7)) % 2 ? 0.85 : 0.75, 0);
       // (and the low drum on the drummer's downbeats under it, so it's never sparser than Easy)
       for (const h of drumHits(bandStyle(s), planBars(s), s.meter, s.end).KICK) if (h.at !== undefined && h.mark === 'X' && Math.abs(h.at - Math.round(h.at)) < 1e-6) add(h.beat, 'congas:0', 0.8, 1);
@@ -820,7 +854,7 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // (a classic: the drummer on its own recording, src/songs/classic-kit.ts; where it rests, a kick with each new
     // chord, as its bass comes in)
     const ck = classicKit(s);
-    const kit = ck ?? drumHits(bandStyle(s), planBars(s), s.meter, s.end);
+    const kit = ck ?? (prod ? prodKit(prod, s.end) : drumHits(bandStyle(s), planBars(s), s.meter, s.end));
     const spb = 60 / t.bpm;
     const beatOf = (at: number) => Math.abs(at - Math.round(at)) < 1e-6;
     type C = { beat: number; key: string; vel: number; rank: number };
@@ -906,6 +940,63 @@ function restingChords(s: Score, kit: Record<'KICK' | 'SNARE' | 'HAT', { beat: n
   const busy = new Set<number>();
   for (const lane of [kit.KICK, kit.SNARE, kit.HAT]) for (const h of lane) busy.add(Math.floor((h.beat + 1e-6) / s.meter));
   return chords.filter((c) => c.beat < s.end - 1e-6 && !busy.has(Math.floor((c.beat + 1e-6) / s.meter))).map((c) => c.beat);
+}
+
+/** Where in its bar a note falls, as a player counts it: 3 the downbeat, 2 a beat, 1 an eighth between, 0 quicker. */
+function rankAt(at: number): number {
+  if (Math.abs(at) < 1e-6) return 3;
+  if (Math.abs(at - Math.round(at)) < 1e-6) return 2;
+  return Math.abs(at * 2 - Math.round(at * 2)) < 1e-6 ? 1 : 0;
+}
+
+/** The strongest first, then what fits round them: none closer than the level's gap to one kept (two together may). */
+function thin<T extends { beat: number; r: number }>(cands: readonly T[], level: Level, bpm: number): T[] {
+  const gap = (level === 'easy' ? EASY_GAP : level === 'normal' ? NORMAL_GAP : HARD_GAP) * (bpm / 60);
+  const kept: T[] = [];
+  for (const c of [...cands].sort((a, b) => b.r - a.r || a.beat - b.beat)) if (kept.every((k) => Math.abs(k.beat - c.beat) < 1e-6 || Math.abs(k.beat - c.beat) >= gap - 1e-6)) kept.push(c);
+  return kept.sort((a, b) => a.beat - b.beat);
+}
+
+/**
+ * The guitar on a song produced from scratch (src/songs/originals.ts): a strum wherever its rhythm part strikes a
+ * chord (its muted scratches left out), at the levels its author marked: Easy its accents, Normal its strums, Hard
+ * its light ones too; each a level's gap apart.
+ */
+function prodStrums(s: Score, p: Production, level: Level, add: (beat: number, key: string, vel: number, rank: number) => void): void {
+  const need = level === 'easy' ? 2 : level === 'normal' ? 1 : 0;
+  const cands: { beat: number; r: number }[] = [];
+  for (const h of prodComp(p, s.end)) if (!h.ghost && h.weight >= need) cands.push({ beat: h.beat, r: rankAt(h.at) + h.weight });
+  for (const c of thin(cands, level, s.tune.bpm)) add(c.beat, 'guitar:9', c.r === 3 ? 0.9 : c.r === 2 ? 0.75 : 0.65, 0);
+}
+
+/**
+ * The congas on a song produced from scratch: its conga player's part where it plays, with the low drum on the
+ * kick's one and three under it; where it rests, the drummer's on the two drums (the low drum with the kick, the high
+ * one on the backbeat, a slap on the open hat's accents on Hard). Easy the beats (where it rests, the kick's), Normal the
+ * eighths, Hard all of it,
+ * each a level's gap apart.
+ */
+function prodCongas(s: Score, p: Production, level: Level, add: (beat: number, key: string, vel: number, rank: number) => void): void {
+  const need = level === 'easy' ? 2 : level === 'normal' ? 1 : 0;
+  const barOf = (b: number) => Math.floor(b / s.meter + 1e-6);
+  const perc = prodPerc(p, s.end).filter((h) => h.drum === 'congas');
+  const kit = prodKit(p, s.end);
+  const played = new Set(perc.map((h) => barOf(h.beat)));
+  const cands: { beat: number; key: string; r: number }[] = [];
+  for (const h of perc) cands.push({ beat: h.beat, key: h.key, r: rankAt(h.at) });
+  for (const h of kit.KICK) {
+    if (h.mark === 'o' || h.mark === '-') continue;
+    if (played.has(barOf(h.beat))) {
+      if (Math.abs(h.at) < 1e-6 || Math.abs(h.at - 2) < 1e-6) cands.push({ beat: h.beat, key: 'congas:0', r: 2 });
+    } else cands.push({ beat: h.beat, key: 'congas:0', r: rankAt(h.at) });
+  }
+  for (const h of kit.SNARE) {
+    if (played.has(barOf(h.beat)) || h.mark === 'o' || h.mark === '-') continue;
+    // (Easy keeps to the low drum with the kick; the backbeat from Normal)
+    cands.push({ beat: h.beat, key: h.mark === 'f' && Math.round(h.at * 2) % 2 ? 'congas:0' : 'congas:2', r: Math.min(1, rankAt(h.at)) });
+  }
+  for (const h of kit.HAT) if (!played.has(barOf(h.beat)) && h.drum === 'open' && h.mark === 'X' && rankAt(h.at) < 2) cands.push({ beat: h.beat, key: 'congas:3', r: 0 });
+  for (const c of thin(cands.filter((x) => x.r >= need), level, s.tune.bpm)) add(c.beat, c.key, Number(c.key.slice(7)) % 2 ? 0.85 : 0.75, 0);
 }
 
 /** Where the last hit lights on each instrument: the tonic (or the kick and snare, the low conga, the strum). */

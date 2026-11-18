@@ -32,7 +32,8 @@ function pianoMidi(scale: string, zone: number): number {
 describe('the songs: classics with modern grooves, and originals', () => {
   it('a library of about twenty, in the order that shows it best (Korobeiniki first: measured over all six instruments), every song in it', () => {
     expect(SCORES.length).toBeGreaterThanOrEqual(18);
-    expect(SONGS.filter((s) => s.tune.original).length).toBe(6);
+    expect(SONGS.filter((s) => s.tune.original).length).toBe(4);
+    expect(SONGS.length).toBe(17);
     expect(new Set(TUNES.map((t) => t.id)).size).toBe(TUNES.length);
     expect(SONG_TRACKS.map((t) => t.id)).toEqual(SCORES.map((s) => s.tune.id));
     expect(SONGS[0].tune.id).toBe('korobeiniki');
@@ -238,9 +239,8 @@ describe('the songs: classics with modern grooves, and originals', () => {
   });
 
   it('a song in its whole form: its sections in order, the verses lighter than the choruses, a fill into each', () => {
-    const s = by('rooftop');
-    // (its pre-choruses are bridges: the band between a verse's size and a chorus's)
-    expect(s.sections!.map((x) => x.kind)).toEqual(['intro', 'verse', 'bridge', 'chorus', 'verse', 'bridge', 'chorus', 'bridge', 'chorus', 'outro']);
+    const s = by('mango-season');
+    expect(s.sections!.map((x) => x.kind)).toEqual(['intro', 'verse', 'chorus', 'verse', 'chorus', 'solo', 'bridge', 'chorus', 'outro']);
     const plan = planBars(s);
     const of = (kind: string) => plan.filter((b) => b.kind === kind);
     expect(Math.max(...of('verse').map((b) => b.level))).toBeLessThan(Math.min(...of('chorus').map((b) => b.level)));

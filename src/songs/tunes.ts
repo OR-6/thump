@@ -13,6 +13,8 @@
  *
  * Sources: where a melody was checked against a published transcription, it says so.
  */
+import { PRODUCED_TUNES } from './originals.js';
+
 /** A song's sections: how big the band plays (and how busy your part is) through each. */
 export type SectionKind = 'intro' | 'verse' | 'chorus' | 'bridge' | 'break' | 'solo' | 'outro';
 
@@ -220,43 +222,6 @@ const AMAZING_GRACE_VERSE = 'z4 D2 | G4 B G | B4 A2 | G4 E2 | D4 D2 | G4 B G | B
 const AMAZING_GRACE_VERSE_CHORDS = 'G | G | G | C | G | G | G | D | D | G | G | C | G | Em | D | G | G';
 const SCARBOROUGH_FAIR_VERSE = 'E4 E2 | B4 B2 | F3 G F2 | E6- | E2 B2 d2 | e4 d2 | B2 c2 A2 | B6- | B4 e2 | e4 e2 | d4 B2 | B2 A2 G2 | F2 D4- | D6 | E4 B2 | A4 G2 | F2 E2 D2 | E6';
 const SCARBOROUGH_FAIR_VERSE_CHORDS = 'Em | Em | D | Em | Em | Em | A | Em | Em | Em | G | G | D | D | Em | D . G | D | Em';
-// (Rooftop: the hook first, as a synth riff; a verse low in A minor; a pre-chorus that climbs over Dm and B flat;
-// a chorus that starts on the four chord and lifts through A flat and B flat, borrowed, to C)
-const ROOFTOP_HOOK = 'z c c d e2 d c | d3 B G4 | z B B c d2 c B | c3 A A4';
-const ROOFTOP_VERSE = 'z E A A c2 B A | c2 B A- A4 | z E G G c2 B G | B2 A G- G4 | z E A A c2 B A | c2 d e- e2 d c | d2 c A- A2 F2 | G2 A B- B4';
-const ROOFTOP_VERSE_CHORDS = 'Am | F | C | G | Am | F | Dm | G';
-const ROOFTOP_PRE = 'd2 d d d2 c d | d2 d d f2 e d | c2 c c c2 A c | d2 B2 G2 A B';
-const ROOFTOP_PRE_CHORDS = 'Dm | Bb | F | G';
-const ROOFTOP_CHORUS = `${ROOFTOP_HOOK} | z c c d e2 d c | d2 g2 g2 f e | c3 c d3 d | e8`;
-const ROOFTOP_CHORUS_CHORDS = 'F | G | Em | Am | F | G | Ab Bb | C';
-// (Late Bus: lo-fi, the verse half-spoken in short phrases, the chorus a lazy triplet falling off a held note, a
-// B flat minor borrowed in it; a bridge through D minor and B flat minor)
-const LATE_BUS_VERSE = 'z2 F G A2 G F | E4 z2 C D | z2 F G B2 A G | G4 z2 F E | z2 F G A2 G F | E2 C2 z2 A c | d2 c A3 F2 | G2 A2 B2 c2';
-const LATE_BUS_VERSE_CHORDS = 'Bb | Am | Gm | C | Bb | Am | Dm | C';
-const LATE_BUS_CHORUS = 'f4 (3f2 e2 d2 | e6 c2 | e4 (3e2 d2 c2 | d6 A2 | f4 (3f2 e2 d2 | f6 c2 | c4 (3d2 c2 A2 | F8';
-const LATE_BUS_CHORUS_CHORDS = 'Bb | C | Am | Dm | Bb | Bbm | F | F';
-// (Cold Brew: funk in E Dorian, a riff that pops off its low E and answers itself a fifth up; a chorus that pushes
-// ahead of the beat over G A F#m Bm and lands through C and D; a bridge of horn calls on C and D)
-const COLD_BREW_RIFF = 'E E z G z A B2 | d c B A z G E2';
-const COLD_BREW_VERSE = `${COLD_BREW_RIFF} | E E z G z A B2 | e2 d B z A B2 | B B z d z e f2 | a g f e z d B2 | B B z d z e f2 | e2 c A z B c d`;
-const COLD_BREW_VERSE_CHORDS = 'Em | A | Em | A | Em | A | Em | A';
-const COLD_BREW_CHORUS = 'B2 d2 e z d B- | B2 A2 c4 | A2 c2 f z e c- | c2 B2 B4 | B2 d2 e z d B- | B2 A2 c2 e2 | g4 f4 | e8';
-const COLD_BREW_CHORUS_CHORDS = 'G | A | F#m | Bm | G | A | C D | Em';
-// (Kite Hill: a house tune; a verse on the off-beats, a pre-chorus that rises, a chorus of short calls with an A major
-// in it, and a bridge down the Andalusian steps, D minor, C, B flat, A)
-const KITE_HILL_VERSE = 'z A z A d2 c A | z F z F A2 G F | z A z A c2 B A | G4 E2 F G | z A z A d2 c A | z F z F A2 G F | z d z d f2 e d | c2 B2 A2 G2';
-const KITE_HILL_VERSE_CHORDS = 'Dm | Bb | F | C | Dm | Bb | F | C';
-const KITE_HILL_PRE = 'G2 B2 d2 B2 | A2 c2 e2 c2 | B2 d2 f2 d2 | e2 e2 e2 e e';
-const KITE_HILL_PRE_CHORDS = 'Gm | Am | Bb | C';
-const KITE_HILL_HOOK = 'z d z f z d f2 | e2 c6 | z A z e z A e2 | f2 d6';
-const KITE_HILL_CHORUS = `${KITE_HILL_HOOK} | z d z f z d f2 | e2 d2 e2 c2 | f2 e c- c2 A2 | F8`;
-const KITE_HILL_CHORUS_CHORDS = 'Bb | C | A | Dm | Bb | C | F | F';
-// (Low Tide: a one-drop in A, the verse in slow steps, the chorus rising on each chord and sinking back, a G borrowed
-// before home; a bridge through D minor)
-const LOW_TIDE_VERSE = 'E2 A2 c3 B | A2 F2 F4 | E2 A2 c2 e2 | B6 z2 | E2 A2 c3 B | A2 d2 d3 c | c2 A2 A3 F | E2 F2 G2 B2';
-const LOW_TIDE_VERSE_CHORDS = 'A | D | A | E | A | D | F#m | E';
-const LOW_TIDE_CHORUS = 'z2 d f a4 | g2 f e- e4 | z2 c e g4 | f2 e c- c4 | z2 d f a4 | B2 e2 g2 f e | d3 B d2 f2 | e2 c2 A4';
-const LOW_TIDE_CHORUS_CHORDS = 'D | E | C#m | F#m | D | E | G D | A';
 const MANGO_SEASON_VERSE = 'B2 B2 B A G2 | E2 G2 A4 | B2 B2 B A G2 | A2 G2 F4 | B2 B2 B A G2 | E2 G2 A2 c2 | B2 A2 G2 E2 | D4 z4';
 const MANGO_SEASON_VERSE_CHORDS = 'Em | C | G | D | Em | C | G | D';
 const MANGO_SEASON_CHORUS = 'e2 d B- B2 G2 | e2 d B- B4 | d2 B G- G2 E2 | D2 E2 F2 A2 | e2 d B- B2 G2 | e2 d B- B2 A2 | G2 A2 B2 A2 | G8';
@@ -544,55 +509,6 @@ export const TUNES: readonly Tune[] = [
   },
   // ---------------------------------------------------------------- the originals
   {
-    // synth-pop: the hook first, then a verse in A minor, a pre-chorus that climbs, and a chorus that lifts through
-    // A flat and B flat to C
-    id: 'rooftop',
-    name: 'Rooftop',
-    by: 'Original',
-    bpm: 114,
-    key: 'C',
-    style: 'synthpop',
-    octave: -1,
-    original: true,
-    passes: 1,
-    // (intro, verse, pre-chorus, chorus, verse, pre-chorus, chorus, a bridge, the last chorus, and out on the hook)
-    ...form(
-      ['intro', ROOFTOP_HOOK, 'F | G | Em | Am'],
-      ['verse', ROOFTOP_VERSE, ROOFTOP_VERSE_CHORDS],
-      ['bridge', ROOFTOP_PRE, ROOFTOP_PRE_CHORDS],
-      ['chorus', ROOFTOP_CHORUS, ROOFTOP_CHORUS_CHORDS],
-      ['verse', ROOFTOP_VERSE, ROOFTOP_VERSE_CHORDS],
-      ['bridge', ROOFTOP_PRE, ROOFTOP_PRE_CHORDS],
-      ['chorus', ROOFTOP_CHORUS, ROOFTOP_CHORUS_CHORDS],
-      ['bridge', 'e4 c4 | f3 e c4 | e4 g4 | e3 B B4 | a4 e4 | f3 e c4 | c2 z c c2 c2 | d2 d d d B G A', 'Am | F | C | E | Am | F | Ab | G'],
-      ['chorus', ROOFTOP_CHORUS, ROOFTOP_CHORUS_CHORDS],
-      ['outro', 'z c c d e2 d c | d3 B G4 | c3 c d3 d | c8', 'F | G | Ab Bb | C'],
-    ),
-  },
-  {
-    // lo-fi hip-hop: a grand piano, softened, over boom-bap and seventh chords; a chorus that falls off a held note in
-    // triplets
-    id: 'late-bus',
-    name: 'Late Bus',
-    by: 'Original',
-    bpm: 84,
-    key: 'F',
-    style: 'hiphop',
-    original: true,
-    passes: 1,
-    // (intro, verse, chorus, verse, chorus, a short bridge, the chorus again, and out)
-    ...form(
-      ['intro', 'z4 z2 c d | e4 c4 | z4 z2 B c | d4 c2 z2', 'Bb | Am | Gm | C'],
-      ['verse', LATE_BUS_VERSE, LATE_BUS_VERSE_CHORDS],
-      ['chorus', LATE_BUS_CHORUS, LATE_BUS_CHORUS_CHORDS],
-      ['verse', LATE_BUS_VERSE, LATE_BUS_VERSE_CHORDS],
-      ['chorus', LATE_BUS_CHORUS, LATE_BUS_CHORUS_CHORDS],
-      ['bridge', 'f3 e d2 A2 | e3 d c4 | f6 c2 | c2 d2 e4', 'Dm | Am | Bbm | C'],
-      ['chorus', LATE_BUS_CHORUS, LATE_BUS_CHORUS_CHORDS],
-      ['outro', 'z d d c d2 c A | F8', 'Bb | F'],
-    ),
-  },
-  {
     // reggaeton: a sung line over the dembow, a chorus that falls into place
     id: 'mango-season',
     name: 'Mango Season',
@@ -615,72 +531,6 @@ export const TUNES: readonly Tune[] = [
       ['outro', 'e2 d B- B2 G2 | e2 d B- B2 A2 | G2 A2 B2 A2 | G8', 'Em | C | G D | G'],
     ),
   },
-  {
-    // funk in E Dorian: a riff that pops off its low E, a chorus that pushes ahead of the beat, horn calls in the bridge
-    id: 'cold-brew',
-    name: 'Cold Brew',
-    by: 'Original',
-    bpm: 104,
-    key: 'D',
-    style: 'funk',
-    octave: -1,
-    original: true,
-    passes: 1,
-    // (the riff, verse, chorus, verse, chorus, a bridge on C and D, the chorus again, and out on the riff)
-    ...form(
-      ['intro', COLD_BREW_RIFF, 'Em | A'],
-      ['verse', COLD_BREW_VERSE, COLD_BREW_VERSE_CHORDS],
-      ['chorus', COLD_BREW_CHORUS, COLD_BREW_CHORUS_CHORDS],
-      ['verse', COLD_BREW_VERSE, COLD_BREW_VERSE_CHORDS],
-      ['chorus', COLD_BREW_CHORUS, COLD_BREW_CHORUS_CHORDS],
-      ['bridge', 'e2 z e g2 e2 | f2 z f a2 f2 | g2 z g e2 g2 | a4 f4 | e2 z e g2 e2 | f2 z f a2 f2 | g4 e4 | f4 ^d4', 'C | D | C | D | C | D | Em | B'],
-      ['chorus', COLD_BREW_CHORUS, COLD_BREW_CHORUS_CHORDS],
-      ['outro', `${COLD_BREW_RIFF} | E E z G z A B2 | E8`, 'Em | A | Em | Em'],
-    ),
-  },
-  {
-    // house: the hook first, a verse on the off-beats, a pre-chorus that rises into a chorus of short calls
-    id: 'kite-hill',
-    name: 'Kite Hill',
-    by: 'Original',
-    bpm: 124,
-    key: 'F',
-    style: 'dance',
-    original: true,
-    passes: 1,
-    // (the hook, verse, pre-chorus, chorus, verse, pre-chorus, chorus, a bridge, the last chorus, and out)
-    ...form(
-      ['intro', KITE_HILL_HOOK, 'Bb | C | A | Dm'],
-      ['verse', KITE_HILL_VERSE, KITE_HILL_VERSE_CHORDS],
-      ['bridge', KITE_HILL_PRE, KITE_HILL_PRE_CHORDS],
-      ['chorus', KITE_HILL_CHORUS, KITE_HILL_CHORUS_CHORDS],
-      ['verse', KITE_HILL_VERSE, KITE_HILL_VERSE_CHORDS],
-      ['bridge', KITE_HILL_PRE, KITE_HILL_PRE_CHORDS],
-      ['chorus', KITE_HILL_CHORUS, KITE_HILL_CHORUS_CHORDS],
-      ['bridge', 'd4 f4 | e4 c4 | d4 B4 | A4 e4 | d2 f2 d2 A2 | e2 c2 G2 c2 | d2 B2 F2 B2 | c2 d2 e2 c2', 'Dm | C | Bb | A | Dm | C | Bb | C'],
-      ['chorus', KITE_HILL_CHORUS, KITE_HILL_CHORUS_CHORDS],
-      ['outro', 'z d z f z d f2 | e2 d2 e2 c2 | f2 e c- c2 A2 | F8', 'Bb | C | F | F'],
-    ),
-  },
-  {
-    // reggae: a one-drop, a verse in slow steps, a chorus that rises on each chord and sinks back
-    id: 'low-tide',
-    name: 'Low Tide',
-    by: 'Original',
-    bpm: 80,
-    key: 'A',
-    style: 'reggae',
-    original: true,
-    passes: 1,
-    // (intro, verse, chorus, verse, chorus, a bridge in D minor, and the last chorus)
-    ...form(
-      ['intro', 'z2 c e a4 | f2 e d- d4 | z2 c e a4 | B6 E F', 'A | D | A | E'],
-      ['verse', LOW_TIDE_VERSE, LOW_TIDE_VERSE_CHORDS],
-      ['chorus', LOW_TIDE_CHORUS, LOW_TIDE_CHORUS_CHORDS],
-      ['verse', LOW_TIDE_VERSE, LOW_TIDE_VERSE_CHORDS],
-      ['chorus', LOW_TIDE_CHORUS, LOW_TIDE_CHORUS_CHORDS],
-      ['bridge', 'd3 A- A4 | c3 E- E4 | d3 A- A4 | B2 c2 d2 e2', 'Dm | A | Dm | E'],
-      ['chorus', LOW_TIDE_CHORUS, LOW_TIDE_CHORUS_CHORDS],
-    ),
-  },
+  // (the three produced from scratch, each its own drummer, bass and rhythm part: src/songs/originals.ts)
+  ...PRODUCED_TUNES,
 ];
