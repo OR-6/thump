@@ -8,7 +8,7 @@
  */
 import { CanvasTexture, CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
 import { whenFonts } from '../ui/fonts.js';
-import { BRAND, MULT_PAIR, NEON, body, display, glowText, hgrad, rr, slant, vgrad } from '../ui/theme.js';
+import { MULT_PAIR, NEON, body, display, glowText, rr, slant } from '../ui/theme.js';
 
 const W = 1024;
 const H = 300;
@@ -132,7 +132,7 @@ export class Hud {
     g.lineJoin = 'round';
     g.lineCap = 'round';
     const cx = W / 2;
-    const DARK = '#1a0b2e';
+    const DARK = '#161419';
     // a number exactly as the screen draws its count-in: chunky italic, outlined, a gradient with a glow
     const big = (t: string, px: number, y: number, a: string, b: string, glow: string) => {
       g.font = display(px, 900);
@@ -142,10 +142,11 @@ export class Hud {
       g.lineWidth = 14;
       g.strokeStyle = DARK;
       g.strokeText(t, x, y);
-      glowText(g, t, x, y, vgrad(g, y - px * 0.8, y, a, b), glow, 24);
+      void a;
+      glowText(g, t, x, y, b, glow, 0);
     };
-    if (s.kind === 'count') big(String(s.n), 270, 262, NEON.cyan, NEON.magenta, NEON.magenta);
-    else if (s.kind === 'go') big('GO!', 230, 250, NEON.cyan, NEON.magenta, NEON.magenta);
+    if (s.kind === 'count') big(String(s.n), 270, 262, NEON.ink, NEON.ink, NEON.ink);
+    else if (s.kind === 'go') big('GO!', 230, 250, '#ff5a1f', '#ff5a1f', '#ff5a1f');
     else if (s.kind === 'mult') {
       // the screen's multiplier chip, large: a slanted plate in the streak's colours, the number dark on it
       const [a, b] = MULT_PAIR[Math.max(1, Math.min(4, s.n))];
@@ -153,11 +154,9 @@ export class Hud {
       g.font = display(200, 900);
       const w = g.measureText(t).width + 120;
       slant(g, cx - w / 2, 34, w, 232);
-      g.shadowColor = b;
-      g.shadowBlur = 22;
-      g.fillStyle = vgrad(g, 34, 266, a, b);
+      void a;
+      g.fillStyle = b;
       g.fill();
-      g.shadowBlur = 0;
       g.textBaseline = 'alphabetic';
       g.textAlign = 'left';
       g.fillStyle = DARK;
@@ -203,32 +202,33 @@ export class Hud {
       const py = 4;
       const ph = H - 8;
       rr(g, px, py, pw, ph, 30);
-      g.fillStyle = vgrad(g, py, py + ph, 'rgba(29,11,44,0.95)', 'rgba(38,16,58,0.95)');
+      g.fillStyle = 'rgba(22,20,25,0.95)';
       g.fill();
-      g.lineWidth = 4;
-      g.strokeStyle = '#3d2357';
+      g.lineWidth = 3;
+      g.strokeStyle = '#36323b';
       g.stroke();
       const tx = px + 48;
       const top = lines.length > 1 ? py + 64 : lines.length || foot ? py + 80 : py + ph / 2 + 6;
       g.textBaseline = 'middle';
       g.textAlign = 'left';
       g.font = display(size, 900);
-      const fill = s.gold ? vgrad(g, top - size / 2, top + size / 2, '#fff1a8', '#ffb000') : s.hot ? vgrad(g, top - size / 2, top + size / 2, '#ffffff', NEON.cyan) : NEON.ink;
-      glowText(g, cmd, tx, top, fill, s.gold ? NEON.gold : s.hot ? NEON.cyan : 'rgba(255,181,71,0.25)', s.hot || s.gold ? 18 : 8);
+      // (flat words: gold for the best things, orange for "do this now", off-white otherwise)
+      const fill = s.gold ? '#ffc93c' : s.hot ? '#ff5a1f' : NEON.ink;
+      glowText(g, cmd, tx, top, fill, fill, 0);
       if (lines.length) {
         g.font = body(sz, 600);
         g.fillStyle = NEON.muted;
         lines.forEach((l, i) => g.fillText(l, tx, top + size / 2 + (lines.length > 1 ? 24 : 32) + i * (sz + 6)));
       }
       if (foot) {
-        // the screen's primary button: a slanted plate, magenta into orange, white italic on it
+        // the sign's one thing to do: the panel's primary button, flat orange, dark words
         const bh = 64;
         const by = py + ph - bh - 14;
         slant(g, tx - 6, by, fw, bh);
-        g.fillStyle = BRAND.hot;
+        g.fillStyle = '#ff5a1f';
         g.fill();
         g.font = display(40, 900);
-        g.fillStyle = '#ffffff';
+        g.fillStyle = '#1a0d07';
         g.fillText(foot, tx + 34, by + bh / 2 + 2);
       }
       if (s.icon === 'stick') {
@@ -267,7 +267,7 @@ export class Hud {
    * brightest. So you can see which way you're off, and put it right.
    */
   private drawPlay(g: CanvasRenderingContext2D, s: Extract<HudSay, { kind: 'play' }>): void {
-    const DARK = '#1a0b2e';
+    const DARK = '#161419';
     const [a, b] = MULT_PAIR[Math.max(1, Math.min(4, s.mult))];
     g.textBaseline = 'alphabetic';
     // the run (from 2: one hit isn't a run)
@@ -280,7 +280,7 @@ export class Hud {
       g.lineWidth = 12;
       g.strokeStyle = DARK;
       g.strokeText(run, x, 150);
-      glowText(g, run, x, 150, vgrad(g, 30, 150, a, b), b, 20);
+      glowText(g, run, x, 150, b, b, 0);
       g.font = display(40, 700);
       g.textAlign = 'center';
       g.fillStyle = NEON.muted;
@@ -293,11 +293,8 @@ export class Hud {
       const w = g.measureText(t).width + 70;
       const x = 640;
       slant(g, x, 40, w, 130);
-      g.shadowColor = b;
-      g.shadowBlur = 16;
-      g.fillStyle = vgrad(g, 40, 170, a, b);
+      g.fillStyle = b;
       g.fill();
-      g.shadowBlur = 0;
       g.textAlign = 'left';
       g.fillStyle = DARK;
       g.fillText(t, x + 35, 146);
@@ -312,7 +309,7 @@ export class Hud {
     g.fillStyle = 'rgba(255,255,255,0.12)';
     g.fill();
     rr(g, at(-0.06), y - 9, at(0.06) - at(-0.06), 18, 9);
-    g.fillStyle = 'rgba(255,181,71,0.28)';
+    g.fillStyle = 'rgba(255,90,31,0.35)';
     g.fill();
     g.fillStyle = 'rgba(255,255,255,0.7)';
     g.fillRect((x0 + x1) / 2 - 2, y - 22, 4, 44);
@@ -328,7 +325,7 @@ export class Hud {
       const o = s.errs[(s.i - s.n + k + N * 2) % N];
       const off = Math.abs(o);
       g.globalAlpha = 0.3 + 0.7 * ((k + 1) / s.n);
-      g.fillStyle = off <= 0.06 ? NEON.cyan : off <= 0.12 ? '#3cf0a0' : o < 0 ? '#ff9a3c' : '#d2a54a';
+      g.fillStyle = off <= 0.06 ? NEON.cyan : off <= 0.12 ? '#9fd98a' : o < 0 ? '#ffb27a' : '#a29da8';
       const w = k === s.n - 1 ? 10 : 6;
       g.fillRect(at(o) - w / 2, y - 26, w, 52);
     }

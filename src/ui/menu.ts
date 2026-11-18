@@ -8,6 +8,8 @@ import { KEYS, SCALES, SHELF, instDef } from '../kit/shelf.js';
 export type PageId = 'main' | 'free' | 'instruments' | 'inst' | 'songs' | 'band' | 'join' | 'name' | 'reset' | 'maker' | 'settings' | 'song' | 'build' | 'results' | 'tune' | 'pause';
 
 export interface Item {
+  /** A few names to show on it (the songs tile: the top of the setlist). */
+  list?: string[];
   id: string;
   label: string;
   /** A second, smaller line. */
@@ -124,7 +126,7 @@ function buildPageFor(m: MenuInput): Page {
       const n = m.songs.filter((x) => (x.kind ?? 'song') === 'song').length;
       const nl = m.songs.filter((x) => x.kind === 'lesson').length;
       const items: Item[] = [
-        { id: 'nav:songs', label: 'Songs', sub: nl ? `${n} songs, ${nl} lessons` : `${n} songs`, icon: 'menu:songs', kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
+        { id: 'nav:songs', label: 'Songs', sub: nl ? `${n} songs, ${nl} lessons` : `${n} songs`, list: m.songs.filter((x) => x.kind !== 'lesson').slice(0, 4).map((x) => x.name), kind: 'hero', x: 32, y: 176, w: C8, h: 480 },
         { id: 'nav:instruments', label: 'Instruments', sub: m.inst.name, icon: m.inst.id, kind: 'tile', x: X3, y: 176, w: C4, h: 480 },
         { id: 'nav:build', label: 'Make a track', sub: 'Build a loop, play on it', kind: 'button', x: 32, y: BOT.y, w: C6, h: BOT.h },
         { id: 'nav:band', label: 'Play together', sub: m.band.state === 'connected' ? `${m.band.players} in the band` : 'Up to four', kind: 'button', x: 32 + C6 + 16, y: BOT.y, w: C6, h: BOT.h },
@@ -310,7 +312,7 @@ function buildPageFor(m: MenuInput): Page {
       items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in the room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when you play', m.settings.light !== false, 5), t('set:guitarlap', 'Guitar in your lap', m.settings.guitarLap !== false, 6), t('set:table', 'On the table', m.settings.onTable !== false, 7));
       // (your name on the world's boards: a page to change it)
       // (its own row, clear of the buttons under it and the glow of Done)
-      items.push({ id: 'nav:name', label: 'Your name', sub: m.settings.name, kind: 'button', x: 32, y: 176 + 4 * 96, w: W - 64, h: 84 });
+      items.push({ id: 'nav:name', label: m.settings.name ? `Playing as ${m.settings.name}` : 'Your name', kind: 'button', x: 32, y: 176 + 4 * 96, w: W - 64, h: 84 });
       // (putting the panel back, and starting over, share the left half)
       const hw = (C6 - 16) / 2;
       items.push({ id: 'set:panel', label: 'Panel', sub: 'Put back', kind: 'button', x: 32, y: BOT.y, w: hw, h: BOT.h, off: !m.settings.panelMoved });

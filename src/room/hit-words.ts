@@ -13,7 +13,7 @@ import { FONT, whenFonts } from '../ui/fonts.js';
 /** (the last two: a Good that was early or late, in Good's green: still counted, but it says which way) */
 const WORDS = ['PERFECT', 'GOOD', 'EARLY', 'LATE', 'EARLY ', 'LATE '] as const;
 /** Each word's own neon (a cyan Perfect, a green Good, an orange Early, a violet Late). */
-const INK: Record<string, [string, string]> = { PERFECT: ['#ffffff', '#ffb547'], GOOD: ['#e6fff4', '#3cf0a0'], EARLY: ['#fff0dd', '#ff9a3c'], LATE: ['#efe6ff', '#d2a54a'], 'EARLY ': ['#e6fff4', '#3cf0a0'], 'LATE ': ['#e6fff4', '#3cf0a0'] };
+const INK: Record<string, [string, string]> = { PERFECT: ['#ffe2b8', '#ffe2b8'], GOOD: ['#9fd98a', '#9fd98a'], EARLY: ['#ffb27a', '#ffb27a'], LATE: ['#a29da8', '#a29da8'], 'EARLY ': ['#9fd98a', '#9fd98a'], 'LATE ': ['#9fd98a', '#9fd98a'] };
 const POOL = 6;
 /** How long a word is up (s). */
 const LIFE = 0.42;
@@ -37,16 +37,16 @@ function wordTexture(word: string): CanvasTexture {
     // the screen's own look (src/ui/theme.ts): the judgement's colour as a light-to-colour gradient, a dark outline so
     // it reads over a bright desk, a glow in its colour
     g.lineJoin = 'round';
-    g.strokeStyle = '#1a0b2e';
-    g.lineWidth = 18;
+    g.strokeStyle = '#161419';
+    g.lineWidth = 16;
     g.strokeText(word, x, y);
     const [a, b] = INK[ink] ?? ['#ffffff', '#ffffff'];
     const gr = g.createLinearGradient(0, y - 46, 0, y + 46);
     gr.addColorStop(0, a);
     gr.addColorStop(1, b);
-    g.shadowColor = b;
-    g.shadowBlur = 20;
-    g.fillStyle = gr;
+    // (flat: one colour, no glow)
+    g.fillStyle = b;
+    void gr;
     g.fillText(word, x, y);
     g.shadowBlur = 0;
     tex.needsUpdate = true;

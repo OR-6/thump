@@ -32,19 +32,19 @@ export function withAlpha(hex: string, a: number): string {
 export const hexNum = (hex: string): number => parseInt(hex.slice(1), 16);
 
 export const NEON = {
-  bg0: '#1d0b2c',
-  bg1: '#26103a',
-  ink: '#f6efe4',
-  muted: '#b9aac9',
-  dim: '#7d6b92',
-  cyan: '#ffb547',
-  magenta: '#ff4b2b',
-  violet: '#d2a54a',
+  bg0: '#161419',
+  bg1: '#1c1a1f',
+  ink: '#f2eee8',
+  muted: '#a29da8',
+  dim: '#6d6873',
+  cyan: '#ffe2b8',
+  magenta: '#ff5a1f',
+  violet: '#a29da8',
   green: '#8fdc8a',
   gold: '#ffd23f',
   orange: '#ff9a3c',
   red: '#ff6b5a',
-  plate: 'rgba(29,11,44,0.86)',
+  plate: 'rgba(22,20,25,0.94)',
 } as const;
 
 /** Each judgement's colour. */
@@ -53,23 +53,25 @@ export const JUDGE = { perfect: NEON.cyan, good: NEON.green, miss: NEON.red } as
 export const LEVEL_INK: Record<string, string> = { easy: NEON.green, normal: NEON.gold, hard: NEON.red };
 /** Each grade's pair (a gradient, light to deep). */
 export const GRADE_PAIR: Record<string, [string, string]> = {
-  S: ['#fff1a8', '#ffb000'],
-  A: ['#b8ffe0', '#22d68a'],
-  B: ['#ffe0b8', '#ff8a3c'],
-  C: ['#e0ccff', '#d2a54a'],
-  D: ['#d6cfe8', '#7a6f98'],
+  S: ['#ffc93c', '#ffc93c'],
+  A: ['#9fd98a', '#9fd98a'],
+  B: ['#f2eee8', '#f2eee8'],
+  C: ['#a29da8', '#a29da8'],
+  D: ['#6d6873', '#6d6873'],
 };
+/** The panel's surfaces (see docs/UI-DIRECTION.md): flat graphite, a hairline, one orange. */
+export const UI = { bg: '#161419', raised: '#211e24', sel: '#2b2730', line: '#36323b', ink: '#f2eee8', ink2: '#a29da8', ink3: '#6d6873', accent: '#ff5a1f', accentInk: '#1a0d07' } as const;
 /** The three tiers of what you press: the one hot primary, white secondaries, outlined tertiaries. */
 export const SECONDARY = new Set(['back', 'nav:main', 'next', 'again:easy', 'pause', 'nav:settings']);
 /** Each instrument's own light (the panel's edge flashes it as you play). */
 export const INST_LIGHT: Record<string, number> = { drums: 0xffb347, piano: 0xf3ead8, guitar: 0xff7a2f, handpan: 0xc9a26b, marimba: 0xd0485a, congas: 0xe0b07a };
 /** The streak's ladder: ×2 cyan, ×3 green, ×4 gold. */
 export const MULT_PAIR: [string, string][] = [
-  ['#ffffff', '#d9cfff'],
-  ['#ffffff', '#d9cfff'],
-  ['#ffe0b8', '#ff8a3c'],
-  ['#b8ffe0', '#22d68a'],
-  ['#fff1a8', '#ffb000'],
+  ['#f2eee8', '#f2eee8'],
+  ['#f2eee8', '#f2eee8'],
+  ['#ffb27a', '#ffb27a'],
+  ['#9fd98a', '#9fd98a'],
+  ['#ffc93c', '#ffc93c'],
 ];
 
 /** A display font: bold, upright. */
@@ -78,14 +80,15 @@ export const body = (px: number, weight = 600) => `${weight} ${px}px ${FONT}`;
 
 /** A slanted plate (a parallelogram leaning right by `k` px), as a path. */
 export function slant(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, _k?: number): void {
-  // (one angle everywhere: 10 degrees, whatever the height)
+  // (no slant any more: a plain rounded rectangle, like a button on a piece of gear)
   void _k;
-  const k = Math.round(h * 0.176);
+  const r = Math.min(14, h / 4, w / 4);
   g.beginPath();
-  g.moveTo(x + k, y);
-  g.lineTo(x + w, y);
-  g.lineTo(x + w - k, y + h);
-  g.lineTo(x, y + h);
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
   g.closePath();
 }
 
@@ -106,10 +109,10 @@ export function hgrad(g: CanvasRenderingContext2D, x0: number, x1: number, stops
  * from your playing, see the edge flash.) */
 export function stage(g: CanvasRenderingContext2D, w: number, h: number, r = 40): void {
   rr(g, 4, 4, w - 8, h - 8, r);
-  g.fillStyle = vgrad(g, 0, h, 'rgba(29,11,44,0.94)', 'rgba(38,16,58,0.94)');
+  g.fillStyle = 'rgba(22,20,25,0.96)';
   g.fill();
   g.lineWidth = 3;
-  g.strokeStyle = '#3d2357';
+  g.strokeStyle = '#36323b';
   g.stroke();
 }
 
@@ -157,10 +160,8 @@ export function rr(g: CanvasRenderingContext2D, x: number, y: number, w: number,
 /** A pill badge: a colour (or gradient) fill, dark or light text centred. */
 export function pill(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill: string | CanvasGradient, text: string, ink: string, font: string, glow?: string): void {
   rr(g, x, y, w, h, h / 2);
-  if (glow) {
-    g.shadowColor = glow;
-    g.shadowBlur = 16;
-  }
+  // (no glow: flat, like the rest)
+  void glow;
   g.fillStyle = fill;
   g.fill();
   g.shadowBlur = 0;
