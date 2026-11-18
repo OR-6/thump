@@ -1,10 +1,10 @@
 /**
- * The 2D page shown outside the headset: Thump's site (docs/SITE-DESIGN.md). The hero is a muted loop of the game
- * being played with one line over it and one action, which depends on where you are: in the Quest's browser it
- * enters mixed reality, on a computer it plays the loop full screen (the address to type on the Quest beside it), on
- * a phone it sends the link on. Then the six instruments as big pictures; a drawing of the desk that plays itself
- * as it scrolls in and then plays the headset's own sounds under your clicks; lessons and grades; the setlist as a
- * poster; playing together (start a band or type a friend's code); the settings; a footer with the maker.
+ * The 2D page shown outside the headset: Thump's hackathon page (docs/SITE-DESIGN.md). What it is in one line and one
+ * action, which depends on where you are: in the Quest's browser it enters mixed reality, on a computer it plays the
+ * video (or, until there is one, goes to the drawing), on a phone it sends the link on. Then the video and the
+ * screenshots (slots that fill themselves when the files are in public/site), how to play, the six instruments as a
+ * drawing that plays the headset's own sounds, the songs, making a track and playing together, the settings, and who
+ * made it.
  */
 import { VisibilityState, type World } from '@iwsdk/core';
 import { audio, type Voice } from '../audio/engine.js';
@@ -14,55 +14,70 @@ import { coop, normaliseCode, type CoopStatus } from '../net/coop.js';
 import { asPlayer } from '../net/band.js';
 import { PADS, type Lane } from '../config.js';
 import { CONGA, handpanZones, marimbaZones, percVoice, pianoBlacks, pianoZones, strumNotes, type InstId } from '../kit/shelf.js';
-import { LESSONS, TUNES } from '../songs/tunes.js';
+import { TUNES } from '../songs/tunes.js';
 import { scoreOf } from '../songs/score.js';
-import { ringMarkSvg, wordmarkSvg } from './brand.js';
+import { ringMarkSvg } from './brand.js';
 import { PAGE_ROOT, PAGE_SCALE, centreOnTray, deskSvg } from './landing-drawing.js';
 
 const LIVE_URL = 'playthump.pages.dev';
 
-/** The six, in the page's order: the name, how you play it (in a line), and its picture from the game. */
-const BAND: { id: InstId; label: string; line: string; alt: string }[] = [
-  { id: 'drums', label: 'Drums', line: 'Slap the heads with your palms. Make a fist and there’s a stick in it.', alt: 'The drum kit on the desk mid-song, seen from the seat: a ring closing onto the snare, Perfect on the bass drum.' },
-  { id: 'guitar', label: 'Guitar', line: 'Across your lap, like a real one. One hand holds the chord, the other strums. Pinch and you’ve got a pick.', alt: 'The acoustic guitar held across the lap from the seat, chord names along the neck, a Perfect on the strings.' },
-  { id: 'piano', label: 'Piano', line: 'Real-size keys. Hold one down and it rings on; drag a finger along them for a glissando.', alt: 'The piano keyboard on the desk mid-song, a key lit as it is pressed.' },
-  { id: 'marimba', label: 'Marimba', line: 'Eight rosewood bars. A fist holds a mallet.', alt: 'The rosewood marimba on the desk mid-song, a bar lit as it is hit.' },
-  { id: 'congas', label: 'Congas', line: 'Palm in the middle for an open tone, fingers on the edge for a slap.', alt: 'Two congas on the desk mid-song, a ring closing onto one head.' },
-  { id: 'handpan', label: 'Handpan', line: 'The deep note in the middle, eight around it.', alt: 'The handpan on the desk mid-song, a note lit as it is played.' },
+/**
+ * The video and the screenshots. Drop the files into public/site with these names and they show up; until a file is
+ * there its slot shows a quiet empty state. Add a line here for another screenshot.
+ */
+const VIDEO = { src: './site/video.mp4', label: 'Thump being played on a Quest 3' };
+const SHOTS: { src: string; alt: string }[] = [
+  { src: './site/shot-1.jpg', alt: 'A screenshot of Thump from the headset' },
+  { src: './site/shot-2.jpg', alt: 'A screenshot of Thump from the headset' },
+  { src: './site/shot-3.jpg', alt: 'A screenshot of Thump from the headset' },
+];
+
+/** The six, in the page's order: the name and how you play it, in a line. */
+const BAND: { id: InstId; label: string; line: string }[] = [
+  { id: 'piano', label: 'Keyboard', line: 'Piano keys at real size. They react to your fingertips, so you can rest your palm and nothing plays. You can slide a finger along them too.' },
+  { id: 'drums', label: 'Drums', line: 'Slap them with a flat hand, or make a fist and you get a stick.' },
+  { id: 'marimba', label: 'Marimba', line: 'Make fists and they turn into mallets.' },
+  { id: 'congas', label: 'Congas', line: 'Palm in the middle for an open tone, fingers on the edge for a slap.' },
+  { id: 'handpan', label: 'Handpan', line: 'A deep note in the middle and eight around it.' },
+  { id: 'guitar', label: 'Guitar', line: 'It sits on your lap. Your left hand picks the chord on the neck, your right hand strums, and pinching gives you a pick.' },
 ];
 const labelOf = (id: InstId) => BAND.find((b) => b.id === id)?.label ?? id;
+const lineOf = (id: InstId) => BAND.find((b) => b.id === id)?.line ?? '';
 
 /** What isn't obvious from a drawing, under it (most say nothing). */
 const ABOUT: Partial<Record<InstId, string>> = {
   piano: 'A black key plays the notes either side of it. The round button is a chord.',
   guitar: 'Pick a chord on the neck, then strum over the soundhole.',
-  congas: 'Inside the dashed line: open tone. Outside it: slap.',
+  congas: 'Inside the dashed line is the open tone, outside it the slap.',
 };
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const two = (n: number) => String(n).padStart(2, '0');
-/** A song's length at full speed, from its score: its passes and solos to the last note. */
+/** A song's length at full speed, from its score. */
 const lengthOf = (t: (typeof TUNES)[number]) => {
   const s = Math.round(((scoreOf(t).end + 1) * 60) / t.bpm);
   return `${Math.floor(s / 60)}:${two(s % 60)}`;
 };
+/** "a", "a and b", "a, b and c" */
+const andList = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
 /** Where the page is open: the headset's browser (it can enter), a phone (it sends the link on), or a computer. */
 type Where = 'xr' | 'phone' | 'desk';
 
+/** An empty slot: the viewfinder's corners, its name, one line. */
+const emptySlot = (label: string, line: string, play = false) =>
+  `<div class="empty">${play ? '<svg class="play-mark" viewBox="0 0 44 44" aria-hidden="true"><path d="M16 12.5v19l15-9.5z"/></svg>' : ''}<span class="silk"><span class="dot" aria-hidden="true"></span>${label}</span><p>${line}</p></div>`;
+
 export function mountLanding(world: World): void {
-  const songs = [...TUNES.filter((t) => t.original), ...TUNES.filter((t) => !t.original)];
-  const originals = TUNES.filter((t) => t.original).length;
-  const songRow = (t: (typeof TUNES)[number]) =>
-    `<li class="song${t.original ? ' orig' : ''}"><span class="name">${esc(t.name)}</span><span class="meta-line">${esc(t.original ? 'Original' : t.by)}<span class="dot-sep" aria-hidden="true"> / </span><span class="nb">${t.bpm} bpm</span><span class="dot-sep" aria-hidden="true"> / </span><span class="nb"><span class="vh">length </span>${lengthOf(t)}</span></span></li>`;
-
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const conn = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
-  const slow = !!conn && (conn.saveData === true || /(^|-)2g$/.test(conn.effectiveType ?? ''));
-  const autoplay = !reduce && !slow;
-
-  const shot = (name: string, alt: string, w = 1200, h = 800, lazy = true) =>
-    `<img src="./site/${name}.webp" width="${w}" height="${h}" ${lazy ? 'loading="lazy" decoding="async"' : ''} alt="${esc(alt)}" />`;
+  // (the count comes from the songs themselves: when an original is added or taken out, the page follows)
+  const originals = TUNES.filter((t) => t.original);
+  const classics = TUNES.length - originals.length;
+  const songs = [...originals, ...TUNES.filter((t) => !t.original)];
+  const songRow = (t: (typeof TUNES)[number], i: number) =>
+    `<li class="song${t.original ? ' orig' : ''}"><span class="n">${two(i + 1)}</span><span class="name">${esc(t.name)}</span><span class="by">${esc(t.original ? 'Original' : t.by)}</span><span class="len"><span class="nb">${t.bpm} bpm</span><br /><span class="vh">length </span>${lengthOf(t)}</span></li>`;
+  const originalsLine =
+    originals.length === 1 ? `<strong>${esc(originals[0].name)}</strong> is an original I wrote, the other ${classics} are classics you probably already know.`
+    : `${originals.length} are originals I wrote (${esc(andList(originals.map((t) => t.name)))}), the other ${classics} are classics you probably already know.`;
 
   const el = document.createElement('div');
   el.id = 'landing';
@@ -70,115 +85,111 @@ export function mountLanding(world: World): void {
     <a class="skip" href="#main">Skip to the page</a>
     <header class="bar">
       <div class="wrap bar-in">
-        <a class="brand" href="#top" aria-label="Thump, to the top">${ringMarkSvg({ simple: true })}${wordmarkSvg('currentColor', '')}</a>
+        <a class="brand" href="#top" aria-label="Thump, to the top">${ringMarkSvg({ simple: true })}<span aria-hidden="true">Thump</span></a>
         <nav class="nav" aria-label="On this page">
-          <a href="#band">Instruments</a><a href="#setlist">Songs</a><a href="#together">Play together</a>
+          <a href="#how">How to play</a><a href="#play">Instruments</a><a href="#songs">Songs</a><a href="#together">Play together</a>
         </nav>
-        <button type="button" class="btn btn-1 btn-s" id="bar-enter">Enter</button>
+        <button type="button" class="btn btn-2 btn-s" id="bar-enter">Enter</button>
       </div>
     </header>
 
     <main id="main" tabindex="-1">
       <section class="hero" id="top" aria-labelledby="hero-h">
-        <div class="hero-media">
-          <video id="hero-video" class="hero-video" ${autoplay ? 'autoplay' : ''} muted loop playsinline preload="${slow ? 'none' : 'auto'}" poster="./site/hero.jpg" aria-label="Thump being played: two hands drumming on the kit on a desk in mixed reality, rings closing onto each drum, Perfect after Perfect.">
-            <source src="./site/hero.mp4" type="video/mp4" />
-          </video>
-        </div>
-        <div class="wrap hero-in">
-          <h1 id="hero-h">A band on your desk<span class="vh">.</span><span class="beat" aria-hidden="true"><svg class="beat-ring" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false"><circle class="closing" r="40" pathLength="100" stroke-dasharray="78 22" transform="rotate(-20)"/><circle class="burst" r="40" pathLength="100" stroke-dasharray="31 9 15 18" transform="rotate(40)"/></svg></span></h1>
-          <p class="tag">Put the controllers down and look at your desk. There’s a drum kit on it now. Hit it with your hands.</p>
-          <div class="cta">
-            <button id="enter-xr" class="btn btn-1" type="button">Enter mixed reality</button>
+        <div class="wrap">
+          <h1 id="hero-h">A band on your desk<span class="vh">.</span><span class="beat" aria-hidden="true"><svg class="beat-ring" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false"><circle class="closing" r="40" pathLength="100" stroke-dasharray="78 22" transform="rotate(-20)"/></svg></span></h1>
+          <div class="hero-row">
+            <p class="tag">A VR music game you play with just your hands, no controllers, on your actual desk.</p>
+            <div class="go">
+              <div class="cta">
+                <button id="enter-xr" class="btn btn-1" type="button">Enter</button>
+                <p class="addr" id="addr">On your Quest, open <button type="button" class="addr-url" id="addr-url">${LIVE_URL}</button></p>
+              </div>
+              <p class="go-note" id="go-note" aria-live="polite"></p>
+              <p class="xr-fail" role="alert" hidden>That didn’t start. Say yes to the Quest’s prompts, then try again.</p>
+            </div>
           </div>
-          <p class="addr" id="addr">On your Quest, open <button type="button" class="addr-url" id="addr-url">${LIVE_URL}</button></p>
-          <p class="go-note" id="go-note" aria-live="polite">Nothing to install. Sit at a desk, put the controllers away and hit a drum to start.</p>
-          <p class="xr-fail" role="alert" hidden>That didn’t start. Say yes to the Quest’s prompts, then try again.</p>
+          <div class="media">
+            <figure class="slot slot-video" id="video-slot">
+              <video class="fill" id="video" inert controls playsinline preload="metadata" aria-label="${esc(VIDEO.label)}"><source src="${VIDEO.src}#t=0.1" type="video/mp4" /></video>
+              ${emptySlot('Video', 'The gameplay video goes here, I’m recording it on my Quest.', true)}
+            </figure>
+            ${SHOTS.map((s, i) => `<figure class="slot shot shot-${i + 1}"><img class="fill" src="${s.src}" alt="${esc(s.alt)}" loading="lazy" decoding="async" />${emptySlot(`Screenshot ${i + 1}`, 'Coming soon, from the headset.')}</figure>`).join('')}
+          </div>
         </div>
       </section>
 
-      <section class="pics" id="band" aria-label="The instruments">
-        <div class="wrap">
-          <p class="label">Six instruments. Swap any time, even mid-song</p>
-          <ul class="mosaic">
-            ${BAND.map((b, i) => `<li class="pic pic-${i + 1}"><figure>${shot(b.id, b.alt)}<figcaption><strong>${b.label}</strong> ${b.line}</figcaption></figure></li>`).join('')}
-          </ul>
+      <section class="how" id="how" aria-labelledby="how-h">
+        <div class="wrap how-in">
+          <h2 class="h2" id="how-h">How to play</h2>
+          <div>
+            <ol class="steps">
+              <li><span>Open <strong>${LIVE_URL}</strong> in your Quest’s browser.</span></li>
+              <li><span>Sit down at your desk (a table works too).</span></li>
+              <li><span>Look down. The instruments are sitting on it.</span></li>
+            </ol>
+            <p class="how-note">Put the controllers away, it’s all hands. Make a fist on the drums and you get sticks, pinch on the guitar and you get a pick.</p>
+          </div>
         </div>
       </section>
 
       <section class="play" id="play" aria-labelledby="play-h">
         <div class="wrap">
           <div class="play-head">
-            <h2 class="h2" id="play-h">Go on, hit something.</h2>
-            <p>These are the headset’s own sounds. Click or tap a part, or hold and drag across them for a run.</p>
+            <h2 class="h2" id="play-h">Six instruments</h2>
+            <p class="lede">These are the same sounds as in the headset, so go on and hit something! Click or tap, or hold and drag across for a run.</p>
           </div>
-          <ul class="picker" role="group" aria-label="Instrument">
-            ${BAND.map((b) => `<li><button type="button" class="pick" data-inst="${b.id}" aria-pressed="false">${b.label}</button></li>`).join('')}
-          </ul>
-          <figure class="desk">
-            <div class="stage"></div>
-            <figcaption class="about" aria-live="polite"></figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section class="learn" id="learn" aria-label="Lessons and grades">
-        <div class="wrap">
-          <div class="row row-a">
-            <figure class="row-pic">${shot('lesson', 'A drum lesson holding the song still: the ring on the snare, a line from the sign on the desk to it, and the word Now.')}</figure>
-            <div class="row-words">
-              <h2 class="h3">Lessons that wait for you to get it.</h2>
-              <p>One for each instrument. The song stops on the note you need and says <strong>Now</strong> when it’s time. Then it waits, for as long as you like, until you hit it.</p>
-            </div>
-          </div>
-          <div class="row row-b">
-            <figure class="row-pic">${shot('results', 'The results for Canon in D: grade S with three stars, All perfect, 74,300 points, 200 perfect and no misses.')}</figure>
-            <div class="row-words">
-              <h2 class="h3">Get an <span class="hot">S</span>. Then do it again on Hard.</h2>
-              <p>Easy, Normal or Hard, on every song. Ten in a row doubles your points, up to ×4. Each song has a leaderboard for every instrument and level. You get a random two-word name, like Soggy Cowbell. No account needed.</p>
-            </div>
+          <div class="deck">
+            <ul class="picker" role="group" aria-label="Instrument">
+              ${BAND.map((b) => `<li><button type="button" class="pick" data-inst="${b.id}" aria-pressed="false"><span class="pick-name">${b.label}</span><span class="pick-line">${esc(b.line)}</span></button></li>`).join('')}
+            </ul>
+            <figure class="desk">
+              <div class="stage"></div>
+              <figcaption class="desk-foot"><span><span class="now-line"></span> <span class="about" aria-live="polite"></span></span></figcaption>
+            </figure>
           </div>
         </div>
       </section>
 
-      <section class="setlist" id="setlist" aria-labelledby="setlist-h">
-        <div class="wrap">
-          <div class="set-head">
-            <h2 class="title mega" id="setlist-h">${TUNES.length} songs</h2>
-            <p class="set-note">${originals} written for Thump, ${TUNES.length - originals} you already know, set to new grooves.</p>
+      <section class="songs-sec" id="songs" aria-labelledby="songs-h">
+        <div class="wrap songs-in">
+          <div>
+            <h2 class="h2" id="songs-h">${TUNES.length} songs</h2>
+            <p class="lede">${originalsLine} I took the songs and turned them into the parts you play, with a band playing along. More originals are on the way.</p>
           </div>
-          <ol class="songs">${songs.map(songRow).join('')}</ol>
-          <p class="lessons">Plus a lesson for each instrument (${LESSONS.map((l) => esc(l.name.replace(/^Learn /, ''))).join(', ').replace(/, ([^,]+)$/, ' and $1')}).</p>
+          <div>
+            <ol class="songs">${songs.map(songRow).join('')}</ol>
+            <p class="key">Original</p>
+          </div>
         </div>
       </section>
 
-      <section class="together" id="together" aria-labelledby="together-h">
-        <div class="wrap">
-          <p class="label">Play together</p>
-          <div class="together-in">
-            <div class="together-words">
-              <h2 class="title" id="together-h">Bring up to three friends.</h2>
-              <p class="big">One of you gets a code, the others type it in from wherever they are. Your friends sit across your desk, small, playing their own instruments: you see their hands hit the notes and hear every one. Turn on Talk and you can hear each other too. Your band gets a silly name, like The Sticky Coffee Rings, and its own leaderboard.</p>
-            </div>
-            <p class="eg"><span class="eg-cap">e.g.</span><span class="eg-code">PKRW</span></p>
+      <section class="more" id="together" aria-label="Make a track and play together">
+        <div class="wrap more-in">
+          <div class="panel track">
+            <h2 class="h2">Make your own track</h2>
+            <p>Build a loop out of the instruments, play over it, and keep the one you like.</p>
           </div>
-          <div class="band-ctl">
-            <div>
-              <h3>Start a band</h3>
-              <p class="hint">You get a four-letter code to send your friends.</p>
-              <button type="button" id="band-start" class="btn btn-1">Get a code</button>
-            </div>
-            <div>
-              <div class="join">
-                <div class="field">
-                  <label for="band-code">Join with a code</label>
-                  <input id="band-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+          <div class="panel together">
+            <h2 class="h2" id="together-h">Play together</h2>
+            <p class="lede">Play in a band with up to 3 friends! One of you starts a band and gets a <span class="nb">4-letter</span> code, the others type it in, and each of you plays a different instrument.</p>
+            <div class="band-ctl">
+              <div>
+                <h3 class="h3">Start a band</h3>
+                <p class="hint">You get a code to send your friends.</p>
+                <button type="button" id="band-start" class="btn btn-1">Get a code</button>
+              </div>
+              <div>
+                <h3 class="h3"><label for="band-code">Join a band</label></h3>
+                <p class="hint">Type the code your friend sent.</p>
+                <div class="join">
+                  <input id="band-code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD" />
+                  <button type="button" id="band-join" class="btn btn-2">Join</button>
                 </div>
-                <button type="button" id="band-join" class="btn btn-2">Join</button>
               </div>
             </div>
+            <p id="band-status" aria-live="polite"></p>
+            <p class="band-phone">Open this page on your Quest to start or join a band.</p>
           </div>
-          <p id="band-status" aria-live="polite"></p>
         </div>
       </section>
 
@@ -195,60 +206,78 @@ export function mountLanding(world: World): void {
               <label><input type="checkbox" data-k="highContrast" /> High contrast</label>
               <label><input type="checkbox" data-k="calmMotion" /> Less movement</label>
               <label><input type="checkbox" data-k="noWords" /> No words in the headset</label>
-              <label><input type="checkbox" data-k="band" /> Backing band (off: just you)</label>
+              <label><input type="checkbox" data-k="band" /> Backing band (off is just you)</label>
               <label><input type="checkbox" data-k="placeFresh" /> Set up the desk fresh each time</label>
             </div>
-            <p class="small-print">Timing: <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
+            <p class="small-print">Timing <span id="offset-out"></span>. <button type="button" id="reset" class="link">Start over</button></p>
           </details>
         </div>
       </section>
     </main>
 
-    <footer class="foot">
+    <footer class="foot" aria-labelledby="who-h">
       <div class="wrap foot-in">
-        <div class="foot-maker">
-          ${wordmarkSvg('currentColor', 'Thump')}
-          <p class="maker">Made by OR-6, who drums on desks far too much.</p>
+        <div>
+          <h2 class="h2" id="who-h">Who made it</h2>
+          <p class="maker">Pretty much every VR music game needs controllers, so I made one you play with just your hands.</p>
         </div>
-        <div class="foot-text">
-          <p class="specs">Meta Quest, in its browser. Hands only, seated. 1–4 players. Free, nothing to install.</p>
-          <p>Played on a Quest headset; built and tested in the WebXR emulator.</p>
-          <p>Instrument samples from the Versilian Community Sample Library (CC0); the guitar is a Martin HD-28 recorded by Jeff Learman (Discord SFZ GM Bank, CC0). Particles by Kenney (CC0).</p>
-          <p>An entry in the Meta VR Start Developer Competition 2026 (Gaming).</p>
-        </div>
+        <dl class="plate">
+          <dt class="silk">Made by</dt><dd>OR-6, with my friends as testers</dd>
+          <dt class="silk">Built with</dt><dd>IWSDK, WebXR, three.js, TypeScript, Web Audio and PeerJS</dd>
+          <dt class="silk">Runs on</dt><dd>Meta Quest 3, in the browser</dd>
+          <dt class="silk">Entered in</dt><dd>The Meta VR Start Developer Competition 2026 (Gaming)</dd>
+          <dt class="silk">Sounds</dt><dd class="credit">Instrument samples from the Versilian Community Sample Library (CC0); the guitar is a Martin HD-28 recorded by Jeff Learman (Discord SFZ GM Bank, CC0). Particles by Kenney (CC0).</dd>
+        </dl>
       </div>
     </footer>`;
   document.body.appendChild(el);
   // (index.html paints the top of the page while the game loads; this replaces it)
   document.getElementById('landing-boot')?.remove();
 
-  // the bar is clear over the hero; it takes the plum and its rule once the page has scrolled
+  // the bar takes its rule once the page has scrolled
   const bar = el.querySelector<HTMLElement>('.bar')!;
   el.addEventListener('scroll', () => bar.classList.toggle('scrolled', el.scrollTop > 8), { passive: true });
 
-  // ---- the one action: enter (in the headset), watch it played (a computer), send it to the Quest (a phone) ----
+  // ---- the slots: each fills itself when its file loads, and keeps its empty state when there's none ----
+  const video = el.querySelector<HTMLVideoElement>('#video')!;
+  const videoSlot = el.querySelector<HTMLElement>('#video-slot')!;
+  let hasVideo = false;
+  video.addEventListener('loadedmetadata', () => {
+    hasVideo = video.videoWidth > 0;
+    videoSlot.classList.toggle('filled', hasVideo);
+    // (an empty slot's controls stay out of the way of the keyboard)
+    video.inert = !hasVideo;
+    label();
+  });
+  for (const img of el.querySelectorAll<HTMLImageElement>('.shot .fill')) {
+    const fill = () => {
+      if (!img.naturalWidth) return;
+      img.closest('.slot')!.classList.add('filled');
+      img.closest('.media')!.classList.add('has-shots');
+    };
+    if (img.complete) fill();
+    else img.addEventListener('load', fill);
+  }
+
+  // ---- the one action: enter (in the headset), watch the video (a computer), send it to the Quest (a phone) ----
   const btn = el.querySelector<HTMLButtonElement>('#enter-xr')!;
   const barBtn = el.querySelector<HTMLButtonElement>('#bar-enter')!;
   const xrFail = el.querySelector<HTMLElement>('.xr-fail')!;
   const note = el.querySelector<HTMLElement>('#go-note')!;
   const addr = el.querySelector<HTMLElement>('#addr')!;
   const addrUrl = el.querySelector<HTMLButtonElement>('#addr-url')!;
-  const video = el.querySelector<HTMLVideoElement>('#hero-video')!;
   const xrApi = (navigator as Navigator & { xr?: { isSessionSupported(mode: string): Promise<boolean> } }).xr;
   const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 820;
   // (?where=desk|phone|xr shows the page as it is there: for reviews and screenshots)
   const forced = new URLSearchParams(location.search).get('where') as Where | null;
   let where: Where = forced ?? (world.xrEnabled && !!xrApi && !new URLSearchParams(location.search).has('jam') ? 'xr' : phone ? 'phone' : 'desk');
-  const label = () => {
-    btn.textContent = where === 'xr' ? 'Enter mixed reality' : where === 'phone' ? 'Send it to my Quest' : 'Watch it played';
-    barBtn.textContent = where === 'xr' ? 'Enter' : where === 'phone' ? 'Send' : 'Watch';
+  function label() {
+    btn.textContent = where === 'xr' ? 'Enter' : where === 'phone' ? 'Send link' : hasVideo ? 'Watch' : 'Try it';
+    barBtn.textContent = btn.textContent;
     el.dataset.where = where;
     addr.hidden = where === 'xr';
-    // (a band is played in the headset: on a phone, starting or joining one leads nowhere)
-    const ctl = el.querySelector<HTMLElement>('.band-ctl');
-    if (ctl) ctl.hidden = where === 'phone';
-    note.textContent = where === 'xr' ? 'Any desk will do, or a tray table on a train. Put the controllers down: it’s hands only.' : 'Nothing to install. Sit at a desk, put the controllers away and hit a drum to start.';
-  };
+    note.textContent = where === 'xr' ? 'Sit at your desk, put the controllers down and look down.' : 'It’s free and there’s nothing to install.';
+  }
   label();
   if (where === 'xr' && !forced)
     void xrApi!.isSessionSupported('immersive-ar').then(
@@ -270,20 +299,13 @@ export function mountLanding(world: World): void {
       );
     else copyLink();
   };
-  /** The loop, full screen if the browser will, from the start. */
+  /** The video, from the start with its sound; or, while there's no video yet, the drawing to try. */
   const watch = () => {
+    if (!hasVideo) return el.querySelector('#play')!.scrollIntoView({ behavior: smooth(), block: 'start' });
+    videoSlot.scrollIntoView({ behavior: smooth(), block: 'center' });
     video.currentTime = 0;
-    video.controls = true;
     void video.play().catch(() => {});
-    const fs = video.requestFullscreen?.bind(video) ?? (video as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen?.bind(video);
-    if (fs) void Promise.resolve(fs()).catch(() => video.scrollIntoView({ behavior: smooth(), block: 'center' }));
-    else video.scrollIntoView({ behavior: smooth(), block: 'center' });
   };
-  document.addEventListener('fullscreenchange', () => {
-    if (document.fullscreenElement) return;
-    video.controls = false;
-    if (!autoplay) video.pause();
-  });
   addrUrl.addEventListener('click', copyLink);
   btn.addEventListener('click', () => {
     if (where === 'desk') return watch();
@@ -302,17 +324,13 @@ export function mountLanding(world: World): void {
     }, 250);
   });
   barBtn.addEventListener('click', () => {
-    if (where === 'xr') return btn.click();
-    el.scrollTo({ top: 0, behavior: smooth() });
+    if (where !== 'desk') el.scrollTo({ top: 0, behavior: smooth() });
     btn.click();
   });
-  // (the loop only runs while it's on screen)
-  if (autoplay)
-    new IntersectionObserver(([e]) => {
-      if (document.fullscreenElement) return;
-      if (e.isIntersecting) void video.play().catch(() => {});
-      else video.pause();
-    }, { root: el }).observe(video);
+  // (the video stops when it's scrolled away)
+  new IntersectionObserver(([e]) => {
+    if (!e.isIntersecting && !video.paused) video.pause();
+  }, { root: el }).observe(video);
 
   // in-page links scroll the page (it's its own scroller), without touching the address
   el.addEventListener('click', (e) => {
@@ -336,10 +354,10 @@ export function mountLanding(world: World): void {
     if (st.role === 'caller') return;
     const n = st.players ?? 1;
     bandStatus.textContent =
-      st.state === 'hosting' ? (st.code ? `Your code: ${st.code}. Friends type it here, then everyone enters.` : (st.message ?? 'Connecting…'))
+      st.state === 'hosting' ? (st.code ? `Your code: ${st.code}. Friends type it in here, then everyone presses Enter.` : (st.message ?? 'Connecting…'))
       : st.state === 'joining' ? 'Connecting…'
-      : st.state === 'connected' ? `${n} in the band${st.role === 'host' && st.code ? ` (code ${st.code})` : ''}. Enter mixed reality.`
-      : st.state === 'error' || st.state === 'closed' ? (st.message ?? 'That didn’t work')
+      : st.state === 'connected' ? `${n} in the band${st.role === 'host' && st.code ? ` (code ${st.code})` : ''}. Now press Enter.`
+      : st.state === 'error' || st.state === 'closed' ? (st.message ?? 'That didn’t work, try again.')
       : '';
   };
   window.addEventListener('thump:coop', (e) => showBand((e as CustomEvent<CoopStatus>).detail));
@@ -351,7 +369,7 @@ export function mountLanding(world: World): void {
     audio.resume();
     const c = normaliseCode(bandCode.value);
     if (!c) {
-      bandStatus.textContent = 'Four letters, from your friend’s page';
+      bandStatus.textContent = 'The code is 4 letters, from your friend’s page.';
       return;
     }
     void coop.join(c, 'guest');
@@ -394,7 +412,7 @@ export function mountLanding(world: World): void {
     const p = loadProgress();
     saveProgress({ ...freshProgress(), kit: p.kit, ...(p.me ? { me: p.me } : {}), ...(p.bandWords ? { bandWords: p.bandWords } : {}) });
     window.dispatchEvent(new Event('thump:reset'));
-    b.textContent = 'Done. Progress cleared; your name and settings stay.';
+    b.textContent = 'Done. Your progress is cleared, your name and settings stay.';
     b.dataset.sure = '';
   });
 
@@ -438,6 +456,7 @@ const DEMO: Record<InstId, readonly string[]> = {
 function mountDesk(el: HTMLElement): void {
   const stage = el.querySelector<HTMLElement>('.stage')!;
   const about = el.querySelector<HTMLElement>('.about')!;
+  const nowLine = el.querySelector<HTMLElement>('.now-line')!;
   const picks = [...el.querySelectorAll<HTMLButtonElement>('.pick')];
   let inst: InstId = 'drums';
   let chord = 0;
@@ -622,6 +641,7 @@ function mountDesk(el: HTMLElement): void {
     centreOnTray(stage.querySelector('svg.desk-svg')!);
     stage.dataset.inst = id;
     about.textContent = ABOUT[id] ?? '';
+    nowLine.textContent = lineOf(id);
     for (const b of picks) b.setAttribute('aria-pressed', String(b.dataset.inst === id));
     if (id === 'guitar') stage.querySelector(`.part[data-part="g${chord}"]`)?.classList.add('on');
     demoT0 = 0;
