@@ -43,7 +43,7 @@ export class StemPlayer {
       try {
         const r = await fetch(`${BASE}${id}/stems.json`);
         if (!r.ok) throw new Error(String(r.status));
-        const m = (await r.json()) as { stems: StemFile[]; start?: number; bpm?: number; seconds?: number };
+        const m = (await r.json()) as { stems: StemFile[]; start?: number; bpm?: number; seconds?: number; lag?: number };
         const chans = m.stems.reduce((a, s) => a + (s.ch ?? 2), 0);
         const rate = chans * ((m.seconds ?? 180) + 3) * 32000 * 4 <= BUDGET ? 32000 : 24000;
         const dec: BaseAudioContext = typeof OfflineAudioContext !== 'undefined' ? new OfflineAudioContext(2, 1, rate) : ctx;
@@ -59,7 +59,9 @@ export class StemPlayer {
         if (this.loading !== id) return;
         this.bufs = got;
         this.id = id;
-        this.lead = ((m.start ?? 0) * 60) / (m.bpm || 120);
+        // (`lag`: how late the recording's notes sound against the chart's clock, measured by tools/songfit/measure.mjs
+        // (its instruments' attacks, the mix's limiter): the stems start that much early, so they land on the beat)
+        this.lead = ((m.start ?? 0) * 60) / (m.bpm || 120) - (m.lag ?? 0);
       } catch (e) {
         // (a song that isn't there, or won't decode: given up on; a dropped connection: tried again next time)
         if (e instanceof Error && /^4\d\d$/.test(e.message)) this.failed.add(id);

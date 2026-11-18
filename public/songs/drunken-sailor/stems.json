@@ -1,1 +1,1 @@
-{"id":"drunken-sailor","bpm":132,"meter":4,"start":-4,"end":326,"seconds":153.63636363636363,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"guitar","file":"guitar.webm","ch":2},{"id":"bass","file":"bass.webm","ch":1},{"id":"drums","file":"drums.webm","ch":2}]}
+{"id":"drunken-sailor","bpm":132,"meter":4,"start":-4,"end":326,"seconds":153.63636363636363,"lag":0.01,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"guitar","file":"guitar.webm","ch":2},{"id":"bass","file":"bass.webm","ch":1},{"id":"drums","file":"drums.webm","ch":2}]}

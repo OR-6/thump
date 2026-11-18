@@ -207,7 +207,9 @@ for (const id of readdirSync(root)) {
   }
   // to listen to: the mix as a finished track (a limiter just under 0 dBFS on top)
   ff(['-i', sum, '-af', `volume=${gain.toFixed(2)}dB,alimiter=limit=0.89:attack=4:release=50:level=disabled`, '-c:a', 'libmp3lame', '-b:a', '192k', `artifacts/listen/${id}-mix.mp3`]);
-  writeFileSync(`${out}/stems.json`, JSON.stringify({ id, bpm: plan.bpm, meter: plan.meter, start: plan.start, end: plan.end, seconds: plan.seconds, stems: stems.map(({ id: s, file, ch }) => ({ id: s, file, ch })) }));
+  // (the recording's measured lag, tools/songfit/measure.mjs, kept: measure again after a new render)
+  const was = existsSync(`${out}/stems.json`) ? JSON.parse(readFileSync(`${out}/stems.json`, 'utf8')) : {};
+  writeFileSync(`${out}/stems.json`, JSON.stringify({ id, bpm: plan.bpm, meter: plan.meter, start: plan.start, end: plan.end, seconds: plan.seconds, ...(was.lag ? { lag: was.lag } : {}), stems: stems.map(({ id: s, file, ch }) => ({ id: s, file, ch })) }));
   writeFileSync(`${dir}/mix.json`, JSON.stringify({ gain, stems: done }));
   const kb = stems.reduce((a, s) => a + s.bytes, 0) / 1024;
   console.log(`${id.padEnd(18)} ${m.lufs.toFixed(1)} LUFS +${gain.toFixed(1)} dB  ${stems.map((s) => `${s.id} ${Math.round(s.bytes / 1024)}k`).join(' ')}  = ${Math.round(kb)} KB`);

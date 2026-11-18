@@ -231,13 +231,16 @@ export function scoreOf(tune: Tune): Score {
 /** (the lessons first, one per instrument, then the songs) */
 /**
  * The songs in the order the list shows them, best to play first, so the first thing anyone picks shows the game at
- * its best: measured over all six instruments at every level (each song x instrument out of 100: 40 for chart notes
- * with something you hear under them, your own part's quiet guide on Easy and Normal counted, 20 the recording tight on the chart's clock, 20 a level's notes a
- * second in its band, 20 notes on the tune's own notes or the groove's kick, snare and bass), summed. Any song not
- * named here goes after, easiest first. (The three produced from scratch, src/songs/originals.ts, stand after Mango
- * Season, where the originals they replace stood: not yet measured.)
+ * its best: measured by tools/songfit/measure.mjs over all six instruments at every level against what you hear (each
+ * song x instrument out of 100: 40 for chart notes with something you hear under them, your own part's stem at its
+ * guide level; 20 for what's under them within 20 ms of the chart's clock; 20 for each level's notes a second in its
+ * band and a step up between levels; 20 for notes on the tune or the kick, snare and bass), summed (of 600): Skinned
+ * Knees 596, William Tell 590, Korobeiniki 587, Velvet Rope 582, Can-Can 575, The Entertainer 566, Drunken Sailor 563,
+ * Mountain King 561, Night Market 560, Turkish March 552, Mango Season 548, Für Elise 537, Ode to Joy 535, Saints 527,
+ * Scarborough Fair 495, Amazing Grace 474, the Canon 471. Velvet Rope stays first: the favourite. Any song not named
+ * here goes after, easiest first.
  */
-export const SONG_ORDER: readonly string[] = ['velvet-rope', 'korobeiniki', 'drunken-sailor', 'can-can', 'night-market', 'skinned-knees', 'mango-season', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'turkish-march', 'canon', 'fur-elise', 'scarborough-fair', 'amazing-grace'];
+export const SONG_ORDER: readonly string[] = ['velvet-rope', 'skinned-knees', 'william-tell', 'korobeiniki', 'can-can', 'entertainer', 'drunken-sailor', 'mountain-king', 'night-market', 'turkish-march', 'mango-season', 'fur-elise', 'ode-to-joy', 'saints', 'scarborough-fair', 'amazing-grace', 'canon'];
 const orderOf = (id: string) => {
   const i = SONG_ORDER.indexOf(id);
   return i < 0 ? SONG_ORDER.length : i;
@@ -364,6 +367,21 @@ export function pianoKey(scale: string, degree: number, acc: number, fold = true
   }
   const midi = scaleMidi(60, scaleById(scale), degree) + acc;
   return byMidi.get(midi) ?? (fold ? (byMidi.get(midi - 12) ?? byMidi.get(midi + 12)) : undefined) ?? -1;
+}
+
+/** A chord's root as a scale degree, or where the scale hasn't got its root, its fifth or third that it has (null: none). */
+function chordTone(s: Score, c: Chord): number | null {
+  const steps = scaleById(s.scale).steps;
+  if (c.semis === steps[c.degree]) return c.degree;
+  for (const [up, semis] of [
+    [4, 7],
+    [2, c.minor ? 3 : 4],
+  ] as const) {
+    const d = c.degree + up;
+    const want = (c.semis + semis) % 12;
+    if (steps[d % 7] === want) return d;
+  }
+  return null;
 }
 
 /** The handpan's note for a degree: its ding for the tonic in the bass, else the rim note of that name nearest it. */
@@ -640,6 +658,17 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
         kept.push(mel[i].beat);
         keepMel.add(i);
       }
+      // (where that leaves a bar or more with nothing you can play, a run on the marimba of notes outside its scale
+      // above all: the tune's notes on the beat that it has, one a bar at most)
+      const has = (n: MelNote) => inst === 'piano' || n.acc === 0;
+      const mine = mel.filter((n, i) => keepMel.has(i) && has(n)).map((n) => n.beat);
+      mel.forEach((n, i) => {
+        if (keepMel.has(i) || !has(n) || !onBeat(n.beat)) return;
+        if (mine.every((b) => Math.abs(b - n.beat) >= s.meter - 1e-6)) {
+          mine.push(n.beat);
+          keepMel.add(i);
+        }
+      });
     }
     for (let mi = 0; mi < mel.length; mi++) {
       const n = mel[mi];
@@ -664,18 +693,21 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     // (where the tune leaves you two bars or more with nothing, an intro above all: the chords, as the band's keys play
     // them, their root on each downbeat and from Normal their fifth halfway, so nobody waits with nothing to play)
     {
-      // (the tune's own rests: measured on all of its notes, not just the ones a level keeps)
-      const kept = mel.map((n) => n.beat).sort((a, b) => a - b);
+      // (the tune's own rests: measured on all of its notes, not just the ones a level keeps; on the marimba, on the
+      // notes it has: a run of the tune outside its scale is a rest for it)
+      const kept = mel.filter((n) => inst === 'piano' || n.acc === 0).map((n) => n.beat).sort((a, b) => a - b);
       const keyOf = (d: number) => (inst === 'piano' ? pianoKey(s.scale, d, 0) : zoneOf('marimba', s.scale, d));
       const fillGap = (a: number, z: number) => {
         for (let b = Math.ceil((a + 1e-6) / s.meter) * s.meter; b < z - s.meter + 1e-6; b += s.meter) {
           if (barOf(b) % s.meter > 1e-6) continue;
           const c = chords.find((x) => b >= x.beat - 1e-6 && b < x.beat + x.len - 1e-6);
           if (!c || c.semis !== scaleById(s.scale).steps[c.degree]) continue;
+          // (never on a beat the tune plays: that note is the band's)
+          const tuneAt = (x: number) => mel.some((n) => Math.abs(n.beat - x) < 1e-6);
           const r = keyOf(c.degree);
-          if (r >= 0) add(b, `${inst}:${r}`, 0.8, 0);
+          if (r >= 0 && !tuneAt(b)) add(b, `${inst}:${r}`, 0.8, 0);
           const f = keyOf(c.degree + 4);
-          if (level !== 'easy' && s.meter >= 3 && f >= 0) add(b + Math.floor(s.meter / 2), `${inst}:${f}`, 0.7, 0);
+          if (level !== 'easy' && s.meter >= 3 && f >= 0 && !tuneAt(b + Math.floor(s.meter / 2))) add(b + Math.floor(s.meter / 2), `${inst}:${f}`, 0.7, 0);
         }
       };
       const gap = 2 * s.meter;
@@ -720,7 +752,13 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
             if (ch !== '1' && ch !== '5' && ch !== '8') continue;
             const at = st + b * s.meter + (i * s.meter) / steps;
             const c = chords.find((x) => at >= x.beat - 1e-6 && at < x.beat + x.len - 1e-6);
-            if (!c || c.semis !== sc.steps[c.degree]) continue;
+            if (!c) continue;
+            // (a chord whose root the handpan hasn't got: its chord tone that it has, where the bass plays the root)
+            if (c.semis !== sc.steps[c.degree]) {
+              const d = ch === '1' ? chordTone(s, c) : null;
+              if (d !== null) bs.push({ beat: at, degree: d, strong: strongness(at, chordStart(at)) });
+              continue;
+            }
             bs.push({ beat: at, degree: c.degree + (ch === '5' ? 4 : ch === '8' ? 7 : 0), strong: strongness(at, chordStart(at)) });
           }
     } else if (t.original) {
@@ -732,21 +770,49 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
       }
     } else
       for (const c of chords) {
-        if (c.semis !== sc.steps[c.degree]) continue;
-        bs.push({ beat: c.beat, degree: c.degree, strong: 3 });
+        // (a chord whose root the handpan hasn't got, a C# major in A minor: the chord tone of it that it has)
+        const d = chordTone(s, c);
+        if (d === null) continue;
+        bs.push({ beat: c.beat, degree: d, strong: 3 });
         const half = Math.floor(c.len / 2);
-        if (half >= 1) bs.push({ beat: c.beat + half, degree: c.degree + 4, strong: 1 });
+        if (half >= 1 && d === c.degree) bs.push({ beat: c.beat + half, degree: c.degree + 4, strong: 1 });
       }
     // (the strongest first, then what fits round them: none closer than the level's gap)
     const need = level === 'easy' ? 2 : level === 'normal' ? 1 : 0;
     const gapS = level === 'easy' ? EASY_GAP : level === 'normal' ? NORMAL_GAP : HARD_GAP;
     const spb = 60 / t.bpm;
-    const kept: B[] = [];
-    for (const n of [...bs].filter((x) => x.strong >= need).sort((a, b) => b.strong - a.strong || a.beat - b.beat))
-      if (kept.every((k) => Math.abs(k.beat - n.beat) * spb >= gapS - 1e-6)) kept.push(n);
+    const kept: (B & { mel?: boolean })[] = [];
+    const fit = (n: B) => kept.every((k) => Math.abs(k.beat - n.beat) * spb >= gapS - 1e-6);
+    for (const n of [...bs].filter((x) => x.strong >= need).sort((a, b) => b.strong - a.strong || a.beat - b.beat)) if (fit(n)) kept.push(n);
+    // a bass line that keeps to the downbeats (a classic's tuba, an anthem's held roots) is the same on every level:
+    // from Normal the tune's notes on the beat join it, its strong beats on Normal and every beat on Hard, as the
+    // handpan's rim plays a tune (each one the recording's melody plays, between the bass notes)
+    const perBar = kept.length / Math.max(1, s.end / s.meter);
+    const flat = kept.length <= bs.filter((x) => x.strong >= 2).length;
+    if (level !== 'easy' && (level === 'normal' ? flat || perBar < 1.6 * (s.meter / 4) : perBar < 2.6 * (s.meter / 4)))
+      for (const n of mel) {
+        if (n.acc !== 0 || !onBeat(n.beat) || (level === 'normal' && !strong(n.beat))) continue;
+        const m = { beat: n.beat, degree: n.degree, strong: 0, mel: true };
+        if (fit(m)) kept.push(m);
+      }
+    // (where the bass rests two bars or more, an intro above all: the chord's root on each downbeat, as the keys play it;
+    // not on a song produced from scratch, whose handpan plays only what its bass player does)
+    if (!prod) {
+      const bars = kept.map((k) => k.beat).sort((a, b) => a - b);
+      let prev = 0;
+      for (const b of [...bars, s.end]) {
+        if (b - prev >= 2 * s.meter + 1e-6)
+          for (let x = Math.ceil((prev + 1e-6) / s.meter) * s.meter; x < b - s.meter + 1e-6; x += s.meter) {
+            const c = chords.find((y) => x >= y.beat - 1e-6 && x < y.beat + y.len - 1e-6);
+            const d = c ? chordTone(s, c) : null;
+            if (d !== null) kept.push({ beat: x, degree: d, strong: 3 });
+          }
+        prev = b;
+      }
+    }
     for (const n of kept) {
-      const z = handpanZone(s.scale, n.degree, true);
-      if (z >= 0) add(n.beat, `handpan:${z}`, n.strong >= 2 ? 0.9 : 0.75, 0, 'band:bass');
+      const z = handpanZone(s.scale, n.degree, !n.mel);
+      if (z >= 0) add(n.beat, `handpan:${z}`, n.strong >= 2 ? 0.9 : 0.75, 0, n.mel ? undefined : 'band:bass');
     }
   } else if (inst === 'guitar') {
     // strums on the strong beats (Easy), every beat (Normal), a strum pattern (Hard); from Normal your other hand
@@ -782,8 +848,23 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
       const spb = 60 / t.bpm;
       const gapS = level === 'easy' ? EASY_GAP : level === 'normal' ? NORMAL_GAP : HARD_GAP;
       // (Easy keeps to the beats, unless a bar's part is all off-beats: a skank on Easy is still a skank)
+      // (Easy: the downbeats and the bar's other strong beat, a part that strums every beat being Normal's; a bar
+      // that only strikes off the beat keeps those)
+      // (in three, the one and the three: oom, pah); Hard strums the off-beats between as a guitarist keeps eighths
+      const bar = (b: number) => Math.floor((b + 1e-6) / s.meter);
+      const easyBeat = (c: R) => c.r === 3 || (c.r === 2 && (s.meter === 3 ? Math.abs((barOf(c.beat) % s.meter) - 2) < 1e-6 : strong(c.beat)));
+      const onBar = new Set(cands.filter(easyBeat).map((c) => bar(c.beat)));
+      const easy = level === 'easy' ? cands.filter((c) => easyBeat(c) || (!onBar.has(bar(c.beat)) && c.r >= (cands.some((x) => bar(x.beat) === bar(c.beat) && x.r >= 2) ? 2 : 1))) : cands;
+      // (an off-beat only where the drummer plays one: its recording has something there)
+      const kitH = level === 'hard' ? (classicKit(s) ?? drumHits(bst, bands, s.meter, s.end)) : null;
+      const hitsAt = new Set(kitH ? [...kitH.KICK, ...kitH.SNARE, ...kitH.HAT].filter((h) => h.mark !== 'o').map((h) => beatKey(h.beat)) : []);
+      if (level === 'hard')
+        bands.forEach((p) => {
+          if (p.solo || p.fill) return;
+          for (const o of pattern) if (o % 1 && hitsAt.has(beatKey(p.beat + o))) easy.push({ beat: p.beat + o, r: 0 });
+        });
       const kept: R[] = [];
-      for (const c of [...cands].sort((a, b) => b.r - a.r || a.beat - b.beat))
+      for (const c of [...easy].sort((a, b) => b.r - a.r || a.beat - b.beat))
         if (kept.every((k) => Math.abs(k.beat - c.beat) * spb >= gapS - 1e-6)) kept.push(c);
       for (const c of kept) add(c.beat, 'guitar:9', c.r === 3 ? 0.9 : c.r === 2 ? 0.75 : 0.65, 0);
     } else
@@ -843,6 +924,17 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
         add(h.beat, h.mark === 'f' ? (Math.round(h.at * 2) % 2 ? 'congas:0' : 'congas:2') : 'congas:2', 0.8, 0);
       }
       if (level === 'hard') for (const h of kit.HAT) if (h.at !== undefined && h.mark === 'X' && Math.abs(h.at - Math.round(h.at)) > 1e-6 && keep(h.at)) add(h.beat, 'congas:3', 0.85, 1);
+      // (a classic's drummer keeps to kick and snare on the beats, so every level was the same: from Normal its hats,
+      // ride or tambourine join as the high drum's slap where the kick and snare leave room, on the beats on Normal and
+      // the eighths on Hard)
+      if (ck && level !== 'easy') {
+        const taken = new Set(out.map((n) => beatKey(n.beat)));
+        for (const h of kit.HAT) {
+          if (h.at === undefined || h.mark === 'o' || h.mark === 'c' || taken.has(beatKey(h.beat))) continue;
+          if (level === 'normal' ? Math.abs(h.at - Math.round(h.at)) > 1e-6 || h.mark === '-' : Math.abs(h.at * 2 - Math.round(h.at * 2)) > 1e-6) continue;
+          add(h.beat, 'congas:3', 0.7, 1);
+        }
+      }
     }
   } else {
     // the drums: what the band's drummer plays (the very part your hits stand in for), at the places it plays them (a
@@ -877,7 +969,14 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
     const kept: C[] = [];
     // (the kick and the snare are two hands: from Normal up the gap is kept within each, so a dembow's snare a
     // sixteenth after its kick stays; Easy keeps it between them too)
-    const fits = (c: C) => kept.every((k) => (level !== 'easy' && (k.key === 'kit:kick') !== (c.key === 'kit:kick')) || Math.abs(k.beat - c.beat) < 1e-6 || Math.abs(k.beat - c.beat) * spb >= gapS - 1e-6);
+    // (on Normal the two hands still not quicker than Hard's gap one after the other: a snare a sixteenth before the
+    // kick at 136 bpm is Hard's)
+    const fits = (c: C) =>
+      kept.every((k) => {
+        const d = Math.abs(k.beat - c.beat) * spb;
+        const cross = level !== 'easy' && (k.key === 'kit:kick') !== (c.key === 'kit:kick');
+        return d < 1e-6 || d >= gapS - 1e-6 || (cross && (level === 'hard' || d >= HARD_GAP - 1e-6));
+      });
     if (ck) for (const b of restingChords(s, ck, chords)) ks.push({ beat: b, key: 'kit:kick', vel: 0.8, rank: 0 });
     ks.sort((a, b) => a.beat - b.beat);
     for (const pass of ['kit:kick', 'snare'] as const)
@@ -920,12 +1019,20 @@ function chartAt(s: Score, inst: string, level: Level, from: number, to: number,
   const notes: ChartNote[] = [];
   const cover = new Map<string, Set<number>>();
   let lastAt = -Infinity;
+  // (and on any level: never one hand on one zone again quicker than it can (Hard's gap, a little under), nor two
+  // notes one after the other quicker than 90 ms: a grace note is the band's)
+  const sameGap = (HARD_GAP * 0.85 * t.bpm) / 60 - 1e-6;
+  const anyGap = (0.09 * t.bpm) / 60 - 1e-6;
+  const lastOn = new Map<string, number>();
   for (const n of out) {
     const same = notes.filter((m) => Math.abs(m.beat - n.beat) < 1e-6);
     if (same.some((m) => m.key === n.key) || same.length >= 2) continue;
     if ((level === 'easy' || (level === 'normal' && tuneGap)) && !same.length && n.beat - lastAt < gap) continue;
+    if (!same.length && n.beat - lastAt < anyGap) continue;
+    if (n.beat - (lastOn.get(n.key) ?? -Infinity) < sameGap) continue;
     notes.push({ beat: n.beat, key: n.key, vel: n.vel });
     lastAt = n.beat;
+    lastOn.set(n.key, n.beat);
     if (n.covers) {
       let set = cover.get(n.covers);
       if (!set) cover.set(n.covers, (set = new Set()));
@@ -990,10 +1097,13 @@ function prodCongas(s: Score, p: Production, level: Level, add: (beat: number, k
       if (Math.abs(h.at) < 1e-6 || Math.abs(h.at - 2) < 1e-6) cands.push({ beat: h.beat, key: 'congas:0', r: 2 });
     } else cands.push({ beat: h.beat, key: 'congas:0', r: rankAt(h.at) });
   }
+  const kicked = new Set(kit.KICK.filter((h) => h.mark !== 'o' && h.mark !== '-').map((h) => barOf(h.beat)));
   for (const h of kit.SNARE) {
     if (played.has(barOf(h.beat)) || h.mark === 'o' || h.mark === '-') continue;
-    // (Easy keeps to the low drum with the kick; the backbeat from Normal)
-    cands.push({ beat: h.beat, key: h.mark === 'f' && Math.round(h.at * 2) % 2 ? 'congas:0' : 'congas:2', r: Math.min(1, rankAt(h.at)) });
+    // (Easy keeps to the low drum with the kick; the backbeat from Normal; where there's no kick, a break's claps alone,
+    // Easy plays the claps on the beat)
+    const alone = !kicked.has(barOf(h.beat)) && rankAt(h.at) >= 2;
+    cands.push({ beat: h.beat, key: h.mark === 'f' && Math.round(h.at * 2) % 2 ? 'congas:0' : 'congas:2', r: alone ? 2 : Math.min(1, rankAt(h.at)) });
   }
   for (const h of kit.HAT) if (!played.has(barOf(h.beat)) && h.drum === 'open' && h.mark === 'X' && rankAt(h.at) < 2) cands.push({ beat: h.beat, key: 'congas:3', r: 0 });
   for (const c of thin(cands.filter((x) => x.r >= need), level, s.tune.bpm)) add(c.beat, c.key, Number(c.key.slice(7)) % 2 ? 0.85 : 0.75, 0);

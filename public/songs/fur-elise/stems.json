@@ -1,1 +1,1 @@
-{"id":"fur-elise","bpm":126,"meter":3,"start":-4,"end":312,"seconds":153.33333333333334,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"keys","file":"keys.webm","ch":2}]}
+{"id":"fur-elise","bpm":126,"meter":3,"start":-4,"end":312,"seconds":153.33333333333334,"lag":0.023,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"keys","file":"keys.webm","ch":2}]}

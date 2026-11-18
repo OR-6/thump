@@ -1,1 +1,1 @@
-{"id":"entertainer","bpm":136,"meter":4,"start":-4,"end":350,"seconds":159.7058823529412,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"keys","file":"keys.webm","ch":2},{"id":"bass","file":"bass.webm","ch":1},{"id":"drums","file":"drums.webm","ch":2}]}
+{"id":"entertainer","bpm":136,"meter":4,"start":-4,"end":350,"seconds":159.7058823529412,"lag":0.02,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"keys","file":"keys.webm","ch":2},{"id":"bass","file":"bass.webm","ch":1},{"id":"drums","file":"drums.webm","ch":2}]}

@@ -1,1 +1,1 @@
-{"id":"canon","bpm":66,"meter":4,"start":-4,"end":224,"seconds":214.54545454545453,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"strings","file":"strings.webm","ch":2},{"id":"bass","file":"bass.webm","ch":1},{"id":"keys","file":"keys.webm","ch":2}]}
+{"id":"canon","bpm":66,"meter":4,"start":-4,"end":224,"seconds":214.54545454545453,"lag":0.007,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"strings","file":"strings.webm","ch":2},{"id":"bass","file":"bass.webm","ch":1},{"id":"keys","file":"keys.webm","ch":2}]}
