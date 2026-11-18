@@ -442,6 +442,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // the panel takes a poke: a fingertip moving into it at a gentle speed, passing through or stopping
     this.moduleSurface = new Surface('module', 'module', 'module', { ...STRIKE_CFG, minSpeed: 0.16, minDecel: 6 });
     this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset, debug: DEBUG });
+    this.game.level = this.settings.level;
     this.debug = {
       phase: 'waiting', deskY: null, deskSource: null, kitOrigin: null, anchored: false, resumed: false, hits: 0, lastHit: null, surfaces: [],
       planes: 0, meshes: 0, mode: 'discover', found: [], audio: false, offsetMs: Math.round(this.settings.offset * 1000), degrade: 0, fps: 0, fpsMin: 0, tag: '', errors: 0,
@@ -449,20 +450,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     (window as unknown as { __thump: unknown }).__thump = { debug: this.debug, game: this, hands, audio, sfx, targets: () => this.targets() };
     this.cleanupFuncs.push(
       this.visibilityState.subscribe((s) => {
-        this.xrBlurred = s === VisibilityState.VisibleBlurred || s === VisibilityState.Hidden;
-        this.setPaused(this.xrBlurred || this.pageHidden);
-        if (s === VisibilityState.Hidden && this.hiddenAt < 0) this.hiddenAt = performance.now();
-        if (s === VisibilityState.Visible && this.hiddenAt >= 0) {
-          // back in the headset: once the poses settle, the kit comes back in front of you if the world moved under it
-          if (performance.now() - this.hiddenAt > 1000) this.recallCheckAt = this.clock.t + 0.5;
-          this.hiddenAt = -1;
-        }
+        this.onXrVis(s);
         if (s === VisibilityState.Visible) {
           const sess = this.world.session;
           if (sess && sess !== this.audioSession) {
             this.audioSession = sess;
             sess.addEventListener('selectstart', () => audio.resume());
             sess.addEventListener('squeezestart', () => audio.resume());
+            // (the headset lifted off: the session goes hidden with no frames, so the world's own state never sees
+            // it; the session's event does)
+            sess.addEventListener('visibilitychange', () => this.onXrVis(sess.visibilityState as VisibilityState));
           }
           audio.resume();
           if (sess?.updateTargetFrameRate && sess.supportedFrameRates?.includes(72)) sess.updateTargetFrameRate(72).catch(() => {});
@@ -1510,7 +1507,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       // the button a newcomer is shown next pulses on the screen
       this.game.coachFocus = coach === 2 ? (mode === 'results' ? 'next' : 'nav:songs') : null;
-      if (inSong && coach !== 1 && coach !== 0) this.coachTo(3);
+      if (inSong && coach !== 1) this.coachTo(3);
     }
     hud.set(say);
     this.hudSay = say;
@@ -1871,6 +1868,17 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** "Start over" (on the page, or in Settings): forget progress (the kit stays where it is, and your names on the
    * world's boards stay yours), and the first-time hints come back. */
   private resetProgress(): void {
+    // (a song on: it stops first, its band with it)
+    if (this.game.mode === 'play' || this.game.mode === 'count') this.game.stop();
+    // (and the first-time guide runs again, as on a first go)
+    if (this.settings.coach !== undefined) {
+      const { coach: _c, ...rest } = this.settings;
+      this.settings = rest as typeof this.settings;
+      saveSettings(this.settings);
+    }
+    this.coachKitT = this.coachGoT = -1;
+    this.coachSkip = 0;
+    this.hudHowInst = '';
     const kitPose = this.progress.kit;
     const { me, bandWords } = this.progress;
     this.progress = { ...freshProgress(), kit: kitPose, rooms: {}, ...(me ? { me } : {}), ...(bandWords ? { bandWords } : {}) };
@@ -1882,6 +1890,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.game.endJam();
     this.game.looper.clear();
     this.game = new Game(this.stage, this.progress, this.room, { tempo: this.settings.tempo, offset: this.settings.offset, debug: DEBUG });
+    this.game.level = this.settings.level;
     this.game.code = coop.status.state === 'hosting' && coop.status.code ? coop.status.code : '';
     audio.stopSustain();
     this.brushPrev.clear();
@@ -2006,7 +2015,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         f();
       }
     this.debug.audio = audio.running;
-    if (this.resumePending && audio.running) {
+    if (this.resumePending && audio.running && !this.userPaused) {
       this.resumePending = false;
       this.game.resumed(this.clock.t);
     }
@@ -6070,6 +6079,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // (and the sticks' click and the clap: a frame back after a gap isn't a knock)
     this.stickClick.reset();
     this.clapW.reset();
+  }
+  /** The session's visibility: blurred (the Meta menu) or hidden (the headset off) pauses; back, a check on the kit. */
+  private onXrVis(s: VisibilityState): void {
+    if (s === VisibilityState.NonImmersive) return;
+    this.xrBlurred = s === VisibilityState.VisibleBlurred || s === VisibilityState.Hidden;
+    this.setPaused(this.xrBlurred || this.pageHidden);
+    if (s === VisibilityState.Hidden && this.hiddenAt < 0) this.hiddenAt = performance.now();
+    if (s === VisibilityState.Visible && this.hiddenAt >= 0) {
+      // back in the headset: once the poses settle, the kit comes back in front of you if the world moved under it
+      if (performance.now() - this.hiddenAt > 1000) this.recallCheckAt = this.clock.t + 0.5;
+      this.hiddenAt = -1;
+    }
+    if (s === VisibilityState.Visible) audio.resume();
   }
   private setPaused(p: boolean): void {
     if (p === this.paused) return;

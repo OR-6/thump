@@ -873,6 +873,8 @@ export class Game {
     joins: string;
     /** The instrument you're playing; the one ◀ ▶ asked for next and the beat it takes over; its unscored bar ends. */
     inst: string;
+    /** Switched instrument during it: the run isn't one instrument's, so it goes on no instrument's board. */
+    switched?: boolean;
     queued: string | null;
     switchAt: number;
     graceTo: number;
@@ -1135,6 +1137,11 @@ export class Game {
   }
 
   /** The songs the page shows (by the filter: all, the classics, or the originals), as indices into `tracks`. */
+  /** The song picked is one in the list shown (a filter or another instrument can hide it): else the list's first. */
+  keepSelShown(): void {
+    const sh = this.shownSongs();
+    if (sh.length && !sh.includes(this.songSel)) this.songSel = sh[0];
+  }
   private shownSongs(): number[] {
     const f = this.songFilter;
     const out: number[] = [];
@@ -1165,9 +1172,18 @@ export class Game {
     return i < 0 ? SONG_TRACKS.length - 1 : i;
   }
 
+  /** The song started with the band (a friend in it then): its score goes on the band's board. */
+  private bandAtStart = false;
   beginPerform(inst = 'drums', beat0 = -1): void {
     const m = this.machine;
     if (!m) return;
+    {
+      const bs = this.stage.bandState?.();
+      this.bandAtStart = !!bs && bs.state === 'connected' && bs.players >= 2;
+    }
+    // (a song starting from outside the menus, the band's or the first lesson: Settings and the name page give way)
+    this.settingsOpen = this.tuneOpen = false;
+    if (this.menu === 'name' || this.menu === 'reset') this.menu = 'songs';
     this.groove = null;
     // (the guitar plays over any song; another instrument needs a part of the song on it)
     const has = (i: string) => i === 'drums' || i === 'guitar' || m.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS');
@@ -1337,6 +1353,7 @@ export class Game {
       const inst = p.queued;
       p.queued = null;
       p.inst = inst;
+      p.switched = true;
       p.graceTo = p.switchAt + 4;
       p.joins = '';
       this.stage.useInstrument?.(inst);
@@ -1491,18 +1508,20 @@ export class Game {
     // the world's board for this song on this instrument at this level (not a lesson, not slowed down)
     this.world = null;
     const bs = this.stage.bandState?.();
-    const together = !!bs && bs.state === 'connected' && bs.players >= 2;
+    const together = !!bs && bs.state === 'connected' && bs.players >= 2 && this.bandAtStart;
     if (together && this.stage.bandScore && s.total > 0 && !p.track.score?.tune.lesson && this.tempoAtStart >= 0.999) {
       // (played together: on the band's board, its players added up, under the band's name; not on the solo boards)
       this.stage.bandScore({ board: boardOf(p.track.id, 'band', this.level, dayKey()), score: sc.score, notes: s.total, acc: sc.accuracy, fc: sc.fullCombo }, (w) => {
         if (!w || this.mode !== 'results') return;
+        this.worldLines.clear();
         this.world = { ...w, inst: 'band' };
         this.refreshDisplay();
       });
-    } else if (this.stage.postScore && s.total > 0 && !p.track.score?.tune.lesson && this.tempoAtStart >= 0.999) {
+    } else if (this.stage.postScore && s.total > 0 && !p.track.score?.tune.lesson && this.tempoAtStart >= 0.999 && !p.switched) {
       const board = boardOf(p.track.id, p.inst, this.level, dayKey());
       this.stage.postScore({ board, name: this.myName(), score: sc.score, acc: sc.accuracy, grade: sc.letter, fc: sc.fullCombo, notes: s.total }, (w) => {
         if (!w || this.mode !== 'results') return;
+        this.worldLines.delete(board);
         this.world = { ...w, inst: p.inst };
         this.refreshDisplay();
       });
@@ -1726,6 +1745,8 @@ export class Game {
   /** Switch to `id` at the next loop; true when it's queued (or already that one), false when it can't be (too late). */
   switchTo(id: string): boolean {
     if (!this.perf || !this.machine) return false;
+    // (a lesson teaches its own instrument: no switching mid-way)
+    if (this.machine.track.score?.tune.lesson) return false;
     // (the one you're on: nothing pending any more; another while one's pending: the latest choice wins)
     if (id === this.perf.inst) {
       if (this.perf.queued) {
@@ -1792,12 +1813,16 @@ export class Game {
     if (this.mode === 'results' && this.fromPerform && this.machine && (k === 'play' || k === 'next')) {
       const m = this.machine;
       const inst = this.perfInst;
-      if (k === 'play' && this.lastBest.wasEasy3 && this.level !== 'hard') {
+      if (k === 'play' && this.lastBest.wasEasy3 && this.level !== 'hard' && !m.track.score?.tune.lesson) {
         this.level = this.level === 'easy' ? 'normal' : 'hard';
         this.stage.saveLevel?.(this.level);
       }
       this.leaveResults();
-      if (k === 'play') this.beginPerform(inst);
+      if (k === 'play' && m.track.score && this.tracks.includes(m.track)) {
+        // (through the song's start: in a band, everyone starts it again together)
+        this.perfInst = inst;
+        this.playSong(this.tracks.indexOf(m.track));
+      } else if (k === 'play') this.beginPerform(inst);
       // > after a song: make it your own (build it); after your own, or a written-out song: the next song
       else if (m.written && !m.track.score) this.beginBuild(this.buildTracks.indexOf(m.track));
       else this.playSong(m.track.score ? (this.tracks.indexOf(m.track) + 1) % this.tracks.length : this.nextSong());
@@ -2225,6 +2250,7 @@ export class Game {
   }
 
   stop(): void {
+    const was = this.mode;
     this.stopStems();
     this.stage.lightsDown?.(false);
     this.listening = false;
@@ -2238,6 +2264,8 @@ export class Game {
     this.judge = null;
     this.bedCursor = null;
     this.moteCount = 0;
+    // (a song or lesson quit: your own instrument back on the desk, as after its results)
+    if (was === 'play' || was === 'count') this.stage.useInstrument?.(null);
     this.stage.retune(0);
     this.stage.mix?.(null);
     this.refreshDisplay();
@@ -2988,7 +3016,7 @@ export class Game {
       if (this.tuneOpen) this.tuneOpen = false;
       else if (this.settingsOpen) this.settingsOpen = false;
       else {
-        const up: Record<string, PageId> = { inst: 'instruments', instruments: this.instFrom === 'songs' ? 'songs' : this.found.includes('kit') ? 'free' : 'main', songs: 'main', band: 'main', join: 'band', free: 'main', main: 'main' };
+        const up: Record<string, PageId> = { inst: 'instruments', instruments: this.instFrom === 'songs' ? 'songs' : this.instFrom === 'main' ? 'main' : this.found.includes('kit') ? 'free' : 'main', songs: 'main', band: 'main', join: 'band', free: 'main', main: 'main' };
         this.menu = up[this.menu] ?? 'main';
       }
       this.refreshDisplay();
@@ -3000,7 +3028,7 @@ export class Game {
       if (to === 'settings') this.settingsOpen = true;
       else if (to === 'build') this.beginBuild(this.nextBuild());
       else {
-        if (to === 'instruments' && this.menu !== 'instruments') this.instFrom = this.menu === 'songs' ? 'songs' : 'free';
+        if (to === 'instruments' && this.menu !== 'instruments') this.instFrom = this.menu === 'songs' ? 'songs' : this.menu === 'main' ? 'main' : 'free';
         // (the songs open on the page with the one picked)
         if (to === 'songs') {
           this.songPage = -1;
@@ -3010,6 +3038,8 @@ export class Game {
             const j = this.tracks.findIndex((t) => t.score && !t.score.tune.lesson && !this.performed(t.id));
             if (j >= 0) this.songSel = j;
           }
+          this.menu = 'songs';
+          this.keepSelShown();
           this.prefetchSel();
         }
         this.menu = to as PageId;
@@ -3047,6 +3077,7 @@ export class Game {
       if (f === 'all' || f === 'classics' || f === 'originals' || f === 'lessons') this.songFilter = f;
       else this.songFilter = this.songFilter === 'all' ? 'classics' : this.songFilter === 'classics' ? 'originals' : this.songFilter === 'originals' ? 'lessons' : 'all';
       this.songPage = 0;
+      this.keepSelShown();
       this.refreshDisplay();
       return;
     }
@@ -3080,9 +3111,10 @@ export class Game {
         return;
       }
       this.stopAsked = -1;
+      const was = this.mode;
       if (this.mode === 'build') this.endBuild();
       else if (this.mode === 'play' || this.mode === 'count') this.stop();
-      this.menu = 'songs';
+      this.menu = was === 'build' ? 'maker' : 'songs';
       this.refreshDisplay();
       return;
     }
@@ -3187,7 +3219,7 @@ export class Game {
     const band = this.stage.bandState?.() ?? { state: 'idle', players: 1 };
     const step = this.mode === 'play' || this.mode === 'count' ? this.lessonNow() : null;
     if (step) d.sub = step.say;
-    const sw = this.machine ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
+    const sw = this.machine && !this.machine.track.score?.tune.lesson ? SWITCH_ORDER.filter((i) => i === 'drums' || i === 'guitar' || this.machine!.parts.some((p) => plays(i, p.def.name) && p.def.name !== 'BASS')) : [];
     d.page = buildPage({
       page: pageId,
       line: pageId === 'free' ? (this.loopLine() || (this.groove ? `The band's with you, ${Math.round(60 / this.clock.spb)} bpm` : this.offered && this.found.includes('kit') ? 'Ready? Try Songs' : '')) : pageId === 'main' ? (this.found.includes('kit') ? "Play what's on the desk, or pick a song" : 'Hit a drum to start') : d.line,
@@ -3210,7 +3242,7 @@ export class Game {
       next: this.fromPerform ? 'Next\nsong' : '',
       easier: this.mode === 'results' && this.fromPerform && this.lastScore?.letter === 'D' && this.level !== 'easy',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,
-      harder: this.mode === 'results' && this.fromPerform && this.lastBest.wasEasy3 && this.level !== 'hard' ? (this.level === 'easy' ? 'NORMAL' : 'HARD') : '',
+      harder: this.mode === 'results' && this.fromPerform && this.lastBest.wasEasy3 && this.level !== 'hard' && !this.machine?.track.score?.tune.lesson ? (this.level === 'easy' ? 'NORMAL' : 'HARD') : '',
       perform: this.mode === 'build' && !!this.bld && this.bld.phase === 'run' && this.bld.dropAt <= 0,
       sure: this.stopAsked > 0 && this.t - this.stopAsked < 2,
       switchable: sw,
