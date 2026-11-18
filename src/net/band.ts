@@ -64,7 +64,7 @@ type Fn = (...a: never[]) => void;
 export type BandCtl =
   | { k: 'ping'; a: number; p: string }
   | { k: 'pong'; a: number; h: number; p: string }
-  | { k: 'song'; i: number; at: number }
+  | { k: 'song'; i: number; at: number; lv?: 'easy' | 'normal' | 'hard' }
   | { k: 'ask'; i: number }
   /** What a player has out, and the song they're playing on it now ('' none: their instrument then mutes nothing). */
   | { k: 'inst'; p: string; id: string; s?: string; l?: string[] }
@@ -80,7 +80,7 @@ export function validCtl(m: unknown): m is BandCtl {
   const id = typeof n.p === 'string' && n.p.length <= 12;
   if (n.k === 'ping') return num(n.a) && id;
   if (n.k === 'pong') return num(n.a) && num(n.h) && id;
-  if (n.k === 'song') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && num(n.at);
+  if (n.k === 'song') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && num(n.at) && (n.lv === undefined || n.lv === 'easy' || n.lv === 'normal' || n.lv === 'hard');
   if (n.k === 'ask') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32;
   const board = (x: unknown) => typeof x === 'string' && /^[a-z0-9-]{1,40}:band:(easy|normal|hard)$/.test(x);
   const int = (x: unknown, lo: number, hi: number) => Number.isInteger(x) && (x as number) >= lo && (x as number) <= hi;
@@ -167,6 +167,10 @@ export class BandLink {
   /** The host's steady clock minus this device's (s), from the quickest ping so far. */
   offset = 0;
   private bestRtt = Infinity;
+  /** A ping has come back: this headset's clock is matched to the host's. */
+  get synced(): boolean {
+    return this.bestRtt < Infinity;
+  }
   /** Control messages for the room (songs, instruments). */
   onCtl: (m: BandCtl) => void = () => {};
   /** Is this headset the band's host (its clock is the band's)? */

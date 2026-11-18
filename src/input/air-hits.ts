@@ -80,11 +80,35 @@ const WATCH = 6;
  * point more than `deep` under a key isn't playing it (it's under the keyboard). Leaves a key only `edge` past it, so
  * a finger on the line between two keys doesn't flicker between them.
  */
-export const KEY = { lift: 0.005, out: 0.004, minGain: 0.3, tapMin: 0.25, edge: 0.002, deep: 0.06, liftFrames: 18, dropFrames: 9 } as const;
+export const KEY = { lift: 0.005, out: 0.008, minGain: 0.3, tapMin: 0.25, edge: 0.002, deep: 0.06, liftFrames: 18, dropFrames: 9, repeatMin: 0.08, knee: 0.08, jitLift: 7, jitRate: 0.1, jitMax: 0.004, jitSettle: 14, liftMax: 0.012 } as const;
+/**
+ * (`out`: a key let up by rising out of it re-arms 8 mm over its top: at 4 mm a fingertip resting on the keys, as a
+ * pianist's do, shook in and out of it and played. `repeatMin`: a repeat comes down at least this fast. A key's lift
+ * grows with the point's own shake: `jitLift` times its running jitter (how far its smoothed depth strays from its
+ * average while held, measured after `jitSettle` frames down, so the press itself isn't counted), from the surface's
+ * lift up to `liftMax` (or twice the surface's lift, if more). Measured in tests/air-noise.test.ts.)
+ */
 
-/** How hard a crossing at `speed` m/s sounds (0.15 soft to 1 at `full`). */
-export function airGain(speed: number, full: number = AIR.fullSpeed): number {
-  return Math.max(0.15, Math.min(1, 0.15 + (0.85 * (speed - 0.3)) / Math.max(0.1, full - 0.3)));
+/**
+ * Sticks: a stroke that stops just over a head plays where it stopped (in the air nothing stops a stick, and a drummer
+ * stops where the head is, give or take a centimetre). It came down at `speed` (m/s, its fastest lately) and turned
+ * (now under `drop` of that) with the frame before it within the height `update(..., turn)` is given over the head.
+ */
+export const TURN = { zone: 0.01, speed: 1.0, drop: 0.25, fade: 0.75 } as const;
+
+/** How hard a crossing at `speed` m/s sounds (0.15 soft to 1 at `full`; quietest up to `knee`). */
+export function airGain(speed: number, full: number = AIR.fullSpeed, knee = 0.3): number {
+  return Math.max(0.15, Math.min(1, 0.15 + (0.85 * (speed - knee)) / Math.max(0.1, full - knee)));
+}
+
+/**
+ * How loud a key goes down at `speed` m/s: KEY.minGain at KEY.knee, 1 at `full`, on a curve that gives the soft half
+ * of the range room (a gentle press 0.2 m/s ≈ 0.47, a press 0.35 ≈ 0.6, a firm one 0.6 ≈ 0.77 at full 1); before, every
+ * press under 0.43 m/s sounded the same.
+ */
+export function keyGain(speed: number, full = 1): number {
+  const u = Math.max(0, Math.min(1, (speed - KEY.knee) / Math.max(0.1, full - KEY.knee)));
+  return KEY.minGain + (1 - KEY.minGain) * Math.pow(u, 0.7);
 }
 
 function inside(s: AirSurface, x: number, y: number, z: number, grow = 0): boolean {
@@ -129,6 +153,12 @@ export class AirHits {
   private slid: Uint8Array;
   /** Struck surfaces with `relift`, per point and surface: lifted from the deepest, now watching for a stroke down. */
   private rel: Uint8Array;
+  /** Keys held: the smoothed depth's slow average, frames down; per point, its running jitter (m). */
+  private slowM: Float32Array;
+  private downN: Uint8Array;
+  private jit: Float32Array;
+  /** Struck surfaces, per point and surface: the fastest it has come down lately, over it and near it (m/s). */
+  private pk: Float32Array;
 
   constructor(readonly points: number) {
     this.prev = new Float32Array(points * 3);
@@ -144,6 +174,27 @@ export class AirHits {
     this.held = new Int16Array(points).fill(-1);
     this.slid = new Uint8Array(points);
     this.rel = new Uint8Array(points * IDS);
+    this.slowM = new Float32Array(points * IDS);
+    this.downN = new Uint8Array(points * IDS);
+    this.jit = new Float32Array(points);
+    this.pk = new Float32Array(points * IDS);
+  }
+
+  /** A key's lift for point p now: its own, or more for a shakier point. */
+  private liftOf(s: AirSurface, p: number): number {
+    const base = s.lift ?? KEY.lift;
+    return Math.min(Math.max(KEY.liftMax, 2 * base), Math.max(base, KEY.jitLift * this.jit[p]));
+  }
+  /** Key t goes down for point p at smoothed depth m. */
+  private press(t: number, m: number): void {
+    this.down[t] = 1;
+    this.slowM[t] = m;
+    this.downN[t] = 0;
+  }
+
+  /** The point's running jitter (m), as keys read it. */
+  jitter(p: number): number {
+    return this.jit[p];
   }
 
   /** A struck surface it's through now: it waits to come out (or, with `relift`, to lift and come down again). */
@@ -154,6 +205,7 @@ export class AirHits {
     this.ext[t] = now;
     this.age[t] = 0;
     this.rel[t] = 0;
+    this.pk[t] = 0;
   }
 
   /** Forget a point (it went untracked, isn't in use, or changed meaning: a stick appeared). */
@@ -165,7 +217,7 @@ export class AirHits {
    * Point `p` is now at (x, y, z) after `dt` s. Each surface it crossed the right way, fast enough, inside, is a hit
    * pushed to `out` (at most one: one note per finger). Returns how many were added.
    */
-  update(p: number, x: number, y: number, z: number, dt: number, surfaces: readonly AirSurface[], out: AirHit[], full: number = AIR.fullSpeed, min: number = AIR.minSpeed): number {
+  update(p: number, x: number, y: number, z: number, dt: number, surfaces: readonly AirSurface[], out: AirHit[], full: number = AIR.fullSpeed, min: number = AIR.minSpeed, turn = 0): number {
     const i = p * 3;
     const px = this.prev[i];
     const py = this.prev[i + 1];
@@ -195,10 +247,11 @@ export class AirHits {
           this.sm[t] = d;
           this.age[t] = 0;
           this.down[t] = 0;
+          this.pk[t] = 0;
           this.ext[t] = BIG;
           if (s.key && over(s, x, z, 0) && d > -KEY.deep) {
             if (d < 0 && this.held[p] < 0) {
-              this.down[t] = 1;
+              this.press(t, d);
               this.ext[t] = d;
               this.held[p] = s.id;
             } else this.ext[t] = d;
@@ -225,13 +278,20 @@ export class AirHits {
       if (this.age[t] < 255) this.age[t]++;
       if (now < 0 && now > -KEY.deep && s.y > shadow && over(s, x, z, 0)) shadow = s.y;
       if (!this.down[t]) continue;
+      // (held: how much it shakes, once the press has settled: a shakier point needs a bigger lift to let a key up)
+      if (this.downN[t] < 255) this.downN[t]++;
+      this.slowM[t] += (m - this.slowM[t]) * 0.1;
+      const dev = Math.abs(m - this.slowM[t]);
+      // (a stroke isn't shake: only strays under KEY.jitMax count)
+      if (this.downN[t] > KEY.jitSettle && dev < KEY.jitMax) this.jit[p] += (dev - this.jit[p]) * KEY.jitRate;
+      const lift = this.liftOf(s, p);
       // (held: the deepest it's been lately; up as it lifts from there, rises out, or leaves)
       if (m < this.ext[t] || this.age[t] > KEY.liftFrames) {
         this.ext[t] = Math.min(m, this.ext[t] + (this.age[t] > KEY.liftFrames ? 0.0005 : 0));
         if (m <= this.ext[t]) this.age[t] = 0;
       }
       const gone = !over(s, x, z, KEY.edge);
-      if (gone || now < -KEY.deep || now > KEY.out || m - this.ext[t] > (s.lift ?? KEY.lift)) {
+      if (gone || now < -KEY.deep || now > KEY.out || m - this.ext[t] > lift) {
         this.down[t] = 0;
         this.held[p] = -1;
         // (out of it, to the side or above: in again plays at once; lifted, or gone under it: it has to come down)
@@ -299,13 +359,13 @@ export class AirHits {
         if (s.tap && fromAbove && (speed < Math.max(min, KEY.tapMin) || side(s, qx, qy, qz) <= -c)) continue;
         // (a repeat only after a lift from a press: a finger that never pressed it, lowered and resting, isn't one)
         if (!fromAbove && !this.rel[t]) continue;
-        if (fromAbove ? speed < min && m > -c : this.ext[t] - m < (s.lift ?? KEY.lift) * 0.6 || speed < min * 0.5) continue;
+        if (fromAbove ? speed < min && m > -c : this.ext[t] - m < this.liftOf(s, p) * 0.6 || speed < Math.max(min * 0.5, KEY.repeatMin)) continue;
         const was = side(s, px, py, pz);
         const lat = dt > 0 ? Math.sqrt(Math.max(0, moved * moved - (was - now) * (was - now))) / dt : 0;
         const v = Math.max(speed, 0.5 * lat, 0);
         const f = was + c > 0 && was > now ? (was + c) / (was - now) : 1;
-        out.push({ surface: s.id, point: p, speed: v, gain: Math.max(KEY.minGain, airGain(v, full)), depth: -now, ago: (1 - Math.min(1, f)) * dt });
-        this.down[t] = 1;
+        out.push({ surface: s.id, point: p, speed: v, gain: keyGain(v, full), depth: -now, ago: (1 - Math.min(1, f)) * dt });
+        this.press(t, m);
         this.rel[t] = 0;
         this.held[p] = s.id;
         this.ext[t] = m;
@@ -362,6 +422,17 @@ export class AirHits {
       const was = side(s, px, py, pz);
       const crossed = was + c > 0 && now + c <= 0;
       let watching = this.slow[t] > 0;
+      if (turn > 0 && dt > 0) {
+        // (a stick's stroke turning just over the head: the fastest it came down lately, over it and near it)
+        const v1 = (was - now) / dt;
+        const pk = this.pk[t];
+        this.pk[t] = now > 0 && now < turn + 0.08 && inside(s, x, y, z, 0.01) ? Math.max(pk * TURN.fade, v1) : 0;
+        if (!crossed && !watching && was > 0 && was < turn && now > 0 && pk >= TURN.speed && v1 < TURN.drop * pk && inside(s, px, py, pz)) {
+          out.push({ surface: s.id, point: p, speed: pk, gain: airGain(pk, full), depth: -was, ago: dt });
+          for (const q of surfaces) if (!q.key) this.through1(p * IDS + q.id, side(q, x, y, z));
+          return 1;
+        }
+      }
       // (back out without having played: free to cross again)
       if (watching && now > 0) {
         this.slow[t] = 0;

@@ -8,7 +8,7 @@
  */
 import { CanvasTexture, CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
 import { whenFonts } from '../ui/fonts.js';
-import { MULT_PAIR, NEON, body, display, glowText, hgrad, rr, slant, vgrad } from '../ui/theme.js';
+import { BRAND, MULT_PAIR, NEON, body, display, glowText, hgrad, rr, slant, vgrad } from '../ui/theme.js';
 
 const W = 1024;
 const H = 300;
@@ -203,10 +203,10 @@ export class Hud {
       const py = 4;
       const ph = H - 8;
       rr(g, px, py, pw, ph, 30);
-      g.fillStyle = vgrad(g, py, py + ph, 'rgba(26,13,56,0.95)', 'rgba(36,16,70,0.95)');
+      g.fillStyle = vgrad(g, py, py + ph, 'rgba(29,11,44,0.95)', 'rgba(38,16,58,0.95)');
       g.fill();
       g.lineWidth = 4;
-      g.strokeStyle = '#3b2670';
+      g.strokeStyle = '#3d2357';
       g.stroke();
       const tx = px + 48;
       const top = lines.length > 1 ? py + 64 : lines.length || foot ? py + 80 : py + ph / 2 + 6;
@@ -214,7 +214,7 @@ export class Hud {
       g.textAlign = 'left';
       g.font = display(size, 900);
       const fill = s.gold ? vgrad(g, top - size / 2, top + size / 2, '#fff1a8', '#ffb000') : s.hot ? vgrad(g, top - size / 2, top + size / 2, '#ffffff', NEON.cyan) : NEON.ink;
-      glowText(g, cmd, tx, top, fill, s.gold ? NEON.gold : s.hot ? NEON.cyan : 'rgba(51,225,255,0.25)', s.hot || s.gold ? 18 : 8);
+      glowText(g, cmd, tx, top, fill, s.gold ? NEON.gold : s.hot ? NEON.cyan : 'rgba(255,181,71,0.25)', s.hot || s.gold ? 18 : 8);
       if (lines.length) {
         g.font = body(sz, 600);
         g.fillStyle = NEON.muted;
@@ -225,11 +225,8 @@ export class Hud {
         const bh = 64;
         const by = py + ph - bh - 14;
         slant(g, tx - 6, by, fw, bh);
-        g.shadowColor = NEON.magenta;
-        g.shadowBlur = 12;
-        g.fillStyle = hgrad(g, tx, tx + fw, ['#ff3ea5', '#ff6a6a', '#ff9a3c']);
+        g.fillStyle = BRAND.hot;
         g.fill();
-        g.shadowBlur = 0;
         g.font = display(40, 900);
         g.fillStyle = '#ffffff';
         g.fillText(foot, tx + 34, by + bh / 2 + 2);
@@ -315,7 +312,7 @@ export class Hud {
     g.fillStyle = 'rgba(255,255,255,0.12)';
     g.fill();
     rr(g, at(-0.06), y - 9, at(0.06) - at(-0.06), 18, 9);
-    g.fillStyle = 'rgba(51,225,255,0.28)';
+    g.fillStyle = 'rgba(255,181,71,0.28)';
     g.fill();
     g.fillStyle = 'rgba(255,255,255,0.7)';
     g.fillRect((x0 + x1) / 2 - 2, y - 22, 4, 44);
@@ -331,7 +328,7 @@ export class Hud {
       const o = s.errs[(s.i - s.n + k + N * 2) % N];
       const off = Math.abs(o);
       g.globalAlpha = 0.3 + 0.7 * ((k + 1) / s.n);
-      g.fillStyle = off <= 0.06 ? NEON.cyan : off <= 0.12 ? '#3cf0a0' : o < 0 ? '#ff9a3c' : '#8a5cff';
+      g.fillStyle = off <= 0.06 ? NEON.cyan : off <= 0.12 ? '#3cf0a0' : o < 0 ? '#ff9a3c' : '#d2a54a';
       const w = k === s.n - 1 ? 10 : 6;
       g.fillRect(at(o) - w / 2, y - 26, w, 52);
     }

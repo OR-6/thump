@@ -581,7 +581,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     songStarted: (i, beat0) => {
       if (!this.bandOn || !this.band.host) return;
       // beat 0 on the band's clock (the host's steady clock)
-      this.band.send({ k: 'song', i, at: performance.now() / 1000 + (beat0 - this.clock.t) });
+      this.band.send({ k: 'song', i, at: performance.now() / 1000 + (beat0 - this.clock.t), lv: this.game.level });
     },
     freeHarmony: () => {
       const id = this.kit.inst;
@@ -1044,6 +1044,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** The band's messages: a song starting on the band's clock, a guest asking for one, what each friend plays. */
   private onBandCtl(m: BandCtl): void {
     if (m.k === 'ask' && this.band.host) {
+      // (not while you're out of the headset or still setting up: the band would start without you)
+      if (this.placement.phase !== 'placed' || this.paused) return;
       if (this.game.mode === 'discover' || this.game.mode === 'results') this.game.playSong(m.i);
       return;
     }
@@ -1051,6 +1053,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // beat 0 on the band's clock, as this headset's game time
       const local = this.band.toLocal(m.at);
       const beat0 = this.clock.t + (local - performance.now() / 1000);
+      // (only on a headset that's in, set up and on the band's clock: else it would start out of step)
+      if (this.placement.phase !== 'placed' || this.paused || !this.band.synced) return;
+      // (everyone plays the host's level, so the scores add up on one board)
+      if (m.lv) this.game.level = m.lv;
       if (this.game.mode === 'results' || this.game.mode === 'discover') this.game.playSong(m.i, beat0);
       return;
     }
@@ -2047,6 +2053,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       return;
     }
     this.watchRefSpace();
+    this.soundHint(dt);
     this.refineHeight(Math.min(dt, 0.05));
     this.keepWithin(Math.min(dt, 0.05));
     // (just the kit root and its parents: the renderer updates the hundreds of parts under it anyway)
@@ -5595,6 +5602,21 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.glideY = Math.min(target, this.head.y - 0.2);
       sfx.set();
     }
+  }
+
+  /** Seconds out with the sound still off (the browser can start it suspended until a pinch). */
+  private silentFor = 0;
+  private soundHint(dt: number): void {
+    if (audio.running || this.paused) {
+      this.silentFor = 0;
+      return;
+    }
+    this.silentFor += dt;
+    if (this.silentFor > 2.5 && this.silentFor - dt <= 2.5 && !this.settings.noWords) {
+      this.tmp.set(0, 0.2, 0).applyMatrix4(this.kit.root.matrixWorld);
+      this.tag.show('No sound? Pinch your fingers together', 0xffb547, this.tmp, this.head, 5);
+    }
+    if (this.silentFor > 10) this.silentFor = 2.4;
   }
 
   // ------------------------------------------------------------------ bringing the kit back to you

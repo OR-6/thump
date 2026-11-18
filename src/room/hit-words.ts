@@ -13,7 +13,7 @@ import { FONT, whenFonts } from '../ui/fonts.js';
 /** (the last two: a Good that was early or late, in Good's green: still counted, but it says which way) */
 const WORDS = ['PERFECT', 'GOOD', 'EARLY', 'LATE', 'EARLY ', 'LATE '] as const;
 /** Each word's own neon (a cyan Perfect, a green Good, an orange Early, a violet Late). */
-const INK: Record<string, [string, string]> = { PERFECT: ['#ffffff', '#33e1ff'], GOOD: ['#e6fff4', '#3cf0a0'], EARLY: ['#fff0dd', '#ff9a3c'], LATE: ['#efe6ff', '#8a5cff'], 'EARLY ': ['#e6fff4', '#3cf0a0'], 'LATE ': ['#e6fff4', '#3cf0a0'] };
+const INK: Record<string, [string, string]> = { PERFECT: ['#ffffff', '#ffb547'], GOOD: ['#e6fff4', '#3cf0a0'], EARLY: ['#fff0dd', '#ff9a3c'], LATE: ['#efe6ff', '#d2a54a'], 'EARLY ': ['#e6fff4', '#3cf0a0'], 'LATE ': ['#e6fff4', '#3cf0a0'] };
 const POOL = 6;
 /** How long a word is up (s). */
 const LIFE = 0.42;

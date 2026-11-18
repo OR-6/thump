@@ -32,19 +32,19 @@ export function withAlpha(hex: string, a: number): string {
 export const hexNum = (hex: string): number => parseInt(hex.slice(1), 16);
 
 export const NEON = {
-  bg0: '#150a30',
-  bg1: '#2a0c44',
-  ink: '#fbf7ff',
-  muted: '#b3a6d6',
-  dim: '#6b5f8e',
-  cyan: '#33e1ff',
-  magenta: '#ff3ea5',
-  violet: '#8a5cff',
-  green: '#3cf0a0',
+  bg0: '#1d0b2c',
+  bg1: '#26103a',
+  ink: '#f6efe4',
+  muted: '#b9aac9',
+  dim: '#7d6b92',
+  cyan: '#ffb547',
+  magenta: '#ff4b2b',
+  violet: '#d2a54a',
+  green: '#8fdc8a',
   gold: '#ffd23f',
   orange: '#ff9a3c',
-  red: '#ff4f7a',
-  plate: 'rgba(22,10,48,0.86)',
+  red: '#ff6b5a',
+  plate: 'rgba(29,11,44,0.86)',
 } as const;
 
 /** Each judgement's colour. */
@@ -55,8 +55,8 @@ export const LEVEL_INK: Record<string, string> = { easy: NEON.green, normal: NEO
 export const GRADE_PAIR: Record<string, [string, string]> = {
   S: ['#fff1a8', '#ffb000'],
   A: ['#b8ffe0', '#22d68a'],
-  B: ['#b5f3ff', '#1fb3ff'],
-  C: ['#e0ccff', '#8a5cff'],
+  B: ['#ffe0b8', '#ff8a3c'],
+  C: ['#e0ccff', '#d2a54a'],
   D: ['#d6cfe8', '#7a6f98'],
 };
 /** The three tiers of what you press: the one hot primary, white secondaries, outlined tertiaries. */
@@ -67,13 +67,13 @@ export const INST_LIGHT: Record<string, number> = { drums: 0xffb347, piano: 0xf3
 export const MULT_PAIR: [string, string][] = [
   ['#ffffff', '#d9cfff'],
   ['#ffffff', '#d9cfff'],
-  ['#b5f3ff', '#1fb3ff'],
+  ['#ffe0b8', '#ff8a3c'],
   ['#b8ffe0', '#22d68a'],
   ['#fff1a8', '#ffb000'],
 ];
 
-/** A display font: bold italic. */
-export const display = (px: number, weight = 800) => `italic ${weight} ${px}px ${FONT}`;
+/** A display font: bold, upright. */
+export const display = (px: number, weight = 800) => `${weight} ${px}px ${FONT}`;
 export const body = (px: number, weight = 600) => `${weight} ${px}px ${FONT}`;
 
 /** A slanted plate (a parallelogram leaning right by `k` px), as a path. */
@@ -106,35 +106,37 @@ export function hgrad(g: CanvasRenderingContext2D, x0: number, x1: number, stops
  * from your playing, see the edge flash.) */
 export function stage(g: CanvasRenderingContext2D, w: number, h: number, r = 40): void {
   rr(g, 4, 4, w - 8, h - 8, r);
-  g.fillStyle = vgrad(g, 0, h, 'rgba(26,13,56,0.94)', 'rgba(36,16,70,0.94)');
+  g.fillStyle = vgrad(g, 0, h, 'rgba(29,11,44,0.94)', 'rgba(38,16,58,0.94)');
   g.fill();
   g.lineWidth = 3;
-  g.strokeStyle = '#3b2670';
+  g.strokeStyle = '#3d2357';
   g.stroke();
 }
 
-/** Text with a neon glow, filled with a colour or a gradient. */
-export function glowText(g: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string | CanvasGradient, glow: string, blur = 18): void {
-  g.shadowColor = glow;
-  g.shadowBlur = blur;
+/** Text, flat, with a soft dark shadow under it so it reads over a bright room (no coloured glow). */
+export function glowText(g: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string | CanvasGradient, _glow: string, _blur = 18): void {
+  void _glow;
+  void _blur;
+  g.shadowColor = 'rgba(10,4,16,0.55)';
+  g.shadowBlur = 6;
+  g.shadowOffsetY = 2;
   g.fillStyle = fill;
   g.fillText(text, x, y);
   g.shadowBlur = 0;
+  g.shadowOffsetY = 0;
 }
 
 /** Chromatic display text: a cyan and a magenta ghost either side, a white-to-pink fill on top (a "PERFECT!" banner). */
 export function chroma(g: CanvasRenderingContext2D, text: string, x: number, y: number, px: number, a: string = NEON.cyan, b: string = NEON.magenta): void {
   g.font = display(px, 900);
-  g.globalAlpha = 0.85;
-  g.fillStyle = a;
-  g.fillText(text, x - 2, y - 1);
-  g.fillStyle = b;
-  g.fillText(text, x + 2, y + 1);
-  g.globalAlpha = 1;
+  // (one offset shadow in the accent, like a print slightly off register; no two-colour ghosting)
+  void b;
+  g.fillStyle = withAlpha(a.startsWith('#') ? a : NEON.cyan, 0.9);
+  g.fillText(text, x + 3, y + 3);
   const w = g.measureText(text).width;
   const gr = g.createLinearGradient(x, y - px, x, y);
   gr.addColorStop(0, '#ffffff');
-  gr.addColorStop(1, '#ffd6f1');
+  gr.addColorStop(1, '#fff1dc');
   g.fillStyle = gr;
   g.fillText(text, x, y);
   void w;

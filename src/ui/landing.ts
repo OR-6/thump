@@ -244,6 +244,9 @@ export function mountLanding(world: World): void {
     barBtn.textContent = where === 'xr' ? 'Enter' : where === 'phone' ? 'Send' : 'Watch';
     el.dataset.where = where;
     addr.hidden = where === 'xr';
+    // (a band is played in the headset: on a phone, starting or joining one leads nowhere)
+    const ctl = el.querySelector<HTMLElement>('.band-ctl');
+    if (ctl) ctl.hidden = where === 'phone';
     note.textContent = where === 'xr' ? 'Any desk will do, or a tray table on a train. Put the controllers down: it’s hands only.' : 'Nothing to install. Sit at a desk, put the controllers away and hit a drum to start.';
   };
   label();

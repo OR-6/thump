@@ -154,7 +154,7 @@ function drawSpot(g: CanvasRenderingContext2D, meter: number, active: boolean, r
   for (let i = 0; i < 4; i++) {
     const x = 380 + i * 108;
     slant(g, x, 20, 100, 32, 12);
-    g.fillStyle = 'rgba(138,92,255,0.18)';
+    g.fillStyle = 'rgba(210,165,74,0.18)';
     g.fill();
     g.lineWidth = 2;
     g.strokeStyle = 'rgba(179,166,214,0.35)';
@@ -182,7 +182,7 @@ function drawRing(g: CanvasRenderingContext2D, k: number, pair: [string, string]
   g.clearRect(0, 0, 480, 480);
   g.lineCap = 'round';
   g.lineWidth = 28;
-  g.strokeStyle = 'rgba(138,92,255,0.18)';
+  g.strokeStyle = 'rgba(210,165,74,0.18)';
   g.beginPath();
   g.arc(240, 240, 200, 0, Math.PI * 2);
   g.stroke();
@@ -245,7 +245,7 @@ function drawBrow(g: CanvasRenderingContext2D, better: boolean, prev: number, sc
   if (better && prev >= 0) {
     g.font = display(48, 900);
     const w = g.measureText('NEW RECORD!').width + 56;
-    pill(g, 4, 16, w, 64, hgrad(g, 4, 4 + w, ['#ff7ac8', '#ff3ea5']), 'NEW RECORD!', '#ffffff', display(48, 900));
+    pill(g, 4, 16, w, 64, hgrad(g, 4, 4 + w, ['#ff7ac8', '#ff4b2b']), 'NEW RECORD!', '#ffffff', display(48, 900));
     g.font = display(48, 800);
     g.fillStyle = NEON.ink;
     g.fillText(`+${fmt(score - prev)}`, w + 24, 66);
@@ -259,7 +259,7 @@ function drawBrow(g: CanvasRenderingContext2D, better: boolean, prev: number, sc
 function drawDetails(g: CanvasRenderingContext2D, r: { hook: string; letter: string; accuracy: number; fullCombo: boolean; allPerfect: boolean; maxCombo: number; perfect: number; good: number; miss: number; better?: boolean; prev?: number; score?: number }): void {
   g.clearRect(0, 0, 752, 236);
   if ((r.fullCombo || r.allPerfect) && r.better && (r.prev ?? -1) >= 0) {
-    pill(g, 8, 4, 330, 64, hgrad(g, 8, 338, ['#ff7ac8', '#ff3ea5']), 'NEW RECORD!', '#ffffff', display(48, 900));
+    pill(g, 8, 4, 330, 64, hgrad(g, 8, 338, ['#ff7ac8', '#ff4b2b']), 'NEW RECORD!', '#ffffff', display(48, 900));
     g.font = display(48, 800);
     g.fillStyle = NEON.ink;
     g.fillText(`+${fmt((r.score ?? 0) - (r.prev ?? 0))}`, 360, 54);
@@ -689,7 +689,7 @@ export class Panel {
     const tw = Math.min(900, g.measureText(t).width);
     const w = Math.min(992, tw + 120);
     slant(g, (1000 - w) / 2, 12, w, 126, 30);
-    g.fillStyle = 'rgba(22,10,48,0.9)';
+    g.fillStyle = 'rgba(29,11,44,0.9)';
     g.fill();
     g.lineWidth = 3;
     g.strokeStyle = tone === 'gold' ? NEON.gold : tone === 'grey' ? 'rgba(179,166,214,0.4)' : NEON.magenta;
@@ -1045,7 +1045,6 @@ export class Panel {
     const tx = hasBack ? 148 : 32;
     const right = Math.min(CW - 32, ...p.items.filter((i) => i.y < 140 && i.x > 300).map((i) => i.x - 16));
     fit(g, p.title, '900', p.id === 'main' ? 76 : 64, 48, right - tx);
-    g.font = `italic ${g.font}`;
     g.fillStyle = NEON.ink;
     g.fillText(p.id === 'main' ? p.title.toUpperCase() : p.title, tx, 88);
     if (p.line) {
@@ -1373,7 +1372,6 @@ export class Panel {
     }
     g.fillStyle = it.off ? NEON.dim : chosen ? '#1a0b2e' : NEON.ink;
     fit(g, it.label, '800', 56, 48, gx - (it.x + k + 24));
-    g.font = `italic ${g.font}`;
     g.fillText(it.label, it.x + k + 24, it.y + it.h / 2 + 19);
   }
 
@@ -1408,7 +1406,6 @@ export class Panel {
     }
     const longest = lines.reduce((a, b) => (g.measureText(a).width > g.measureText(b).width ? a : b));
     fit(g, longest, '800', 52, 48, room);
-    g.font = `italic ${g.font}`;
     g.fillStyle = NEON.ink;
     lines.forEach((l, k) => g.fillText(l, x + 28, 236 + k * 52));
     const my = lines.length > 1 ? 330 : 286;
@@ -1572,7 +1569,7 @@ export class Panel {
     if (it.kind === 'play' && !it.off) {
       g.shadowColor = NEON.magenta;
       g.shadowBlur = 12;
-      g.fillStyle = hgrad(g, it.x, it.x + it.w, ['#ff3ea5', '#ff6a6a', '#ff9a3c']);
+      g.fillStyle = hgrad(g, it.x, it.x + it.w, ['#ff4b2b', '#ff6a6a', '#ff9a3c']);
       g.fill();
       g.shadowBlur = 0;
       ink = '#ffffff';
@@ -1615,7 +1612,7 @@ export class Panel {
       const sx = it.x + it.w - 124;
       const sy = it.y + (it.h - 52) / 2;
       rounded(g, sx, sy, 96, 52, 26);
-      g.fillStyle = it.on ? hgrad(g, sx, sx + 96, ['#ff3ea5', '#ff9a3c']) : 'rgba(255,255,255,0.12)';
+      g.fillStyle = it.on ? hgrad(g, sx, sx + 96, ['#ff4b2b', '#ff9a3c']) : 'rgba(255,255,255,0.12)';
       g.fill();
       g.beginPath();
       g.arc(it.on ? sx + 70 : sx + 26, sy + 26, 20, 0, Math.PI * 2);
@@ -1629,7 +1626,7 @@ export class Panel {
       rounded(g, it.x, it.y, it.w, it.h, 24);
       g.clip();
       const wash = g.createLinearGradient(it.x, it.y + it.h, it.x + it.w, it.y);
-      wash.addColorStop(0, 'rgba(255,62,165,0.30)');
+      wash.addColorStop(0, 'rgba(255,75,43,0.30)');
       wash.addColorStop(1, 'rgba(255,154,60,0.10)');
       g.fillStyle = wash;
       g.fillRect(it.x, it.y, it.w, it.h);
@@ -1639,8 +1636,7 @@ export class Panel {
       if (it.icon && MENU_ICON[it.icon]) MENU_ICON[it.icon](g, 280, 'rgba(255,255,255,0.85)');
       g.restore();
       fit(g, it.label.toUpperCase(), '900', 96, 48, it.w - 420);
-      g.font = `italic ${g.font}`;
-      g.fillStyle = NEON.ink;
+        g.fillStyle = NEON.ink;
       g.fillText(it.label.toUpperCase(), it.x + 40, it.y + 384);
       if (it.sub) {
         g.fillStyle = MUTED;
@@ -1717,7 +1713,6 @@ export class Panel {
     const dotW = it.dot ? 40 : 0;
     const slack = Math.round(it.h * 0.176) * 2 + (it.kind === 'chip' ? 12 : 24);
     const px = fit(g, lines.reduce((a, b) => (a.length > b.length ? a : b)), it.kind === 'play' ? '900' : '700', it.kind === 'play' ? 64 : 52, 48, it.w - slack - dotW);
-    if (it.kind === 'play') g.font = `italic ${g.font}`;
     g.fillStyle = ink;
     const cx = it.x + it.w / 2 + dotW / 2;
     const lh = px * 1.1;
