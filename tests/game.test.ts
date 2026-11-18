@@ -779,8 +779,8 @@ describe('the game', () => {
     expect(g.stemsOn).toBe(true);
     expect(plays.length).toBe(1);
     expect(plays[0].zero).toBeCloseTo(g.clock.timeAt(0), 6);
-    // (you're on the drums: their stem is yours; the rest of the band plays)
-    expect(levels.get('drums')).toBe(0);
+    // (you're on the drums: their stem is yours, only a quiet guide under you on Easy; the rest of the band plays)
+    expect(levels.get('drums')).toBe(0.35);
     expect(levels.get('lead')).toBeGreaterThan(0.5);
     // the game's own band only counts in: nothing of it from beat 0 on
     expect(band.some((e) => e.beat >= 0 && e.voice !== 'chord' && e.voice !== 'bass')).toBe(false);

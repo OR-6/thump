@@ -1142,6 +1142,11 @@ export class Game {
     const sh = this.shownSongs();
     if (sh.length && !sh.includes(this.songSel)) this.songSel = sh[0];
   }
+  /** How loud your own part's recording plays under you (0 on Hard, in lessons' listening, and with the band off). */
+  guideLevel(): number {
+    if (this.listening) return 0;
+    return this.level === 'easy' ? 0.35 : this.level === 'normal' ? 0.2 : 0;
+  }
   private shownSongs(): number[] {
     const f = this.songFilter;
     const out: number[] = [];
@@ -1335,7 +1340,8 @@ export class Game {
     const step = this.listening ? 4 : this.bandStep;
     for (const stem of STEMS) {
       const layer = stem === 'perc' ? 2 : stem === 'strings' ? 3 : stem === 'brass' ? 4 : 1;
-      const v = !backing || stem === mine || this.friendPlays(stem) ? 0 : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : step < layer ? 0 : step >= 4 ? 1 : live;
+      // (your own part plays quietly under you on Easy and Normal, a guide to what each note is: on Hard it's all yours)
+      const v = !backing || this.friendPlays(stem) ? 0 : stem === mine ? this.guideLevel() : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : step < layer ? 0 : step >= 4 ? 1 : live;
       if (Math.abs((this.stemLevels.get(stem) ?? -1) - v) < 0.02) continue;
       const first = !this.stemLevels.has(stem);
       this.stemLevels.set(stem, v);
@@ -1390,7 +1396,7 @@ export class Game {
           if (this.friendParts.has(part.def.name)) continue;
           // (the recorded band plays it all, but for the notes of a part you play some of: its stem is muted, and the
           // notes of it that aren't yours play here)
-          if (this.stemsOn && !p.cover?.has(part.key)) continue;
+          if (this.stemsOn && (!p.cover?.has(part.key) || this.guideLevel() > 0)) continue;
           // (losing the beat drops the extra percussion, never the tune: it's how you find your way back)
           if (thin && part.def.name.startsWith('PERC')) continue;
           const mine = p.cover?.get(part.key);

@@ -1397,7 +1397,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
    */
   private seedOffset(): void {
     if (this.settings.offsetSeeded || this.autoOn || this.game.mode !== 'count') return;
-    if (Math.abs(this.game.opts.offset) < 0.001) this.game.opts.offset = Math.min(0.1, Math.max(0, audio.outputLatency() + 0.03));
+    if (Math.abs(this.game.opts.offset) < 0.001) this.game.opts.offset = Math.min(0.12, Math.max(0.045, audio.outputLatency() + 0.045));
     this.settings = { ...this.settings, offsetSeeded: true, offset: this.game.opts.offset };
     saveSettings(this.settings);
     this.debug.offsetMs = Math.round(this.game.opts.offset * 1000);
