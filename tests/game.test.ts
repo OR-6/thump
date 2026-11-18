@@ -609,7 +609,7 @@ describe('the game', () => {
     // (after the first lesson, Next is the best song you haven't played, not the next instrument's lesson)
     g.act('next');
     expect(g.mode).toBe('count');
-    expect(g.song?.name).toBe('Mango Season');
+    expect(g.song?.name).toBe('Korobeiniki');
     // Make a track still builds the loop tracks, the first first
     g.stop();
     // (Make a track opens on its first page: what it is, and the style; Start begins the first part)
@@ -1121,7 +1121,7 @@ describe('names and band boards', () => {
     g.act('reset:yes');
     expect(over).toBe(1);
   });
-  it('after the first lesson, Songs opens on the best song you have not played (Mango Season)', () => {
+  it('after the first lesson, Songs opens on the best song you have not played (Korobeiniki)', () => {
     const p = freshProgress();
     p.stars['learn-drums'] = 3;
     const g = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, p, room([]));
@@ -1129,7 +1129,7 @@ describe('names and band boards', () => {
     g.discovered('kit', 'table', 0);
     g.songSel = g.tracks.findIndex((t) => t.id === 'learn-drums');
     g.act('nav:songs');
-    expect(g.tracks[g.songSel].id).toBe('mango-season');
+    expect(g.tracks[g.songSel].id).toBe('korobeiniki');
   });
   it('mid-song, the congas can be switched to (as the switch bar offers them)', () => {
     const g = new Game({ ...stage([]), shelf: () => ({ id: 'drums' }) } as unknown as GameStage, freshProgress(), room([]));

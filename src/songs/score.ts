@@ -229,11 +229,13 @@ export function scoreOf(tune: Tune): Score {
 /** The songs, easiest first. */
 /** (the lessons first, one per instrument, then the songs) */
 /**
- * The songs in the order the list shows them: the ones that play most naturally first (measured: how much of what you
- * play the band's own accents mark, and the band doubling your off-beats; Mango Season best), so the first thing anyone
- * picks shows the game at its best. Any song not named here goes after, easiest first.
+ * The songs in the order the list shows them, best to play first, so the first thing anyone picks shows the game at
+ * its best: measured over all six instruments at every level (each song x instrument out of 100: 40 for chart notes
+ * with something in the recording under them, 20 the recording tight on the chart's clock, 20 a level's notes a
+ * second in its band, 20 notes on the tune's own notes or the groove's kick, snare and bass), summed. Any song not
+ * named here goes after, easiest first.
  */
-export const SONG_ORDER: readonly string[] = ['mango-season', 'rooftop', 'drunken-sailor', 'saints', 'ode-to-joy', 'kite-hill', 'low-tide', 'korobeiniki', 'can-can', 'entertainer', 'william-tell', 'late-bus', 'amazing-grace', 'cold-brew', 'mountain-king', 'scarborough-fair', 'turkish-march', 'fur-elise', 'canon'];
+export const SONG_ORDER: readonly string[] = ['korobeiniki', 'rooftop', 'drunken-sailor', 'kite-hill', 'can-can', 'mango-season', 'cold-brew', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'late-bus', 'turkish-march', 'canon', 'low-tide', 'fur-elise', 'scarborough-fair', 'amazing-grace'];
 const orderOf = (id: string) => {
   const i = SONG_ORDER.indexOf(id);
   return i < 0 ? SONG_ORDER.length : i;
