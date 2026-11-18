@@ -197,10 +197,18 @@
       /* ---- how to play: a real sequence, so numbered ---- */
       .how { padding-top: var(--sec); }
       .how-in { display: grid; gap: 36px; }
-      .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 3px solid var(--ink); }
-      .steps li { display: grid; align-content: start; gap: 14px; padding: 22px 32px 26px 0; font: 600 clamp(21px, 1.9vw, 26px)/1.3 var(--face); letter-spacing: -0.01em; }
-      .steps li + li { border-left: 2px solid var(--ink); padding-left: 32px; }
-      .steps .num { font: 800 clamp(56px, 5.4vw, 84px)/0.85 var(--face); letter-spacing: -0.05em; justify-self: start; }
+      /* (three tear-off strips, like the bottom of a flyer: a perforated edge between them, each with a round sticker) */
+      .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink); }
+      .steps li { position: relative; display: grid; align-content: start; gap: 18px; padding: 30px 32px 34px; font: 600 clamp(21px, 1.9vw, 26px)/1.3 var(--face); letter-spacing: -0.01em; }
+      .steps li + li { background-image: radial-gradient(circle, var(--ink) 2px, transparent 2.4px); background-size: 4px 12px; background-repeat: repeat-y; background-position: left top; }
+      .steps li:nth-child(2) { transform: translateY(10px); }
+      .steps .num { display: grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 50%; border: 3px solid var(--ink);
+        font: 800 clamp(40px, 3.6vw, 56px)/1 var(--face); letter-spacing: -0.04em; color: var(--ink); justify-self: start;
+        box-shadow: 5px 5px 0 var(--blue); transform: rotate(-6deg); }
+      .step-1 .num { background: var(--pink); }
+      .step-2 .num { background: var(--yellow); transform: rotate(5deg); }
+      .step-3 .num { background: var(--blue); color: var(--paper); box-shadow: 5px 5px 0 var(--pink); transform: rotate(-3deg); }
+      .steps .say strong { background: linear-gradient(transparent 58%, var(--yellow) 58%); mix-blend-mode: multiply; font-weight: 800; }
       .how-note { margin-top: 24px; color: var(--ink-2); max-width: 36em; }
 
       /* ---- the instruments: the lineup picks one, the drawing plays it ---- */
@@ -363,8 +371,9 @@
         .hero-foot, .how-in, .play-head, .songs-in, .foot-in { grid-template-columns: minmax(0, 1fr); }
         .ticket { position: relative; right: auto; bottom: auto; justify-self: start; transform: rotate(-3deg); margin: 0 0 8px 6px; }
         .steps { grid-template-columns: minmax(0, 1fr); }
-        .steps li, .steps li + li { grid-template-columns: 64px minmax(0, 1fr); gap: 0; align-items: baseline; padding: 18px 0; border-left: 0; border-bottom: 2px solid var(--ink); }
-        .steps .num { font-size: 52px; }
+        .steps li, .steps li + li { grid-template-columns: 76px minmax(0, 1fr); gap: 0; align-items: center; padding: 18px 0; transform: none; background: none; border-bottom: 2px dashed var(--ink); }
+        .steps li:last-child { border-bottom: 0; }
+        .steps .num { font-size: 32px; }
         .media { gap: 12px; }
         .media.has-shots { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
         .has-shots .shot-1 { grid-column: 1 / -1; grid-row: auto; aspect-ratio: 16 / 9; min-height: 0; }

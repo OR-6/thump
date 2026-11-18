@@ -127,8 +127,8 @@ export function mountLanding(world: World): void {
           <h2 class="h2 riso" id="how-h" ${riso('How to play')}>How to play</h2>
           <div>
             <ol class="steps">
-              ${['Open <strong>' + LIVE_URL + '</strong> in your Quest’s browser.', 'Sit down at your desk (a table works too).', 'Look down. The instruments are sitting on it.']
-                .map((t, i) => `<li><span class="num riso" ${riso(String(i + 1))} aria-hidden="true">${i + 1}</span><span>${t}</span></li>`).join('')}
+              ${['Open <strong>' + LIVE_URL + '</strong> in your Quest’s browser.', 'Take a seat and enter the game.', 'Look down and the instruments will be in front of you!']
+                .map((t, i) => `<li class="step-${i + 1}"><span class="num" aria-hidden="true">${i + 1}</span><span class="say">${t}</span></li>`).join('')}
             </ol>
             <p class="how-note">Put the controllers away, it’s all hands. Make a fist on the drums and you get sticks, pinch on the guitar and you get a pick.</p>
           </div>
