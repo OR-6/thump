@@ -46,12 +46,16 @@ for (let i = 1; i <= 6; i++) {
 }
 await wait(300);
 const yaw1 = js(`return r.kit.root.rotation.y;`);
-check('carried without turning the hand, it doesn\'t turn (held like a tray)', Math.abs(yaw1 - yaw0) < 0.03, `${yaw0} -> ${yaw1}`);
+const face = js(`const o = r.kit.root.getWorldPosition(r.kit.root.position.clone()); return Math.atan2(-(o.x - r.head.x), -(o.z - r.head.z));`);
+check('carried, it turns to face you (and only about the vertical)', Math.abs(Math.atan2(Math.sin(yaw1 - face), Math.cos(yaw1 - face))) < 0.04 && Math.abs(yaw1 - yaw0) > 0.05, `${yaw0} -> ${yaw1}, facing ${face}`);
+const level = js(`const q = r.kit.root.rotation; return Math.abs(q.x) + Math.abs(q.z);`);
+check('and stays level', level < 1e-3, String(level));
+
 xr('set-select-value', { device: HAND, value: 0 });
 await wait(800);
 s = state();
 const k1 = s.debug.kitOrigin;
-check('the instruments moved with the hand (about 12 cm right)', Math.abs(k1[0] - k0[0] - 0.12) < 0.03 && Math.abs(k1[2] - k0[2]) < 0.03 && Math.abs(k1[1] - k0[1]) < 0.005, `${k0} -> ${k1}`);
+check('the instruments moved as far as the hand (12 cm right, the desk\'s height kept)', Math.abs(k1[0] - k0[0] - 0.12) < 0.02 && Math.abs(k1[2] - k0[2]) < 0.02 && Math.abs(k1[1] - k0[1]) < 0.005, `${k0} -> ${k1}`);
 const nudge = js(`return r.settings.kitNudge ?? null;`);
 check('the move is saved', !!nudge && Math.hypot(nudge.a, nudge.l) > 0.08, JSON.stringify(nudge));
 check('let go: nothing held', js(`return r.moveHand;`) === -1);

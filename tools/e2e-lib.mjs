@@ -35,6 +35,8 @@ export async function freshSession({ clear = true } = {}) {
   // height would place the kit during the reload wait
   try {
     if (xr('status').sessionActive) {
+      // (and the head where every test sits: the instruments come out where you look, a moment after entering)
+      xr('set-transform', { device: 'headset', position: { x: 0, y: 1.2, z: 0 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });
       xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
       xr('set-transform', { device: 'hand-left', position: { x: -0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: 90 } });
     }
@@ -59,11 +61,11 @@ export async function freshSession({ clear = true } = {}) {
 /** The table in every test: 0.4 m below the seated eyes (head at 1.2 m). */
 export const DESK_Y = 0.8;
 
-/** Rest the right palm flat on the table until the kit is placed. */
+/** The kit comes out by itself; rest the right palm flat on the table so it settles onto the desk's height. */
 export async function placeKit() {
   // the palm's centre sits its radius above the table
   xr('set-transform', { device: HAND, position: { x: 0.05, y: DESK_Y + 0.02, z: -0.34 }, orientation: FLAT });
-  await wait(1700);
+  await wait(2300);
   const s = state();
   // lift the hand clear (a resting hand does nothing, but tests start from a raised hand)
   xr('set-transform', { device: HAND, position: { x: 0.05, y: DESK_Y + 0.25, z: -0.3 }, orientation: FLAT });
@@ -116,6 +118,7 @@ export async function until(ok, ms = 8000, step = 250) {
 export async function goto(query = '', { clear = true } = {}) {
   try {
     if (xr('status').sessionActive) {
+      xr('set-transform', { device: 'headset', position: { x: 0, y: 1.2, z: 0 }, orientation: { pitch: 0, yaw: 0, roll: 0 } });
       xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
       xr('set-transform', { device: 'hand-left', position: { x: -0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: 90 } });
     }

@@ -104,7 +104,10 @@ import { setupLighting } from '../art/lighting.js';
 import { makeThumbs } from '../art/thumbs.js';
 
 const ANCHOR_KEY = 'iwsdk_scene_anchor_uuid';
-const RESUME_WINDOW_S = 4;
+/** The instruments come out this long after you enter (the first poses can still be settling). */
+const SPAWN_AFTER_S = 0.35;
+/** A palm laid flat on the desk sets the kit's height for this long after it comes out. */
+const HEIGHT_PROBE_S = 45;
 const FOVEATION = [0.5, 0.75, 1];
 const SIDES = ['left', 'right'] as const;
 const HOLD_DOTS = 20;
@@ -329,7 +332,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
   private holdRing!: InstancedMesh;
   private guard = new FrameGuard();
-  private kitSaved = false;
   private needPalm = false;
   /** The surfaces: the kit's table, the module, and the room's. */
   surfaces: Surface[] = [];
@@ -449,6 +451,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.visibilityState.subscribe((s) => {
         this.xrBlurred = s === VisibilityState.VisibleBlurred || s === VisibilityState.Hidden;
         this.setPaused(this.xrBlurred || this.pageHidden);
+        if (s === VisibilityState.Hidden && this.hiddenAt < 0) this.hiddenAt = performance.now();
+        if (s === VisibilityState.Visible && this.hiddenAt >= 0) {
+          // back in the headset: once the poses settle, the kit comes back in front of you if the world moved under it
+          if (performance.now() - this.hiddenAt > 1000) this.recallCheckAt = this.clock.t + 0.5;
+          this.hiddenAt = -1;
+        }
         if (s === VisibilityState.Visible) {
           const sess = this.world.session;
           if (sess && sess !== this.audioSession) {
@@ -1169,22 +1177,22 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private moveAt = new Vector3();
   private moveK = 0;
   private moveRot = new Vector3();
-  private moveYaw0 = 0;
-  private kitYaw0 = 0;
-  private yawQ = new Quaternion();
-  private yawV = new Vector3();
-  /** Which way a hand points, flat (from the wrist to the middle knuckle), as a yaw. */
-  private handYaw(h: HandState): number {
-    this.yawV.subVectors(h.knuckleMiddle, h.wrist);
-    return Math.atan2(-this.yawV.x, -this.yawV.z);
+  /** The yaw the kit turns to while it's carried (facing you from where it's going). */
+  private moveYawT = 0;
+  /**
+   * Where the kit goes for a pinch at `p` (into moveAt and moveYawT): as far as your hand goes, one for one, and turned
+   * to face you from there (its yaw from where it stands, never from your hand's turn: nothing to swing or spin).
+   */
+  private moveTarget(p: Vector3): void {
+    this.moveAt.set(p.x + this.moveOff.x, 0, p.z + this.moveOff.z);
+    const dx = this.moveAt.x - this.head.x;
+    const dz = this.moveAt.z - this.head.z;
+    this.moveYawT = Math.hypot(dx, dz) > 0.12 ? Math.atan2(-dx, -dz) : this.kit.root.rotation.y;
+    this.moveAt.y = Math.max(this.kitBaseY - 0.2, Math.min(this.kitBaseY + 0.25, p.y - this.moveOffY));
   }
-  /** The yaw of an object's parent in the world (a room anchor is turned, level). */
-  private parentYaw(o: Object3D): number {
-    if (!o.parent) return 0;
-    o.parent.getWorldQuaternion(this.yawQ);
-    this.yawV.set(0, 0, -1).applyQuaternion(this.yawQ);
-    return Math.atan2(-this.yawV.x, -this.yawV.z);
-  }
+  /** How far the pinch was above the kit's origin when it was taken. */
+  private moveOffY = 0;
+
   private buildMovePuck(): void {
     const c = document.createElement('canvas');
     c.width = c.height = 128;
@@ -1228,7 +1236,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.movePuck = m;
   }
   /** Pinch the puck: the instruments (and the screen with them) follow your hand across the desk, turned to you. */
-  private kitHandle(): void {
+  private kitHandle(dt: number): void {
     const puck = this.movePuck;
     if (!puck) return;
     const placed = this.placement.phase === 'placed';
@@ -1265,19 +1273,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           this.placeKit(true);
           continue;
         }
-        // (held like a tray by its corner: it goes where the pinch goes, the handle stays between your fingers, and it
-        // turns only as your hand turns; across the desk, and up or down within 20 cm below and 25 cm above where the
-        // desk was found; the height kept in the world's frame, then into the parent's: a room anchor's origin can be on
-        // the floor)
-        const p = root.parent;
-        let dy = this.handYaw(h) - this.moveYaw0;
-        dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-        this.moveRot.copy(this.moveOff).applyAxisAngle(RoomSystem.UP, dy);
-        this.moveAt.copy(h.pinchPoint).add(this.moveRot);
-        this.moveAt.y = Math.max(this.kitBaseY - 0.2, Math.min(this.kitBaseY + 0.25, this.moveAt.y));
-        if (p) p.worldToLocal(this.moveAt);
-        root.position.copy(this.moveAt);
-        root.rotation.y = this.kitYaw0 + dy - this.parentYaw(root);
+        // (it goes where the pinch goes and always turns to face you: it never tilts or spins on its own; up or down
+        // within 20 cm below and 25 cm above where the desk was found)
+        this.moveTarget(h.pinchPoint);
+        const k = 1 - Math.exp(-Math.min(dt, 0.05) * 24);
+        root.position.lerp(this.moveAt, k);
+        let dyaw = this.moveYawT - root.rotation.y;
+        dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+        root.rotation.set(0, root.rotation.y + dyaw * k, 0);
         root.updateMatrixWorld(true);
         near = 1;
         continue;
@@ -1287,9 +1290,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // (a pinch starting within 6 cm of it takes it: tracking puts a pinch a centimetre or two off)
       if (this.moveHand < 0 && h.edge === 'start' && d < 0.06 && !this.dragging[0] && !this.dragging[1]) {
         this.moveHand = i;
-        root.getWorldPosition(this.moveOff).sub(h.pinchPoint);
-        this.moveYaw0 = this.handYaw(h);
-        this.kitYaw0 = root.rotation.y + this.parentYaw(root);
+        // (from the pinch to the kit's centre, in the world: the kit keeps that as it goes)
+        if (this.kitHome && root.parent !== this.kitHome) this.kitHome.attach(root);
+        root.updateMatrixWorld(true);
+        this.moveOff.copy(root.position).sub(h.pinchPoint);
+        this.moveOffY = h.pinchPoint.y - root.position.y;
         sfx.lift();
       }
     }
@@ -1917,6 +1922,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.game.start(this.clock.t);
       this.rebuildSheens();
     }
+    // (and the instruments come out again in front of you, as on a first go: the move you'd made forgotten)
+    if (this.settings.kitNudge || this.settings.panelAt) {
+      const { kitNudge: _n, panelAt: _p, ...rest } = this.settings;
+      this.settings = rest as typeof this.settings;
+      saveSettings(this.settings);
+    }
+    if (this.placement.phase === 'placed') this.recall(true);
   }
 
   private handed(): 'left' | 'right' {
@@ -2012,6 +2024,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.updatePlacement(Math.min(dt, 0.05));
       return;
     }
+    this.watchRefSpace();
+    this.refineHeight(Math.min(dt, 0.05));
+    this.keepWithin(Math.min(dt, 0.05));
     // (just the kit root and its parents: the renderer updates the hundreds of parts under it anyway)
     this.kit.root.updateWorldMatrix(true, false);
     // the anchor may nudge the kit: its surfaces follow
@@ -2098,7 +2113,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       for (const s of this.seats.values()) s.update(dt, this.head);
     }
     this.panelHandle();
-    this.kitHandle();
+    this.kitHandle(dt);
     this.guitarGrabTick();
     if (!this.kit.module.hidden) this.panelHover();
     else this.kit.module.hover(-1, 0, 0, 0);
@@ -2157,8 +2172,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.dimmer.update(dt, this.head, motion.calm);
     this.lightsOut.update(dt, motion.calm);
     audio.idle();
-    this.debug.anchored = this.kitEntity.hasComponent(XRAnchor) && this.kitEntity.getValue(XRAnchor, 'attached') === true;
-    if (this.debug.anchored) this.saveKitPose();
     if (this.unsaved.length && this.roomAnchor()) {
       const list = this.unsaved.splice(0);
       for (const u of list) if (u.discovered) this.remember(u);
@@ -4251,6 +4264,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private tmp3 = new Vector3();
+  private tmp4 = new Vector3();
 
   /** The zones of a surface, the desk's bars, or a shelf instrument (as it would be laid out now). */
   private zonesOf(id: string): Zone[] {
@@ -5428,57 +5442,200 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
 
   // ------------------------------------------------------------------ placement
 
-  private updatePlacement(dt: number) {
+  private updatePlacement(_dt: number) {
     if (FIXED_DESK !== null && Number.isFinite(Number(FIXED_DESK))) {
       this.placement.place(Number(FIXED_DESK), 'fixed');
+      this.heightSure = true;
       this.placeKit();
       return;
     }
+    // (the first poses after entering can sit at the origin: a third of a second, then the instruments are in front of
+    // you, where you're looking; never a wait with nothing there)
+    if (this.sessionTime < SPAWN_AFTER_S) return;
+    if (this.head.y < 0.5 && this.sessionTime < 1.5) return;
     this.forwardFlat(this.fwd);
-    // last session's kit, if the same room anchor came back (plane placement waits for it a moment)
-    const mayResume = !!this.progress.kit && !this.settings.placeFresh && !this.needPalm;
-    if (mayResume && this.sessionTime < RESUME_WINDOW_S && this.tryResume()) return;
-    if (!this.needPalm && this.sessionTime > (mayResume ? RESUME_WINDOW_S : PLACE.planeWaitS) && this.placement.phase === 'waiting') {
-      const y = this.tableAhead();
-      if (y !== null) {
-        this.placement.place(y, 'plane');
-        this.placeKit();
+    const plane = this.tableAhead();
+    const drop = this.settings.deskDrop;
+    if (plane !== null) this.placement.place(plane, 'plane');
+    else if (drop) this.placement.place(this.head.y - drop, 'remembered');
+    else this.placement.placeDefault(this.head.y);
+    this.heightSure = plane !== null;
+    this.spawnT = this.clock.t;
+    this.spawnHeadY = this.head.y;
+    this.placeKit();
+    // (a first guess at the height: say how to put it right)
+    if (this.placement.source === 'default' && !this.settings.noWords) {
+      this.tmp.set(0, 0.03, KIT_ZONE.front + 0.06).applyMatrix4(this.kit.root.matrixWorld);
+      this.hint.show('Wrong height? Lay a hand flat on the desk', 0xf2efe6, this.tmp, this.head, 8);
+    }
+  }
+
+  // ------------------------------------------------------------------ the desk's real height, found after the kit is out
+
+  /** The kit stands on a height that was found (a table plane, a resting palm) rather than guessed. */
+  private heightSure = false;
+  /** When the kit came out (clock time): a palm laid flat on the desk sets its height for a while after. */
+  private spawnT = -1e9;
+  private spawnHeadY = 0;
+  private heightProbe = new Placement();
+  /** The kit's height gliding to the desk found under it (NaN: not gliding). */
+  private glideY = Number.NaN;
+  private planeCheckT = 0;
+  /**
+   * After the kit is out at a guessed height: a table plane under it, or a palm laid flat on the desk near it, and the
+   * kit glides down (or up) onto the real desk. Remembered for next time (as a drop below the eyes).
+   */
+  private refineHeight(dt: number): void {
+    const root = this.kit.root;
+    if (!Number.isNaN(this.glideY)) {
+      const k = 1 - Math.exp(-dt * 9);
+      const y = root.position.y + (this.glideY - root.position.y) * k;
+      const done = Math.abs(this.glideY - y) < 0.002;
+      this.kitBaseY += (done ? this.glideY : y) - root.position.y;
+      root.position.y = done ? this.glideY : y;
+      root.updateMatrixWorld(true);
+      if (done) {
+        this.glideY = Number.NaN;
+        this.placeKit(true);
+      }
+      return;
+    }
+    if (this.heightSure || this.moveHand >= 0 || this.game.mode === 'play' || this.game.mode === 'count') {
+      this.holdRing.count = 0;
+      return;
+    }
+    const since = this.clock.t - this.spawnT;
+    // (the first poses can still be settling as it comes out: if your head's height moves a lot in the first seconds,
+    // the guessed height keeps its drop below your eyes)
+    if (since < 3 && Math.abs(this.head.y - this.spawnHeadY) > 0.08) {
+      this.glideY = Math.min(this.head.y - 0.2, root.position.y + (this.head.y - this.spawnHeadY));
+      this.spawnHeadY = this.head.y;
+      return;
+    }
+    // a table plane under the kit (they can arrive a second or two after entering)
+    this.planeCheckT -= dt;
+    if (this.planeCheckT <= 0) {
+      this.planeCheckT = 0.5;
+      this.planeYs.length = 0;
+      root.getWorldPosition(this.tmp4);
+      this.planesUnder(this.tmp4);
+      const at = this.planeYs.filter((y) => this.head.y - y >= PLACE.minDrop && this.head.y - y <= PLACE.maxDropWithPlane);
+      if (at.length) {
+        this.settleAt(Math.max(...at));
         return;
       }
     }
-    this.tmp.copy(this.head).addScaledVector(this.fwd, PLACE.forward + 0.05);
-    this.tmp.y = this.head.y - 0.28;
-    if (!this.settings.noWords) {
-      const low = performance.now() - this.placement.rejectedAt < 1500;
-      this.hint.show(low ? 'Sit at a desk, palm flat' : 'Rest a palm on the desk', 0xf2efe6, this.tmp, this.head, 0.5);
+    if (since > HEIGHT_PROBE_S) {
+      this.holdRing.count = 0;
+      return;
     }
-    let placed = false;
-    // one hand at a time: the one already steadying keeps the hold (a second hand never resets it)
+    // a hand laid flat on the desk near the kit, still for a moment
+    root.getWorldPosition(this.tmp4);
+    let steadying = false;
     for (const side of this.steadyFirst()) {
       const h = hands[side];
-      if (!h.tracked) continue;
+      if (!h.tracked || h.controller) continue;
+      if (Math.hypot(h.palm.x - this.tmp4.x, h.palm.z - this.tmp4.z) > 0.55) continue;
       this.planesUnder(h.palm);
-      if (this.placement.update({ x: h.palm.x, y: h.palm.y, z: h.palm.z, radius: h.palmRadius, upDot: h.upDot }, this.planeYs, dt, this.head.y)) {
+      if (this.heightProbe.update({ x: h.palm.x, y: h.palm.y, z: h.palm.z, radius: h.palmRadius, upDot: h.upDot }, this.planeYs, dt, this.head.y)) {
         this.placedHand = side;
-        placed = true;
-        break;
+        this.settleAt(this.heightProbe.deskY!);
+        this.heightProbe = new Placement();
+        return;
       }
-      if (this.placement.phase === 'steadying') {
+      if (this.heightProbe.phase === 'steadying') {
         this.steadyHand = side;
         this.holdRing.position.set(h.palm.x, h.palm.y - h.palmRadius + 0.004, h.palm.z);
+        steadying = true;
         break;
       }
     }
-    this.holdRing.count = this.placement.phase === 'steadying' && !placed ? Math.ceil(this.placement.progress * HOLD_DOTS) : 0;
-    const noHands = !hands.left.tracked && !hands.right.tracked;
-    if (!placed && noHands) this.placement.update(null, [], dt);
-    if (!placed && ((noHands && this.sessionTime > PLACE.noHandTimeoutS) || this.sessionTime > PLACE.palmTimeoutS)) {
-      this.placement.placeDefault(this.head.y);
-      placed = true;
-    }
-    this.debug.phase = this.placement.phase;
-    if (placed) this.placeKit();
+    this.holdRing.count = steadying ? Math.ceil(this.heightProbe.progress * HOLD_DOTS) : 0;
   }
+  /** The desk is at `y`: the kit glides onto it, and the height is kept for next time. */
+  private settleAt(y: number): void {
+    this.heightSure = true;
+    this.holdRing.count = 0;
+    this.placement.deskY = y;
+    this.settings = { ...this.settings, deskDrop: Math.round((this.head.y - y) * 1000) / 1000 };
+    saveSettings(this.settings);
+    const target = y + (this.settings.kitNudge?.h ?? 0);
+    if (Math.abs(target - this.kit.root.position.y) > 0.004) {
+      this.glideY = Math.min(target, this.head.y - 0.2);
+      sfx.set();
+    }
+  }
+
+  // ------------------------------------------------------------------ bringing the kit back to you
+
+  /** Seconds the kit has been somewhere no seated player could play it. */
+  private strayFor = 0;
+  /** A check due soon after you come back to the headset (clock time; -1 none) and whether it's a reset. */
+  private recallCheckAt = -1;
+  private hiddenAt = -1;
+  private refSpace: XRReferenceSpace | null = null;
+  private onRefReset = () => {
+    // Quest recentred (or lost and found its place): the world moved under the kit
+    this.recallCheckAt = this.clock.t + 0.35;
+  };
+  /** Listen for Quest moving the world's origin (a recentre, a headset taken off and put back on). */
+  private watchRefSpace(): void {
+    let rs: XRReferenceSpace | null = null;
+    try {
+      rs = this.renderer.xr.getReferenceSpace();
+    } catch {
+      rs = null;
+    }
+    if (rs === this.refSpace) return;
+    this.refSpace?.removeEventListener('reset', this.onRefReset);
+    this.refSpace = rs;
+    rs?.addEventListener('reset', this.onRefReset);
+  }
+  /**
+   * The kit stays where a seated player can play it: after a recentre or a return to the headset it comes back in
+   * front of you if it's no longer there, and if it ever ends up out of reach (across the room, behind you) for a few
+   * seconds, the same.
+   */
+  private keepWithin(dt: number): void {
+    if (this.moveHand >= 0 || !Number.isNaN(this.glideY)) return;
+    const root = this.kit.root;
+    root.getWorldPosition(this.tmp4);
+    const dx = this.tmp4.x - this.head.x;
+    const dz = this.tmp4.z - this.head.z;
+    const far = Math.hypot(dx, dz);
+    const drop = this.head.y - this.tmp4.y;
+    this.forwardFlat(this.fwd);
+    const ahead = far > 1e-3 ? (dx * this.fwd.x + dz * this.fwd.z) / far : 1;
+    if (this.recallCheckAt >= 0 && this.clock.t >= this.recallCheckAt) {
+      this.recallCheckAt = -1;
+      // where a fresh placement would put it: if it's well off from that, bring it back
+      const yawOff = Math.abs(Math.atan2(Math.sin(root.rotation.y - Math.atan2(-this.fwd.x, -this.fwd.z)), Math.cos(root.rotation.y - Math.atan2(-this.fwd.x, -this.fwd.z))));
+      if (far > 0.75 || far < 0.1 || ahead < 0.45 || drop < 0.12 || drop > 0.95 || yawOff > 0.9) {
+        this.recall();
+        return;
+      }
+    }
+    const stray = far > 1.2 || ahead < -0.2 || drop < 0.05 || drop > 1.1;
+    this.strayFor = stray ? this.strayFor + dt : 0;
+    if (this.strayFor > 4) this.recall();
+  }
+  /** The kit back in front of you, where you're looking, at the desk's height (and the move you'd made, kept). */
+  private recall(quiet = false): void {
+    this.strayFor = 0;
+    if (this.placement.phase !== 'placed') return;
+    const drop = this.head.y - this.kitBaseY;
+    const y = drop >= 0.15 && drop <= 0.9 ? this.kitBaseY : this.head.y - (this.settings.deskDrop ?? PLACE.defaultDrop);
+    this.forwardFlat(this.fwd);
+    const plane = this.tableAhead();
+    this.placement.deskY = plane ?? y;
+    this.placeKit();
+    sfx.set();
+    if (!this.settings.noWords && !quiet) {
+      this.tmp.set(0, 0.14, 0.02).applyMatrix4(this.kit.root.matrixWorld);
+      this.tag.show('Back in front of you', 0xf2efe6, this.tmp, this.head, 2.5);
+    }
+  }
+
   private steadyHand: Side = 'right';
   private steadyOrder: Side[] = ['right', 'left'];
   private steadyFirst(): Side[] {
@@ -5547,8 +5704,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.kitBaseFwd.set(this.fwd.x, 0, this.fwd.z);
       const nu = this.settings.kitNudge;
       if (nu) {
-        pose.x += this.fwd.x * nu.a - this.fwd.z * nu.l;
-        pose.z += this.fwd.z * nu.a + this.fwd.x * nu.l;
+        // (nearer or further and higher or lower, as you last moved it; not to the side: it comes out where you look)
+        pose.x += this.fwd.x * nu.a;
+        pose.z += this.fwd.z * nu.a;
         // turned to face you from there
         pose.yaw = Math.atan2(-(pose.x - this.head.x), -(pose.z - this.head.z));
         pose.y += nu.h ?? 0;
@@ -5578,8 +5736,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.debug.deskY = r3(this.placement.deskY!);
     this.debug.deskSource = resume ? 'resumed' : this.placement.source;
     this.debug.kitOrigin = root.getWorldPosition(this.tmp).toArray().map(r3);
-    this.kitSaved = false;
-    if (this.world.session?.enabledFeatures?.includes('anchors') && !this.kitEntity.hasComponent(XRAnchor)) this.kitEntity.addComponent(XRAnchor);
     // the kit's surface and the module's keys
     this.kitSurface.setFrame(root.getWorldPosition(this.tmp), new Vector3(0, 1, 0), this.forwardFlat(this.fwd).clone());
     this.kitSurface.bounds = { minX: -KIT_ZONE.halfX - 0.06, maxX: KIT_ZONE.halfX + 0.06, minZ: -KIT_ZONE.front - 0.04, maxZ: -KIT_ZONE.back + 0.04 };
@@ -5753,52 +5909,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     return this.anchorUuid ? { group: su.anchoredGroup, uuid: this.anchorUuid } : null;
   }
 
-  private tryResume(): boolean {
-    const saved = this.progress.kit;
-    if (!saved) return false;
-    const a = this.roomAnchor();
-    if (!a || a.uuid !== saved.uuid) return false;
-    a.group.updateMatrixWorld(true);
-    const at = this.tmp2.set(saved.x, saved.y, saved.z).applyMatrix4(a.group.matrixWorld);
-    const ahead = Math.hypot(at.x - this.head.x, at.z - this.head.z);
-    const drop = this.head.y - at.y;
-    if (ahead > 0.6 || drop < PLACE.minDrop || drop > PLACE.maxDropWithPlane) return false;
-    this.placement.place(at.y, 'palm');
-    const root = this.kit.root;
-    a.group.add(root);
-    root.position.set(saved.x, saved.y, saved.z);
-    root.rotation.set(0, saved.yaw, 0);
-    root.updateMatrixWorld(true);
-    // where it would stand by itself, from where it came back less the move you'd made (so the move handle and a
-    // later move keep to the desk's height, not the anchor's)
-    {
-      const w = root.getWorldPosition(this.tmp);
-      const f = this.tmp3.set(0, 0, -1).transformDirection(root.matrixWorld).setY(0);
-      if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
-      f.normalize();
-      const nu = this.settings.kitNudge;
-      this.kitBaseFwd.copy(f);
-      this.kitBase.set(w.x - (nu ? f.x * nu.a - f.z * nu.l : 0), w.z - (nu ? f.z * nu.a + f.x * nu.l : 0), saved.yaw);
-      this.kitBaseY = w.y - (nu?.h ?? 0);
-    }
-    this.debug.resumed = true;
-    this.placeKit(true);
-    return true;
-  }
-
-  private saveKitPose(): void {
-    if (this.kitSaved) return;
-    const a = this.roomAnchor();
-    const root = this.kit.root;
-    if (!a || root.parent !== a.group) return;
-    this.kitSaved = true;
-    this.progress.kit = { uuid: a.uuid, x: r4(root.position.x), y: r4(root.position.y), z: r4(root.position.z), yaw: r4(root.rotation.y) };
-    if (this.settings.placeFresh) {
-      this.settings = { ...this.settings, placeFresh: false };
-      saveSettings(this.settings);
-    }
-    saveProgress(this.progress);
-  }
 
   // ------------------------------------------------------------------ tests and filming
 
@@ -5991,7 +6101,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       s.detector.forget(1);
       s.near[0] = s.near[1] = false;
     }
-    if (this.kitEntity.hasComponent(XRAnchor)) this.kitEntity.removeComponent(XRAnchor);
     this.placement = new Placement();
     this.kit.root.visible = false;
     for (const s of [...this.bySource.values()].flat()) this.dropSurface(s);

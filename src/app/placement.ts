@@ -28,7 +28,7 @@ export class Placement {
   /** 0..1 progress of the stillness hold, for the hint ring. */
   progress = 0;
   deskY: number | null = null;
-  source: 'palm' | 'plane' | 'default' | 'fixed' | null = null;
+  source: 'palm' | 'plane' | 'default' | 'fixed' | 'remembered' | null = null;
   private stillFor = 0;
   /** Anchor of the current stillness window and a smoothed palm. */
   private ax = 0;

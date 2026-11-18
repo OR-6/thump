@@ -53,6 +53,8 @@ export interface Settings {
   calibrateNext: boolean;
   /** Find the table afresh on the next entry (instead of the kit coming back where it was). */
   placeFresh: boolean;
+  /** How far below the eyes the desk was last found (m): the kit comes out there next time. */
+  deskDrop?: number;
   /** Strike thresholds tuned in the headset (device sessions); unset: the defaults. */
   tune: StrikeTune;
   /** The instrument on the desk in free play, and each instrument's scale and sound. */
@@ -94,6 +96,7 @@ export function loadSettings(): Settings {
     offset: num(s.offset, -0.25, 0.25, 0),
     calibrateNext: s.calibrateNext === true,
     placeFresh: s.placeFresh === true,
+    ...(typeof s.deskDrop === 'number' && Number.isFinite(s.deskDrop) && s.deskDrop >= 0.2 && s.deskDrop <= 0.85 ? { deskDrop: s.deskDrop } : {}),
     tune: readTune(s.tune),
     inst: typeof s.inst === 'string' && /^[a-z]{1,12}$/.test(s.inst) ? s.inst : 'drums',
     shelf: readShelf(s.shelf),
