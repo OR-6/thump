@@ -86,19 +86,19 @@ export class GuitarCues {
       k.tex.needsUpdate = true;
       return;
     }
-    // dark glass, the chord's name in the screen's gold
+    // a dark plate, the chord's name in off-white
     const r = H / 2 - 4;
     g.beginPath();
     g.roundRect(4, 4, W - 8, H - 8, r);
-    g.fillStyle = 'rgba(26,11,46,0.86)';
+    g.fillStyle = 'rgba(22,20,25,0.92)';
     g.fill();
-    g.lineWidth = 4;
-    g.strokeStyle = 'rgba(255,210,138,0.75)';
+    g.lineWidth = 3;
+    g.strokeStyle = '#36323b';
     g.stroke();
-    g.font = `italic 900 ${Math.round(H * 0.62)}px ${FONT}`;
+    g.font = `700 ${Math.round(H * 0.62)}px ${FONT}`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillStyle = '#ffd28a';
+    g.fillStyle = '#f2eee8';
     g.fillText(text, W / 2, H / 2 + 3);
     k.tex.needsUpdate = true;
   }

@@ -213,13 +213,13 @@ function buildPageFor(m: MenuInput): Page {
       // (the songs by name, each with its best grade; more of them as the list's last row)
       shown.slice(pg * per, pg * per + per).forEach((i, k) => {
         const s = m.songs[i];
-        items.push({ id: `song:${i}`, label: s.name, stars: s.stars, grade: s.grade ?? '—', on: i === m.songSel, off: s.locked, kind: 'row', x: 32, y: 176 + k * 80, w: C8, h: 74 });
+        items.push({ id: `song:${i}`, label: s.name, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', x: 32, y: 176 + k * 80, w: C8, h: 74 });
       });
       if (pages > 1) items.push({ id: 'songs:more', label: 'More songs ›', sub: `${pg + 1} of ${pages}`, kind: 'row', x: 32, y: 176 + 5 * 80, w: C8, h: 74 });
       const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';
       // the level as three tabs, each lit in its own colour
       void lv;
-      (['easy', 'normal', 'hard'] as const).forEach((l, k) => items.push({ id: `level:${l}`, label: l.toUpperCase(), on: m.level === l, kind: 'chip', x: X3, y: 448 + k * 72, w: C4, h: 64 }));
+      (['easy', 'normal', 'hard'] as const).forEach((l, k) => items.push({ id: `level:${l}`, label: l[0].toUpperCase() + l.slice(1), on: m.level === l, kind: 'chip', x: X3, y: 448 + k * 72, w: C4, h: 64 }));
       items.push({ id: 'nav:instruments', label: m.inst.name, sub: 'Change', kind: 'button', x: 32, y: BOT.y, w: 360, h: BOT.h });
       items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 408, y: BOT.y, w: 360, h: BOT.h });
       items.push({ id: 'play', label: 'Play', kind: 'play', x: 784, y: BOT.y, w: W - 32 - 784, h: BOT.h });
@@ -254,7 +254,7 @@ function buildPageFor(m: MenuInput): Page {
               ? 'Connecting…'
               : (m.band.state === 'error' || m.band.state === 'closed') && msg
                 ? msg
-                : 'Play with friends, wherever they are';
+                : 'Up to four of you, from anywhere!';
       return { id: 'band', title: 'Play together', line, items, body: 'band', band: { code: on && !msg.startsWith('Connecting') ? m.band.code : '', players: m.band.players } };
     }
     case 'join': {

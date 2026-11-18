@@ -1,6 +1,6 @@
 /**
- * The panel's look: a night stage. Deep indigo to plum, a faint grid, a neon edge running cyan to magenta with corner
- * brackets; bold italic display type; slanted plates for what you press; colour that means something (judgements,
+ * The panel's look (docs/UI-DIRECTION.md): flat graphite, plain rounded plates, one orange; Barlow Condensed upright for
+ * titles; colour that means something (judgements,
  * levels, grades, the streak). Canvas 2D helpers only (no scene, no DOM beyond the context they are given).
  */
 import { FONT } from './fonts.js';
@@ -11,15 +11,15 @@ import { FONT } from './fonts.js';
  * instrument's own light.
  */
 export const BRAND = {
-  plum: '#1d0b2c',
-  plum2: '#26103a',
-  plum3: '#341650',
-  line: '#3d2357',
-  ink: '#f6efe4',
-  ink2: '#b9aac9',
-  ink3: '#7d6b92',
-  hot: '#ff4b2b',
-  hotInk: '#1d0b2c',
+  plum: '#161419',
+  plum2: '#211e24',
+  plum3: '#2b2730',
+  line: '#36323b',
+  ink: '#f2eee8',
+  ink2: '#a29da8',
+  ink3: '#6d6873',
+  hot: '#ff5a1f',
+  hotInk: '#1a0d07',
   gold: '#ffc93c',
 } as const;
 
@@ -74,8 +74,8 @@ export const MULT_PAIR: [string, string][] = [
   ['#ffc93c', '#ffc93c'],
 ];
 
-/** A display font: bold, upright. */
-export const display = (px: number, weight = 800) => `${weight} ${px}px ${FONT}`;
+/** The display face: Barlow Condensed (the site's too), bold and upright, for titles, buttons and numbers. */
+export const display = (px: number, weight = 800) => `${Math.min(700, weight)} ${px}px 'Barlow Condensed', ${FONT}`;
 export const body = (px: number, weight = 600) => `${weight} ${px}px ${FONT}`;
 
 /** A slanted plate (a parallelogram leaning right by `k` px), as a path. */

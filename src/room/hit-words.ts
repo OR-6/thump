@@ -27,7 +27,7 @@ function wordTexture(word: string): CanvasTexture {
   const draw = () => {
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, 512, 144);
-    g.font = `italic 900 92px ${FONT}`;
+    g.font = `800 92px ${FONT}`;
     g.textBaseline = 'middle';
     const ink = word;
     word = word.trim();
@@ -38,7 +38,7 @@ function wordTexture(word: string): CanvasTexture {
     // it reads over a bright desk, a glow in its colour
     g.lineJoin = 'round';
     g.strokeStyle = '#161419';
-    g.lineWidth = 16;
+    g.lineWidth = 8;
     g.strokeText(word, x, y);
     const [a, b] = INK[ink] ?? ['#ffffff', '#ffffff'];
     const gr = g.createLinearGradient(0, y - 46, 0, y + 46);

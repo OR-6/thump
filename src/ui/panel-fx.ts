@@ -12,15 +12,15 @@ import { motion } from './motion.js';
 export type FxKind = 'stamp' | 'stamp-small' | 'record' | 'fullcombo' | 'spotlight' | 'mult' | 'milestone';
 
 const N = 72;
-const TEX = ['star_06.png', 'spark_05.png', 'flare_01.png', 'magic_02.png', 'star_08.png', 'light_01.png'] as const;
+const TEX = ['star_06.png', 'spark_05.png', 'star_08.png', 'light_01.png'] as const;
 const PALETTE: Record<FxKind, readonly number[]> = {
-  stamp: [0xffd23f, 0xfff1a8, 0x33e1ff, 0xffffff],
-  'stamp-small': [0x33e1ff, 0x8a5cff, 0xffffff],
-  record: [0xff3ea5, 0xff7ac8, 0xffffff, 0xffd23f],
-  fullcombo: [0x33e1ff, 0xff3ea5, 0xffd23f, 0x3cf0a0, 0x8a5cff],
-  spotlight: [0xffd23f, 0xff9a3c, 0xffffff],
-  mult: [0x33e1ff, 0xb5f3ff],
-  milestone: [0xffd23f, 0x33e1ff, 0xff3ea5],
+  stamp: [0xffd23f, 0xf2eee8],
+  'stamp-small': [0xf2eee8],
+  record: [0xff5a1f, 0xf2eee8],
+  fullcombo: [0xff5a1f, 0xffd23f, 0xf2eee8, 0x9fd98a],
+  spotlight: [0xffd23f, 0xf2eee8],
+  mult: [0xf2eee8],
+  milestone: [0xffd23f, 0xff5a1f],
 };
 
 export class PanelFx {
@@ -154,7 +154,7 @@ export class PanelFx {
       this.age[i] = 0;
       this.spin[i] = (this.rnd() - 0.5) * 6;
       this.size[i] = (kind === 'stamp' ? 0.022 : kind === 'mult' ? 0.012 : 0.016) * (0.5 + this.rnd());
-      m.map = this.tex[kind === 'fullcombo' ? 4 + (k % 2) : kind === 'mult' ? 1 : k % 4];
+      m.map = this.tex[kind === 'fullcombo' ? 2 + (k % 2) : kind === 'mult' ? 1 : k % this.tex.length];
       m.color.set(pal[k % pal.length]);
       p.visible = true;
     }
@@ -162,7 +162,7 @@ export class PanelFx {
 
   /** A band of light across the panel (a page opening, the results coming in). */
   sweep(): void {
-    this.sweepT = 0;
+    // (no light sweeping across the panel any more: it read as a template's flourish)
   }
 
   update(dt: number): void {

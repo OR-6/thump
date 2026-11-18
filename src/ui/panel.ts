@@ -152,10 +152,10 @@ function drawSpot(g: CanvasRenderingContext2D, meter: number, active: boolean, r
   for (let i = 0; i < 4; i++) {
     const x = 380 + i * 108;
     slant(g, x, 20, 100, 32, 12);
-    g.fillStyle = 'rgba(210,165,74,0.18)';
+    g.fillStyle = '#2b2730';
     g.fill();
     g.lineWidth = 2;
-    g.strokeStyle = 'rgba(179,166,214,0.35)';
+    g.strokeStyle = '#36323b';
     g.stroke();
     const f = Math.max(0, Math.min(1, meter * 4 - i));
     if (f > 0) {
@@ -180,14 +180,14 @@ function drawRing(g: CanvasRenderingContext2D, k: number, pair: [string, string]
   g.clearRect(0, 0, 480, 480);
   g.lineCap = 'round';
   g.lineWidth = 28;
-  g.strokeStyle = 'rgba(210,165,74,0.18)';
+  g.strokeStyle = '#2b2730';
   g.beginPath();
   g.arc(240, 240, 200, 0, Math.PI * 2);
   g.stroke();
   if (k > 0.002) {
     g.strokeStyle = pair ? pair[1] : 'rgba(251,247,255,0.7)';
     g.shadowColor = pair ? pair[1] : NEON.violet;
-    g.shadowBlur = pair ? 26 : 10;
+    g.shadowBlur = 0;
     g.beginPath();
     g.arc(240, 240, 200, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
     g.stroke();
@@ -217,13 +217,10 @@ function drawGrade(g: CanvasRenderingContext2D, letter: string): void {
   g.strokeStyle = UI.bg;
   g.strokeText(letter, 156, 160);
   g.shadowColor = b;
-  g.shadowBlur = letter === 'S' || letter === 'A' ? 34 : 14;
+  g.shadowBlur = 0;
   g.fillStyle = b;
   g.fillText(letter, 156, 160);
   g.shadowBlur = 0;
-  g.lineWidth = 3;
-  g.strokeStyle = 'rgba(255,255,255,0.65)';
-  g.strokeText(letter, 156, 160);
   g.textAlign = 'left';
   g.textBaseline = 'alphabetic';
 }
@@ -330,8 +327,12 @@ const MENU_ICON: Record<string, (g: CanvasRenderingContext2D, S: number, c: stri
 
 function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: number, min: number, room: number): number {
   min = Math.max(MIN_PX, min, Math.min(px, MIN_PX));
-  g.font = `${weight} ${px}px ${FONT}`;
-  while (g.measureText(text).width > room && px > min) g.font = `${weight} ${--px}px ${FONT}`;
+  // (titles, buttons and names in the display face, Barlow Condensed at its boldest; sentences in the system face)
+  const bold = Number(weight) >= 700;
+  const face = bold ? `'Barlow Condensed', ${FONT}` : FONT;
+  const w0 = bold ? '700' : weight;
+  g.font = `${w0} ${px}px ${face}`;
+  while (g.measureText(text).width > room && px > min) g.font = `${w0} ${--px}px ${face}`;
   // (still too wide at the smallest size: noted, so a layout check can find every clash)
   const w = g.measureText(text).width;
   if (w > room + 1) OVERFLOW.set(`${text}|${Math.round(room)}`, { text, room: Math.round(room), width: Math.round(w) });
@@ -690,7 +691,7 @@ export class Panel {
     g.fillStyle = 'rgba(29,11,44,0.9)';
     g.fill();
     g.lineWidth = 3;
-    g.strokeStyle = tone === 'gold' ? NEON.gold : tone === 'grey' ? 'rgba(179,166,214,0.4)' : NEON.magenta;
+    g.strokeStyle = tone === 'gold' ? NEON.gold : tone === 'grey' ? '#36323b' : NEON.magenta;
     g.stroke();
     if (tone === 'grey') {
       g.fillStyle = MUTED;
@@ -1390,7 +1391,7 @@ export class Panel {
     g.lineWidth = 2;
     g.strokeStyle = UI.line;
     g.stroke();
-    const name = c.name.toUpperCase();
+    const name = c.name;
     g.font = display(52, 800);
     let lines = [name];
     if (g.measureText(name).width > room) {
@@ -1429,13 +1430,19 @@ export class Panel {
       g.fillText(say, x + 28, lines.length > 1 ? 330 : 342);
     }
     // your best, and its grade large at the right
-    g.font = display(48, 800);
-    g.fillStyle = MUTED;
-    g.fillText('BEST', x + 28, 404);
-    const bw2 = g.measureText('BEST ').width;
-    g.font = display(52, 900);
-    g.fillStyle = NEON.ink;
-    g.fillText(c.best >= 0 ? c.best.toLocaleString('en-GB') : '—', x + 28 + bw2 + 6, 404);
+    if (c.best >= 0) {
+      g.font = display(48, 800);
+      g.fillStyle = MUTED;
+      g.fillText('Best', x + 28, 404);
+      const bw2 = g.measureText('Best ').width;
+      g.font = display(52, 900);
+      g.fillStyle = NEON.ink;
+      g.fillText(c.best.toLocaleString('en-GB'), x + 28 + bw2 + 6, 404);
+    } else {
+      g.font = body(44, 500);
+      g.fillStyle = UI.ink3;
+      g.fillText('Not played yet', x + 28, 404);
+    }
     if (c.grade) {
       const [ga, gb] = GRADE_PAIR[c.grade] ?? GRADE_PAIR.D;
       // (smaller under a world line, so the two don't touch)
@@ -1486,9 +1493,14 @@ export class Panel {
       g.font = `400 48px ${FONT}`;
       g.fillText('Friends type this in to join', 32, 470);
     } else {
+      // (what you get, before there's a band)
       g.fillStyle = INK;
-      g.font = `600 56px ${FONT}`;
-      g.fillText('Up to four of you, from anywhere', 32, 300);
+      g.font = `600 52px ${FONT}`;
+      g.fillText('Everyone picks an instrument and plays the same song.', 32, 290);
+      g.fillStyle = MUTED;
+      g.font = `400 48px ${FONT}`;
+      g.fillText("You'll see their hands across your desk, and with Talk on", 32, 360);
+      g.fillText('you can hear each other too.', 32, 420);
     }
     // (the four seats, once there's a band)
     if (!b.code) return;
@@ -1657,9 +1669,9 @@ export class Panel {
           g.fillText(`${k + 1}  ${name}`, it.x + 40, it.y + 86 + k * 58);
         });
       }
-      fit(g, it.label.toUpperCase(), '900', 96, 48, it.w - 420);
+      fit(g, it.label, '900', 104, 48, it.w - 80);
         g.fillStyle = NEON.ink;
-      g.fillText(it.label.toUpperCase(), it.x + 40, it.y + 384);
+      g.fillText(it.label, it.x + 40, it.y + 384);
       if (it.sub) {
         g.fillStyle = MUTED;
         fit(g, it.sub, '500', 48, 48, it.w - 80);

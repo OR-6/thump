@@ -44,7 +44,7 @@ describe('the panel pages', () => {
     const p = buildPage(base('songs'));
     expect(p.items.find((i) => i.id === 'song:1')?.off).toBe(true);
     expect(p.items.find((i) => i.id === 'song:0')?.stars).toBe(2);
-    expect(p.items.find((i) => i.id.startsWith('level:') && i.on)?.label).toBe('EASY');
+    expect(p.items.find((i) => i.id.startsWith('level:') && i.on)?.label).toBe('Easy');
     expect(p.items.some((i) => i.id === 'play')).toBe(true);
   });
   it('songs: five to a page beside the chosen one\'s card; More turns the page; filters as pills; nothing overlaps', () => {
