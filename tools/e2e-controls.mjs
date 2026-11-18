@@ -51,6 +51,8 @@ for (const [name, setup] of pages) {
   const list = items().filter((i) => !i.off && !i.on && !i.id.startsWith('label:') && i.kind !== 'label' && i.kind !== 'text' && !(i.id === 'songs:filter:all' || i.id === 'level:easy'));
   for (const it of list) {
     await goPage(setup);
+    // (selected by an earlier press on this page: pressing it again rightly changes nothing)
+    if (items().find((x) => x.id === it.id)?.on) continue;
     const before = snap();
     if (!press(it.id)) continue;
     await wait(600);

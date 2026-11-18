@@ -14,22 +14,22 @@ describe('the instrument shelf', () => {
       for (const z of handpanZones(50, sc)) expect(sc.steps).toContain((((z.midi - 50) % 12) + 12) % 12);
     }
   });
-  it('the piano: two octaves of real keys (23.5 mm apart, 150 mm long), climbing, in the scale; it fits a tray', () => {
+  it('the piano: two octaves of keys a little over real size (28 mm apart, 165 mm long), climbing, in the scale; it fits a tray', () => {
     const z = pianoZones(60, scaleById('happy'));
     const keys = z.slice(0, PIANO_CHORD);
     expect(keys).toHaveLength(15);
     for (let i = 1; i < keys.length; i++) {
       expect(keys[i].midi).toBeGreaterThan(keys[i - 1].midi);
-      expect(keys[i].x - keys[i - 1].x).toBeCloseTo(0.0235, 4);
+      expect(keys[i].x - keys[i - 1].x).toBeCloseTo(0.028, 4);
     }
-    for (const k of keys) expect(k.h).toBeCloseTo(0.15, 4);
+    for (const k of keys) expect(k.h).toBeCloseTo(0.165, 4);
     const left = Math.min(...z.map((k) => k.x - (k.shape === 'disc' ? k.w : k.w / 2)));
     const right = Math.max(...z.map((k) => k.x + (k.shape === 'disc' ? k.w : k.w / 2)));
-    expect(right - left).toBeLessThan(0.46);
+    expect(right - left).toBeLessThan(0.54);
     // the tune's first note is in the middle (the sixth key)
     expect(keys[5].degree).toBe(0);
   });
-  it('black keys where a keyboard has them: two over C D E, three over F G A B, 12.5 by 95 mm, each playing its two neighbours', () => {
+  it('black keys where a keyboard has them: two over C D E, three over F G A B, 14.5 by 104 mm, each playing its two neighbours', () => {
     const z = pianoZones(60, scaleById('happy'));
     const bl = pianoBlacks(z);
     expect(bl).toHaveLength(10);
@@ -38,8 +38,8 @@ describe('the instrument shelf', () => {
       expect(k.b).toBe(k.a + 1);
       expect(k.x).toBeGreaterThan(z[k.a].x);
       expect(k.x).toBeLessThan(z[k.b].x);
-      expect(k.w).toBeCloseTo(0.0125, 4);
-      expect(k.h).toBeCloseTo(0.095, 4);
+      expect(k.w).toBeCloseTo(0.0145, 4);
+      expect(k.h).toBeCloseTo(0.104, 4);
     }
   });
   it('the congas: two drums apart, each a middle inside its edge; the middle is open, the edge slaps', () => {

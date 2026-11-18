@@ -10,14 +10,15 @@ import { woodGrain } from './surfaces.js';
 
 export const KEY = {
   /** White key pitch (centre to centre) and the gap between keys. */
-  pitch: 0.0235,
+  // (a little bigger than a real piano's 23.5 mm: fingers in the air need the room)
+  pitch: 0.028,
   gap: 0.0014,
   /** Visible white key length and thickness. */
-  length: 0.15,
+  length: 0.165,
   thick: 0.014,
   /** Black key width, length, height above the white tops. */
-  blackW: 0.0125,
-  blackL: 0.095,
+  blackW: 0.0145,
+  blackL: 0.104,
   blackH: 0.0105,
   /** Height of the white key tops above the desk (a slim compact keyboard's). */
   top: 0.036,
