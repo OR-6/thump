@@ -12,7 +12,7 @@
  * is in it, at any speed (a slow press plays, softly), including a finger sliding into it sideways (a glissando
  * plays every key it crosses); it comes back up when the point leaves it, rises out above it, or lifts partway (a
  * quick repeated note lifts a finger a centimetre, not out past the top), and goes down again as the point comes
- * back down; never quieter than KEY.minGain (a slow press is soft, not silent). One key down per point. Measured in tests/air-repeat.test.ts.
+ * back down; never quieter than KEY.minGain (a slow press is soft, not silent). One key down per point. Measured in tests/air-repeat.test.ts, and at a headset's real shake in tests/air-noise.test.ts.
  * Pure: kit-local coordinates in, hits out; no scene, no audio.
  */
 
@@ -80,7 +80,7 @@ const WATCH = 6;
  * point more than `deep` under a key isn't playing it (it's under the keyboard). Leaves a key only `edge` past it, so
  * a finger on the line between two keys doesn't flicker between them.
  */
-export const KEY = { lift: 0.005, out: 0.008, minGain: 0.3, tapMin: 0.25, edge: 0.002, deep: 0.06, liftFrames: 18, dropFrames: 9, repeatMin: 0.08, knee: 0.08, jitLift: 7, jitRate: 0.1, jitMax: 0.004, jitSettle: 14, liftMax: 0.012 } as const;
+export const KEY = { lift: 0.005, out: 0.008, minGain: 0.3, tapMin: 0.25, edge: 0.002, deep: 0.06, liftFrames: 18, dropFrames: 9, repeatMin: 0.1, knee: 0.15, jitLift: 7, jitRate: 0.1, jitMax: 0.004, jitSettle: 14, liftMax: 0.012 } as const;
 /**
  * (`out`: a key let up by rising out of it re-arms 8 mm over its top: at 4 mm a fingertip resting on the keys, as a
  * pianist's do, shook in and out of it and played. `repeatMin`: a repeat comes down at least this fast. A key's lift
@@ -102,13 +102,13 @@ export function airGain(speed: number, full: number = AIR.fullSpeed, knee = 0.3)
 }
 
 /**
- * How loud a key goes down at `speed` m/s: KEY.minGain at KEY.knee, 1 at `full`, on a curve that gives the soft half
- * of the range room (a gentle press 0.2 m/s ≈ 0.47, a press 0.35 ≈ 0.6, a firm one 0.6 ≈ 0.77 at full 1); before, every
- * press under 0.43 m/s sounded the same.
+ * How loud a key goes down at `speed` m/s: KEY.minGain up to KEY.knee, rising evenly to 1 at `full` (a gentle press
+ * 0.25 m/s ≈ 0.38, a press 0.35 ≈ 0.46, a firm one 0.6 ≈ 0.67 at full 1). Before, every press under 0.43 m/s sounded
+ * the same. (The knee: a fingertip's shake alone reads 0.1 to 0.19 m/s on a press slower than that, which stays soft.)
  */
 export function keyGain(speed: number, full = 1): number {
   const u = Math.max(0, Math.min(1, (speed - KEY.knee) / Math.max(0.1, full - KEY.knee)));
-  return KEY.minGain + (1 - KEY.minGain) * Math.pow(u, 0.7);
+  return KEY.minGain + (1 - KEY.minGain) * u;
 }
 
 function inside(s: AirSurface, x: number, y: number, z: number, grow = 0): boolean {
@@ -215,7 +215,8 @@ export class AirHits {
 
   /**
    * Point `p` is now at (x, y, z) after `dt` s. Each surface it crossed the right way, fast enough, inside, is a hit
-   * pushed to `out` (at most one: one note per finger). Returns how many were added.
+   * pushed to `out` (at most one: one note per finger). Returns how many were added. `turn` (m, 0: off): a stick's
+   * point, whose stroke turning within that height over a head plays there (TURN); fingertips and palms pass 0.
    */
   update(p: number, x: number, y: number, z: number, dt: number, surfaces: readonly AirSurface[], out: AirHit[], full: number = AIR.fullSpeed, min: number = AIR.minSpeed, turn = 0): number {
     const i = p * 3;

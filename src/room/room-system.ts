@@ -43,7 +43,7 @@ import { tortoiseShell } from '../scene-assets/lib/surfaces.js';
 import { PADS, PLACE, STRIKE, type Lane } from '../config.js';
 import { hands, type HandState, type Side } from '../input/hands.js';
 import { KIT_STYLES, type KitStyle } from '../scene-assets/lib/drums.js';
-import { AIR, AirHits, type AirHit, type AirSurface } from '../input/air-hits.js';
+import { AIR, AirHits, TURN, type AirHit, type AirSurface } from '../input/air-hits.js';
 import { Placement, kitPose } from '../app/placement.js';
 import { FrameGuard } from '../app/frame-guard.js';
 import { speedToGain, type HandSample, type Point, type Strike } from '../kit/strike.js';
@@ -3760,7 +3760,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         // isn't struck by its shake: it plays from 1 m/s)
         // (an accent in the air is 2 to 3 m/s: that's the loud end)
         const full = k === 4 ? 4.5 : piano ? 1.0 : 2.5;
-        this.air.update(p, this.airP.x, this.airP.y, this.airP.z, step, this.airSurf, this.airOut, full, k === 4 ? (marimba ? AIR.stickMin : 0.6) : piano ? AIR.keyMin : AIR.minSpeed);
+        this.air.update(p, this.airP.x, this.airP.y, this.airP.z, step, this.airSurf, this.airOut, full, k === 4 ? (marimba ? AIR.stickMin : 0.6) : piano ? AIR.keyMin : AIR.minSpeed, k === 4 && drums ? TURN.zone : 0);
         for (const hit of this.airOut) {
           if (!piano) {
             if (this.airBest.speed < 0 || hit.depth > this.airBest.depth + 0.002 || (hit.depth > this.airBest.depth - 0.002 && hit.speed > this.airBest.speed)) {
