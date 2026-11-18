@@ -1147,11 +1147,11 @@ export class Game {
     const sh = this.shownSongs();
     if (sh.length && !sh.includes(this.songSel)) this.songSel = sh[0];
   }
-  /** How loud your own part's recording plays under you (0 on Hard, in lessons' listening, and with the band off). */
+  /** How loud your own part's recording plays under you (quietest on Hard; none while a lesson listens or waits). */
   guideLevel(): number {
     // (and not while a lesson waits on your note: a ghost of it would play just before the wait)
     if (this.listening || this.waitsLeft > 0) return 0;
-    return this.level === 'easy' ? 0.35 : this.level === 'normal' ? 0.2 : 0;
+    return this.level === 'easy' ? 0.35 : this.level === 'normal' ? 0.2 : 0.1;
   }
   private shownSongs(): number[] {
     const f = this.songFilter;

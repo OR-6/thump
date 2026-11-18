@@ -262,7 +262,7 @@ const MANGO_SEASON_VERSE_CHORDS = 'Em | C | G | D | Em | C | G | D';
 const MANGO_SEASON_CHORUS = 'e2 d B- B2 G2 | e2 d B- B4 | d2 B G- G2 E2 | D2 E2 F2 A2 | e2 d B- B2 G2 | e2 d B- B2 A2 | G2 A2 B2 A2 | G8';
 const MANGO_SEASON_CHORUS_CHORDS = 'Em | C | G | D | Em | C | G D | G';
 
-export const TUNES: readonly Tune[] = [
+const ALL_TUNES: readonly Tune[] = [
   // ---------------------------------------------------------------- the classics
   {
     // Symphony No. 9 (1824), the theme as it's usually sung
@@ -688,3 +688,7 @@ export const TUNES: readonly Tune[] = [
     ),
   },
 ];
+
+/** Originals taken out of the game while they're rewritten (ids kept for their boards). */
+const SHELVED = new Set(['rooftop', 'kite-hill', 'cold-brew', 'late-bus', 'low-tide']);
+export const TUNES: readonly Tune[] = ALL_TUNES.filter((t) => !SHELVED.has(t.id));
