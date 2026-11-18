@@ -60,8 +60,10 @@ export class StemPlayer {
         this.bufs = got;
         this.id = id;
         this.lead = ((m.start ?? 0) * 60) / (m.bpm || 120);
-      } catch {
-        this.failed.add(id);
+      } catch (e) {
+        // (a song that isn't there, or won't decode: given up on; a dropped connection: tried again next time)
+        if (e instanceof Error && /^4\d\d$/.test(e.message)) this.failed.add(id);
+        else if (e instanceof DOMException && e.name === 'EncodingError') this.failed.add(id);
       } finally {
         if (this.loading === id) this.loading = '';
       }

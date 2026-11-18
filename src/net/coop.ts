@@ -147,13 +147,19 @@ class CoopSession {
       peer.on('error', (e) => {
         if (gen !== this.gen) return;
         const type = (e as { type?: string }).type;
+        // (once the code is up, the band's links don't need the connection service: a blip there only re-registers the
+        // code, it never ends the band or changes the code)
+        if (opened && (NETWORK_ERRORS.has(type ?? '') || type === 'disconnected' || type === 'unavailable-id')) {
+          window.setTimeout(() => gen === this.gen && !peer.destroyed && peer.reconnect?.(), 2000);
+          return;
+        }
         if (type === 'unavailable-id' && tries > 0) void this.host(tries - 1);
         // a network hiccup: one more go after a moment, then say so
         else if (NETWORK_ERRORS.has(type ?? '') && tries > 1) window.setTimeout(() => gen === this.gen && void this.host(1), 1500);
         else this.fail("Can't reach the connection service. Try again in a minute");
       });
     } catch {
-      this.set({ state: 'error', message: "This browser can't join a jam" });
+      this.set({ state: 'error', message: navigator.onLine === false ? 'No connection. Check the Wi-Fi and try again' : "Couldn't start. Reload the page and try again" });
     }
   }
 
@@ -188,10 +194,12 @@ class CoopSession {
       peer.on('error', (e) => {
         if (gen !== this.gen) return;
         const type = (e as { type?: string }).type;
+        // (in the band already: the connection service going away doesn't matter, the link to the host is direct)
+        if (joined && (NETWORK_ERRORS.has(type ?? '') || type === 'disconnected')) return;
         this.fail(type === 'peer-unavailable' ? "No headset has that code. Check the 4 letters" : "Can't reach the connection service. Try again in a minute");
       });
     } catch {
-      this.set({ state: 'error', message: "This browser can't join a jam" });
+      this.set({ state: 'error', message: navigator.onLine === false ? 'No connection. Check the Wi-Fi and try again' : "Couldn't start. Reload the page and try again" });
     }
   }
 

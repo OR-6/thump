@@ -50,14 +50,19 @@ export class Sampler {
     p = (async () => {
       try {
         const res = await (this.prefetched.get(f) ?? fetch(BASE + f));
-        if (!res.ok) return;
+        // (a miss, a 404 or a dropped connection: not kept, so the next ask fetches it again)
+        if (!res.ok) {
+          this.prefetched.delete(f);
+          return;
+        }
         const buf = await ctx.decodeAudioData(await res.clone().arrayBuffer());
         this.buffers.set(f, buf);
         // that instrument's grouping includes it from now on
         const k = this.keyOfFile.get(f);
         if (k) this.groups.delete(k);
       } catch {
-        /* that clip stays synthesised */
+        // that clip stays synthesised for now (fetched again if asked for again)
+        this.prefetched.delete(f);
       } finally {
         this.decoding.delete(f);
       }
@@ -112,7 +117,20 @@ export class Sampler {
         await this.decode(ctx, files[next++]);
       }
     };
-    for (let i = 0; i < 6; i++) void worker();
+    const all: Promise<void>[] = [];
+    for (let i = 0; i < 6; i++) all.push(worker());
+    // (a Wi-Fi still waking up: whatever didn't arrive is asked for once more a few seconds later)
+    void Promise.all(all).then(() => {
+      const missing = files.filter((f) => !this.buffers.has(f));
+      if (!missing.length || typeof window === 'undefined') return;
+      window.setTimeout(() => {
+        let j = 0;
+        const again = async (): Promise<void> => {
+          while (j < missing.length) await this.decode(ctx, missing[j++]);
+        };
+        for (let i = 0; i < 4; i++) void again();
+      }, 5000);
+    });
   }
 
   /** Is this family (or kit voice, 'kit:snare') playable from recordings yet? */
