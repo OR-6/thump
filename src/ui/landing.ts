@@ -64,9 +64,11 @@ const andList = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, 
 /** Where the page is open: the headset's browser (it can enter), a phone (it sends the link on), or a computer. */
 type Where = 'xr' | 'phone' | 'desk';
 
-/** An empty slot: its name and one line. */
+/** An empty slot: a paste-up box with its name and one line. */
 const emptySlot = (label: string, line: string, play = false) =>
-  `<div class="empty">${play ? '<svg class="play-mark" viewBox="0 0 44 44" aria-hidden="true"><path d="M16 12.5v19l15-9.5z"/></svg>' : ''}<span class="silk"><span class="dot" aria-hidden="true"></span>${label}</span><p>${line}</p></div>`;
+  `<div class="empty">${play ? '<svg class="play-mark" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="28"/><path d="M22 17.5v21l17-10.5z"/></svg>' : ''}<div><span class="slot-name">${label}</span><p>${line}</p></div></div>`;
+/** A title printed in two inks a little out of register (index.html, `.riso`): the pink copy is `data-t`. */
+const riso = (text: string) => `data-t="${text.replace(/"/g, '&quot;')}"`;
 
 export function mountLanding(world: World): void {
   // (the count comes from the songs themselves: when an original is added or taken out, the page follows)
@@ -74,7 +76,7 @@ export function mountLanding(world: World): void {
   const classics = TUNES.length - originals.length;
   const songs = [...originals, ...TUNES.filter((t) => !t.original)];
   const songRow = (t: (typeof TUNES)[number], i: number) =>
-    `<li class="song${t.original ? ' orig' : ''}"><span class="n">${two(i + 1)}</span><span class="name">${esc(t.name)}</span><span class="by">${esc(t.original ? t.style[0].toUpperCase() + t.style.slice(1) : t.by)}</span><span class="len"><span class="nb">${t.bpm} bpm</span><br /><span class="vh">length </span>${lengthOf(t)}</span></li>`;
+    `<li class="song${t.original ? ' orig' : ''}"><span class="n">${two(i + 1)}</span><span class="name">${esc(t.name)}</span><span class="lead" aria-hidden="true"></span><span class="len"><span class="vh">length </span>${lengthOf(t)}</span><span class="by">${esc(t.original ? t.style[0].toUpperCase() + t.style.slice(1) : t.by)}</span><span class="bpm nb">${t.bpm} bpm</span></li>`;
   const originalsLine =
     originals.length === 1 ? `<strong>${esc(originals[0].name)}</strong> is an original I wrote, the other ${classics} are classics you probably already know.`
     : `${originals.length} are originals I wrote (${esc(andList(originals.map((t) => t.name)))}), the other ${classics} are classics you probably already know.`;
@@ -95,19 +97,22 @@ export function mountLanding(world: World): void {
 
     <main id="main" tabindex="-1">
       <section class="hero" id="top" aria-labelledby="hero-h">
-        <div class="wrap">
-          <h1 id="hero-h">A band on your desk<span class="vh">.</span><span class="beat" aria-hidden="true"><svg class="beat-ring" viewBox="-50 -50 100 100" aria-hidden="true" focusable="false"><circle class="closing" r="40" pathLength="100" stroke-dasharray="78 22" transform="rotate(-20)"/></svg></span></h1>
-          <div class="hero-row">
+        <div class="wrap hero-in">
+          <div class="hero-top">
+          <div class="inks" aria-hidden="true"><span class="ink ink-1"></span><span class="ink ink-2"></span><span class="ink ink-3"></span></div>
+          <h1 id="hero-h"><span class="l riso" ${riso('A band')}>A band</span> <span class="l riso" ${riso('on your')}>on your</span> <span class="l riso" ${riso('desk.')}>desk.</span></h1>
+          <p class="ticket" id="addr"><span class="t-main"><span class="t-top">On your Quest, open</span> <button type="button" class="addr-url" id="addr-url" title="Copy the link">${LIVE_URL}</button></span> <span class="t-stub">Quest 3</span></p>
+          </div>
+          <div class="hero-foot">
             <p class="tag">A VR music game you play with just your hands, no controllers, on your actual desk.</p>
             <div class="go">
-              <div class="cta">
-                <button id="enter-xr" class="btn btn-1" type="button">Enter</button>
-                <p class="addr" id="addr">On your Quest, open <button type="button" class="addr-url" id="addr-url">${LIVE_URL}</button></p>
-              </div>
+              <div class="cta"><button id="enter-xr" class="btn btn-1" type="button">Enter</button></div>
               <p class="go-note" id="go-note" aria-live="polite"></p>
               <p class="xr-fail" role="alert" hidden>That didn’t start. Say yes to the Quest’s prompts, then try again.</p>
             </div>
           </div>
+        </div>
+        <div class="wrap">
           <div class="media">
             <figure class="slot slot-video" id="video-slot">
               <video class="fill" id="video" inert controls playsinline preload="metadata" aria-label="${esc(VIDEO.label)}"><source src="${VIDEO.src}#t=0.1" type="video/mp4" /></video>
@@ -120,12 +125,11 @@ export function mountLanding(world: World): void {
 
       <section class="how" id="how" aria-labelledby="how-h">
         <div class="wrap how-in">
-          <h2 class="h2" id="how-h">How to play</h2>
+          <h2 class="h2 riso" id="how-h" ${riso('How to play')}>How to play</h2>
           <div>
             <ol class="steps">
-              <li><span>Open <strong>${LIVE_URL}</strong> in your Quest’s browser.</span></li>
-              <li><span>Sit down at your desk (a table works too).</span></li>
-              <li><span>Look down. The instruments are sitting on it.</span></li>
+              ${['Open <strong>' + LIVE_URL + '</strong> in your Quest’s browser.', 'Sit down at your desk (a table works too).', 'Look down. The instruments are sitting on it.']
+                .map((t, i) => `<li><span class="num riso" ${riso(String(i + 1))} aria-hidden="true">${i + 1}</span><span>${t}</span></li>`).join('')}
             </ol>
             <p class="how-note">Put the controllers away, it’s all hands. Make a fist on the drums and you get sticks, pinch on the guitar and you get a pick.</p>
           </div>
@@ -135,29 +139,28 @@ export function mountLanding(world: World): void {
       <section class="play" id="play" aria-labelledby="play-h">
         <div class="wrap">
           <div class="play-head">
-            <h2 class="h2" id="play-h">Six instruments</h2>
+            <h2 class="h2 riso" id="play-h" ${riso('Six instruments')}>Six instruments</h2>
             <p class="lede">These are the same sounds as in the headset, so go on and hit something! Click or tap, or hold and drag across for a run.</p>
           </div>
-          <div class="deck">
-            <ul class="picker" role="group" aria-label="Instrument">
-              ${BAND.map((b) => `<li><button type="button" class="pick" data-inst="${b.id}" aria-pressed="false"><span class="pick-name">${b.label}</span><span class="pick-line">${esc(b.line)}</span></button></li>`).join('')}
-            </ul>
-            <figure class="desk">
-              <div class="stage"></div>
-              <figcaption class="desk-foot"><span><span class="now-line"></span> <span class="about" aria-live="polite"></span></span></figcaption>
-            </figure>
-          </div>
+          <ul class="lineup" role="group" aria-label="Instrument">
+            ${BAND.map((b) => `<li><button type="button" class="pick" data-inst="${b.id}" aria-pressed="false"><span class="pick-name">${b.label}</span></button></li>`).join('')}
+          </ul>
+          <figure class="deck">
+            <div class="stage"></div>
+            <figcaption class="desk-foot"><div><p class="now-name"></p><p class="now-line"></p></div><p class="about" aria-live="polite"></p></figcaption>
+          </figure>
         </div>
       </section>
 
       <section class="songs-sec" id="songs" aria-labelledby="songs-h">
         <div class="wrap songs-in">
           <div>
-            <h2 class="h2" id="songs-h">${TUNES.length} songs</h2>
+            <h2 class="h2 riso" id="songs-h" ${riso(`${TUNES.length} songs`)}>${TUNES.length} songs</h2>
             <p class="lede">${originalsLine} I took the songs and turned them into the parts you play, with a band playing along. More originals are on the way.</p>
           </div>
           <div>
             <ol class="songs">${songs.map(songRow).join('')}</ol>
+            ${originals.length ? `<p class="key">${originals.length === 1 ? 'The one I wrote' : 'The ones I wrote'}</p>` : ''}
           </div>
         </div>
       </section>
@@ -169,13 +172,13 @@ export function mountLanding(world: World): void {
             <p>Build a loop out of the instruments, play over it, and keep the one you like.</p>
           </div>
           <div class="panel together">
-            <h2 class="h2" id="together-h">Play together</h2>
+            <h2 class="h2 riso" id="together-h" ${riso('Play together')}>Play together</h2>
             <p class="lede">Play in a band with up to 3 friends! One of you starts a band and gets a <span class="nb">4-letter</span> code, the others type it in, and each of you plays a different instrument.</p>
             <div class="band-ctl">
               <div>
                 <h3 class="h3">Start a band</h3>
                 <p class="hint">You get a code to send your friends.</p>
-                <button type="button" id="band-start" class="btn btn-1">Get a code</button>
+                <button type="button" id="band-start" class="btn btn-2">Get a code</button>
               </div>
               <div>
                 <h3 class="h3"><label for="band-code">Join a band</label></h3>
@@ -217,17 +220,18 @@ export function mountLanding(world: World): void {
     <footer class="foot" aria-labelledby="who-h">
       <div class="wrap foot-in">
         <div>
-          <h2 class="h2" id="who-h">Who made it</h2>
+          <h2 class="h2 riso" id="who-h" ${riso('Who made it')}>Who made it</h2>
           <p class="maker">Pretty much every VR music game needs controllers, so I made one you play with just your hands.</p>
         </div>
         <dl class="plate">
-          <dt class="silk">Made by</dt><dd>OR-6, with my friends as testers</dd>
-          <dt class="silk">Built with</dt><dd>IWSDK, WebXR, three.js, TypeScript, Web Audio and PeerJS</dd>
-          <dt class="silk">Runs on</dt><dd>Meta Quest 3, in the browser</dd>
-          <dt class="silk">Entered in</dt><dd>The Meta VR Start Developer Competition 2026 (Gaming)</dd>
-          <dt class="silk">Sounds</dt><dd class="credit">Instrument samples from the Versilian Community Sample Library (CC0); the guitar is a Martin HD-28 recorded by Jeff Learman (Discord SFZ GM Bank, CC0). Particles by Kenney (CC0).</dd>
+          <dt>Made by</dt><dd>OR-6, with my friends as testers</dd>
+          <dt>Built with</dt><dd>IWSDK, WebXR, three.js, TypeScript, Web Audio and PeerJS</dd>
+          <dt>Runs on</dt><dd>Meta Quest 3, in the browser</dd>
+          <dt>Entered in</dt><dd>The Meta VR Start Developer Competition 2026 (Gaming)</dd>
+          <dt>Sounds</dt><dd class="credit">Instrument samples from the Versilian Community Sample Library (CC0); the guitar is a Martin HD-28 recorded by Jeff Learman (Discord SFZ GM Bank, CC0). Particles by Kenney (CC0).</dd>
         </dl>
       </div>
+      <div class="wrap"><p class="sign" aria-hidden="true">${ringMarkSvg({ simple: true })}<span class="riso" ${riso('Thump')}>Thump</span></p></div>
     </footer>`;
   document.body.appendChild(el);
   // (index.html paints the top of the page while the game loads; this replaces it)
@@ -456,6 +460,7 @@ function mountDesk(el: HTMLElement): void {
   const stage = el.querySelector<HTMLElement>('.stage')!;
   const about = el.querySelector<HTMLElement>('.about')!;
   const nowLine = el.querySelector<HTMLElement>('.now-line')!;
+  const nowName = el.querySelector<HTMLElement>('.now-name')!;
   const picks = [...el.querySelectorAll<HTMLButtonElement>('.pick')];
   let inst: InstId = 'drums';
   let chord = 0;
@@ -640,6 +645,7 @@ function mountDesk(el: HTMLElement): void {
     centreOnTray(stage.querySelector('svg.desk-svg')!);
     stage.dataset.inst = id;
     about.textContent = ABOUT[id] ?? '';
+    nowName.textContent = labelOf(id);
     nowLine.textContent = lineOf(id);
     for (const b of picks) b.setAttribute('aria-pressed', String(b.dataset.inst === id));
     if (id === 'guitar') stage.querySelector(`.part[data-part="g${chord}"]`)?.classList.add('on');

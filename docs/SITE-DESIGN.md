@@ -2,29 +2,33 @@
 
 The site is a hackathon project page, made by the person who built the game: what it is in one line, the video and
 screenshots, how to play, the six instruments to try, the songs, making a track and playing together, who made it. It
-follows docs/UI-DIRECTION.md, the same look as the headset panel: music hardware (a drum machine, a mixer, a good
-synth's screen), warm graphite, flat, one signal orange.
+looks like a risograph gig flyer (the owner's pick, from docs/flyer-mockup.html): cream paper, two riso inks (pink and
+blue) printed over each other so they darken where they cross, ink black for reading, a yellow highlighter for the
+chosen thing.
 
 The page is `index.html` (the tokens and every style, plus the loading shell) and `src/ui/landing.ts` (the markup and
 behaviour); `src/ui/landing-drawing.ts` draws the instruments.
 
 ## The page, top to bottom
 
-1. **Hero:** "A band on your desk." (the only H1), one line ("A VR music game you play with just your hands, no
-   controllers, on your actual desk."), the one action and the address. Then the **video** slot, full width, and three
-   **screenshot** slots.
-2. **How to play:** three numbered steps, left to right like a step sequencer (open the link in the Quest browser, sit
-   at your desk, look down), and one line on hands only.
-3. **Six instruments:** a channel strip (the six as rows: name and one line on how it's played; the chosen row raised
-   with an orange bar at its left) beside the desk drawing, which plays itself as it scrolls in and plays the headset's
-   sounds under your clicks. Under 900 px the rows become a 3 by 2 grid of tiles (the bar at the bottom) and the chosen
-   one's line goes under the drawing.
+1. **Hero:** "A band on your desk." (the only H1, three lines, blue with a pink copy a few pixels off, over a solid
+   pink circle and two halftone circles), one line ("A VR music game you play with just your hands, no controllers, on
+   your actual desk."), the one action, and the address on a black ticket stub at an angle. Then the **video** slot,
+   full width, and three **screenshot** slots.
+2. **How to play:** three numbered steps, left to right (open the link in the Quest browser, sit at your desk, look
+   down), and one line on hands only.
+3. **Six instruments:** the six names big, separated by pink slashes like a flyer's lineup; they are the picker
+   (`.pick[data-inst]`, the chosen one on a yellow highlighter). Under them the desk drawing, which plays itself as it
+   scrolls in and plays the headset's sounds under your clicks, with the chosen instrument's name and how it's played
+   beside it (under it below 900 px).
 4. **Songs:** "N songs" and a line that counts the originals and classics from `TUNES` (one original is named; more are
-   listed), then a track listing in two columns, originals first with an orange dot.
-5. **Make your own track** (a narrow panel) and **Play together** (a wide one with Start a band and Join a band). On a
-   phone the band controls are hidden and a line says to open the page on the Quest.
-6. **Settings** (a disclosure) and **Who made it:** one line, then a spec plate (Made by, Built with, Runs on, Entered
-   in, Sounds).
+   listed), then a running order in two columns (number, name, dot leaders, length; composer or style and bpm under),
+   originals first with their number on a pink spot.
+5. **Make your own track** (a pink sticker) and **Play together** (an inked panel with Start a band and Join a band
+   either side of a dashed tear line). On a phone the band controls are hidden and a line says to open the page on the
+   Quest.
+6. **Settings** (a disclosure) and **Who made it:** one line, then a plate (Made by, Built with, Runs on, Entered in,
+   Sounds), and the mark and the name printed big at the very bottom.
 
 No leaderboard, lessons, scoring or Spotlight on the page.
 
@@ -51,56 +55,67 @@ Drop the files into `public/site/` and they appear; nothing else changes:
   is shown big with the other two stacked beside it. Another screenshot is one more line in `SHOTS` in
   `src/ui/landing.ts` (alt text there too).
 
-Until a file is there its slot shows an empty state: the raised surface, a viewfinder's four corners, a small orange dot
-with the slot's name ("Video", "Screenshot 1") and one line. The empty video slot is a letterbox (21:8) so the page
-doesn't open on a big dark box; empty screenshots sit three in a row (one on a phone).
+Until a file is there its slot shows an empty state: a paste-up box (a dashed line where the picture goes), the slot's
+name ("Video", "Screenshot 1") and one line, and a pink play mark on the video's. The empty video slot is a short
+letterbox so the page doesn't open on a big box; empty screenshots stay hidden until one is there.
 
 ## Colour
 
-Every colour is a custom property on `:root` in `index.html`; `landing.ts` and `landing-drawing.ts` hold none. Dark
-only (the panel is dark too).
+Every colour is a custom property on `:root` in `index.html`; `landing.ts` and `landing-drawing.ts` hold none. Light
+only (it's paper).
 
 | Token | Value | Role |
 |---|---|---|
-| `--bg` | `#161419` | The page, the stage under the drawing, the band boxes |
-| `--raised` | `#211e24` | Panels, slots, the channel strip, inputs, secondary buttons |
-| `--pressed` | `#2b2730` | The chosen instrument, a pressed secondary button, a toggle's track |
-| `--line` | `#36323b` | Hairlines, the viewfinder corners |
-| `--text` | `#f2eee8` | Text |
-| `--text-2` | `#a29da8` | Secondary text |
-| `--text-3` | `#6d6873` | Disabled, placeholders |
-| `--accent` | `#ff5a1f` | The one primary button per screen, the "this one" bar and dots, step numbers, the hit rings |
-| `--on-accent` | `#1a0d07` | Type on orange |
-| `--i-*` | (see `index.html`) | The instruments in the drawing, in the colours the game paints them |
+| `--paper` | `#efe6d2` | The page, with a fine screen of ink dots over it (`--grain`) |
+| `--paper-2` / `--paper-hi` | `#e6dabf` / `#faf5ea` | The stage under the drawing / panels, inputs, toggles |
+| `--pink` | `#ff48b0` | Riso ink: the primary button, the misprinted copy of titles, the big circles, slashes, hits |
+| `--blue` | `#3255a4` | Riso ink: titles, the lineup, the primary button's offset plate, halftone circles, the demo's closing rings |
+| `--ink` | `#1d1d1b` | Body text, rules, outlines, the ticket |
+| `--ink-2` / `--ink-3` | `#4f4a42` / `#857e70` | Secondary text (7:1 on paper) / placeholders, dashed slot lines |
+| `--yellow` | `#ffe24a` | The highlighter: the chosen instrument, a toggle that's on, a status line |
+| `--i-*` | (see `index.html`) | The instruments in the drawing, printed in the same inks (a pink kit, yellow cymbals, a blue keyboard case and handpan, pink marimba bars, a yellow guitar top) |
 
-No purple, no gradients, no glows, no shadows. Orange is never a wash.
+Pink and blue overlap with `mix-blend-mode: multiply`, so where they cross they print a deep purple, as real riso does.
+Pink is never body text (it fails contrast on paper); ink text sits on pink. Halftones are `radial-gradient` dot
+screens (`--dots-pink`, `--dots-blue`), each screen turned to its own angle. No gradient washes, no glows, no soft
+shadows.
 
 ## Type
 
-- **Barlow Condensed** (the headset panel's face, served from `public/fonts`) 600/700, upright, sentence case: the H1
-  (`--t-hero`, 64–148 px, line height 0.88), section titles (`--t-2`, 40–64 px), instrument and song names, buttons
-  (uppercase, +0.04em).
-- **Barlow** (Google Fonts) 400/500/600: body 18 px, small 15–16 px.
-- **Silkscreen labels** (`.silk`): Barlow Condensed 600, 13 px, uppercase, +0.14em, secondary colour. Only where a label
-  names a slot or a spec row, never as an eyebrow over a heading.
-- Numbers tabular. Text left-aligned; only an empty slot's content is centred.
+- **Bricolage Grotesque** (Google Fonts) 800 for titles, names and buttons, tightly tracked (-0.045em on titles), sentence
+  case. The H1 is `--t-hero` (80 to 188 px, line height 0.84) in three lines; section titles `--t-2` (40 to 72 px).
+- Titles are printed off register (`.riso`): the word in blue, a pink copy from `data-t` a few hundredths of an em down
+  and right, both multiplied. The pink plate slides into place as the page opens (not under reduced motion).
+- Bricolage Grotesque 400/600 for body (18 px) and small text (15 to 16 px).
+- No all-caps labels. Numbers tabular. Text left-aligned; only an empty slot's content is centred on a phone.
 
 ## Shape, space, motion
 
-- Radius 8 px on panels and slots, 6 px on buttons, tiles and inputs. 1 px hairlines.
+- Buttons and the code field are pills or near-pills; panels have 3 px ink outlines and a 14 px radius; rules are 3 px
+  ink between sections, 1 px between rows.
 - Content 1200 px wide; gutters 32 / 20 / 16 px; sections 136 / 96 / 80 px apart (desktop / tablet / phone).
-- Motion: the H1's full stop lands on the beat (a ring closes onto it, the dot flashes orange); the drawing's demo rings
-  close onto the next part and a broken ring bursts from a hit. Nothing fades in on scroll. `prefers-reduced-motion`
-  stops the full stop and the demo.
+- Motion: the hero's pink plate slides into its misprint once; the drawing's demo rings (blue) close onto the next
+  part and a broken pink ring bursts from a hit. Nothing fades in on scroll. `prefers-reduced-motion` stops the plate,
+  the demo and the button nudges.
 
 ## Components
 
-- **Primary button:** orange fill, dark type, 52 px tall; one per screen. **Secondary:** raised fill, hairline inset.
-- **Instrument rows / tiles** (`.pick[data-inst]`, `aria-pressed`): chosen = pressed fill + 4 px orange bar (left on a
-  row, bottom on a tile).
-- **Toggles** (Settings): a plain track; on is orange with the knob at that side, off is grey.
-- **Code field** (`#band-code`): raised, hairline, Condensed 30 px with wide tracking, placeholder ABCD.
-- **Disclosure:** a hairline row with a plus in a small raised square.
+- **Primary button** (`.btn-1`): pink fill, ink type, a hard blue plate 6 px off to the side; one per screen.
+  **Secondary** (`.btn-2`): an ink-outlined pill that fills with ink on hover.
+- **Lineup** (`.pick[data-inst]`, `aria-pressed`): big blue names, pink slashes between; the chosen one in ink on a
+  yellow highlighter swipe.
+- **Ticket** (`#addr`): black, rotated a few degrees, a perforation (dashed line and two notches) before a "Quest 3"
+  stub; the address is a button that copies the link.
+- **Toggles** (Settings): an ink-outlined track; on is yellow with the ink knob at that side.
+- **Code field** (`#band-code`): 3 px ink outline, 800 weight with wide tracking, placeholder ABCD.
+- **Disclosure:** between two 3 px rules, a plus in an ink ring.
+
+## Link preview and icons
+
+`public/site/og.jpg` (1200 by 630) is the hero as a flyer: the misprinted line over the circles, the ticket, the one line
+and the lineup along the bottom. The icons (`public/favicon.svg`, `favicon-32.png`, `icon-192.png`, `icon-512.png`,
+`apple-touch-icon.png`) keep the mark (two broken rings and a core) printed on paper: the inner ring pink, the outer
+blue, the core black over a pink copy a little off register.
 
 ## Copy
 
