@@ -235,7 +235,7 @@ export function scoreOf(tune: Tune): Score {
  * second in its band, 20 notes on the tune's own notes or the groove's kick, snare and bass), summed. Any song not
  * named here goes after, easiest first.
  */
-export const SONG_ORDER: readonly string[] = ['korobeiniki', 'rooftop', 'drunken-sailor', 'kite-hill', 'can-can', 'mango-season', 'cold-brew', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'late-bus', 'turkish-march', 'canon', 'low-tide', 'fur-elise', 'scarborough-fair', 'amazing-grace'];
+export const SONG_ORDER: readonly string[] = ['korobeiniki', 'drunken-sailor', 'can-can', 'mango-season', 'kite-hill', 'rooftop', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'turkish-march', 'canon', 'cold-brew', 'fur-elise', 'scarborough-fair', 'late-bus', 'amazing-grace', 'low-tide'];
 const orderOf = (id: string) => {
   const i = SONG_ORDER.indexOf(id);
   return i < 0 ? SONG_ORDER.length : i;

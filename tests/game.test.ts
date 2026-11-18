@@ -735,8 +735,8 @@ describe('the game', () => {
     g.act('nav:songs');
     g.act('play');
     let t = 0;
-    for (let k = 0; k < 6000 && g.display.line !== 'Bring it home'; k++) g.tick((t += 1 / 30));
-    expect(g.display.line).toBe('Bring it home');
+    for (let k = 0; k < 6000 && g.display.line !== 'Last hit!'; k++) g.tick((t += 1 / 30));
+    expect(g.display.line).toBe('Last hit!');
     expect(g.mode).toBe('play');
     const before = drops;
     g.tick((t += 0.5));

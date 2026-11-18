@@ -41,6 +41,11 @@ const PAN_ALT: readonly (readonly string[])[] = Array.from({ length: 9 }, (_, z)
   return [`handpan:${PAN_AT_SLOT[(slot + 1) % 8]}`, `handpan:${PAN_AT_SLOT[(slot + 7) % 8]}`];
 });
 /** Other keys a hit on `key` may stand for at this level (the drum's other half; a field's neighbours on Easy). */
+/** The Spotlight (gold bars, a meter, both hands up for double points): off; playtesters found it more confusing than fun. */
+const SPOTLIGHT = false;
+/** How long the band holds its last chord for your last hit before it ends the song itself (s). */
+const FINAL_WAIT_S = 6;
+
 export function nearKeys(key: string, level: string): readonly string[] {
   if (level !== 'hard' && key.startsWith('congas:')) {
     const z = Number(key.slice(7));
@@ -2310,7 +2315,7 @@ export class Game {
     if (this.listening) return null;
     // the band's waiting for your last hit
     if (this.finalWait >= 0 && this.perf) {
-      if (gain < 0.2) return null;
+      if (gain < 0.1) return null;
       this.landLastHit();
       return 'perfect';
     }
@@ -2538,7 +2543,7 @@ export class Game {
       this.finalWait = t;
       this.refreshDisplay();
     }
-    if (t - this.finalWait > 4) {
+    if (t - this.finalWait > FINAL_WAIT_S) {
       // nobody hit it: the band takes it home anyway
       const tr = p.track;
       const at = this.clock.timeAt(this.clock.beatAt(t));
@@ -2550,6 +2555,10 @@ export class Game {
     const pulse = 0.55 + 0.45 * Math.sin((t - this.finalWait) * 9);
     for (const k of p.final ?? FINAL_KEYS[p.inst] ?? FINAL_KEYS.drums) this.stage.light(k, pulse);
     return true;
+  }
+  /** Seconds left to play the last hit (the sign above the instrument counts it), or -1 when it isn't waiting. */
+  get finalLeft(): number {
+    return this.finalWait >= 0 ? Math.max(0, FINAL_WAIT_S - (this.t - this.finalWait)) : -1;
   }
   private landLastHit(): void {
     this.finalWait = -1;
@@ -2737,6 +2746,8 @@ export class Game {
   private spotBars = new Map<number, { total: number; hit: number; failed: boolean; done: boolean }>();
   /** The gold bar a beat is in (bars from the song's start), or -1. Lessons have none. */
   private spotBar(beat: number): number {
+    // (the Spotlight is off: no gold bars, no meter, nothing to raise your hands for)
+    if (!SPOTLIGHT) return -1;
     const p = this.perf;
     if (!p || beat < 0 || p.track.score?.tune.lesson) return -1;
     const s = p.track.score;
@@ -2783,7 +2794,7 @@ export class Game {
   private spotGraceT = -1;
   fireSpotlight(): boolean {
     const beat = this.clock.beatAt(this.t);
-    if (this.mode !== 'play' || this.spotMeter < 0.5 || beat < this.spotUntil) return false;
+    if (!SPOTLIGHT || this.mode !== 'play' || this.spotMeter < 0.5 || beat < this.spotUntil) return false;
     this.spotLen = this.spotMeter * 16;
     this.spotUntil = beat + this.spotLen;
     this.spotMeter = 0;
@@ -2801,10 +2812,13 @@ export class Game {
       this.display.ghost = null;
       return;
     }
-    const d = (this.display.spot ??= { meter: 0, active: false, ready: false });
-    d.active = on;
-    d.meter = on ? (this.spotUntil - beat) / Math.max(1, this.spotLen) : this.spotMeter;
-    d.ready = !on && this.spotMeter >= 0.5 && this.mode === 'play';
+    if (!SPOTLIGHT) this.display.spot = undefined;
+    else {
+      const d = (this.display.spot ??= { meter: 0, active: false, ready: false });
+      d.active = on;
+      d.meter = on ? (this.spotUntil - beat) / Math.max(1, this.spotLen) : this.spotMeter;
+      d.ready = !on && this.spotMeter >= 0.5 && this.mode === 'play';
+    }
     // your best run, bar by bar: how far ahead of it (or behind) you are now
     const s = this.perf?.track.score;
     const f = (beat - (s?.starts[0] ?? 0)) / (s?.meter ?? 4);
@@ -3380,8 +3394,8 @@ export class Game {
             break;
           }
           if (this.finalWait >= 0) {
-            d.line = 'Bring it home';
-            d.sub = 'Hit the glowing one, hard';
+            d.line = 'Last hit!';
+            d.sub = 'Hit anything to end the song';
             break;
           }
           d.line = inFill ? 'Solo!' : big ? "Band's back in" : b >= this.perf.holdFrom ? 'From memory now' : this.song!.name;

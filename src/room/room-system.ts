@@ -1448,7 +1448,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const h = this.game.hold;
         say = { kind: 'tip', big: h.title, small: h.say, foot: h.key ? `Hit the ${partName(h.key)} to go on` : 'Hit anything to go on', icon: this.kit.inst === 'drums' || this.kit.inst === 'marimba' ? 'stick' : undefined };
         if (h.key) this.hudPoint(h.key);
-      } else if (this.uiT - this.hudFirstT < 1.1) say = { kind: 'tip', big: 'First Perfect!', small: 'Right on the beat. Keep doing that', gold: true };
+      } else if (inSong && this.game.finalLeft >= 0)
+        // (the song's over but for your last hit: said where you're looking, counted down, any hit does it)
+        say = { kind: 'tip', big: 'Last hit!', small: `Hit anything to finish (${Math.max(1, Math.ceil(this.game.finalLeft))})`, hot: true };
+      else if (this.uiT - this.hudFirstT < 1.1) say = { kind: 'tip', big: 'First Perfect!', small: 'Right on the beat. Keep doing that', gold: true };
       else if (this.uiT - this.hudSticksT < 1.4) say = { kind: 'tip', big: 'Sticks!', small: 'Open your hand to let go', icon: 'stick' };
       else if (inSong && this.game.hold?.kind === 'note') {
         say = { kind: 'tip', big: 'Now', small: `Hit the ${partName(this.game.hold.key)}`, hot: true };

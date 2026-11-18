@@ -135,7 +135,7 @@ export function mountLanding(world: World): void {
             <figure class="row-pic">${shot('results', 'The results for Canon in D: grade S with three stars, All perfect, 74,300 points, 200 perfect and no misses.')}</figure>
             <div class="row-words">
               <h2 class="h3">Get an <span class="hot">S</span>. Then do it again on Hard.</h2>
-              <p>Easy, Normal or Hard, on every song. Ten in a row doubles your points, up to ×4. Play the gold bars clean, throw both hands up, and the Spotlight doubles them again. Each song has a leaderboard for every instrument and level. You get a random two-word name, like Soggy Cowbell. No account needed.</p>
+              <p>Easy, Normal or Hard, on every song. Ten in a row doubles your points, up to ×4. Each song has a leaderboard for every instrument and level. You get a random two-word name, like Soggy Cowbell. No account needed.</p>
             </div>
           </div>
         </div>
