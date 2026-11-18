@@ -90,15 +90,15 @@ export class GuitarCues {
     const r = H / 2 - 4;
     g.beginPath();
     g.roundRect(4, 4, W - 8, H - 8, r);
-    g.fillStyle = 'rgba(22,20,25,0.92)';
+    g.fillStyle = 'rgba(239,230,210,0.96)';
     g.fill();
-    g.lineWidth = 3;
-    g.strokeStyle = '#36323b';
+    g.lineWidth = 4;
+    g.strokeStyle = '#1d1d1b';
     g.stroke();
     g.font = `700 ${Math.round(H * 0.62)}px ${FONT}`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillStyle = '#f2eee8';
+    g.fillStyle = '#3255a4';
     g.fillText(text, W / 2, H / 2 + 3);
     k.tex.needsUpdate = true;
   }

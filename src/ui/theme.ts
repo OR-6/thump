@@ -11,16 +11,16 @@ import { FONT } from './fonts.js';
  * instrument's own light.
  */
 export const BRAND = {
-  plum: '#161419',
-  plum2: '#211e24',
-  plum3: '#2b2730',
-  line: '#36323b',
-  ink: '#f2eee8',
-  ink2: '#a29da8',
-  ink3: '#6d6873',
-  hot: '#ff5a1f',
-  hotInk: '#1a0d07',
-  gold: '#ffc93c',
+  plum: '#efe6d2',
+  plum2: '#e6dbc3',
+  plum3: '#ffe24a',
+  line: '#1d1d1b',
+  ink: '#1d1d1b',
+  ink2: '#4a4640',
+  ink3: '#8a8277',
+  hot: '#ff48b0',
+  hotInk: '#1d1d1b',
+  gold: '#c98a00',
 } as const;
 
 /** A token's colour at `a` opacity, as a CSS colour (canvas fills over the room). */
@@ -32,19 +32,19 @@ export function withAlpha(hex: string, a: number): string {
 export const hexNum = (hex: string): number => parseInt(hex.slice(1), 16);
 
 export const NEON = {
-  bg0: '#161419',
-  bg1: '#1c1a1f',
-  ink: '#f2eee8',
-  muted: '#a29da8',
-  dim: '#6d6873',
-  cyan: '#ffe2b8',
-  magenta: '#ff5a1f',
-  violet: '#a29da8',
-  green: '#8fdc8a',
-  gold: '#ffd23f',
-  orange: '#ff9a3c',
-  red: '#ff6b5a',
-  plate: 'rgba(22,20,25,0.94)',
+  bg0: '#efe6d2',
+  bg1: '#e6dbc3',
+  ink: '#1d1d1b',
+  muted: '#4a4640',
+  dim: '#8a8277',
+  cyan: '#3255a4',
+  magenta: '#ff48b0',
+  violet: '#3255a4',
+  green: '#2f8a4c',
+  gold: '#c98a00',
+  orange: '#e0622b',
+  red: '#d8342b',
+  plate: 'rgba(239,230,210,0.97)',
 } as const;
 
 /** Each judgement's colour. */
@@ -53,29 +53,31 @@ export const JUDGE = { perfect: NEON.cyan, good: NEON.green, miss: NEON.red } as
 export const LEVEL_INK: Record<string, string> = { easy: NEON.green, normal: NEON.gold, hard: NEON.red };
 /** Each grade's pair (a gradient, light to deep). */
 export const GRADE_PAIR: Record<string, [string, string]> = {
-  S: ['#ffc93c', '#ffc93c'],
-  A: ['#9fd98a', '#9fd98a'],
-  B: ['#f2eee8', '#f2eee8'],
-  C: ['#a29da8', '#a29da8'],
-  D: ['#6d6873', '#6d6873'],
+  S: ['#ff48b0', '#ff48b0'],
+  A: ['#3255a4', '#3255a4'],
+  B: ['#1d1d1b', '#1d1d1b'],
+  C: ['#4a4640', '#4a4640'],
+  D: ['#8a8277', '#8a8277'],
 };
 /** The panel's surfaces (see docs/UI-DIRECTION.md): flat graphite, a hairline, one orange. */
-export const UI = { bg: '#161419', raised: '#211e24', sel: '#2b2730', line: '#36323b', ink: '#f2eee8', ink2: '#a29da8', ink3: '#6d6873', accent: '#ff5a1f', accentInk: '#1a0d07' } as const;
+/** The flyer (docs/flyer-mockup.html): cream paper, two riso inks (pink, blue) that overprint, ink black, a yellow
+ * highlighter for what's chosen. */
+export const UI = { bg: '#efe6d2', raised: '#e6dbc3', sel: '#ffe24a', line: '#1d1d1b', ink: '#1d1d1b', ink2: '#4a4640', ink3: '#8a8277', accent: '#ff48b0', accentInk: '#1d1d1b', blue: '#3255a4' } as const;
 /** The three tiers of what you press: the one hot primary, white secondaries, outlined tertiaries. */
 export const SECONDARY = new Set(['back', 'nav:main', 'next', 'again:easy', 'pause', 'nav:settings']);
 /** Each instrument's own light (the panel's edge flashes it as you play). */
 export const INST_LIGHT: Record<string, number> = { drums: 0xffb347, piano: 0xf3ead8, guitar: 0xff7a2f, handpan: 0xc9a26b, marimba: 0xd0485a, congas: 0xe0b07a };
 /** The streak's ladder: ×2 cyan, ×3 green, ×4 gold. */
 export const MULT_PAIR: [string, string][] = [
-  ['#f2eee8', '#f2eee8'],
-  ['#f2eee8', '#f2eee8'],
-  ['#ffb27a', '#ffb27a'],
-  ['#9fd98a', '#9fd98a'],
-  ['#ffc93c', '#ffc93c'],
+  ['#1d1d1b', '#1d1d1b'],
+  ['#1d1d1b', '#1d1d1b'],
+  ['#3255a4', '#3255a4'],
+  ['#ff48b0', '#ff48b0'],
+  ['#c98a00', '#c98a00'],
 ];
 
 /** The display face: Barlow Condensed (the site's too), bold and upright, for titles, buttons and numbers. */
-export const display = (px: number, weight = 800) => `${Math.min(700, weight)} ${px}px 'Barlow Condensed', ${FONT}`;
+export const display = (px: number, weight = 800) => `${Math.min(800, weight)} ${px}px 'Bricolage Grotesque', 'Barlow Condensed', ${FONT}`;
 export const body = (px: number, weight = 600) => `${weight} ${px}px ${FONT}`;
 
 /** A slanted plate (a parallelogram leaning right by `k` px), as a path. */
@@ -109,40 +111,77 @@ export function hgrad(g: CanvasRenderingContext2D, x0: number, x1: number, stops
  * from your playing, see the edge flash.) */
 export function stage(g: CanvasRenderingContext2D, w: number, h: number, r = 40): void {
   rr(g, 4, 4, w - 8, h - 8, r);
-  g.fillStyle = 'rgba(22,20,25,0.96)';
+  g.fillStyle = '#efe6d2';
   g.fill();
-  g.lineWidth = 3;
-  g.strokeStyle = '#36323b';
+  // (the paper's faint dot grain, and one blue halftone moon in the top corner: the flyer's print)
+  g.save();
+  rr(g, 4, 4, w - 8, h - 8, r);
+  g.clip();
+  g.fillStyle = paperDots(g);
+  g.fillRect(0, 0, w, h);
+  halftone(g, w - 120, 40, 230, '#3255a4');
+  g.restore();
+  g.lineWidth = 4;
+  g.strokeStyle = '#1d1d1b';
   g.stroke();
 }
 
-/** Text, flat, with a soft dark shadow under it so it reads over a bright room (no coloured glow). */
+/** Text, flat ink on paper (no glow, no shadow). */
 export function glowText(g: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string | CanvasGradient, _glow: string, _blur = 18): void {
   void _glow;
   void _blur;
-  g.shadowColor = 'rgba(10,4,16,0.55)';
-  g.shadowBlur = 6;
-  g.shadowOffsetY = 2;
   g.fillStyle = fill;
   g.fillText(text, x, y);
-  g.shadowBlur = 0;
-  g.shadowOffsetY = 0;
+}
+
+/** Display text printed in two inks, slightly off register: pink under, blue over, overprinting (multiply). */
+export function riso(g: CanvasRenderingContext2D, text: string, x: number, y: number, top = '#3255a4', under = '#ff48b0', off = 4): void {
+  g.save();
+  g.fillStyle = under;
+  g.fillText(text, x + off, y + off * 0.75);
+  g.globalCompositeOperation = 'multiply';
+  g.fillStyle = top;
+  g.fillText(text, x, y);
+  g.restore();
+}
+
+let dotPat: CanvasPattern | null = null;
+/** The paper's grain: a faint dot every 10 px. */
+function paperDots(g: CanvasRenderingContext2D): CanvasPattern | string {
+  if (dotPat) return dotPat;
+  if (typeof document === 'undefined') return '#efe6d2';
+  const c = document.createElement('canvas');
+  c.width = c.height = 10;
+  const t = c.getContext('2d')!;
+  t.fillStyle = 'rgba(29,29,27,0.07)';
+  t.beginPath();
+  t.arc(5, 5, 1.6, 0, Math.PI * 2);
+  t.fill();
+  dotPat = g.createPattern(c, 'repeat');
+  return dotPat ?? '#efe6d2';
+}
+
+/** A halftone disc: dots on a grid, in one ink, overprinting what's under it. */
+export function halftone(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, ink: string, step = 16): void {
+  g.save();
+  g.globalCompositeOperation = 'multiply';
+  g.fillStyle = ink;
+  g.globalAlpha = 0.85;
+  for (let y = cy - r; y <= cy + r; y += step)
+    for (let x = cx - r; x <= cx + r; x += step) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d > r) continue;
+      g.beginPath();
+      g.arc(x, y, step * 0.36, 0, Math.PI * 2);
+      g.fill();
+    }
+  g.restore();
 }
 
 /** Chromatic display text: a cyan and a magenta ghost either side, a white-to-pink fill on top (a "PERFECT!" banner). */
 export function chroma(g: CanvasRenderingContext2D, text: string, x: number, y: number, px: number, a: string = NEON.cyan, b: string = NEON.magenta): void {
   g.font = display(px, 900);
-  // (one offset shadow in the accent, like a print slightly off register; no two-colour ghosting)
-  void b;
-  g.fillStyle = withAlpha(a.startsWith('#') ? a : NEON.cyan, 0.9);
-  g.fillText(text, x + 3, y + 3);
-  const w = g.measureText(text).width;
-  const gr = g.createLinearGradient(x, y - px, x, y);
-  gr.addColorStop(0, '#ffffff');
-  gr.addColorStop(1, '#fff1dc');
-  g.fillStyle = gr;
-  g.fillText(text, x, y);
-  void w;
+  riso(g, text, x, y, a === NEON.cyan ? '#3255a4' : a, b === NEON.magenta ? '#ff48b0' : b);
 }
 
 /** A rounded rectangle path. */

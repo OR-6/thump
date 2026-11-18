@@ -14,13 +14,13 @@ export type FxKind = 'stamp' | 'stamp-small' | 'record' | 'fullcombo' | 'spotlig
 const N = 72;
 const TEX = ['star_06.png', 'spark_05.png', 'star_08.png', 'light_01.png'] as const;
 const PALETTE: Record<FxKind, readonly number[]> = {
-  stamp: [0xffd23f, 0xf2eee8],
-  'stamp-small': [0xf2eee8],
-  record: [0xff5a1f, 0xf2eee8],
-  fullcombo: [0xff5a1f, 0xffd23f, 0xf2eee8, 0x9fd98a],
-  spotlight: [0xffd23f, 0xf2eee8],
-  mult: [0xf2eee8],
-  milestone: [0xffd23f, 0xff5a1f],
+  stamp: [0xff48b0, 0x3255a4],
+  'stamp-small': [0x3255a4],
+  record: [0xff48b0, 0xffe24a],
+  fullcombo: [0xff48b0, 0x3255a4, 0xffe24a],
+  spotlight: [0xffe24a, 0xff48b0],
+  mult: [0x3255a4],
+  milestone: [0xff48b0, 0xffe24a],
 };
 
 export class PanelFx {

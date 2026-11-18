@@ -11,7 +11,7 @@ import { contactShadow } from '../art/lighting.js';
 import { thumb, whenThumbs } from '../art/thumbs.js';
 import { FONT, whenFonts } from './fonts.js';
 import { PanelFx, type FxKind } from './panel-fx.js';
-import { GRADE_PAIR, JUDGE, LEVEL_INK, MULT_PAIR, NEON, SECONDARY, UI, body, chroma, display, glowText, hgrad, pill, slant, stage, vgrad } from './theme.js';
+import { GRADE_PAIR, JUDGE, LEVEL_INK, MULT_PAIR, NEON, SECONDARY, UI, body, chroma, display, glowText, halftone, hgrad, pill, riso, slant, stage, vgrad } from './theme.js';
 import { star, type Display } from './module.js';
 import type { Item, Page } from './menu.js';
 import { ICON } from '../stand/stand.js';
@@ -32,11 +32,11 @@ const CH = 907;
 const MIN_PX = 48;
 const MAX_ITEMS = 16;
 
-const INK = '#fbf7ff';
-const SOFT = '#b9b9bd';
+const INK = '#1d1d1b';
+const SOFT = '#4a4640';
 /** The panel's one accent. */
-const ACCENT = '#5ac8ff';
-const DIMI = '#6a6862';
+const ACCENT = '#3255a4';
+const DIMI = '#8a8277';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
 /** An item's centre and size in the panel's zone frame (x right, z up the panel, metres). */
@@ -196,7 +196,7 @@ function drawRing(g: CanvasRenderingContext2D, k: number, pair: [string, string]
   // (where C, B, A and S begin, as notches on the ring)
   g.lineCap = 'butt';
   g.lineWidth = 4;
-  g.strokeStyle = 'rgba(255,255,255,0.55)';
+  g.strokeStyle = 'rgba(29,29,27,0.55)';
   for (const t of [0.65, 0.78, 0.88, 0.95]) {
     const an = -Math.PI / 2 + Math.PI * 2 * t;
     g.beginPath();
@@ -240,7 +240,7 @@ function drawBrow(g: CanvasRenderingContext2D, better: boolean, prev: number, sc
   if (better && prev >= 0) {
     g.font = display(48, 900);
     const w = g.measureText('NEW RECORD!').width + 56;
-    pill(g, 4, 16, w, 64, UI.accent, 'NEW RECORD!', '#ffffff', display(48, 900));
+    pill(g, 4, 16, w, 64, UI.accent, 'NEW RECORD!', '#1d1d1b', display(48, 900));
     g.font = display(48, 800);
     g.fillStyle = NEON.ink;
     g.fillText(`+${fmt(score - prev)}`, w + 24, 66);
@@ -254,7 +254,7 @@ function drawBrow(g: CanvasRenderingContext2D, better: boolean, prev: number, sc
 function drawDetails(g: CanvasRenderingContext2D, r: { hook: string; letter: string; accuracy: number; fullCombo: boolean; allPerfect: boolean; maxCombo: number; perfect: number; good: number; miss: number; better?: boolean; prev?: number; score?: number }): void {
   g.clearRect(0, 0, 752, 236);
   if ((r.fullCombo || r.allPerfect) && r.better && (r.prev ?? -1) >= 0) {
-    pill(g, 8, 4, 330, 64, UI.accent, 'NEW RECORD!', '#ffffff', display(48, 900));
+    pill(g, 8, 4, 330, 64, UI.accent, 'NEW RECORD!', '#1d1d1b', display(48, 900));
     g.font = display(48, 800);
     g.fillStyle = NEON.ink;
     g.fillText(`+${fmt((r.score ?? 0) - (r.prev ?? 0))}`, 360, 54);
@@ -329,8 +329,8 @@ function fit(g: CanvasRenderingContext2D, text: string, weight: string, px: numb
   min = Math.max(MIN_PX, min, Math.min(px, MIN_PX));
   // (titles, buttons and names in the display face, Barlow Condensed at its boldest; sentences in the system face)
   const bold = Number(weight) >= 700;
-  const face = bold ? `'Barlow Condensed', ${FONT}` : FONT;
-  const w0 = bold ? '700' : weight;
+  const face = bold ? `'Bricolage Grotesque', 'Barlow Condensed', ${FONT}` : `'Bricolage Grotesque', ${FONT}`;
+  const w0 = bold ? '800' : weight;
   g.font = `${w0} ${px}px ${face}`;
   while (g.measureText(text).width > room && px > min) g.font = `${w0} ${--px}px ${face}`;
   // (still too wide at the smallest size: noted, so a layout check can find every clash)
@@ -1034,18 +1034,18 @@ export class Panel {
     g.clearRect(0, 0, CW, CH);
     // one quiet surface: translucent near-black, a hairline edge, a hairline under the header; nothing else
     this.accent = p.accent ?? 0xffffff;
-    // a night stage: deep indigo to plum, a faint floor grid, a neon edge with corner brackets
+    // the flyer: paper, its grain, a halftone moon; a printed rule under the header
     stage(g, CW, CH, 40);
     g.fillStyle = UI.line;
-    g.fillRect(32, 166, CW - 64, 2);
+    g.fillRect(32, 166, CW - 64, 3);
     g.textBaseline = 'alphabetic';
     // the header: the title, and the line under it
     const hasBack = p.items.some((i) => i.id === 'back' && i.y < 120);
     const tx = hasBack ? 148 : 32;
     const right = Math.min(CW - 32, ...p.items.filter((i) => i.y < 140 && i.x > 300).map((i) => i.x - 16));
     fit(g, p.title, '900', p.id === 'main' ? 76 : 64, 48, right - tx);
-    g.fillStyle = NEON.ink;
-    g.fillText(p.id === 'main' ? p.title.toUpperCase() : p.title, tx, 88);
+    // (the title printed in two inks, a hair off register)
+    riso(g, p.title, tx, 88);
     if (p.line) {
       g.fillStyle = MUTED;
       fit(g, p.line, '400', 48, 48, right - tx);
@@ -1111,7 +1111,7 @@ export class Panel {
       g.fillText(out.sub, Math.max(X, Math.min(1088 - w, out.x + (out.w - w) / 2)), 666);
     }
     // the progress track (its fill is a mesh); each solo a red stretch on it, named above
-    g.fillStyle = '#2a2927';
+    g.fillStyle = '#d9cdb2';
     rounded(g, X, 488, R - X, 16, 8);
     g.fill();
     const m = d.map;
@@ -1302,7 +1302,7 @@ export class Panel {
         g.beginPath();
         g.arc(216 + i * 72, 540, 30, 0, Math.PI * 2);
         g.lineWidth = 3;
-        g.strokeStyle = 'rgba(255,255,255,0.25)';
+        g.strokeStyle = 'rgba(29,29,27,0.35)';
         g.stroke();
       }
       for (let i = 0; i < Math.max(0, d.stars); i++) star(g, 216 + i * 72, 540, 30, true, d.gold);
@@ -1338,21 +1338,13 @@ export class Panel {
   private drawRow(g: CanvasRenderingContext2D, it: Item): void {
     // a song: a slanted row, its name, its best grade at the right; the chosen one white; More songs, quiet
     const chosen = !!it.on && !it.off;
-    slant(g, it.x, it.y, it.w, it.h);
-    g.fillStyle = chosen ? UI.sel : it.off ? 'rgba(33,30,36,0.5)' : UI.raised;
-    g.fill();
-    g.lineWidth = 2;
-    g.strokeStyle = UI.line;
-    g.stroke();
+    // (a line of the running order: a printed rule under it; the one picked, highlighted in yellow)
     if (chosen) {
-      // (the one picked: an orange bar down its left)
-      g.save();
-      slant(g, it.x, it.y, it.w, it.h);
-      g.clip();
-      g.fillStyle = UI.accent;
-      g.fillRect(it.x, it.y, 8, it.h);
-      g.restore();
+      g.fillStyle = UI.sel;
+      g.fillRect(it.x, it.y + 4, it.w, it.h - 4);
     }
+    g.fillStyle = it.off ? UI.ink3 : UI.ink;
+    g.fillRect(it.x, it.y + it.h - 3, it.w, 3);
     const k = Math.round(it.h * 0.176);
     const right = it.x + it.w - k - 24;
     let gx = right;
@@ -1468,7 +1460,7 @@ export class Panel {
     g.fillText('so far', 32 + w + 20, 360);
     const a = `${((d.acc ?? 1) * 100).toFixed(1)}%`;
     g.fillText(a, CW - 32 - g.measureText(a).width, 360);
-    g.fillStyle = '#2a2927';
+    g.fillStyle = '#d9cdb2';
     rounded(g, 32, 488, CW - 64, 16, 8);
     g.fill();
     g.fillStyle = INK;
@@ -1512,7 +1504,7 @@ export class Panel {
         g.fill();
       } else {
         g.lineWidth = 3;
-        g.strokeStyle = 'rgba(255,255,255,0.22)';
+        g.strokeStyle = 'rgba(29,29,27,0.35)';
         g.stroke();
       }
     }
@@ -1586,53 +1578,59 @@ export class Panel {
     }
     path();
     if (it.kind === 'play' && !it.off) {
-      // the one thing to press: flat orange, dark words
+      // the one thing to press: pink ink, its blue plate printed a few px off under it
+      g.save();
+      g.translate(9, 9);
+      path();
+      g.fillStyle = UI.blue;
+      g.fill();
+      g.restore();
+      path();
       g.fillStyle = UI.accent;
       g.fill();
+      g.lineWidth = 3;
+      g.strokeStyle = UI.ink;
+      g.stroke();
       ink = UI.accentInk;
     } else if (it.off) {
       g.lineWidth = 2;
-      g.strokeStyle = 'rgba(54,50,59,0.7)';
+      g.setLineDash([10, 8]);
+      g.strokeStyle = UI.ink3;
       g.stroke();
+      g.setLineDash([]);
       ink = UI.ink3;
     } else if (level) {
       // a level: one segment of a plain switch, the chosen one light
       void level;
-      g.fillStyle = chosen ? UI.ink : UI.raised;
+      g.fillStyle = chosen ? UI.ink : UI.bg;
       g.fill();
-      g.lineWidth = 2;
-      g.strokeStyle = chosen ? UI.ink : UI.line;
+      g.lineWidth = 3;
+      g.strokeStyle = UI.ink;
       g.stroke();
-      ink = chosen ? UI.bg : UI.ink2;
+      ink = chosen ? UI.bg : UI.ink;
     } else if (chosen) {
-      // the chosen one: raised, with an orange bar under it
+      // the chosen one: highlighted in yellow, outlined in ink
       g.fillStyle = UI.sel;
       g.fill();
-      g.lineWidth = 2;
-      g.strokeStyle = UI.line;
+      g.lineWidth = 3;
+      g.strokeStyle = UI.ink;
       g.stroke();
-      g.save();
-      path();
-      g.clip();
-      g.fillStyle = UI.accent;
-      g.fillRect(it.x, it.y + it.h - 8, it.w, 8);
-      g.restore();
     } else if (secondary) {
-      g.fillStyle = UI.sel;
+      g.fillStyle = UI.bg;
       g.fill();
-      g.lineWidth = 2;
-      g.strokeStyle = UI.line;
+      g.lineWidth = 3;
+      g.strokeStyle = UI.ink;
       g.stroke();
     } else if (tertiary) {
-      g.lineWidth = 2;
-      g.strokeStyle = UI.line;
+      g.lineWidth = 3;
+      g.strokeStyle = UI.ink;
       g.stroke();
     } else {
-      // a plate: chips, cards, tiles, switches' rows
-      g.fillStyle = UI.raised;
+      // a plate: chips, cards, tiles, switches' rows (paper, an ink line round it)
+      g.fillStyle = 'rgba(239,230,210,0.9)';
       g.fill();
-      g.lineWidth = 2;
-      g.strokeStyle = UI.line;
+      g.lineWidth = 3;
+      g.strokeStyle = UI.ink;
       g.stroke();
     }
     g.fillStyle = ink;
@@ -1644,11 +1642,14 @@ export class Panel {
       const sx = it.x + it.w - 124;
       const sy = it.y + (it.h - 52) / 2;
       rounded(g, sx, sy, 96, 52, 26);
-      g.fillStyle = it.on ? UI.accent : UI.line;
+      g.fillStyle = it.on ? UI.accent : UI.raised;
       g.fill();
+      g.lineWidth = 3;
+      g.strokeStyle = UI.ink;
+      g.stroke();
       g.beginPath();
-      g.arc(it.on ? sx + 70 : sx + 26, sy + 26, 20, 0, Math.PI * 2);
-      g.fillStyle = it.on ? UI.ink : UI.ink2;
+      g.arc(it.on ? sx + 70 : sx + 26, sy + 26, 18, 0, Math.PI * 2);
+      g.fillStyle = UI.ink;
       g.fill();
       return;
     }
@@ -1658,8 +1659,7 @@ export class Panel {
       g.save();
       rounded(g, it.x, it.y, it.w, it.h, 24);
       g.clip();
-      g.fillStyle = UI.accent;
-      g.fillRect(it.x, it.y, it.w, 10);
+      halftone(g, it.x + it.w - 90, it.y + it.h - 60, 190, UI.accent, 18);
       g.restore();
       // (the top of the setlist, quiet, where a picture would go)
       if (it.list?.length) {
@@ -1670,8 +1670,7 @@ export class Panel {
         });
       }
       fit(g, it.label, '900', 104, 48, it.w - 80);
-        g.fillStyle = NEON.ink;
-      g.fillText(it.label, it.x + 40, it.y + 384);
+      riso(g, it.label, it.x + 40, it.y + 384);
       if (it.sub) {
         g.fillStyle = MUTED;
         fit(g, it.sub, '500', 48, 48, it.w - 80);
@@ -1709,7 +1708,7 @@ export class Panel {
       g.lineWidth = 5;
       g.lineCap = 'round';
       const pic = it.icon && !(this.noPics && it.kind === 'card') ? thumb(it.icon) : undefined;
-      if (it.icon && MENU_ICON[it.icon]) MENU_ICON[it.icon](g, S, 'rgba(255,255,255,0.78)');
+      if (it.icon && MENU_ICON[it.icon]) MENU_ICON[it.icon](g, S, '#1d1d1b');
       else if (pic) g.drawImage(pic, 0, 0, S, S);
       else if (it.icon && !(this.noPics && it.kind === 'card')) ICON[it.icon]?.(g, S);
       g.restore();

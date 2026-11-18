@@ -13,7 +13,7 @@ import { FONT, whenFonts } from '../ui/fonts.js';
 /** (the last two: a Good that was early or late, in Good's green: still counted, but it says which way) */
 const WORDS = ['PERFECT', 'GOOD', 'EARLY', 'LATE', 'EARLY ', 'LATE '] as const;
 /** Each word's own neon (a cyan Perfect, a green Good, an orange Early, a violet Late). */
-const INK: Record<string, [string, string]> = { PERFECT: ['#ffe2b8', '#ffe2b8'], GOOD: ['#9fd98a', '#9fd98a'], EARLY: ['#ffb27a', '#ffb27a'], LATE: ['#a29da8', '#a29da8'], 'EARLY ': ['#9fd98a', '#9fd98a'], 'LATE ': ['#9fd98a', '#9fd98a'] };
+const INK: Record<string, [string, string]> = { PERFECT: ['#ff48b0', '#3255a4'], GOOD: ['#3255a4', '#2f8a4c'], EARLY: ['#3255a4', '#e0622b'], LATE: ['#ff48b0', '#4a4640'], 'EARLY ': ['#3255a4', '#2f8a4c'], 'LATE ': ['#3255a4', '#2f8a4c'] };
 const POOL = 6;
 /** How long a word is up (s). */
 const LIFE = 0.42;
@@ -27,7 +27,7 @@ function wordTexture(word: string): CanvasTexture {
   const draw = () => {
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, 512, 144);
-    g.font = `800 92px ${FONT}`;
+    g.font = `800 92px 'Bricolage Grotesque', ${FONT}`;
     g.textBaseline = 'middle';
     const ink = word;
     word = word.trim();
@@ -37,17 +37,21 @@ function wordTexture(word: string): CanvasTexture {
     // the screen's own look (src/ui/theme.ts): the judgement's colour as a light-to-colour gradient, a dark outline so
     // it reads over a bright desk, a glow in its colour
     g.lineJoin = 'round';
-    g.strokeStyle = '#161419';
-    g.lineWidth = 8;
-    g.strokeText(word, x, y);
+    // (a paper outline so it reads over the room, then two inks a hair off register: the flyer's print)
+    g.strokeStyle = '#efe6d2';
+    g.lineWidth = 16;
+    g.strokeText(word, x + 2, y + 2);
     const [a, b] = INK[ink] ?? ['#ffffff', '#ffffff'];
     const gr = g.createLinearGradient(0, y - 46, 0, y + 46);
     gr.addColorStop(0, a);
     gr.addColorStop(1, b);
-    // (flat: one colour, no glow)
-    g.fillStyle = b;
     void gr;
+    g.fillStyle = a;
+    g.fillText(word, x + 4, y + 3);
+    g.globalCompositeOperation = 'multiply';
+    g.fillStyle = b;
     g.fillText(word, x, y);
+    g.globalCompositeOperation = 'source-over';
     g.shadowBlur = 0;
     tex.needsUpdate = true;
   };

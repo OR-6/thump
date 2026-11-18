@@ -8,7 +8,7 @@
  */
 import { CanvasTexture, CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
 import { whenFonts } from '../ui/fonts.js';
-import { MULT_PAIR, NEON, body, display, glowText, rr, slant } from '../ui/theme.js';
+import { MULT_PAIR, NEON, body, display, glowText, riso, rr, slant } from '../ui/theme.js';
 
 const W = 1024;
 const H = 300;
@@ -132,21 +132,23 @@ export class Hud {
     g.lineJoin = 'round';
     g.lineCap = 'round';
     const cx = W / 2;
-    const DARK = '#161419';
+    const DARK = '#efe6d2';
     // a number exactly as the screen draws its count-in: chunky italic, outlined, a gradient with a glow
     const big = (t: string, px: number, y: number, a: string, b: string, glow: string) => {
       g.font = display(px, 900);
       g.textBaseline = 'alphabetic';
       g.textAlign = 'left';
       const x = cx - g.measureText(t).width / 2;
-      g.lineWidth = 14;
+      g.lineWidth = 18;
       g.strokeStyle = DARK;
       g.strokeText(t, x, y);
       void a;
-      glowText(g, t, x, y, b, glow, 0);
+      void glow;
+      // (printed in two inks a hair off register, on a paper outline so it reads over any room)
+      riso(g, t, x, y, b === '#ff48b0' ? '#ff48b0' : '#3255a4', b === '#ff48b0' ? '#3255a4' : '#ff48b0', 7);
     };
     if (s.kind === 'count') big(String(s.n), 270, 262, NEON.ink, NEON.ink, NEON.ink);
-    else if (s.kind === 'go') big('GO!', 230, 250, '#ff5a1f', '#ff5a1f', '#ff5a1f');
+    else if (s.kind === 'go') big('GO!', 230, 250, '#ff48b0', '#ff48b0', '#ff48b0');
     else if (s.kind === 'mult') {
       // the screen's multiplier chip, large: a slanted plate in the streak's colours, the number dark on it
       const [a, b] = MULT_PAIR[Math.max(1, Math.min(4, s.n))];
@@ -166,6 +168,12 @@ export class Hud {
     } else if (s.kind === 'streak') {
       // the screen's run: the count in the streak's colours, COMBO under it
       const [a, b] = MULT_PAIR[4];
+      rr(g, cx - 220, 20, 440, 270, 34);
+      g.fillStyle = 'rgba(239,230,210,0.94)';
+      g.fill();
+      g.lineWidth = 4;
+      g.strokeStyle = '#1d1d1b';
+      g.stroke();
       big(String(s.n), 190, 196, a, b, b);
       g.font = display(54, 700);
       g.textAlign = 'center';
@@ -202,19 +210,19 @@ export class Hud {
       const py = 4;
       const ph = H - 8;
       rr(g, px, py, pw, ph, 30);
-      g.fillStyle = 'rgba(22,20,25,0.95)';
+      g.fillStyle = 'rgba(239,230,210,0.97)';
       g.fill();
-      g.lineWidth = 3;
-      g.strokeStyle = '#36323b';
+      g.lineWidth = 5;
+      g.strokeStyle = '#1d1d1b';
       g.stroke();
       const tx = px + 48;
       const top = lines.length > 1 ? py + 64 : lines.length || foot ? py + 80 : py + ph / 2 + 6;
       g.textBaseline = 'middle';
       g.textAlign = 'left';
       g.font = display(size, 900);
-      // (flat words: gold for the best things, orange for "do this now", off-white otherwise)
-      const fill = s.gold ? '#ffc93c' : s.hot ? '#ff5a1f' : NEON.ink;
-      glowText(g, cmd, tx, top, fill, fill, 0);
+      // (printed in two inks: pink for "do this now", blue otherwise; gold-ish for the best things)
+      if (s.gold) glowText(g, cmd, tx, top, '#c98a00', '#c98a00', 0);
+      else riso(g, cmd, tx, top, s.hot ? '#ff48b0' : '#3255a4', s.hot ? '#3255a4' : '#ff48b0', 5);
       if (lines.length) {
         g.font = body(sz, 600);
         g.fillStyle = NEON.muted;
@@ -224,11 +232,17 @@ export class Hud {
         // the sign's one thing to do: the panel's primary button, flat orange, dark words
         const bh = 64;
         const by = py + ph - bh - 14;
-        slant(g, tx - 6, by, fw, bh);
-        g.fillStyle = '#ff5a1f';
+        slant(g, tx - 6 + 6, by + 6, fw, bh);
+        g.fillStyle = '#3255a4';
         g.fill();
+        slant(g, tx - 6, by, fw, bh);
+        g.fillStyle = '#ff48b0';
+        g.fill();
+        g.lineWidth = 3;
+        g.strokeStyle = '#1d1d1b';
+        g.stroke();
         g.font = display(40, 900);
-        g.fillStyle = '#1a0d07';
+        g.fillStyle = '#1d1d1b';
         g.fillText(foot, tx + 34, by + bh / 2 + 2);
       }
       if (s.icon === 'stick') {
@@ -267,8 +281,15 @@ export class Hud {
    * brightest. So you can see which way you're off, and put it right.
    */
   private drawPlay(g: CanvasRenderingContext2D, s: Extract<HudSay, { kind: 'play' }>): void {
-    const DARK = '#161419';
+    const DARK = '#efe6d2';
     const [a, b] = MULT_PAIR[Math.max(1, Math.min(4, s.mult))];
+    // (a paper ticket behind the readout: it floats over your room, whatever its light)
+    rr(g, 70, 8, W - 140, H - 16, 34);
+    g.fillStyle = 'rgba(239,230,210,0.94)';
+    g.fill();
+    g.lineWidth = 4;
+    g.strokeStyle = '#1d1d1b';
+    g.stroke();
     g.textBaseline = 'alphabetic';
     // the run (from 2: one hit isn't a run)
     const run = s.run >= 2 ? String(s.run) : '';
@@ -306,12 +327,12 @@ export class Hud {
     const span = 0.12;
     const at = (o: number) => (x0 + x1) / 2 + (Math.max(-span, Math.min(span, o)) / span) * ((x1 - x0) / 2);
     rr(g, x0, y - 6, x1 - x0, 12, 6);
-    g.fillStyle = 'rgba(255,255,255,0.12)';
+    g.fillStyle = 'rgba(29,29,27,0.12)';
     g.fill();
     rr(g, at(-0.06), y - 9, at(0.06) - at(-0.06), 18, 9);
     g.fillStyle = 'rgba(255,90,31,0.35)';
     g.fill();
-    g.fillStyle = 'rgba(255,255,255,0.7)';
+    g.fillStyle = 'rgba(29,29,27,0.75)';
     g.fillRect((x0 + x1) / 2 - 2, y - 22, 4, 44);
     g.font = body(30, 700);
     g.fillStyle = NEON.muted;

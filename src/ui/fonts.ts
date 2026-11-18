@@ -30,7 +30,24 @@ export function whenFonts(fn: () => void): void {
 export function loadFonts(): void {
   if (typeof document === 'undefined' || typeof FontFace === 'undefined') return;
   const base = `${import.meta.env?.BASE_URL ?? './'}fonts/`;
+  // (the flyer's face, Bricolage Grotesque, from Google Fonts: the panel, the sign and the labels are set in it)
+  if (!document.querySelector('link[data-face="bricolage"]')) {
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap';
+    l.dataset.face = 'bricolage';
+    document.head.appendChild(l);
+  }
+  const bricolage = new Promise<void>((res) => {
+    let k = 0;
+    const tryLoad = () =>
+      Promise.all(['800 40px "Bricolage Grotesque"', '600 40px "Bricolage Grotesque"', '400 40px "Bricolage Grotesque"'].map((f) => document.fonts.load(f)))
+        .then((r) => (r.every((x) => x.length) || ++k > 20 ? res() : setTimeout(tryLoad, 150)))
+        .catch(() => res());
+    tryLoad();
+  });
   Promise.all([
+    bricolage,
     // (the brand's faces come from the page's stylesheet: wait for the weights the canvas uses)
     ...['900 40px "Big Shoulders Display"', '800 40px "Big Shoulders Display"', '700 40px "Atkinson Hyperlegible"', '400 40px "Atkinson Hyperlegible"'].map((f) => document.fonts.load(f).catch(() => [])),
     ...WEIGHTS.map(([weight, file]) => {

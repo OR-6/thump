@@ -103,27 +103,27 @@ export class Tag {
     const H = c.height;
     g.clearRect(0, 0, W, H);
     let px = Math.round(H * 0.46);
-    g.font = `600 ${px}px ${FONT}`;
-    while (g.measureText(text).width > W - H * 1.6 && px > 12) g.font = `600 ${--px}px ${FONT}`;
+    g.font = `700 ${px}px 'Bricolage Grotesque', ${FONT}`;
+    while (g.measureText(text).width > W - H * 1.6 && px > 12) g.font = `700 ${--px}px 'Bricolage Grotesque', ${FONT}`;
     const tw = g.measureText(text).width;
     const w = tw + H * 1.3;
     const x0 = (W - w) / 2;
     const top = H * 0.1;
     const h = H * 0.8;
-    // the glass: near-black, a hairline rim
+    // a paper label, printed: an ink line round it
     g.beginPath();
     g.roundRect(x0, top, w, h, h / 2);
-    g.fillStyle = 'rgba(13, 13, 15, 0.85)';
+    g.fillStyle = 'rgba(239,230,210,0.97)';
     g.fill();
-    g.lineWidth = Math.max(1, H * 0.03);
-    g.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    g.lineWidth = Math.max(2, H * 0.045);
+    g.strokeStyle = '#1d1d1b';
     g.stroke();
     // the instrument's colour, a dot before the words
     g.fillStyle = `#${accent.toString(16).padStart(6, '0')}`;
     g.beginPath();
     g.arc(x0 + h * 0.5, top + h / 2, h * 0.13, 0, Math.PI * 2);
     g.fill();
-    g.fillStyle = '#f2efe6';
+    g.fillStyle = '#1d1d1b';
     g.textBaseline = 'middle';
     g.fillText(text, x0 + h * 0.85, top + h / 2 + 1);
     this.tex.needsUpdate = true;
