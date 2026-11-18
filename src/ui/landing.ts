@@ -222,6 +222,7 @@ export function mountLanding(world: World): void {
         <div>
           <h2 class="h2 riso" id="who-h" ${riso('Who made it')}>Who made it</h2>
           <p class="maker">Pretty much every VR music game needs controllers, so I made one you play with just your hands.</p>
+          <p class="sign" aria-hidden="true">${ringMarkSvg({ simple: true })}<span class="riso" ${riso('Thump')}>Thump</span></p>
         </div>
         <dl class="plate">
           <dt>Made by</dt><dd>OR-6, with my friends as testers</dd>
@@ -231,11 +232,42 @@ export function mountLanding(world: World): void {
           <dt>Sounds</dt><dd class="credit">Instrument samples from the Versilian Community Sample Library (CC0); the guitar is a Martin HD-28 recorded by Jeff Learman (Discord SFZ GM Bank, CC0). Particles by Kenney (CC0).</dd>
         </dl>
       </div>
-      <div class="wrap"><p class="sign" aria-hidden="true">${ringMarkSvg({ simple: true })}<span class="riso" ${riso('Thump')}>Thump</span></p></div>
     </footer>`;
   document.body.appendChild(el);
   // (index.html paints the top of the page while the game loads; this replaces it)
   document.getElementById('landing-boot')?.remove();
+
+  // ---- the hero's inks, printed for real: both halftones on one dot grid, so where the circles cross the dots land
+  // on each other, and there they print black (as two riso inks over each other go near-black) ----
+  const inks = el.querySelector<HTMLElement>('.inks');
+  const printInks = () => {
+    if (!inks) return;
+    const box = inks.getBoundingClientRect();
+    const circ = [...inks.querySelectorAll<HTMLElement>('.ink')].map((e) => {
+      const r = e.getBoundingClientRect();
+      return { x: r.left - box.left + r.width / 2, y: r.top - box.top + r.height / 2, r: Math.min(r.width, r.height) / 2 };
+    });
+    if (circ.length < 3) return;
+    const [a, b, c] = circ;
+    const C = (k: { x: number; y: number; r: number }, fill: string) => `<circle cx="${k.x.toFixed(1)}" cy="${k.y.toFixed(1)}" r="${k.r.toFixed(1)}" fill="${fill}"/>`;
+    const dots = (id: string, col: string) => `<pattern id="${id}" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="3.7" fill="${col}"/></pattern>`;
+    let svg = inks.querySelector('svg');
+    if (!svg) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('class', 'ink-print');
+      inks.prepend(svg);
+    }
+    svg.setAttribute('viewBox', `0 0 ${box.width.toFixed(0)} ${box.height.toFixed(0)}`);
+    svg.innerHTML =
+      `<defs>${dots('dp', 'var(--pink)')}${dots('db', 'var(--blue)')}${dots('dk', 'var(--ink)')}` +
+      `<clipPath id="ca">${C(a, '#000')}</clipPath><clipPath id="cc">${C(c, '#000')}</clipPath></defs>` +
+      C(a, 'var(--pink)') + C(c, 'url(#dp)') + C(b, 'url(#db)') +
+      `<g clip-path="url(#ca)">${C(b, 'url(#dk)')}</g><g clip-path="url(#cc)">${C(b, 'url(#dk)')}</g>`;
+  };
+  printInks();
+  addEventListener('resize', printInks);
+  document.fonts?.ready.then(printInks);
 
   // the bar takes its rule once the page has scrolled
   const bar = el.querySelector<HTMLElement>('.bar')!;

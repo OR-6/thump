@@ -8,7 +8,80 @@
  */
 import { CanvasTexture, CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, RingGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
 import { whenFonts } from '../ui/fonts.js';
-import { MULT_PAIR, NEON, body, display, glowText, riso, rr, slant } from '../ui/theme.js';
+import { body, display, halftone, riso } from '../ui/theme.js';
+
+/** The flyer's inks (docs/flyer-mockup.html). */
+const PAPER = '#efe6d2';
+const INK = '#1d1d1b';
+const INK2 = '#4a4640';
+const PINK = '#ff48b0';
+const BLUE = '#3255a4';
+const YELLOW = '#ffe24a';
+const GOLD = '#c98a00';
+const GREEN = '#2f8a4c';
+/** The multiplier's sticker by step: ×2 yellow, ×3 pink, ×4 blue. */
+const MULT_FILL = ['', YELLOW, YELLOW, PINK, BLUE];
+
+/** A ticket stub's outline: a rounded card with a half-circle notch bitten out of each side. */
+function ticketPath(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  const r = 18;
+  const n = Math.min(22, h / 5);
+  const my = y + h / 2;
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.lineTo(x + w - r, y);
+  g.arcTo(x + w, y, x + w, y + r, r);
+  g.lineTo(x + w, my - n);
+  g.arc(x + w, my, n, -Math.PI / 2, Math.PI / 2, true);
+  g.lineTo(x + w, y + h - r);
+  g.arcTo(x + w, y + h, x + w - r, y + h, r);
+  g.lineTo(x + r, y + h);
+  g.arcTo(x, y + h, x, y + h - r, r);
+  g.lineTo(x, my + n);
+  g.arc(x, my, n, Math.PI / 2, -Math.PI / 2, true);
+  g.lineTo(x, y + r);
+  g.arcTo(x, y, x + r, y, r);
+  g.closePath();
+}
+/** A ticket stub, filled and lined in ink, its blue plate printed a few px off under it. */
+function ticket(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill: string): void {
+  ticketPath(g, x + 7, y + 7, w - 8, h - 8);
+  g.fillStyle = BLUE;
+  g.fill();
+  ticketPath(g, x, y, w - 8, h - 8);
+  g.fillStyle = fill;
+  g.fill();
+  g.lineWidth = 5;
+  g.strokeStyle = INK;
+  g.stroke();
+}
+/** A round sticker, slapped on at a slight angle: a fill, an ink ring, its words in ink (and a small line under). */
+function sticker(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, fill: string, text: string, px: number, under = ''): void {
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(-0.12);
+  g.beginPath();
+  g.arc(6, 6, r, 0, Math.PI * 2);
+  g.fillStyle = fill === BLUE ? PINK : BLUE;
+  g.fill();
+  g.beginPath();
+  g.arc(0, 0, r, 0, Math.PI * 2);
+  g.fillStyle = fill;
+  g.fill();
+  g.lineWidth = 5;
+  g.strokeStyle = INK;
+  g.stroke();
+  g.font = display(px, 800);
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = fill === BLUE ? PAPER : INK;
+  g.fillText(text, 0, under ? -12 : 4);
+  if (under) {
+    g.font = body(30, 700);
+    g.fillText(under, 0, px * 0.48);
+  }
+  g.restore();
+}
 
 const W = 1024;
 const H = 300;
@@ -83,7 +156,7 @@ export class Hud {
     this.root.visible = false;
     parent.add(this.root);
     // the leader: a thin hot line from the sign to the thing it's about, and a small ring where it lands
-    const hot = new MeshBasicMaterial({ color: NEON.cyan, transparent: true, depthWrite: false, depthTest: false, toneMapped: false });
+    const hot = new MeshBasicMaterial({ color: BLUE, transparent: true, depthWrite: false, depthTest: false, toneMapped: false });
     this.leader = new Mesh(new CylinderGeometry(0.0011, 0.0011, 1, 6), hot);
     this.leaderEnd = new Mesh(new RingGeometry(0.006, 0.009, 24), hot);
     this.leader.renderOrder = this.leaderEnd.renderOrder = 14;
@@ -131,66 +204,39 @@ export class Hud {
     if (s.kind === 'none') return;
     g.lineJoin = 'round';
     g.lineCap = 'round';
+    g.textBaseline = 'alphabetic';
+    g.textAlign = 'left';
     const cx = W / 2;
-    const DARK = '#efe6d2';
-    // a number exactly as the screen draws its count-in: chunky italic, outlined, a gradient with a glow
-    const big = (t: string, px: number, y: number, a: string, b: string, glow: string) => {
-      g.font = display(px, 900);
-      g.textBaseline = 'alphabetic';
-      g.textAlign = 'left';
+    if (s.kind === 'count' || s.kind === 'go') {
+      // a big number printed over a halftone dot: the count-in, then Go!
+      const t = s.kind === 'count' ? String(s.n) : 'Go!';
+      halftone(g, cx, H / 2, 130, s.kind === 'go' ? PINK : BLUE, 14);
+      g.font = display(s.kind === 'count' ? 250 : 200, 800);
       const x = cx - g.measureText(t).width / 2;
-      g.lineWidth = 18;
-      g.strokeStyle = DARK;
+      const y = s.kind === 'count' ? 245 : 225;
+      g.lineWidth = 16;
+      g.strokeStyle = PAPER;
       g.strokeText(t, x, y);
-      void a;
-      void glow;
-      // (printed in two inks a hair off register, on a paper outline so it reads over any room)
-      riso(g, t, x, y, b === '#ff48b0' ? '#ff48b0' : '#3255a4', b === '#ff48b0' ? '#3255a4' : '#ff48b0', 7);
-    };
-    if (s.kind === 'count') big(String(s.n), 270, 262, NEON.ink, NEON.ink, NEON.ink);
-    else if (s.kind === 'go') big('GO!', 230, 250, '#ff48b0', '#ff48b0', '#ff48b0');
-    else if (s.kind === 'mult') {
-      // the screen's multiplier chip, large: a slanted plate in the streak's colours, the number dark on it
-      const [a, b] = MULT_PAIR[Math.max(1, Math.min(4, s.n))];
-      const t = `×${s.n}`;
-      g.font = display(200, 900);
-      const w = g.measureText(t).width + 120;
-      slant(g, cx - w / 2, 34, w, 232);
-      void a;
-      g.fillStyle = b;
-      g.fill();
-      g.textBaseline = 'alphabetic';
-      g.textAlign = 'left';
-      g.fillStyle = DARK;
-      g.fillText(t, cx - w / 2 + 60, 226);
+      riso(g, t, x, y, s.kind === 'go' ? PINK : BLUE, s.kind === 'go' ? BLUE : PINK, 7);
+    } else if (s.kind === 'mult') {
+      // the multiplier: a round sticker slapped on at an angle
+      sticker(g, cx, H / 2, 128, MULT_FILL[Math.max(1, Math.min(4, s.n))], `×${s.n}`, 150);
+    } else if (s.kind === 'streak') {
+      sticker(g, cx, H / 2 - 8, 124, YELLOW, String(s.n), 130, 'in a row');
     } else if (s.kind === 'play') {
       this.drawPlay(g, s);
-    } else if (s.kind === 'streak') {
-      // the screen's run: the count in the streak's colours, COMBO under it
-      const [a, b] = MULT_PAIR[4];
-      rr(g, cx - 220, 20, 440, 270, 34);
-      g.fillStyle = 'rgba(239,230,210,0.94)';
-      g.fill();
-      g.lineWidth = 4;
-      g.strokeStyle = '#1d1d1b';
-      g.stroke();
-      big(String(s.n), 190, 196, a, b, b);
-      g.font = display(54, 700);
-      g.textAlign = 'center';
-      g.fillStyle = NEON.muted;
-      g.fillText('COMBO', cx, 262);
     } else {
-      // a tip: one of the screen's plates (its indigo, its solid edge); the command in its italic display face, a line
-      // under it in its body face, and what to do to go on on its primary button
-      const cmd = s.big.toUpperCase();
-      const room = W - 120 - (s.icon ? 150 : 0);
-      let size = 108;
-      for (; size > 64; size -= 4) {
-        g.font = display(size, 900);
-        if (g.measureText(cmd).width <= room) break;
+      // a tip: a ticket stub. Its title printed in two inks, the line under it, and what to do to go on, highlighted
+      const hot = !!s.hot;
+      const pad = 54;
+      const room = W - pad * 2 - 30;
+      let size = 92;
+      for (; size > 60; size -= 4) {
+        g.font = display(size, 800);
+        if (g.measureText(s.big).width <= room) break;
       }
-      const cw = g.measureText(cmd).width;
-      let sz = 48;
+      const titleW = g.measureText(s.big).width;
+      let sz = 46;
       let lines: string[] = s.small ? [s.small] : [];
       if (s.small) {
         g.font = body(sz, 600);
@@ -202,152 +248,104 @@ export class Hud {
       }
       let sw = 0;
       for (const l of lines) sw = Math.max(sw, g.measureText(l).width);
-      const foot = s.foot ? s.foot.toUpperCase() : '';
-      g.font = display(40, 900);
-      const fw = foot ? g.measureText(foot).width + 90 : 0;
-      const pw = Math.min(W - 8, Math.max(cw, sw, fw) + 100 + (s.icon ? 150 : 0));
+      const foot = s.foot ?? '';
+      g.font = body(40, 700);
+      const fw = foot ? g.measureText(foot).width : 0;
+      // (as tall as what it says: no empty half)
+      const ph = Math.min(H - 8, 34 + size * 0.95 + lines.length * (sz + 8) + (foot ? 72 : 0) + 22);
+      const pw = Math.min(W - 8, Math.max(titleW, sw, fw + 30) + pad * 2);
       const px = cx - pw / 2;
-      const py = 4;
-      const ph = H - 8;
-      rr(g, px, py, pw, ph, 30);
-      g.fillStyle = 'rgba(239,230,210,0.97)';
-      g.fill();
-      g.lineWidth = 5;
-      g.strokeStyle = '#1d1d1b';
-      g.stroke();
-      const tx = px + 48;
-      const top = lines.length > 1 ? py + 64 : lines.length || foot ? py + 80 : py + ph / 2 + 6;
-      g.textBaseline = 'middle';
-      g.textAlign = 'left';
-      g.font = display(size, 900);
-      // (printed in two inks: pink for "do this now", blue otherwise; gold-ish for the best things)
-      if (s.gold) glowText(g, cmd, tx, top, '#c98a00', '#c98a00', 0);
-      else riso(g, cmd, tx, top, s.hot ? '#ff48b0' : '#3255a4', s.hot ? '#3255a4' : '#ff48b0', 5);
-      if (lines.length) {
-        g.font = body(sz, 600);
-        g.fillStyle = NEON.muted;
-        lines.forEach((l, i) => g.fillText(l, tx, top + size / 2 + (lines.length > 1 ? 24 : 32) + i * (sz + 6)));
+      const py = (H - ph) / 2;
+      ticket(g, px, py, pw, ph, hot ? PINK : PAPER);
+      // (a halftone corner, the print's texture)
+      g.save();
+      ticketPath(g, px, py, pw, ph);
+      g.clip();
+      halftone(g, px + pw - 30, py + 20, 90, hot ? BLUE : PINK, 12);
+      g.restore();
+      let y = py + 30 + size * 0.78;
+      g.font = display(size, 800);
+      if (hot) {
+        g.fillStyle = INK;
+        g.fillText(s.big, px + pad, y);
+      } else riso(g, s.big, px + pad, y, s.gold ? GOLD : BLUE, PINK, 5);
+      g.font = body(sz, 600);
+      g.fillStyle = INK;
+      for (const l of lines) {
+        y += sz + 10;
+        g.fillText(l, px + pad, y);
       }
       if (foot) {
-        // the sign's one thing to do: the panel's primary button, flat orange, dark words
-        const bh = 64;
-        const by = py + ph - bh - 14;
-        slant(g, tx - 6 + 6, by + 6, fw, bh);
-        g.fillStyle = '#3255a4';
-        g.fill();
-        slant(g, tx - 6, by, fw, bh);
-        g.fillStyle = '#ff48b0';
-        g.fill();
-        g.lineWidth = 3;
-        g.strokeStyle = '#1d1d1b';
-        g.stroke();
-        g.font = display(40, 900);
-        g.fillStyle = '#1d1d1b';
-        g.fillText(foot, tx + 34, by + bh / 2 + 2);
-      }
-      if (s.icon === 'stick') {
-        // a fist holding a stick, in the screen's ink
-        const ix = px + pw - 96;
-        const iy = py + ph / 2 + 20;
-        g.save();
-        g.translate(ix, iy);
-        g.strokeStyle = NEON.ink;
-        g.lineWidth = 12;
-        g.beginPath();
-        g.moveTo(-26, 26);
-        g.lineTo(34, -92);
-        g.stroke();
-        g.fillStyle = NEON.ink;
-        rr(g, -40, -36, 80, 66, 18);
-        g.fill();
-        g.strokeStyle = DARK;
-        g.lineWidth = 4;
-        for (const y of [-16, 4]) {
-          g.beginPath();
-          g.moveTo(-28, y);
-          g.lineTo(28, y);
-          g.stroke();
-        }
-        g.restore();
+        // (what to do, like a line run over with a highlighter)
+        y += 62;
+        g.font = body(40, 700);
+        g.fillStyle = YELLOW;
+        g.globalCompositeOperation = 'multiply';
+        g.fillRect(px + pad - 10, y - 34, fw + 20, 44);
+        g.globalCompositeOperation = 'source-over';
+        g.fillStyle = INK;
+        g.fillText(foot, px + pad, y);
       }
     }
     this.tex.needsUpdate = true;
   }
 
   /**
-   * Playing: the run big in the streak's colours with COMBO under it, the multiplier's chip beside it; along the bottom
-   * a strip of time, early to late, ±120 ms wide: the Perfect band (±60 ms) in the middle, and your last hits as ticks
-   * where they landed (cyan a Perfect, green a Good, orange early or violet late beyond it, at its edge), the newest
-   * brightest. So you can see which way you're off, and put it right.
+   * Playing: a ticket with the run printed big ("in a row" under it), the multiplier as a sticker beside it, and along
+   * the bottom a strip of time, early to late, ±120 ms wide: the Perfect band (±60 ms) highlighted in the middle, and
+   * your last hits as ticks where they landed (blue a Perfect, green a Good, pink early or late beyond it, at its edge),
+   * the newest boldest. So you can see which way you're off, and put it right.
    */
   private drawPlay(g: CanvasRenderingContext2D, s: Extract<HudSay, { kind: 'play' }>): void {
-    const DARK = '#efe6d2';
-    const [a, b] = MULT_PAIR[Math.max(1, Math.min(4, s.mult))];
-    // (a paper ticket behind the readout: it floats over your room, whatever its light)
-    rr(g, 70, 8, W - 140, H - 16, 34);
-    g.fillStyle = 'rgba(239,230,210,0.94)';
-    g.fill();
-    g.lineWidth = 4;
-    g.strokeStyle = '#1d1d1b';
-    g.stroke();
-    g.textBaseline = 'alphabetic';
-    // the run (from 2: one hit isn't a run)
+    const px = 60;
+    const pw = W - 120;
+    const py = 10;
+    const ph = H - 20;
+    ticket(g, px, py, pw, ph, PAPER);
     const run = s.run >= 2 ? String(s.run) : '';
-    const nx = s.mult > 1 ? 400 : W / 2;
+    const nx = px + 90;
     if (run) {
-      g.font = display(160, 900);
+      g.font = display(150, 800);
       g.textAlign = 'left';
-      const x = nx - g.measureText(run).width / 2;
-      g.lineWidth = 12;
-      g.strokeStyle = DARK;
-      g.strokeText(run, x, 150);
-      glowText(g, run, x, 150, b, b, 0);
-      g.font = display(40, 700);
-      g.textAlign = 'center';
-      g.fillStyle = NEON.muted;
-      g.fillText('COMBO', nx, 196);
+      riso(g, run, nx, 160, BLUE, PINK, 6);
+      const rw = g.measureText(run).width;
+      g.font = body(38, 700);
+      g.fillStyle = INK;
+      g.fillText('in a row', nx + rw + 22, 152);
+    } else {
+      g.font = body(40, 600);
+      g.fillStyle = INK2;
+      g.fillText('Hit what glows', nx, 130);
     }
-    if (s.mult > 1) {
-      // the multiplier: the screen's chip, its number dark on it
-      const t = `×${s.mult}`;
-      g.font = display(110, 900);
-      const w = g.measureText(t).width + 70;
-      const x = 640;
-      slant(g, x, 40, w, 130);
-      g.fillStyle = b;
-      g.fill();
-      g.textAlign = 'left';
-      g.fillStyle = DARK;
-      g.fillText(t, x + 35, 146);
-    }
-    // the strip
-    const x0 = 150;
-    const x1 = W - 150;
-    const y = 252;
+    if (s.mult > 1) sticker(g, px + pw - 120, 100, 72, MULT_FILL[Math.max(1, Math.min(4, s.mult))], `×${s.mult}`, 78);
+    // the strip, inside the ticket
+    const x0 = px + 150;
+    const x1 = px + pw - 150;
+    const y = 232;
     const span = 0.12;
     const at = (o: number) => (x0 + x1) / 2 + (Math.max(-span, Math.min(span, o)) / span) * ((x1 - x0) / 2);
-    rr(g, x0, y - 6, x1 - x0, 12, 6);
-    g.fillStyle = 'rgba(29,29,27,0.12)';
-    g.fill();
-    rr(g, at(-0.06), y - 9, at(0.06) - at(-0.06), 18, 9);
-    g.fillStyle = 'rgba(255,90,31,0.35)';
-    g.fill();
-    g.fillStyle = 'rgba(29,29,27,0.75)';
-    g.fillRect((x0 + x1) / 2 - 2, y - 22, 4, 44);
-    g.font = body(30, 700);
-    g.fillStyle = NEON.muted;
+    g.fillStyle = INK;
+    g.fillRect(x0, y - 2, x1 - x0, 4);
+    g.globalCompositeOperation = 'multiply';
+    g.fillStyle = YELLOW;
+    g.fillRect(at(-0.06), y - 20, at(0.06) - at(-0.06), 40);
+    g.globalCompositeOperation = 'source-over';
+    g.fillStyle = INK;
+    g.fillRect((x0 + x1) / 2 - 2, y - 24, 4, 48);
+    g.font = body(32, 700);
+    g.fillStyle = INK2;
     g.textAlign = 'right';
-    g.fillText('EARLY', x0 - 18, y + 11);
+    g.fillText('early', x0 - 18, y + 11);
     g.textAlign = 'left';
-    g.fillText('LATE', x1 + 18, y + 11);
+    g.fillText('late', x1 + 18, y + 11);
     const N = s.errs.length;
     for (let k = 0; k < s.n; k++) {
       // oldest first, so the newest is drawn on top
       const o = s.errs[(s.i - s.n + k + N * 2) % N];
       const off = Math.abs(o);
-      g.globalAlpha = 0.3 + 0.7 * ((k + 1) / s.n);
-      g.fillStyle = off <= 0.06 ? NEON.cyan : off <= 0.12 ? '#9fd98a' : o < 0 ? '#ffb27a' : '#a29da8';
-      const w = k === s.n - 1 ? 10 : 6;
+      g.globalAlpha = 0.35 + 0.65 * ((k + 1) / s.n);
+      g.fillStyle = off <= 0.06 ? BLUE : off <= 0.12 ? GREEN : PINK;
+      const w = k === s.n - 1 ? 12 : 7;
       g.fillRect(at(o) - w / 2, y - 26, w, 52);
     }
     g.globalAlpha = 1;

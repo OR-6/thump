@@ -131,9 +131,13 @@
       /* (the inks sit behind the line only, so the words under it read on plain paper) */
       .inks { position: absolute; left: 0; right: 0; top: 0; height: calc(var(--t-hero) * 2.9); pointer-events: none; }
       .ink { position: absolute; border-radius: 50%; mix-blend-mode: multiply; }
+      /* (once the page runs, the inks are printed as one picture on one dot grid, black where they cross; the spans stay
+         only to place them) */
+      .ink-print { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: multiply; }
+      .ink-print ~ .ink { visibility: hidden; }
       .ink-1 { width: clamp(280px, 36vw, 520px); aspect-ratio: 1; left: -9%; top: -4%; background: var(--pink); }
-      .ink-2 { width: clamp(180px, 24vw, 350px); aspect-ratio: 1; left: 38%; top: 34%; background: var(--dots-blue); transform: rotate(15deg); }
-      .ink-3 { width: clamp(300px, 44vw, 640px); aspect-ratio: 1; right: -10%; top: -22%; background: var(--dots-pink); transform: rotate(45deg); }
+      .ink-2 { width: clamp(180px, 24vw, 350px); aspect-ratio: 1; left: 38%; top: 34%; background: var(--dots-blue); }
+      .ink-3 { width: clamp(300px, 44vw, 640px); aspect-ratio: 1; right: -10%; top: -22%; background: var(--dots-pink); }
       #landing h1, #landing-boot h1 { position: relative; font: 800 var(--t-hero)/0.84 var(--face); letter-spacing: -0.045em; padding-top: 0.14em; }
       h1 .l { display: inline-block; width: 100%; --mx: 0.04em; --my: 0.028em; }
       @media (prefers-reduced-motion: no-preference) {
@@ -334,7 +338,7 @@
       .plate dt, .plate dd { padding: 14px 0; border-bottom: 1px solid var(--ink); }
       .plate dt { font-weight: 800; color: var(--blue); }
       .plate dd.credit { color: var(--ink-2); font-size: 15px; }
-      .sign { margin-top: 56px; display: flex; align-items: center; gap: 14px; font: 800 clamp(48px, 7vw, 104px)/0.9 var(--face); letter-spacing: -0.055em; }
+      .sign { margin-top: 48px; display: flex; align-items: center; gap: 14px; font: 800 clamp(48px, 6vw, 88px)/0.9 var(--face); letter-spacing: -0.055em; }
       .sign .mark { width: 0.8em; height: 0.8em; flex: none; }
 
       @media (max-width: 1060px) {

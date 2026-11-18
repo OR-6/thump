@@ -540,5 +540,7 @@ export const ALL_TUNES: readonly Tune[] = [
 ];
 
 /** Originals taken out of the game while they're rewritten (ids kept for their boards). */
-const SHELVED = new Set(['skinned-knees', 'night-market', 'velvet-rope', 'late-bus', 'low-tide']);
-export const TUNES: readonly Tune[] = ALL_TUNES.filter((t) => !SHELVED.has(t.id));
+const SHELVED = new Set(['late-bus', 'low-tide']);
+/** (?allsongs in the address shows the shelved ones too: to try them in the headset before they're switched on) */
+const SHOW_ALL = typeof location !== 'undefined' && new URLSearchParams(location.search).has('allsongs');
+export const TUNES: readonly Tune[] = SHOW_ALL ? ALL_TUNES : ALL_TUNES.filter((t) => !SHELVED.has(t.id));

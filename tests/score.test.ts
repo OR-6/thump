@@ -30,13 +30,13 @@ function pianoMidi(scale: string, zone: number): number {
 }
 
 describe('the songs: classics with modern grooves, and originals', () => {
-  it('a library of about twenty, in the order that shows it best (Korobeiniki first: measured over all six instruments), every song in it', () => {
+  it('a library of about twenty, in the order that shows it best (Velvet Rope first, the favourite), every song in it', () => {
     expect(SCORES.length).toBeGreaterThanOrEqual(14);
     // (five originals are shelved while they're rewritten: Mango Season stays)
     expect(SONGS.filter((s) => s.tune.original).length).toBeGreaterThanOrEqual(1);
     expect(new Set(TUNES.map((t) => t.id)).size).toBe(TUNES.length);
     expect(SONG_TRACKS.map((t) => t.id)).toEqual(SCORES.map((s) => s.tune.id));
-    expect(SONGS[0].tune.id).toBe('korobeiniki');
+    expect(SONGS[0].tune.id).toBe('velvet-rope');
     // (every song is placed in the order: none falls to the end by being left out of it)
     for (const x of SONGS) expect(SONG_ORDER, x.tune.id).toContain(x.tune.id);
     // each difficulty has songs in it
