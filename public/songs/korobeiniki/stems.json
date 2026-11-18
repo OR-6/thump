@@ -1,1 +1,1 @@
-{"id":"korobeiniki","bpm":136,"meter":4,"start":-4,"end":326,"seconds":149.11764705882354,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"keys","file":"keys.webm","ch":2},{"id":"bass","file":"bass.webm","ch":1},{"id":"drums","file":"drums.webm","ch":2}]}
+{"id":"korobeiniki","bpm":136,"meter":4,"start":-4,"end":326,"seconds":149.11764705882354,"lag":0.009,"stems":[{"id":"lead","file":"lead.webm","ch":1},{"id":"keys","file":"keys.webm","ch":2},{"id":"bass","file":"bass.webm","ch":1},{"id":"drums","file":"drums.webm","ch":2}]}
