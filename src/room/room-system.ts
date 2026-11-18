@@ -992,7 +992,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     } else {
       this.band.stop();
       this.presence.stop();
-      this.talk.leave();
+      // (the host waiting for a friend to come back keeps Talk as it was)
+      if (st.state !== 'hosting') this.talk.leave();
       this.bandOn = false;
       this.friendInst.clear();
       this.friendSong.clear();
@@ -1045,7 +1046,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private onBandCtl(m: BandCtl): void {
     if (m.k === 'ask' && this.band.host) {
       // (not while you're out of the headset or still setting up: the band would start without you)
-      if (this.placement.phase !== 'placed' || this.paused) return;
+      if ((this.visibilityState.peek() !== VisibilityState.NonImmersive && this.placement.phase !== 'placed') || this.paused) return;
       if (this.game.mode === 'discover' || this.game.mode === 'results') this.game.playSong(m.i);
       return;
     }
@@ -1054,7 +1055,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const local = this.band.toLocal(m.at);
       const beat0 = this.clock.t + (local - performance.now() / 1000);
       // (only on a headset that's in, set up and on the band's clock: else it would start out of step)
-      if (this.placement.phase !== 'placed' || this.paused || !this.band.synced) return;
+      // (on the 2D page there's no desk to set up: only the clock matters there)
+      const inXr = this.visibilityState.peek() !== VisibilityState.NonImmersive;
+      if ((inXr && this.placement.phase !== 'placed') || this.paused || !this.band.synced) return;
       // (everyone plays the host's level, so the scores add up on one board)
       if (m.lv) this.game.level = m.lv;
       if (this.game.mode === 'results' || this.game.mode === 'discover') this.game.playSong(m.i, beat0);
@@ -2018,7 +2021,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   }
 
   private step(delta: number) {
-    if (this.paused) return;
+    if (this.paused) {
+      // (in the Quest menu: still on Talk for your friends, or they'd hang up on you)
+      if (this.bandOn) this.talk.tick(Math.min(delta, 0.1), this.seats);
+      return;
+    }
     const dt = Math.min(delta, 0.1);
     this.watchFrames(delta);
     // (paused by you: the song's clock holds still; you can still use the panel)
@@ -2047,6 +2054,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.stand.update(dt);
     if (!this.standShown && this.placement.phase === 'placed') this.refreshStand();
     if (this.placement.phase !== 'placed') {
+      // (the band's clock is matched before the desk is out, and on the 2D page)
+      this.tickBand(dt);
       if (!immersive) return;
       this.sessionTime += dt;
       this.updatePlacement(Math.min(dt, 0.05));

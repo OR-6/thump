@@ -127,9 +127,18 @@ export class Talk {
     this.message = '';
     this.changed();
     let s: MediaStream;
+    // (in the headset the browser's question can sit out of sight: after a while, say where it is)
+    const slow = setTimeout(() => {
+      if (gen === this.gen && this.state === 'asking') {
+        this.message = 'No mic prompt? Lift the headset to answer it';
+        this.changed();
+      }
+    }, 8000);
     try {
       s = await this.deps.mic();
+      clearTimeout(slow);
     } catch (e) {
+      clearTimeout(slow);
       if (gen !== this.gen) return;
       this.state = 'blocked';
       this.message = micMessage(e);
@@ -142,9 +151,20 @@ export class Talk {
       return;
     }
     this.stream = s;
+    // (the mic taken away, or unplugged: say so rather than sending silence)
+    for (const t of s.getTracks())
+      t.addEventListener?.('ended', () => {
+        if (this.stream !== s) return;
+        this.off(true);
+        this.state = 'blocked';
+        this.message = 'The mic stopped. Tap Talk to try again';
+        this.changed();
+      });
     this.state = 'on';
+    this.message = '';
+    // (friends are called once they've answered this: a call that beats the hello is turned away)
+    this.onAt = this.deps.now();
     this.announce(true);
-    this.callAround();
     this.changed();
   }
 
@@ -170,7 +190,7 @@ export class Talk {
 
   /** For the panel: the switch, and a line when there's something to say. */
   menu(): { on: boolean; line: string; others: number } {
-    const line = this.state === 'asking' ? 'Asking for the mic…' : this.state === 'blocked' ? this.message : '';
+    const line = this.state === 'asking' ? this.message || 'Asking for the mic…' : this.state === 'blocked' ? this.message : '';
     return { on: this.state === 'on' || this.state === 'asking', line, others: this.others() };
   }
 
@@ -250,12 +270,14 @@ export class Talk {
     if (id && this.tr) this.tr.send({ k: 'talk', p: this.me, id, on } satisfies TalkMsg);
   }
 
+  /** When Talk last went on (only friends heard from since then are called). */
+  private onAt = 0;
   /** Call each friend on Talk it's ours to call, that we aren't in a call with yet. */
   private callAround(): void {
     const me = this.deps.peerId();
     if (this.state !== 'on' || !this.stream || !me) return;
     for (const [id, r] of this.roster) {
-      if (!r.on || this.calls.has(id) || r.tries >= MAX_TRIES || !callsFirst(me, id)) continue;
+      if (!r.on || r.at < this.onAt || this.calls.has(id) || r.tries >= MAX_TRIES || !callsFirst(me, id)) continue;
       const mc = this.deps.call(id, this.stream);
       if (mc) this.wire(mc);
       else r.tries++;
@@ -275,10 +297,13 @@ export class Talk {
     });
     const gone = () => {
       if (!current()) return;
+      const was = !!call.out;
       call.out?.stop();
       this.calls.delete(mc.peer);
       const r = this.roster.get(mc.peer);
-      if (r) r.tries++;
+      // (a call that was talking and ended: they left or went off Talk; called again only when they say they're on)
+      if (was) this.roster.delete(mc.peer);
+      else if (r) r.tries++;
     };
     mc.on('close', gone);
     mc.on('error', gone);

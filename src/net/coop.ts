@@ -149,6 +149,7 @@ class CoopSession {
         const type = (e as { type?: string }).type;
         // (once the code is up, the band's links don't need the connection service: a blip there only re-registers the
         // code, it never ends the band or changes the code)
+        if (opened && (type === 'peer-unavailable' || type === 'webrtc')) return;
         if (opened && (NETWORK_ERRORS.has(type ?? '') || type === 'disconnected' || type === 'unavailable-id')) {
           window.setTimeout(() => gen === this.gen && !peer.destroyed && peer.reconnect?.(), 2000);
           return;
@@ -178,6 +179,8 @@ class CoopSession {
       if (gen !== this.gen) return peer.destroy();
       this.peer = peer;
       this.listenCalls(peer, gen);
+      // (a guest's link to the connection service drops on a Wi-Fi blip: back on it, so voice calls still reach it)
+      peer.on('disconnected', () => window.setTimeout(() => gen === this.gen && !peer.destroyed && peer.reconnect?.(), 1000));
       let joined = false;
       window.setTimeout(() => {
         if (!joined && gen === this.gen) this.fail('Could not reach the headset. Check the code and try again');
@@ -195,7 +198,8 @@ class CoopSession {
         if (gen !== this.gen) return;
         const type = (e as { type?: string }).type;
         // (in the band already: the connection service going away doesn't matter, the link to the host is direct)
-        if (joined && (NETWORK_ERRORS.has(type ?? '') || type === 'disconnected')) return;
+        // (and a voice call to someone who's gone doesn't throw you out of the band either)
+        if (joined && (NETWORK_ERRORS.has(type ?? '') || type === 'disconnected' || type === 'peer-unavailable' || type === 'webrtc')) return;
         this.fail(type === 'peer-unavailable' ? "No headset has that code. Check the 4 letters" : "Can't reach the connection service. Try again in a minute");
       });
     } catch {

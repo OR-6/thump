@@ -28,7 +28,7 @@ check('straight ahead of you, facing you, level', Math.abs(k.x) < 0.03 && k.z < 
 check('at a desk height below the eyes', 1.2 - k.y > 0.25 && 1.2 - k.y < 0.65, String(k.y));
 
 // a palm flat on the desk: it glides onto the desk's height (and only the height)
-xr('set-transform', { device: HAND, position: { x: 0.05, y: DESK_Y + 0.02, z: -0.34 }, orientation: FLAT });
+xr('set-transform', { device: HAND, position: { x: 0.05, y: DESK_Y + 0.02, z: -0.1 }, orientation: FLAT });
 await wait(2300);
 xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
 await wait(300);

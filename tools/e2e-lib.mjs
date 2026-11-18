@@ -64,7 +64,8 @@ export const DESK_Y = 0.8;
 /** The kit comes out by itself; rest the right palm flat on the table so it settles onto the desk's height. */
 export async function placeKit() {
   // the palm's centre sits its radius above the table
-  xr('set-transform', { device: HAND, position: { x: 0.05, y: DESK_Y + 0.02, z: -0.34 }, orientation: FLAT });
+  // (in front of the kit's near edge: the kit is already out, and a palm landing on a drum would play it)
+  xr('set-transform', { device: HAND, position: { x: 0.05, y: DESK_Y + 0.02, z: -0.1 }, orientation: FLAT });
   await wait(2300);
   const s = state();
   // lift the hand clear (a resting hand does nothing, but tests start from a raised hand)
