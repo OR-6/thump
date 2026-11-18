@@ -239,7 +239,8 @@ describe('the songs: classics with modern grooves, and originals', () => {
 
   it('a song in its whole form: its sections in order, the verses lighter than the choruses, a fill into each', () => {
     const s = by('rooftop');
-    expect(s.sections!.map((x) => x.kind)).toEqual(['intro', 'verse', 'chorus', 'verse', 'chorus', 'solo', 'bridge', 'chorus', 'outro']);
+    // (its pre-choruses are bridges: the band between a verse's size and a chorus's)
+    expect(s.sections!.map((x) => x.kind)).toEqual(['intro', 'verse', 'bridge', 'chorus', 'verse', 'bridge', 'chorus', 'bridge', 'chorus', 'outro']);
     const plan = planBars(s);
     const of = (kind: string) => plan.filter((b) => b.kind === kind);
     expect(Math.max(...of('verse').map((b) => b.level))).toBeLessThan(Math.min(...of('chorus').map((b) => b.level)));

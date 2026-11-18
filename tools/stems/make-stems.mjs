@@ -103,6 +103,9 @@ const SONG_EQ = {
   'learn-marimba': BALLAD_EQ,
   'learn-guitar': BALLAD_EQ,
   'learn-handpan': BALLAD_EQ,
+  // (Late Bus is lo-fi: the grand and the Rhodes with their tops rolled off, the grand's lift taken back; the Rhodes up,
+  // the bass and the kick's boom down, the hats a little brighter)
+  'late-bus': { lead: 'highshelf=f=2500:g=-3:t=q:w=0.7,lowpass=f=7000', keys: 'lowpass=f=6500,volume=4dB', bass: 'volume=-3dB,equalizer=f=180:t=q:w=1:g=-2', drums: 'equalizer=f=60:t=q:w=1:g=-2,highshelf=f=4000:g=3:t=q:w=0.7' },
 };
 /** How much of each goes to the hall. */
 const WET = { drums: 0.1, perc: 0.16, bass: 0, lead: 0.2, guitar: 0.2, keys: 0.28, strings: 0.34, brass: 0.24 };

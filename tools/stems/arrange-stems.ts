@@ -330,7 +330,116 @@ function styled(c: Ctx, lead?: number): Stems {
   return out;
 }
 
+/** A chord's seventh as a band colours it: a major seventh on the home chord, the four and a borrowed flat six; a minor
+ * seventh on a minor chord; a dominant seventh on the five, a borrowed flat seven and a secondary major chord. */
+const seventh = (ch: ChordSpan) => (ch.minor ? 10 : ch.semis === 0 || ch.semis === 5 || ch.semis === 8 ? 11 : 10);
+/** Seventh chords (root, third, fifth, seventh) voiced from `lo` and led smoothly, on a pattern of drum characters,
+ * each `len` steps long and rolled a little from the bottom (a keyboard player's hands). */
+function sevenths(c: Ctx, steps: number, pat: (b: BarPlan) => string | undefined, lo: number, len: number, vel: number): N[] {
+  let was: number[] = [];
+  const out: N[] = [];
+  c.plan.forEach((b, n) =>
+    eachStep(c, b, n, pat(b), steps, (beat, chr) => {
+      const k = VEL[chr];
+      if (k === undefined) return;
+      const ch = chordAt(c, beat);
+      const pcs = [0, third(ch), 7, seventh(ch)].map((x) => (pcOf(c, ch) + x) % 12);
+      let best: number[] = [];
+      let cost = Infinity;
+      for (let inv = 0; inv < 4; inv++)
+        for (let base = lo; base < lo + 12; base++) {
+          if (base % 12 !== pcs[inv]) continue;
+          const v = [base];
+          for (let j = 1; j < 4; j++) {
+            let m = v[j - 1] + 1;
+            while (m % 12 !== pcs[(inv + j) % 4]) m++;
+            v.push(m);
+          }
+          const cst = was.length ? v.reduce((a, m, i) => a + Math.abs(m - was[i]), 0) : Math.abs(v[0] - lo - 6);
+          if (cst < cost) {
+            cost = cst;
+            best = v;
+          }
+        }
+      was = best;
+      const l = Math.min((len * c.meter) / steps, ch.beat + ch.len - beat) * 0.95;
+      best.forEach((m, i) => out.push({ beat: beat + i * 0.01 + wob(beat, 40 + i, 0.008), len: l, midi: m, vel: vel * k * (0.85 + 0.15 * b.level) + wob(beat, 41 + i, 0.05) }));
+    }),
+  );
+  return out;
+}
+/** Into each chorus: eighth-note chords through the section before it (its last four bars at most; a verse's last
+ * bar), growing louder to the downbeat. */
+function build(c: Ctx, lo: number, vel: number): N[] {
+  const out: N[] = [];
+  const v = voicer(lo);
+  const secs = c.s.sections ?? [];
+  secs.forEach((x, i) => {
+    const next = secs[i + 1];
+    if (!next || next.kind !== 'chorus' || x.kind === 'chorus') return;
+    const z = c.s.starts[0] + next.bar * c.meter;
+    const from = x.kind === 'bridge' ? Math.max(c.s.starts[0] + x.bar * c.meter, z - 4 * c.meter) : z - c.meter;
+    for (let bt = from; bt < z - 1e-6; bt += 0.5) {
+      const k = (bt - from) / (z - from);
+      for (const m of v(c, chordAt(c, bt))) out.push({ beat: bt + wob(bt, 50 + m, 0.005), len: 0.38, midi: m, vel: vel * (0.3 + 0.7 * k * k) });
+    }
+  });
+  return out;
+}
+/** The band's comping rhythm (its style's, the very part the guitar chart strums with), as guitar chords. */
+function compRhythm(c: Ctx, program: number, lo: number, len: number, vel: number): Track {
+  const st = bandStyle(c.s);
+  return tr('guitar', program, hits(c, st.steps, (b) => (b.solo ? undefined : b.chorus ? st.comp.chorus : st.comp.verse), lo, len, vel), { rev: 30, vol: 92, pan: 36 });
+}
+
+/** The originals: each its style's band (styled) with the parts its own style calls for on top. Drums, bass, the
+ * tune and any guitar are the parts the charts are made from, so what you play is still what you hear. (The band's
+ * extra parts go in its keys stem: seven channels or fewer keeps a song this long decoding at 32 kHz, src/audio/stems.ts.) */
+const ORIGINALS: Record<string, (c: Ctx) => Stems> = {
+  // synth-pop: an FM piano arpeggio in the choruses and the bridge, synth brass building through each pre-chorus, the
+  // square lead doubling the tune in the choruses
+  rooftop: (c) => {
+    const s = styled(c);
+    s.keys!.push(tr('arp', 5, arp(c, 16, (b) => (b.chorus || b.kind === 'bridge' ? 'r58358f5r58358f5' : b.kind === 'verse' ? 'r...5...8...5...' : undefined), 60, 0.36, 0.9), { rev: 55, vol: 84, pan: 88 }));
+    s.keys!.push(tr('build', 62, build(c, 55, 0.55), { rev: 45, vol: 90, pan: 54 }));
+    return s;
+  },
+  // lo-fi: the grand on the tune (darkened in the mix), a Rhodes on seventh chords, a fingered bass, a room kit
+  'late-bus': (c) => {
+    const s = styled(c, 0);
+    s.keys = [tr('rhodes', 4, sevenths(c, 8, (b) => (b.solo ? undefined : b.chorus ? 'x..x..x.' : 'x.....x.'), 52, 3, 0.5), { rev: 50, vol: 96, pan: 52, cho: 30 }), ...s.keys!.filter((t) => t.name === 'pad').map((t) => ({ ...t, vol: 64 }))];
+    s.bass![0].program = 33;
+    s.drums![0].program = 8;
+    return s;
+  },
+  // funk: horns doubling the tune in the choruses and the bridge, and stabbing the off-beats
+  'cold-brew': (c) => {
+    const s = styled(c);
+    s.lead!.push(tr('horns', 61, tune(c, 0, 0.7, (b) => b.chorus || b.kind === 'bridge', 0.55), { rev: 40, vol: 88, pan: 74 }));
+    s.keys!.push(tr('stabs', 61, hits(c, 16, (b) => (b.chorus ? '......x.......x.' : b.kind === 'bridge' ? 'x.........x.....' : undefined), 55, 1, 0.5), { rev: 40, vol: 82, pan: 44 }));
+    return s;
+  },
+  // house: the grand on the stabs, strings in the choruses, the piano in eighths building into each chorus
+  'kite-hill': (c) => {
+    const s = styled(c);
+    s.keys!.push(tr('strings', 49, pad(c, 57, 0.36, (b) => b.chorus || b.kind === 'outro'), { rev: 75, vol: 84, pan: 76 }));
+    s.keys!.push(tr('build', 0, build(c, 57, 0.6), { rev: 45, vol: 92, pan: 44 }));
+    return s;
+  },
+  // reggae: the skank on a clean guitar as well as the piano, the organ's bubble on the off-beats, a flute an octave
+  // over the melodica in the choruses
+  'low-tide': (c) => {
+    const s = styled(c);
+    delete s.guitar;
+    s.keys!.push(compRhythm(c, 27, 57, 1, 0.7));
+    s.keys!.push(tr('bubble', 17, hits(c, 16, (b) => (b.solo ? undefined : '..x...x...x...x.'), 50, 1, 0.42), { rev: 40, vol: 78, pan: 80 }));
+    s.lead!.push(tr('flute', 73, tune(c, 1, 0.9, (b) => b.chorus, 0.45), { rev: 60, vol: 76, pan: 40 }));
+    return s;
+  },
+};
+
 const ARR: Record<string, (c: Ctx) => Stems> = {
+  ...ORIGINALS,
   // Für Elise as Beethoven wrote it: the right hand's tune (the lead) and everything else of the score, both hands,
   // with the pedal changed on each harmony
   'fur-elise': (c) => {
