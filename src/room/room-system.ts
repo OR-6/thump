@@ -5612,7 +5612,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // (not a palm resting on the instrument itself: its keys and heads stand over the desk)
       this.tmp3.copy(h.palm);
       root.worldToLocal(this.tmp3);
-      if (Math.abs(this.tmp3.x) < KIT_ZONE.halfX && this.tmp3.z > KIT_ZONE.back && this.tmp3.z < KIT_ZONE.front) continue;
+      // (a palm well below the kit's base is on the desk under a kit that came out too high: that one counts)
+      if (this.tmp3.y > -0.01 && Math.abs(this.tmp3.x) < KIT_ZONE.halfX && this.tmp3.z > KIT_ZONE.back && this.tmp3.z < KIT_ZONE.front) continue;
       this.planesUnder(h.palm);
       const ps = this.palmSample;
       ps.x = h.palm.x;
