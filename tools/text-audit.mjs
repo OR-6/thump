@@ -22,10 +22,9 @@ const out = js(`
   r.game.menu = 'songs';
   for (const f of ['all', 'classics', 'originals', 'lessons']) {
     r.game.act('songs:filter:' + f);
-    for (let pg = 0; pg < 8; pg++) {
-      for (let i = 0; i < r.game.tracks.length; i += 1) { if (pg === 0) { r.game.songSel = i; r.game.refreshDisplay(); await tick(); grab('songs-card:' + r.game.tracks[i].name); } }
-      r.game.act('songs:more'); await tick(); grab('songs:' + f + ':' + pg);
-    }
+    // (every song is a row of the list now: one look takes them all in)
+    for (let i = 0; i < r.game.tracks.length; i += 1) { r.game.songSel = i; r.game.refreshDisplay(); await tick(); grab('songs-card:' + r.game.tracks[i].name); }
+    await tick(); grab('songs:' + f);
   }
   return found;
 `);

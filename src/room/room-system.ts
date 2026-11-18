@@ -51,7 +51,7 @@ import { kitLayout, pickPad, type PadSpot } from '../kit/layout.js';
 import { HUD_AT, HUD_X, KitView, KEYS_ROW, KIT_ZONE } from '../kit/kit-view.js';
 import { LED } from '../kit/pad-view.js';
 import { KEYS, type ModuleKey } from '../ui/module.js';
-import { PANEL, itemZone } from '../ui/panel.js';
+import { PANEL, inert, itemZone } from '../ui/panel.js';
 import { Tag, DebugBoard } from '../ui/tag.js';
 import { audio, type Voice } from '../audio/engine.js';
 import { sfx, type Music } from '../audio/sfx.js';
@@ -83,7 +83,8 @@ import { BandLink, asPlayer, type BandCtl } from '../net/band.js';
 import { Stand } from '../stand/stand.js';
 import { HandMallet, MALLET_HEAD_R, MALLET_LEN, STICK_LEN } from './hand-mallet.js';
 import { KICK_DEPTH } from '../kit/pad-view.js';
-import { BRAND, INST_LIGHT, hexNum, withAlpha } from '../ui/theme.js';
+import { BRAND, INST_LIGHT, UI, display, hexNum, withAlpha } from '../ui/theme.js';
+import { whenFonts } from '../ui/fonts.js';
 import { HitFx, type PartShape } from './hit-fx.js';
 import { ApproachRings } from './approach-rings.js';
 import { Hud, type HudSay } from './hud.js';
@@ -412,7 +413,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // (a Perfect's word only while it's new: a song's first four, a lesson's first dozen; Good, Early and Late always)
     this.hitWords.wants = (g) => g !== 'perfect' || this.game.graded.perfect <= (this.game.inLesson ? 12 : 4);
     // (a Good says which way it was off, in Good's green: early or late, and still counted)
-    this.hitWords.lean = () => this.game.lastOffset;
+    this.hitWords.lean = () => this.game.hitLean;
     // the game's own sounds play in the music: the chord under them, landing on the band's grid
     sfx.music = (o) => this.sfxMusic(o);
     sfx.grid = (div) => this.sfxGrid(div);
@@ -779,6 +780,14 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           this.useInstrument('guitar');
         }
         return !lap;
+      }
+      if (name === 'aim') {
+        const on = s.aimHelp !== false;
+        if (!flip) return on;
+        this.settings = { ...s, aimHelp: !on };
+        saveSettings(this.settings);
+        sfx.toggle(!on);
+        return !on;
       }
       const cur = name === 'oneHand' ? s.oneHand : name === 'contrast' ? s.highContrast : name === 'band' ? s.band : name === 'light' ? s.freeLight : !s.noWords;
       if (!flip) return cur;
@@ -1194,7 +1203,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** Where the kit stood by itself in height (the desk found), before any move of yours. */
   private kitBaseY = 0;
   private kitBaseFwd = new Vector3(0, 0, -1);
-  /** The move handle: a puck on the desk at the front left; pinch it and the whole setup follows your hand. */
+  /** The move handle: a tag on the desk at the front left; grab it (close your hand on it) and the whole setup
+   * follows your hand. */
   private movePuck: Mesh | null = null;
   private moveHand = -1;
   private moveOff = new Vector3();
@@ -1218,40 +1228,47 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private moveOffY = 0;
 
   private buildMovePuck(): void {
+    // a tag printed on the flyer's paper lying on the desk: a grip bar (the same bar a window is carried by) over the
+    // words, so it says what it's for; no icon to decode (four arrows read as the headset's immersion button)
     const c = document.createElement('canvas');
-    c.width = c.height = 128;
-    const g = c.getContext('2d')!;
-    // a disc with four short arrows: move me
-    // (the brand's plate: plum, its line, off-white)
-    g.fillStyle = withAlpha(BRAND.plum, 0.94);
-    g.beginPath();
-    g.arc(64, 64, 60, 0, Math.PI * 2);
-    g.fill();
-    g.strokeStyle = BRAND.line;
-    g.lineWidth = 5;
-    g.beginPath();
-    g.arc(64, 64, 57, 0, Math.PI * 2);
-    g.stroke();
-    g.strokeStyle = BRAND.ink;
-    g.lineWidth = 7;
-    g.lineCap = 'round';
-    g.lineJoin = 'round';
-    for (let k = 0; k < 4; k++) {
-      g.save();
-      g.translate(64, 64);
-      g.rotate((k * Math.PI) / 2);
+    c.width = 384;
+    c.height = 160;
+    const draw = () => {
+      const g = c.getContext('2d')!;
+      g.clearRect(0, 0, c.width, c.height);
+      const r = 30;
       g.beginPath();
-      g.moveTo(0, -12);
-      g.lineTo(0, -38);
-      g.moveTo(-10, -28);
-      g.lineTo(0, -38);
-      g.lineTo(10, -28);
+      g.moveTo(6 + r, 6);
+      g.arcTo(378, 6, 378, 154, r);
+      g.arcTo(378, 154, 6, 154, r);
+      g.arcTo(6, 154, 6, 6, r);
+      g.arcTo(6, 6, 378, 6, r);
+      g.closePath();
+      g.fillStyle = UI.bg;
+      g.fill();
+      g.lineWidth = 6;
+      g.strokeStyle = UI.ink;
       g.stroke();
-      g.restore();
-    }
-    const t = new CanvasTexture(c);
-    t.colorSpace = SRGBColorSpace;
-    const m = new Mesh(new PlaneGeometry(0.05, 0.05), new MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false }));
+      // the grip: a thick ink bar with its ends rounded, the handle itself
+      g.lineCap = 'round';
+      g.lineWidth = 22;
+      g.strokeStyle = UI.ink;
+      g.beginPath();
+      g.moveTo(92, 52);
+      g.lineTo(292, 52);
+      g.stroke();
+      g.fillStyle = UI.ink;
+      g.font = display(46, 800);
+      g.textBaseline = 'alphabetic';
+      const t = 'Grab to move';
+      g.fillText(t, (384 - g.measureText(t).width) / 2, 126);
+      tex.needsUpdate = true;
+    };
+    const tex = new CanvasTexture(c);
+    tex.colorSpace = SRGBColorSpace;
+    draw();
+    whenFonts(draw);
+    const m = new Mesh(new PlaneGeometry(0.09, 0.0375), new MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
     m.name = 'MoveHandle';
     m.rotation.x = -Math.PI / 2;
     m.position.set(-0.27, 0.003, 0.22);
@@ -1259,7 +1276,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kit.root.add(m);
     this.movePuck = m;
   }
-  /** Pinch the puck: the instruments (and the screen with them) follow your hand across the desk, turned to you. */
+  /**
+   * Grab the handle (close your hand on it, as Horizon OS carries a window; a controller's trigger): the instruments
+   * (and the screen with them) follow your hand across the desk, turned to you, until you open it.
+   */
+  private moveGrip = [false, false];
   private kitHandle(dt: number): void {
     const puck = this.movePuck;
     if (!puck) return;
@@ -1275,12 +1296,18 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     let near = 0;
     for (let i = 0; i < 2; i++) {
       const h = i === 0 ? hands.left : hands.right;
-      if (!h.tracked || h.controller) {
+      if (!h.tracked) {
         if (this.moveHand === i) this.moveHand = -1;
+        this.moveGrip[i] = false;
         continue;
       }
+      // a hand's grip (fingers curled in: closed under 6.5 cm, open again past 8.5), a controller's trigger
+      const wasGrip = this.moveGrip[i];
+      this.moveGrip[i] = h.controller ? h.pinch.pinching : wasGrip ? this.curl(h) < 0.085 : this.curl(h) < 0.065;
+      // (held by the palm, or a controller's tip)
+      const at = h.controller ? h.pinchPoint : h.palm;
       if (this.moveHand === i) {
-        if (!h.pinch.pinching) {
+        if (!this.moveGrip[i]) {
           // let go: the surfaces refit where it stands, and the move is kept (from where it stood by itself)
           this.moveHand = -1;
           // (in the world: the kit may hang from last session's room anchor, whose frame isn't the world's)
@@ -1307,7 +1334,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         }
         // (it goes where the pinch goes and always turns to face you: it never tilts or spins on its own; up or down
         // within 20 cm below and 25 cm above where the desk was found)
-        this.moveTarget(h.pinchPoint);
+        this.moveTarget(at);
         const k = 1 - Math.exp(-Math.min(dt, 0.05) * 24);
         root.position.lerp(this.moveAt, k);
         let dyaw = this.moveYawT - root.rotation.y;
@@ -1317,21 +1344,21 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         near = 1;
         continue;
       }
-      const d = h.pinchPoint.distanceTo(this.moveAt);
-      near = Math.max(near, 1 - Math.min(1, d / 0.08));
-      // (a pinch starting within 6 cm of it takes it: tracking puts a pinch a centimetre or two off)
-      if (this.moveHand < 0 && h.edge === 'start' && d < 0.06 && !this.dragging[0] && !this.dragging[1]) {
+      const d = at.distanceTo(this.moveAt);
+      near = Math.max(near, 1 - Math.min(1, d / 0.1));
+      // (a hand closing with its palm within 6 cm of it takes it: a palm on the desk sits a few centimetres over it)
+      if (this.moveHand < 0 && this.moveGrip[i] && !wasGrip && d < 0.06 && !this.dragging[0] && !this.dragging[1]) {
         this.moveHand = i;
         // (from the pinch to the kit's centre, in the world: the kit keeps that as it goes)
         if (this.kitHome && root.parent !== this.kitHome) this.kitHome.attach(root);
         root.updateMatrixWorld(true);
-        this.moveOff.copy(root.position).sub(h.pinchPoint);
-        this.moveOffY = h.pinchPoint.y - root.position.y;
+        this.moveOff.copy(root.position).sub(at);
+        this.moveOffY = at.y - root.position.y;
         sfx.lift();
       }
     }
     this.moveK += (near - this.moveK) * 0.25;
-    puck.scale.setScalar(1 + 0.25 * this.moveK);
+    puck.scale.setScalar(1 + 0.12 * this.moveK);
     (puck.material as MeshBasicMaterial).opacity = 0.65 + 0.35 * this.moveK;
   }
 
@@ -1470,7 +1497,19 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         say = { kind: 'tip', big: 'Now', small: `Hit the ${partName(this.game.hold.key)}`, hot: true };
         this.hudPoint(this.game.hold.key);
       }
+      else if (mode === 'build' && this.game.buildHud()) {
+        // making a track: each step said where you're looking, pointing at what you're recording on
+        const bh = this.game.buildHud()!;
+        say = { kind: 'track', step: bh.step, name: bh.name, parts: bh.parts, done: bh.done, n: bh.n ?? 0, k: bh.k ?? 0, sub: bh.sub };
+        if (bh.point) this.hudPoint(bh.point);
+      }
       else if (d.count > 0 && (mode === 'count' || this.game.looper.state === 'count')) say = { kind: 'count', n: d.count };
+      else if (mode === 'discover' && this.game.loopTake()) {
+        // free play's loop recording: the red light and its four bars filling, the layers it'll hold beside it
+        const lt = this.game.loopTake()!;
+        if (lt.wait > 0) say = { kind: 'track', step: 'count', title: 'Next layer', name: '', sub: 'Starts when the loop comes round', parts: ['Layer 1', 'Layer 2', 'Layer 3'], done: Math.min(2, lt.layers), n: lt.wait, k: 0 };
+        else say = { kind: 'track', step: 'rec', title: 'Play anything', name: 'Recording', parts: ['Layer 1', 'Layer 2', 'Layer 3'], done: Math.min(2, lt.layers), n: 0, k: lt.k, bars: 4 };
+      }
       else if (inSong && this.uiT - this.hudGoT < 0.6) say = { kind: 'go' };
       else if (inSong && d.spot?.ready && !d.spot.active && this.uiT - this.spotReadyT < 3.5) say = { kind: 'tip', big: 'Hands up!', small: 'Raise both hands for double points', gold: true };
       else if (inSong && this.uiT - this.hudMultT < 1.5 && this.hudMult > 1) say = { kind: 'mult', n: this.hudMult };
@@ -2155,7 +2194,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     this.phone.beat();
     this.kit.module.set(this.game.display);
-    if (this.kit.module.version !== this.zonesFor) this.panelZones();
+    if (this.kit.module.version !== this.zonesFor || this.kit.module.zonesVersion !== this.zonesAt) this.panelZones();
     this.debug.mode = this.game.mode;
     if (this.debug.found.length !== this.game.found.length) this.debug.found = this.game.found.slice();
     this.kit.update(dt);
@@ -2177,7 +2216,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.kitHandle(dt);
     this.guitarGrabTick();
     if (!this.kit.module.hidden) this.panelHover();
-    else this.kit.module.hover(-1, 0, 0, 0);
+    else {
+      this.cancelList();
+      this.kit.module.hover(-1, 0, 0, 0);
+    }
     this.tickBand(dt);
     if (this.bandOn) {
       const parts = this.game.perfParts;
@@ -2409,6 +2451,12 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.untracked[i] += delta;
       }
       this.sample.tracked = h.tracked;
+      // a hand whose points haven't moved at all for 0.3 s isn't being tracked, whatever the headset says (a hand at
+      // the edge of the cameras' view can be reported frozen where it was last seen; a real one always shakes a little):
+      // its stick goes, rather than hanging in the air where the hand was
+      if (h.tracked && !h.controller && h.wrist.distanceToSquared(this.lastWrist[i]) < 1e-10) this.frozenT[i] += delta;
+      else this.frozenT[i] = 0;
+      this.lastWrist[i].copy(h.wrist);
       // a hand holding a pinch (to swap an instrument) is reaching, not hitting
       this.pinchHeld[i] = h.tracked && h.pinch.pinching ? this.pinchHeld[i] + delta : 0;
       // a pinch on the stand picks an instrument
@@ -2416,7 +2464,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       // a fist holds a stick (the drums) or a mallet (the marimba); its tip is what strikes. An open hand lets go, so
       // fingertips can use the panel; a pinch is the panel's
       const stick = this.kit.inst === 'drums';
-      this.malletOn[i] = h.tracked && !h.controller && this.fist[i] && (this.kit.inst === 'marimba' || stick);
+      // (not a hand that's carrying the panel by its bar)
+      this.malletOn[i] = h.tracked && !h.controller && this.fist[i] && (this.kit.inst === 'marimba' || stick) && !this.dragging[i] && this.moveHand !== i && this.frozenT[i] < 0.3;
       if (this.malletOn[i]) {
         this.handMallets[i].setKind(stick);
         // (drawn resting on what it struck, not sunk through it: hits still read the stick where the hand has it)
@@ -2425,7 +2474,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       }
       this.handMallets[i].set(this.malletOn[i], this.malletOn[i] ? this.malletButt[i] : h.palm, this.malletTip[i], delta);
       if (pinched && !this.pinchWas[i]) {
-        this.pinchStand(h.pinchPoint);
+        this.pinchStand(h.pinchPoint, i);
         // with the guitar out, a pinch on the neck holds that chord (the left hand's grip)
       }
       this.pinchWas[i] = pinched;
@@ -3527,6 +3576,34 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     }
     return best;
   }
+  /**
+   * Aim help, as a phone's keyboard gives the key you're likely to press next more room: in a song, a strike on the
+   * marimba or the piano that lands on a bar or key with no note due, within reach of one that has a note due now,
+   * plays that one (its note, its light, its score). A bar's reach is 3 cm past its edge (over half the bar beside
+   * it), a white key's 1.1 cm, a black key's 8 mm; more on Easy, less on Hard. Off in the settings, and in free play
+   * (nothing is due), every strike plays what it landed on.
+   */
+  private aimed(surf: number, piano: boolean, t: number): number {
+    if (this.settings.aimHelp === false || (piano && surf === PIANO_CHORD)) return surf;
+    const lane = (id: number) => (piano ? `piano:${id >= 30 ? PIANO_BLACK + id - 30 : id}` : `marimba:${id}`);
+    if (this.game.wants(lane(surf), t) || this.game.justTook(lane(surf), t)) return surf;
+    const x = this.airP.x;
+    const z = this.airP.z;
+    const k = this.game.level === 'easy' ? 1.25 : this.game.level === 'hard' ? 0.7 : 1;
+    let best = surf;
+    let bd = Infinity;
+    for (let j = 0; j < this.airCount; j++) {
+      const s = this.airSurf[j];
+      if (s.id === surf || !s.key || s.w === undefined || s.r !== undefined || (piano && s.id === PIANO_CHORD)) continue;
+      const reach = (piano ? (s.id >= 30 ? 0.008 : 0.011) : 0.03) * k;
+      const d = Math.hypot(Math.max(0, Math.abs(x - s.x) - s.w / 2), Math.max(0, Math.abs(z - s.z) - (s.d ?? 0) / 2));
+      if (d <= reach && d < bd && this.game.wants(lane(s.id), t)) {
+        bd = d;
+        best = s.id;
+      }
+    }
+    return best;
+  }
   /** Two piano surfaces side by side: white keys next to each other, or a black key and a white key it sits between. */
   private besideKey(a: number, b: number): boolean {
     if (a < 0 || b < 0) return false;
@@ -3578,9 +3655,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         s.z = -q.z;
         s.r = undefined;
         // (the bars as keys: a mallet's stroke plays as it reaches the bar, at any speed, and one dragged along them
-        // plays each it crosses; a bar takes its whole slot, gaps and all, so a stroke between two plays one)
-        s.w = 0.054 - 0.0045;
-        s.d = q.h;
+        // plays each it crosses; a bar takes its whole slot, gaps and all, so a stroke between two plays one (the
+        // nearer: the slots meet, with nothing between them for a mallet's tip to fall through), and a little past
+        // its ends, where a mallet's head still lands on it)
+        s.w = 0.054;
+        s.d = q.h + 0.02;
         s.key = true;
         s.lift = 0.01;
         s.confirm = 0.002;
@@ -3681,6 +3760,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         continue;
       }
       const step = dt + (this.airGap[i] <= 0.08 ? this.airGap[i] : 0);
+      // (back after a gap: a stick still in the fist snaps to where the hand is now, rather than swinging round from
+      // where it pointed before it was lost)
+      if (this.airGap[i] > 0.08) this.stickSnap[i] = true;
       this.airGap[i] = 0;
       // a fist (not a pinch: that's for the panel) holds a stick; it has to stay a fist (or open) for 80 ms to change
       const c = h.controller ? 1 : this.curl(h);
@@ -3817,6 +3899,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.airHit.gain = this.airBest.gain;
         this.airHit.ago = this.airBest.ago;
         this.airP.x = this.airBest.x;
+        this.airP.z = this.airBest.z;
         this.airPlay(i, side, this.airHit, guitar, congas || marimba, false);
       }
     }
@@ -3870,6 +3953,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.airStrike.speed = hit.speed;
     this.airStrike.gain = hit.gain;
     const pan = Math.max(-0.8, Math.min(0.8, this.airP.x / 0.4));
+    // (in a song, a strike just beside the bar or key whose note is due plays that one)
+    if ((zone && this.kit.inst === 'marimba') || piano) hit.surface = this.aimed(hit.surface, piano, t);
     if (guitar) {
       if (hit.surface === 9) this.playStrum(side, hit.gain, pan, t, this.airStrike);
       else this.playChordPad(hit.surface, side, hit.gain, pan, t, this.airStrike);
@@ -3973,6 +4058,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   /** A mallet in each hand (the marimba): held while pinching, its head's world position. */
   private handMallets = [new HandMallet(), new HandMallet()];
   private malletOn = [false, false];
+  private frozenT = [0, 0];
+  private lastWrist = [new Vector3(), new Vector3()];
   private malletTip = [new Vector3(), new Vector3()];
   private pinchWas = [false, false];
   /** The stand shows what's on the shelf, lit for the one that's out. */
@@ -3990,27 +4077,38 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private panelHover(): void {
     let best = -1;
     let bk = 0;
+    if (this.placement.phase !== 'placed') this.cancelList();
     if (this.placement.phase === 'placed') {
       for (let i = 0; i < 2; i++) {
         const h = i === 0 ? hands.left : hands.right;
         if (!h.tracked) {
+          // (tracking lost with a finger on the list: let go, no tap)
+          this.cancelList(i);
           this.tipOff[i] = 1;
           this.tipArmed[i] = false;
           continue;
         }
+        // (holding the song list: the row it took lights until it moves; then it's a drag, and nothing lights)
+        if (this.holdList(i, h)) {
+          const k = this.listTapK[i];
+          if (k >= 0 && this.kit.module.listTravel < 0.008 && 1 > bk) {
+            bk = 1;
+            best = k;
+          }
+          continue;
+        }
         if (h.controller) {
-          // a controller points: its ray on the panel hovers, the trigger presses
+          // a controller points: its ray on the panel hovers, the trigger presses (or, on the song list, holds it)
           this.tipOff[i] = 1;
           this.tipArmed[i] = false;
-          this.rayA.copy(h.rayO).applyMatrix4(this.moduleSurface.inv);
-          this.rayB.copy(h.rayO).add(h.rayD).applyMatrix4(this.moduleSurface.inv);
-          const dy = this.rayB.y - this.rayA.y;
-          if (dy >= -1e-4) continue;
-          const t = -this.rayA.y / dy;
-          if (t < 0 || t > 2) continue;
-          const x = this.rayA.x + (this.rayB.x - this.rayA.x) * t;
-          const z = this.rayA.z + (this.rayB.z - this.rayA.z) * t;
+          if (!this.rayOnPanel(h)) continue;
+          const x = this.rayX;
+          const z = this.rayZ;
           const k = this.panelItemAt(x, z);
+          if (h.edge === 'start' && this.kit.module.inList(x, z)) {
+            this.takeList(i, 2, k, z);
+            continue;
+          }
           if (k < 0) continue;
           if (h.edge === 'start') this.pressPanel(k);
           if (1 > bk) {
@@ -4035,6 +4133,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (off > 0.012) this.tipArmed[i] = true;
         const fire = this.tipArmed[i] && off <= 0;
         if (off <= 0) this.tipArmed[i] = false;
+        // (a fingertip landing on the song list takes hold of it: it presses the row only if it lifts without moving)
+        if (fire && this.kit.module.inList(this.o.x, this.o.z)) {
+          this.takeList(i, 1, this.panelItemAt(this.o.x, this.o.z), this.o.z);
+          continue;
+        }
         if (off < -0.02 || off > 0.05) continue;
         const k = this.panelItemAt(this.o.x, this.o.z);
         if (k < 0) continue;
@@ -4085,23 +4188,118 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     return best;
   }
   private pageT = -9;
+  private zonesAt = -1;
   private panelZones(): void {
     const p = this.kit.module;
+    // (a new page holds presses off a moment; the list scrolling under a finger doesn't)
+    if (p.version !== this.zonesFor) this.pageT = this.uiT;
     this.zonesFor = p.version;
-    this.pageT = this.uiT;
-    this.moduleSurface.zones = (p.page?.items ?? []).map((it, i) => {
-      const k = itemZone(it);
+    this.zonesAt = p.zonesVersion;
+    this.moduleSurface.zones = (p.page?.items ?? []).map((_, i) => {
+      // (a list row scrolled out of sight: nowhere on the panel)
+      const k = p.zoneOf(i) ?? { x: 1e3, z: 1e3, w: 0, h: 0 };
       return { i, shape: 'rect' as const, x: k.x, z: k.z, w: k.w, h: k.h, degree: -1, midi: 0 } satisfies Zone;
     });
   }
 
-  /** A pinch (world point) on the panel presses what it's on. */
-  private pinchStand(at: Vector3): void {
-    if (this.placement.phase !== 'placed') return;
+  /** A pinch (world point) on the panel presses what it's on; on the song list, it takes hold of the list. */
+  private pinchStand(at: Vector3, hand: number): void {
+    if (this.placement.phase !== 'placed' || this.listSrc[hand]) return;
     this.moduleSurface.toZone(at, this.o);
     if (Math.abs(this.o.y) > 0.035) return;
     const k = this.panelItemAt(this.o.x, this.o.z);
-    if (k >= 0) this.pressPanel(k);
+    if (this.kit.module.inList(this.o.x, this.o.z)) this.takeList(hand, 3, k, this.o.z);
+    else if (k >= 0) this.pressPanel(k);
+  }
+
+  /**
+   * The song list under a hand: a fingertip on it (1), a controller's ray with its trigger in (2), or a pinch on it (3)
+   * takes hold; moving drags the list, one for one; letting go after moving lets it run on and slow (a flick), and
+   * letting go without moving presses the row it was on (a tap), as on a phone.
+   */
+  private listSrc = [0, 0];
+  private listTapK = [-1, -1];
+  private listT = [0, 0];
+  private listVer = [-1, -1];
+  private takeList(hand: number, src: number, k: number, z: number): void {
+    // (one hand on the list at a time: the other's touch is nothing, not a tap)
+    if (this.listSrc[1 - hand]) return;
+    this.listSrc[hand] = src;
+    this.listVer[hand] = this.kit.module.version;
+    this.listTapK[hand] = k >= 0 && this.kit.module.itemAt(k)?.scroll ? k : -1;
+    this.listT[hand] = this.uiT;
+    this.kit.module.listGrab(hand, z);
+  }
+  private dropList(hand: number): void {
+    if (!this.listSrc[hand]) return;
+    this.listSrc[hand] = 0;
+    const moved = this.kit.module.listRelease(hand);
+    const k = this.listTapK[hand];
+    this.listTapK[hand] = -1;
+    // (a tap presses the row it was taken on, if that page is still the one showing)
+    if (!moved && k >= 0 && this.listVer[hand] === this.kit.module.version) this.pressPanel(k);
+  }
+  /** Let go of the list without a tap (the panel folded away, the instruments not placed, the hand lost). */
+  private cancelList(only = -1): void {
+    for (let i = 0; i < 2; i++) {
+      if (!this.listSrc[i] || (only >= 0 && i !== only)) continue;
+      this.listSrc[i] = 0;
+      this.listTapK[i] = -1;
+      this.kit.module.listRelease(i);
+    }
+  }
+  /** A hand holding the list: where it is now (or it let go). True while it still holds. */
+  private holdList(hand: number, h: HandState): boolean {
+    const src = this.listSrc[hand];
+    if (!src) return false;
+    const m = this.kit.module;
+    let z = 0;
+    let on = h.tracked && m.page?.list !== undefined;
+    if (on && src === 1) {
+      this.moduleSurface.toZone(h.indexTip, this.o);
+      const off = this.o.y - h.tipRadius;
+      // (a finger dragging along the glass drifts a little off it: it lets go 1.5 cm out, or off the list's side)
+      // (slid off the list's side: that's not a tap on the row it started on)
+      if (!m.inList(this.o.x, this.o.z, 0.04)) {
+        this.cancelList(hand);
+        this.tipArmed[hand] = false;
+        return false;
+      }
+      on = off < 0.015 && off > -0.06;
+      z = this.o.z;
+      this.tipOff[hand] = off;
+      this.tipX[hand] = this.o.x;
+      this.tipZ[hand] = this.o.z;
+    } else if (on && src === 2) {
+      on = h.pinch.pinching && this.rayOnPanel(h);
+      z = this.rayZ;
+    } else if (on && src === 3) {
+      this.moduleSurface.toZone(h.pinchPoint, this.o);
+      on = h.pinch.pinching;
+      z = this.o.z;
+    }
+    if (!on) {
+      this.dropList(hand);
+      if (src === 1) this.tipArmed[hand] = false;
+      return false;
+    }
+    m.listDrag(hand, z, this.uiT - this.listT[hand]);
+    this.listT[hand] = this.uiT;
+    return true;
+  }
+  /** Where a controller's ray meets the panel's face (rayX, rayZ: panel m); false when it points away. */
+  private rayX = 0;
+  private rayZ = 0;
+  private rayOnPanel(h: HandState): boolean {
+    this.rayA.copy(h.rayO).applyMatrix4(this.moduleSurface.inv);
+    this.rayB.copy(h.rayO).add(h.rayD).applyMatrix4(this.moduleSurface.inv);
+    const dy = this.rayB.y - this.rayA.y;
+    if (dy >= -1e-4) return false;
+    const t = -this.rayA.y / dy;
+    if (t < 0 || t > 2) return false;
+    this.rayX = this.rayA.x + (this.rayB.x - this.rayA.x) * t;
+    this.rayZ = this.rayA.z + (this.rayB.z - this.rayA.z) * t;
+    return true;
   }
 
   private starMinor = false;
@@ -4121,9 +4319,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private panelPressT = -9;
   /** An item on the panel was pressed. */
   /**
-   * The panel's handle: pinch the grab bar and the panel follows your pinch until you let go (it stays there, saved);
-   * poke the close dot and it folds into its Menu pill; poke the pill and it comes back.
+   * The panel's handle: close your hand round the grab bar (a palm grab, as Horizon OS moves its windows; a
+   * controller's trigger on it) and the panel follows your hand until you open it (it stays there, saved); poke the
+   * close dot and it folds into its Menu pill; poke the pill and it comes back.
    */
+  private gripClosed = [false, false];
   private dragging = [false, false];
   private dragOff = [new Vector3(), new Vector3()];
   private handleArmed = [true, true];
@@ -4144,10 +4344,20 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       const h = i === 0 ? hands.left : hands.right;
       if (!h.tracked) {
         this.dragging[i] = false;
+        this.gripClosed[i] = false;
         continue;
       }
+      // a hand's grip: fingers curled in to the palm (closed under 6.5 cm, open again past 8.5); a controller's trigger
+      const wasClosed = this.gripClosed[i];
+      if (h.controller) this.gripClosed[i] = h.pinch.pinching;
+      else {
+        const c = this.curl(h);
+        this.gripClosed[i] = wasClosed ? c < 0.085 : c < 0.065;
+      }
+      // (held by the palm, or by a controller's tip)
+      const at = h.controller ? h.pinchPoint : h.palm;
       if (this.dragging[i]) {
-        if (!h.pinch.pinching) {
+        if (!this.gripClosed[i]) {
           this.dragging[i] = false;
           const at = m.movedTo;
           if (at) {
@@ -4157,7 +4367,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           continue;
         }
         // (where the panel's middle goes, in the kit's frame: kept a little off the desk and in reach)
-        this.hRoot.copy(h.pinchPoint).add(this.dragOff[i]);
+        this.hRoot.copy(at).add(this.dragOff[i]);
         this.kit.root.worldToLocal(this.hRoot);
         this.hRoot.set(Math.max(-0.7, Math.min(0.7, this.hRoot.x)), Math.max(0.15, Math.min(0.7, this.hRoot.y)), Math.max(-0.7, Math.min(0.3, this.hRoot.z)));
         m.moveTo(this.hRoot);
@@ -4165,11 +4375,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         continue;
       }
       if (!m.hidden) {
-        const dg = h.pinchPoint.distanceTo(this.hGrab);
-        gk = Math.max(gk, 1 - Math.min(1, dg / 0.06));
-        if (h.edge === 'start' && dg < 0.04) {
+        // (an open hand coming up to the bar lights it; closing round it, within 7 cm of the palm's middle, takes it:
+        // the bar is thin and a palm is wide)
+        const dg = at.distanceTo(this.hGrab);
+        gk = Math.max(gk, 1 - Math.min(1, dg / (h.controller ? 0.06 : 0.1)));
+        if (this.gripClosed[i] && !wasClosed && dg < (h.controller ? 0.04 : 0.07) && !this.listSrc[i]) {
           this.dragging[i] = true;
-          m.root.getWorldPosition(this.dragOff[i]).sub(h.pinchPoint);
+          m.root.getWorldPosition(this.dragOff[i]).sub(at);
           sfx.tick(0.6);
           continue;
         }
@@ -4192,7 +4404,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private pressPanel(k: number): void {
     if (this.kit.module.hidden) return;
     const it = this.kit.module.itemAt(k);
-    if (!it) return;
+    // (words on the page aren't a control: a finger on them does nothing)
+    if (!it || inert(it)) return;
     // (a dimmed control answers too, quietly: it's there, it just can't be used yet)
     if (it.off) {
       if (!it.id.startsWith('label:') && this.uiT - this.panelPressT > 0.15) {

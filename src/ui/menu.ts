@@ -28,6 +28,8 @@ export interface Item {
   kind: 'big' | 'card' | 'row' | 'chip' | 'button' | 'play' | 'ghost' | 'hero' | 'tile' | 'text' | 'label' | 'toggle';
   /** A red dot before the label (record). */
   dot?: boolean;
+  /** In the page's scrolling list: its x, y are in the list as if it weren't scrolled (it may sit past the window). */
+  scroll?: boolean;
   x: number;
   y: number;
   w: number;
@@ -40,7 +42,9 @@ export interface Page {
   line: string;
   items: Item[];
   /** What the middle shows besides items: a song's progress and count, results' stars, or how to play. */
-  body?: 'song' | 'results' | 'how' | 'songs' | 'pause' | 'band';
+  body?: 'song' | 'results' | 'how' | 'songs' | 'pause' | 'band' | 'maker';
+  /** Make a track: its parts in order, each with the instrument it's played on (drawn as a strip of pictures). */
+  parts?: { name: string; inst: string }[];
   /** Songs: the chosen song's card. */
   /** The chosen song; `world`: where the world's board stands, ways to say it longest first, one a line. */
   card?: { name: string; meta: string; stars: number; grade: string; best: number; world?: string };
@@ -51,6 +55,8 @@ export interface Page {
   how?: string;
   /** The colour of the instrument that's out: the page's accent. */
   accent?: number;
+  /** The window the page's `scroll` items show through (panel px): they scroll in it, clipped at its edges. */
+  list?: { x: number; y: number; w: number; h: number };
 }
 
 export interface MenuInput {
@@ -60,8 +66,6 @@ export interface MenuInput {
   inst: { id: string; name: string; scale: string; sound: string; oct: number; how?: string; key?: string; pieces?: 'small' | 'full'; frets?: 'easy' | 'real' };
   songs: { name: string; meta: string; stars: number; locked: boolean; grade?: string; best?: number; kind?: 'song' | 'lesson' | 'daily'; world?: string }[];
   songSel: number;
-  /** Which six songs show (more than six: a button in the corner turns the page). */
-  songPage?: number;
   /** The songs the filter lets through (indices into `songs`; all of them when not given), and the filter. */
   songShown?: number[];
   songFilter?: 'all' | 'classics' | 'originals' | 'lessons';
@@ -70,10 +74,10 @@ export interface MenuInput {
   /** The name page: what it's naming, the name, its two words (each a button that changes it). */
   name?: { title: string; full: string; words: [string, string] };
   /** Make a track's first page: the style chosen (its name, tempo, parts in order) and the track you kept, if any. */
-  maker?: { name: string; bpm: number; parts: string[]; saved: string };
+  maker?: { name: string; bpm: number; parts: string[]; saved: string; insts?: string[] };
   /** Make a track's part screen: what's in, what's now, what's to come. */
   buildInfo?: string;
-  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean; panelMoved?: boolean; guitarLap?: boolean; onTable?: boolean; name?: string };
+  settings: { slow: boolean; oneHand: boolean; contrast: boolean; words: boolean; backing: boolean; light?: boolean; panelMoved?: boolean; guitarLap?: boolean; onTable?: boolean; aim?: boolean; name?: string };
   /** Free play's looper: off, counting in, recording or playing; how many layers it holds. */
   loop?: { state: string; layers: number; recording: boolean };
   /** Results: the next song's button ('' none), and whether MAKE IT YOURS is offered. */
@@ -196,12 +200,10 @@ function buildPageFor(m: MenuInput): Page {
       return { id: 'inst', title: `${m.inst.name}`, line, items };
     }
     case 'songs': {
-      // a list of four with the chosen song's card beside it; filters as pills up top; the level as a stepper
+      // the songs as a list that scrolls, with the chosen song's card beside it; filters as pills up top; the level
+      // as three tabs
       const items: Item[] = [back()];
       const shown = m.songShown ?? m.songs.map((_, i) => i);
-      const per = 5;
-      const pages = Math.max(1, Math.ceil(shown.length / per));
-      const pg = Math.max(0, Math.min(pages - 1, m.songPage ?? 0));
       if (m.songFilter) {
         const pills: [string, string, number][] = [['all', 'All', 140], ['classics', 'Classics', 250], ['originals', 'Originals', 280], ['lessons', 'Lessons', 240]];
         let x = W - 32 - pills.reduce((a, p) => a + p[2], 0) - 8 * (pills.length - 1);
@@ -210,12 +212,13 @@ function buildPageFor(m: MenuInput): Page {
           x += w + 8;
         }
       }
-      // (the songs by name, each with its best grade; more of them as the list's last row)
-      shown.slice(pg * per, pg * per + per).forEach((i, k) => {
+      // (every song the filter lets through, by name with its best grade, one under another; the list shows six rows
+      // at a time and scrolls under a finger, so the rows past the sixth sit below the window until it's scrolled)
+      const list = { x: 32, y: 176, w: C8, h: 480 };
+      shown.forEach((i, k) => {
         const s = m.songs[i];
-        items.push({ id: `song:${i}`, label: s.name, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', x: 32, y: 176 + k * 80, w: C8, h: 74 });
+        items.push({ id: `song:${i}`, label: s.name, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', scroll: true, x: list.x, y: list.y + k * 80, w: list.w, h: 74 });
       });
-      if (pages > 1) items.push({ id: 'songs:more', label: 'More songs ›', sub: `${pg + 1} of ${pages}`, kind: 'row', x: 32, y: 176 + 5 * 80, w: C8, h: 74 });
       const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';
       // the level as three tabs, each lit in its own colour
       void lv;
@@ -224,7 +227,7 @@ function buildPageFor(m: MenuInput): Page {
       items.push({ id: 'listen', label: 'Listen first', kind: 'button', x: 408, y: BOT.y, w: 360, h: BOT.h });
       items.push({ id: 'play', label: 'Play', kind: 'play', x: 784, y: BOT.y, w: W - 32 - 784, h: BOT.h });
       const sel = m.songs[m.songSel];
-      return { id: 'songs', title: 'Songs', line: m.sub, items, body: 'songs', card: sel ? { name: sel.name, meta: sel.meta, stars: sel.stars, grade: sel.grade ?? '', best: sel.best ?? -1, world: sel.world } : undefined };
+      return { id: 'songs', title: 'Songs', line: m.sub, items, body: 'songs', list, card: sel ? { name: sel.name, meta: sel.meta, stars: sel.stars, grade: sel.grade ?? '', best: sel.best ?? -1, world: sel.world } : undefined };
     }
     case 'band': {
       const on = m.band.state === 'hosting' || m.band.state === 'connected';
@@ -284,17 +287,17 @@ function buildPageFor(m: MenuInput): Page {
       return { id: 'name', title: n.title, line: n.title === 'Your name' ? 'This is you on the leaderboards' : 'Your band on the leaderboards', items };
     }
     case 'maker': {
-      // what it is in a sentence, the style to build in (left and right through them), and go; the one you kept
+      // what you'll build, as a picture: its parts in order, each on its instrument (no sentence to read); the style
+      // to build in (left and right through them), and go; the one you kept
       const mk = m.maker ?? { name: '', bpm: 0, parts: [], saved: '' };
       const items: Item[] = [back()];
-      items.push({ id: 'value:makerhow', label: `Copy a bar, then play your own. Do that for all ${mk.parts.length} parts, then jam over the lot.`, kind: 'text', x: 32, y: 176, w: W - 64, h: 230 });
       items.push({ id: 'maker:prev', label: '‹', kind: 'button', x: 32, y: 430, w: 140, h: 200 });
       items.push({ id: 'value:maker', label: `${mk.name} · ${mk.bpm} bpm`, kind: 'text', x: 188, y: 430, w: W - 376, h: 200 });
       items.push({ id: 'maker:next', label: '›', kind: 'button', x: W - 172, y: 430, w: 140, h: 200 });
       const half = (W - 64 - 16) / 2;
       items.push({ id: 'maker:mine', label: 'Your track', sub: mk.saved || 'None kept yet', off: !mk.saved, kind: 'button', x: 32, y: BOT.y, w: half, h: BOT.h });
       items.push({ id: 'maker:go', label: 'Start', sub: `Part 1: ${mk.parts[0] ?? ''}`, kind: 'play', x: 32 + half + 16, y: BOT.y, w: half, h: BOT.h });
-      return { id: 'maker', title: 'Make a track', line: 'A loop you build, then play over', items };
+      return { id: 'maker', title: 'Make a track', line: 'One part at a time. Hit what glows', items, body: 'maker', parts: mk.parts.map((name, i) => ({ name, inst: mk.insts?.[i] ?? 'drums' })) };
     }
     case 'reset': {
       // starting over: asked once, with keeping it the big button
@@ -312,7 +315,9 @@ function buildPageFor(m: MenuInput): Page {
       items.push(t('set:slow', 'Slower songs', m.settings.slow, 0), t('set:onehand', 'One hand', m.settings.oneHand, 1), t('set:contrast', 'High contrast', m.settings.contrast, 2), t('set:words', 'Hints in the room', m.settings.words, 3), t('set:backing', 'Backing band', m.settings.backing, 4), t('set:light', 'Light when you play', m.settings.light !== false, 5), t('set:guitarlap', 'Guitar in your lap', m.settings.guitarLap !== false, 6), t('set:table', 'On the table', m.settings.onTable !== false, 7));
       // (your name on the world's boards: a page to change it)
       // (its own row, clear of the buttons under it and the glow of Done)
-      items.push({ id: 'nav:name', label: m.settings.name ? `Playing as ${m.settings.name}` : 'Your name', kind: 'button', x: 32, y: 176 + 4 * 96, w: W - 64, h: 84 });
+      // (beside it, the help for the marimba's bars and the piano's keys in songs)
+      items.push({ id: 'nav:name', label: m.settings.name ? `Playing as ${m.settings.name}` : 'Your name', kind: 'button', x: 32, y: 176 + 4 * 96, w: C6, h: 84 });
+      items.push(t('set:aim', 'Wider keys in songs', m.settings.aim !== false, 9));
       // (putting the panel back, and starting over, share the left half)
       const hw = (C6 - 16) / 2;
       items.push({ id: 'set:panel', label: 'Panel', sub: 'Put back', kind: 'button', x: 32, y: BOT.y, w: hw, h: BOT.h, off: !m.settings.panelMoved });

@@ -147,7 +147,7 @@ export interface GameStage {
   /** Slow mode switched in the headset (tempo 0.6–1), to be saved. */
   tempo(t: number): void;
   /** In-headset settings: read and switch (saved by the stage). */
-  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved' | 'guitarLap' | 'onTable', flip: boolean): boolean;
+  setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved' | 'guitarLap' | 'onTable' | 'aim', flip: boolean): boolean;
   /** Playing together: the link's state and how many are in the band. */
   bandState?(): { state: string; players: number; message?: string; host?: boolean; talk?: { on: boolean; line: string; others: number } };
   /** Easy or Normal changed (saved). */
@@ -474,10 +474,10 @@ export class Game {
 
   /** Make a track's style on its first page (an index into TRACKS). */
   makerSel = 0;
-  private makerModel(): { name: string; bpm: number; parts: string[]; saved: string } {
+  private makerModel(): { name: string; bpm: number; parts: string[]; saved: string; insts: string[] } {
     const t = TRACKS[Math.max(0, Math.min(TRACKS.length - 1, this.makerSel))];
     const kept = this.progress.track ? TRACKS.find((x) => x.id === this.progress.track!.id) : undefined;
-    return { name: t.name, bpm: t.bpm, parts: t.parts.map((p) => partName(p.name)), saved: kept ? kept.name : '' };
+    return { name: t.name, bpm: t.bpm, parts: t.parts.map((p) => partName(p.name)), saved: kept ? kept.name : '', insts: t.parts.map((p) => PART_INST[p.name] ?? 'drums') };
   }
   /** The part screen's middle: what's in, what's being made now, and what's still to come. */
   private buildInfo(): string {
@@ -729,12 +729,13 @@ export class Game {
       let k = 0;
       for (const s of steps(def.pattern, b.track.swing)) {
         const rel = (s.beat - (b.recStart % LOOP_BEATS) + LOOP_BEATS) % LOOP_BEATS;
-        // the take's second bar is yours: no lights
-        if (rel >= 4) continue;
+        // (both bars of the take light what to hit, so there's only ever one thing to do: hit what glows; the
+        // second bar's lights are softer, and whatever you play there instead goes in as your own)
+        const soft = rel >= 4 ? 0.6 : 1;
         const at = b.recStart + rel;
         const d = at - beat;
         const key = this.keyFor(target.surface, target.key, s);
-        if (d <= TIMING.glowBeats && d > -0.3) this.stage.light(key, 1 - Math.max(0, d) / TIMING.glowBeats);
+        if (d <= TIMING.glowBeats && d > -0.3) this.stage.light(key, soft * (1 - Math.max(0, d) / TIMING.glowBeats));
         if (d <= TIMING.travelBeats && d > -0.6 && k < this.motes.length) {
           const m = this.motes[k++];
           m.key = key;
@@ -749,7 +750,7 @@ export class Game {
           b.phase = 'rec';
           this.refreshDisplay();
         } else if (n !== this.display.count) this.refreshDisplay();
-      } else if (beat >= b.recStart + 4 && beat < b.recStart + 4.2 && this.display.sub !== 'Your bar') {
+      } else if (beat >= b.recStart + 4 && beat < b.recStart + 4.2 && this.display.sub !== 'Keep going, or play your own') {
         this.refreshDisplay();
       } else if (beat >= b.recStart + LOOP_BEATS + 0.35) {
         // the part is in: the lit bar snapped and filled, your own bar as you played it (on the 16ths), looping
@@ -846,11 +847,48 @@ export class Game {
     }
     if (b.phase === 'count') {
       d.count = Math.max(1, Math.min(8, Math.ceil(b.recStart - this.clock.beatAt(this.t))));
-      d.sub = b.retried ? 'Once more. Copy the lights' : 'Watch the lights, then copy them';
+      d.sub = b.retried ? 'Once more. Hit what glows' : 'Get ready. Hit what glows';
       return;
     }
     // the take: the first bar lights up to copy, the second is yours to play what you like
-    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Your bar. Play anything' : 'Copy it. Hit what glows';
+    d.sub = this.clock.beatAt(this.t) >= b.recStart + 4 ? 'Keep going, or play your own' : 'Hit what glows';
+  }
+
+  /**
+   * Making a track, for the HUD in front of the instrument, where you're looking (drawn as a picture, hardly a word to
+   * read): the step you're on (the next part coming, its count-in, recording with a bar filling, a part just in, the
+   * drop, done), the track's parts with how many are in, and the thing you're recording on to point at.
+   */
+  /** Free play's loop recording now: how far through its four bars (0..1) and how many layers it holds; else null. */
+  loopTake(): { k: number; layers: number; wait: number } | null {
+    const l = this.looper;
+    if (this.mode !== 'discover' || !l.recording) return null;
+    const beat = this.loopClock.beatAt(this.t);
+    // (a new layer waits for the loop to come round to its start: the beats left, counted)
+    if (beat < l.recStart) return l.state === 'count' ? null : { k: 0, layers: l.layers.length, wait: Math.ceil(l.recStart - beat) };
+    return { k: Math.max(0, Math.min(1, (beat - l.recStart) / l.beats)), layers: l.layers.length, wait: 0 };
+  }
+
+  buildHud(): { step: 'next' | 'count' | 'rec' | 'in' | 'drop' | 'done'; name: string; parts: string[]; done: number; n?: number; k?: number; point?: string; sub?: string } | null {
+    const b = this.bld;
+    if (this.mode !== 'build' || !b) return null;
+    const parts = b.track.parts.map((p) => say(p.name));
+    const done = b.parts.length;
+    const name = say(b.track.parts[Math.min(b.part, parts.length - 1)]?.name ?? '');
+    const beat = this.clock.beatAt(this.t);
+    if (b.phase === 'run') {
+      const left = Math.ceil(b.dropAt - beat);
+      if (b.dropAt > 0 && left <= 4) return { step: 'drop', name: '', parts, done, n: Math.max(1, left) };
+      return { step: 'done', name: b.track.name, parts, done };
+    }
+    if (b.phase === 'assign') {
+      if (b.verdict && beat < b.guard) return { step: 'in', name: b.verdict.name, parts, done };
+      // (a clap isn't picked for you: it starts when you clap)
+      return { step: 'next', name, parts, done, sub: b.track.parts[b.part]?.name === 'CLAP' ? 'Clap your hands to start' : undefined };
+    }
+    const point = b.target?.key;
+    if (b.phase === 'count') return { step: 'count', name, parts, done, n: Math.max(1, Math.min(8, Math.ceil(b.recStart - beat))), point, sub: b.retried ? 'Once more' : undefined };
+    return { step: 'rec', name, parts, done, k: Math.max(0, Math.min(1, (beat - b.recStart) / LOOP_BEATS)), point };
   }
 
   // ---------------------------------------------------------------- perform
@@ -1169,14 +1207,6 @@ export class Game {
     });
     return out;
   }
-  /** The page of songs showing now (six to a page): the one asked for, else the one with the song picked. */
-  private shownPage(): number {
-    const shown = this.shownSongs();
-    const pages = Math.max(1, Math.ceil(shown.length / SONGS_A_PAGE));
-    const at = this.songPage >= 0 ? this.songPage : Math.max(0, Math.floor(shown.indexOf(this.songSel) / SONGS_A_PAGE));
-    return Math.min(pages - 1, at);
-  }
-
   /** The next song to play: the first you haven't played, else the last. */
   nextSong(): number {
     const i = SONG_TRACKS.findIndex((t) => !this.performed(t.id));
@@ -1230,12 +1260,8 @@ export class Game {
     const bars = sc ? sc.end / 4 : 20;
     // (a song plays straight through its solo bars, the band at full: a solo left you nothing to do while the band
     // stepped back, and read as everything shutting down)
-    const fills: [number, number][] = sc
-      ? []
-      : [
-          [28, 32],
-          [52, 56],
-        ];
+    // (a track you made yourself too: no solos anywhere)
+    const fills: [number, number][] = [];
     // (Easy keeps its lights to the end: the last two bars go dark on Normal, the last four on Hard)
     // (every note has its ring to the end: the last bars used to be played from memory, and every song's climax
     // ended on misses)
@@ -2238,6 +2264,16 @@ export class Game {
   world: { rank: number; total: number; inst: string } | null = null;
   /** The last judged hit's offset from its note (s; − early, + late). */
   lastOffset = 0;
+  /**
+   * The last judged hit's lean: −1 clearly early, +1 clearly late (past halfway from the Perfect window's edge to the
+   * Good's), 0 near enough the beat. A Good says GOOD, or EARLY or LATE when it leans.
+   */
+  get hitLean(): number {
+    const w = this.judge?.win;
+    if (!w) return 0;
+    const o = this.lastOffset;
+    return Math.abs(o) <= (w.perfect + w.good) / 2 ? 0 : Math.sign(o);
+  }
   /** Your last 10 hits' offsets (s), round the ring: `hitErrN` of them, the next going at `hitErrI`; `hitV` counts. */
   readonly hitErrs = new Float32Array(10);
   hitErrN = 0;
@@ -2290,6 +2326,26 @@ export class Game {
   private encoreAt = -1;
   private encoreNext = 0;
 
+  /**
+   * Whether a hit on `key` at room time `t` would take a note: one due on it now (in a song, scored), or the one a
+   * lesson is holding for. The room widens such a key for a strike that lands just beside it.
+   */
+  /**
+   * Whether a strike on `key` at room time `t` comes just after one that played its note (within a quarter second): a
+   * bounce or a repeat on the same key, which aim help leaves alone (else a double from tracking, moved onto the next
+   * key's note, would take that note early and push the real press on to the key after it).
+   */
+  justTook(key: string, t: number): boolean {
+    if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge) return false;
+    return this.judge.took(key, t - this.opts.offset - this.clock.start, 0.25);
+  }
+
+  wants(key: string, t: number): boolean {
+    if ((this.mode !== 'play' && this.mode !== 'count') || !this.judge || this.listening) return false;
+    if (this.hold) return this.hold.kind !== 'read' && this.hold.key === key;
+    return this.judge.due(key, t - this.opts.offset - this.clock.start);
+  }
+
   hit(key: string, t: number, gain: number): Grade | 'extra' | 'early' | 'late' | null {
     // (playing along with the machine's replay just plays; once it's done and the choice is up, a hit moves on)
     // (the results stay until you press something on the screen: a drum hit while you read them doesn't take them away)
@@ -2337,8 +2393,9 @@ export class Game {
     if (!r) for (const alt of nearKeys(key, this.level)) if ((r = this.judge.hit(alt, at))) break;
     if (!r) {
       this.graded.extra++;
-      // (near a note but outside its window: say which way)
-      const off = this.judge.near(key, at, 0.25 * this.clock.spb);
+      // (near a note but outside its window, up to a quarter of a beat past it and never less than 0.12 s: say which
+      // way, so a hit that's far too early or late shows it rather than seeming to vanish)
+      const off = this.judge.near(key, at, this.judge.win.good + Math.max(0.12, 0.25 * this.clock.spb));
       // (near a note but outside its window: on the strip at its edge, the way it was off)
       if (off !== null) this.noteErr(off < 0 ? -0.2 : 0.2);
       return off === null ? 'extra' : off < 0 ? 'early' : 'late';
@@ -2579,7 +2636,6 @@ export class Game {
     this.encoreAt = -1;
     this.lap = null;
     this.songSel = this.nextSong();
-    this.songPage = -1;
     this.stage.useInstrument?.(null);
     this.mode = 'discover';
     this.song = null;
@@ -2932,8 +2988,6 @@ export class Game {
   private sung = 0;
   /** The song the panel's card shows (◀ ▶ browse; PLAY plays it). */
   songSel = 0;
-  /** The page of songs on the panel (six to a page), or −1: the page with the one picked. */
-  private songPage = -1;
   /** Which songs the page shows. */
   songFilter: 'all' | 'classics' | 'originals' | 'lessons' = 'all';
   /** The gear on the panel: the settings page. */
@@ -2955,6 +3009,8 @@ export class Game {
   typedCode = '';
   /** Where Instruments was opened from (picking one goes back there). */
   instFrom: PageId = 'free';
+  /** Back from Songs, an instrument's settings, or Make a track: the page it was opened from (unset: the usual one up). */
+  private backTo: Partial<Record<PageId, PageId>> = {};
   /** Easy (the beat, the tune) or Normal (more of each part). */
   level: 'easy' | 'normal' | 'hard' = 'easy';
 
@@ -2965,6 +3021,7 @@ export class Game {
     if (id === 'nav:build') {
       if (this.mode === 'results') this.leaveResults();
       this.makerSel = Math.max(0, Math.min(TRACKS.length - 1, this.makerSel));
+      if (this.menu !== 'maker') this.backTo.maker = this.menu === 'free' ? 'free' : 'main';
       this.menu = 'maker';
       this.refreshDisplay();
       return;
@@ -2976,17 +3033,18 @@ export class Game {
     }
     if (id === 'maker:go') {
       const i = this.buildTracks.indexOf(TRACKS[this.makerSel]);
-      this.menu = 'free';
+      // (stopping it comes back here, to Make a track: start another, or Back to where you were)
+      this.menu = 'maker';
       this.beginBuild(i >= 0 ? i : 0);
       return;
     }
     if (id === 'maker:mine') {
-      this.menu = 'free';
+      this.menu = 'maker';
       this.restoreTrack();
       return;
     }
     if (id === 'back' && this.menu === 'maker' && !this.tuneOpen && !this.settingsOpen) {
-      this.menu = this.found.includes('kit') ? 'free' : 'main';
+      this.menu = this.backTo.maker ?? 'main';
       this.refreshDisplay();
       return;
     }
@@ -3037,7 +3095,7 @@ export class Game {
       if (this.tuneOpen) this.tuneOpen = false;
       else if (this.settingsOpen) this.settingsOpen = false;
       else {
-        const up: Record<string, PageId> = { inst: 'instruments', instruments: this.instFrom === 'songs' ? 'songs' : this.instFrom === 'main' ? 'main' : this.found.includes('kit') ? 'free' : 'main', songs: 'main', band: 'main', join: 'band', free: 'main', main: 'main' };
+        const up: Record<string, PageId> = { inst: this.backTo.inst ?? 'instruments', instruments: this.instFrom === 'songs' ? 'songs' : this.instFrom === 'main' ? 'main' : this.found.includes('kit') ? 'free' : 'main', songs: this.backTo.songs ?? 'main', band: 'main', join: 'band', free: 'main', main: 'main' };
         this.menu = up[this.menu] ?? 'main';
       }
       this.refreshDisplay();
@@ -3050,9 +3108,11 @@ export class Game {
       else if (to === 'build') this.beginBuild(this.nextBuild());
       else {
         if (to === 'instruments' && this.menu !== 'instruments') this.instFrom = this.menu === 'songs' ? 'songs' : this.menu === 'main' ? 'main' : 'free';
-        // (the songs open on the page with the one picked)
+        // (Songs from the main menu, free play or the band; an instrument's settings from Instruments or free play)
+        if (to === 'songs' && this.menu !== 'songs') this.backTo.songs = this.menu === 'free' || this.menu === 'band' ? this.menu : 'main';
+        if (to === 'inst' && this.menu !== 'inst') this.backTo.inst = this.menu === 'free' ? 'free' : 'instruments';
+        // (the songs open with the one picked in view: the panel scrolls the list to it)
         if (to === 'songs') {
-          this.songPage = -1;
           // (a lesson you've done picked: the first song you haven't played, the best of them leading the list)
           const cur = this.tracks[this.songSel];
           if (!cur || (cur.score?.tune.lesson && this.performed(cur.id))) {
@@ -3085,19 +3145,11 @@ export class Game {
       this.refreshDisplay();
       return;
     }
-    if (id === 'songs:more') {
-      // the songs page shows six at a time: the next six, or back to the first
-      const pages = Math.max(1, Math.ceil(this.shownSongs().length / SONGS_A_PAGE));
-      this.songPage = (this.shownPage() + 1) % pages;
-      this.refreshDisplay();
-      return;
-    }
     if (id === 'songs:filter' || id.startsWith('songs:filter:')) {
       // all of them, the classics, the originals, the lessons (a pill for each; the bare id steps through them)
       const f = id.slice('songs:filter:'.length);
       if (f === 'all' || f === 'classics' || f === 'originals' || f === 'lessons') this.songFilter = f;
       else this.songFilter = this.songFilter === 'all' ? 'classics' : this.songFilter === 'classics' ? 'originals' : this.songFilter === 'originals' ? 'lessons' : 'all';
-      this.songPage = 0;
       this.keepSelShown();
       this.refreshDisplay();
       return;
@@ -3202,6 +3254,7 @@ export class Game {
       else if (id === 'set:light') this.stage.setting('light', true);
       else if (id === 'set:guitarlap') this.stage.setting('guitarLap', true);
       else if (id === 'set:table') this.stage.setting('onTable', true);
+      else if (id === 'set:aim') this.stage.setting('aim', true);
       this.refreshDisplay();
     }
   }
@@ -3251,7 +3304,6 @@ export class Game {
       songs: this.tracks.map((t, i) => ({ name: t.name, meta: t.score?.tune.lesson ? (this.performed(t.id) ? 'Lesson done' : 'Start here') : i === 0 && !this.performed(t.id) ? 'Start here' : t.score ? `${t.score.difficulty === 'Easy' ? 'A gentle one' : t.score.difficulty === 'Medium' ? 'Medium pace' : 'A fast one'} · ${t.score.tune.by}` : 'New every day', stars: this.starsOn(t.id), locked: false, grade: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.letter, best: this.progress.top?.[`${t.id}:${this.instNow()}:${this.level}`]?.score, kind: t.score?.tune.lesson ? ('lesson' as const) : t.score ? ('song' as const) : ('daily' as const), world: i === this.songSel && pageId === 'songs' && !t.score?.tune.lesson ? this.worldLine(t.id) : undefined })),
       songSel: this.songSel,
       songShown: this.shownSongs(),
-      songPage: this.shownPage(),
       songFilter: this.songFilter,
       level: this.level,
       band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode, host: !!band.host, name: this.bandNameNow(), talk: band.talk },
@@ -3259,7 +3311,7 @@ export class Game {
       maker: this.makerModel(),
       buildInfo: this.buildInfo(),
       loop: { state: this.looper.state, layers: this.looper.layers.length, recording: this.looper.recording },
-      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false), guitarLap: this.stage.setting('guitarLap', false), onTable: this.stage.setting('onTable', false), name: this.myName() },
+      settings: { slow: this.opts.tempo < 0.95, oneHand: this.stage.setting('oneHand', false), contrast: this.stage.setting('contrast', false), words: this.stage.setting('words', false), backing: this.stage.setting('band', false), light: this.stage.setting('light', false) , panelMoved: this.stage.setting('panelMoved', false), guitarLap: this.stage.setting('guitarLap', false), onTable: this.stage.setting('onTable', false), aim: this.stage.setting('aim', false), name: this.myName() },
       next: this.fromPerform ? 'Next\nsong' : '',
       easier: this.mode === 'results' && this.fromPerform && this.lastScore?.letter === 'D' && this.level !== 'easy',
       make: this.fromPerform && !!this.machine?.written && !this.machine.track.score,
@@ -3619,7 +3671,6 @@ function lift(key: string, by: number): string {
 /** Which instruments a song can be switched to mid-song, in order, and whether one plays a written part. */
 /** Songs on a page of the panel (two across, three down). */
 /** Songs a page of the list (the menu draws as many: src/ui/menu.ts). */
-export const SONGS_A_PAGE = 5;
 const SWITCH_ORDER = ['drums', 'piano', 'marimba', 'handpan', 'congas', 'guitar'];
 const plays = (inst: string, part: string): boolean => (inst === 'congas' ? part.startsWith('PERC') : PART_INST[part] === (inst === 'marimba' ? 'piano' : inst));
 

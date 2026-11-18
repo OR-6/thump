@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bed, grid, oneHanded, secPerBeat } from '../src/songs/chart.js';
 import { SONGS } from '../src/songs/songs.js';
 import { NoteJudge, copyNeeds, estimateOffset, starsFor, windows } from '../src/songs/judge.js';
+import { TIMING } from '../src/config.js';
 import { EventCursor, SongClock } from '../src/songs/sequencer.js';
 import { cast, noteKey, wants } from '../src/songs/cast.js';
 import { Bandmate } from '../src/bandmate/bandmate.js';
@@ -163,10 +164,20 @@ describe('timing judge', () => {
     expect(j.done).toBe(true);
   });
 
+  it('knows when a lane has a note due (the room widens that key for a strike beside it)', () => {
+    const j = new NoteJudge([{ beat: 2, lane: 'marimba:3', vel: 1 }], 0.5, windows(false, 'normal'));
+    const w = windows(false, 'normal').good;
+    expect(j.due('marimba:3', 1 - w - 0.01)).toBe(false);
+    expect(j.due('marimba:3', 1 - w + 0.01)).toBe(true);
+    expect(j.due('marimba:4', 1)).toBe(false);
+    j.hit('marimba:3', 1);
+    // (played: nothing's due any more)
+    expect(j.due('marimba:3', 1)).toBe(false);
+  });
   it('slow mode widens the windows', () => {
     const j = new NoteJudge(notes, spb, windows(true));
     expect(j.hit('kick', 0.15)?.grade).toBe('good');
-    expect(windows(true).good).toBeCloseTo(0.12 * 1.5 * 1.1);
+    expect(windows(true).good).toBeCloseTo(TIMING.goodS * 1.5 * 1.1);
     // (and each level its own: Easy the widest)
     expect(windows(false, 'easy').good).toBeGreaterThan(windows(false, 'normal').good);
     expect(windows(false, 'normal').good).toBeGreaterThan(windows(false, 'hard').good);

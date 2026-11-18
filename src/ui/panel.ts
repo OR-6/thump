@@ -5,7 +5,7 @@
  * count or the results' stars. You poke an item with a fingertip, or pinch it: it lights and clicks. One canvas;
  * presses and pulses are light quads on top, so nothing redraws every frame. Kit-local, centred behind the instrument.
  */
-import { AdditiveBlending, BoxGeometry, CylinderGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace, Vector3 } from '@iwsdk/core';
+import { AdditiveBlending, BoxGeometry, BufferAttribute, CylinderGeometry, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, SRGBColorSpace, Vector3 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
 import { contactShadow } from '../art/lighting.js';
 import { thumb, whenThumbs } from '../art/thumbs.js';
@@ -17,6 +17,7 @@ import type { Item, Page } from './menu.js';
 import { ICON } from '../stand/stand.js';
 import { Minis } from './minis.js';
 import { motion } from './motion.js';
+import { ListScroll } from './list-scroll.js';
 
 /** The panel in kit-local space: centre, size (m), and how far it leans back (radians). */
 /**
@@ -30,7 +31,12 @@ const CW = 1360;
 const CH = 907;
 /** No text under this (11.6 mm on the panel: 22 to 24 mm at 1 m from the seat, 50 to 55 cm away). */
 const MIN_PX = 48;
-const MAX_ITEMS = 16;
+/** (the songs page holds every song as a row of its scrolling list) */
+const MAX_ITEMS = 48;
+/** A scrolling list's canvas: room above and below its rows for it to be pulled a little past either end. */
+const LIST_PAD = 96;
+/** The fade where a scrolling list's rows meet the window's top and bottom edges (px). */
+const LIST_FADE = 28;
 
 const INK = '#1d1d1b';
 const SOFT = '#4a4640';
@@ -38,6 +44,12 @@ const SOFT = '#4a4640';
 const ACCENT = '#3255a4';
 const DIMI = '#8a8277';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+
+/** Words on the page, not a control (instructions, a value between a stepper's arrows, a row's name): nothing to
+ * press, so no zone, no light under a finger. */
+export function inert(it: { kind: string; id: string }): boolean {
+  return it.kind === 'text' || it.kind === 'label' || it.id.startsWith('label:');
+}
 
 /** An item's centre and size in the panel's zone frame (x right, z up the panel, metres). */
 export function itemZone(it: { x: number; y: number; w: number; h: number }): { x: number; z: number; w: number; h: number } {
@@ -383,6 +395,21 @@ export class Panel {
   private turnDir = 1;
   /** Each control's entrance after a page change (s; it starts below 0, a little later each). */
   private cardIn: number[] = [];
+  /** The page's scrolling list: its rows on their own canvas, shown through a window that moves over it (scrolling
+   * redraws nothing: only the window's texture coordinates change), and a fade at the window's top and bottom. */
+  readonly scroll = new ListScroll();
+  private listCanvas = document.createElement('canvas');
+  private listTex!: CanvasTexture;
+  private listMesh!: Mesh;
+  private listFades: Mesh[] = [];
+  private list: { x: number; y: number; w: number; h: number } | null = null;
+  /** The list's rows' signature (which rows, in what order) and the chosen one: a new list, or a new choice, scrolls. */
+  private listSig = '';
+  private listOn = '';
+  /** Each item's zone is clipped to the list's window (null: scrolled out of sight, nothing to press). */
+  private clipped: (ReturnType<typeof itemZone> | null)[] = [];
+  /** Changes whenever a zone moves (a page's items, or the list scrolling): the hit zones follow. */
+  zonesVersion = 0;
   /** The item a fingertip is close to, and how close (0 far … 1 touching). */
   private hoverI = -1;
   private hoverK = 0;
@@ -413,6 +440,7 @@ export class Panel {
     this.ghost.renderOrder = 6;
     this.ghost.visible = false;
     this.root.add(this.ghost);
+    this.buildList();
     const quad = new PlaneGeometry(1, 1);
     for (let i = 0; i < MAX_ITEMS; i++) {
       const m = new Mesh(quad, new MeshBasicMaterial({ color: 0xfff2dc, transparent: true, opacity: 0, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
@@ -620,6 +648,159 @@ export class Panel {
     return this.page?.items[i] ?? null;
   }
 
+  /** Item `i`'s press zone now (x right, z up the panel, m): a list row's is the part showing; null when out of sight. */
+  zoneOf(i: number): ReturnType<typeof itemZone> | null {
+    const it = this.page?.items[i];
+    if (!it || inert(it)) return null;
+    return it.scroll ? (this.clipped[i] ?? null) : (this.zones[i] ?? null);
+  }
+
+  /** Whether panel point (x, z: m) is in the page's scrolling list (with a centimetre's slack round it). */
+  inList(x: number, z: number, slack = 0): boolean {
+    const L = this.list;
+    if (!L || this.scroll.max <= 0) return false;
+    const q = itemZone(L);
+    return Math.abs(x - q.x) <= q.w / 2 + slack && Math.abs(z - q.z) <= q.h / 2 + slack;
+  }
+  /** A pointer (a fingertip, a pinch, a controller's ray: `id`) takes the list at height `z` up the panel (m). */
+  listGrab(id: number, z: number): void {
+    this.scroll.grab(id, this.listY(z));
+  }
+  listDrag(id: number, z: number, dt: number): void {
+    const was = this.scroll.offset;
+    this.scroll.drag(id, this.listY(z), dt);
+    if (this.scroll.offset !== was) this.placeList();
+  }
+  /** It lets go: true when it had moved the list (a drag, not a tap: 8 mm or more). */
+  listRelease(id: number): boolean {
+    return this.scroll.release(id, (0.008 / PANEL.h) * CH);
+  }
+  /** How far the holding pointer has moved the list since it took it (m). */
+  get listTravel(): number {
+    return (this.scroll.travel / CH) * PANEL.h;
+  }
+  private listY(z: number): number {
+    return (0.5 - z / PANEL.h) * CH;
+  }
+
+  private buildList(): void {
+    this.listCanvas.width = 864;
+    this.listCanvas.height = 2048;
+    this.listTex = this.newListTex();
+    this.listMesh = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: this.listTex, transparent: true, toneMapped: false, depthWrite: false }));
+    this.listMesh.name = 'SongList';
+    this.listMesh.renderOrder = 1;
+    this.listMesh.visible = false;
+    this.face.add(this.listMesh);
+    // the fades: the page's own paper laid over the window's top and bottom edges, solid at the edge and clear a
+    // little way in, so a row goes into the paper rather than being cut off by a line
+    const ramp = document.createElement('canvas');
+    ramp.width = 4;
+    ramp.height = 64;
+    const rg = ramp.getContext('2d')!;
+    const grad = rg.createLinearGradient(0, 0, 0, 64);
+    grad.addColorStop(0, '#fff');
+    grad.addColorStop(1, '#000');
+    rg.fillStyle = grad;
+    rg.fillRect(0, 0, 4, 64);
+    const rampTex = new CanvasTexture(ramp);
+    // (the ramp runs across the fade on its own coordinates; the paper's are the page's, under the fade)
+    rampTex.channel = 1;
+    for (const top of [true, false]) {
+      const geo = new PlaneGeometry(1, 1);
+      geo.setAttribute('uv1', new BufferAttribute(new Float32Array(top ? [0, 1, 1, 1, 0, 0, 1, 0] : [0, 0, 1, 0, 0, 1, 1, 1]), 2));
+      const m = new Mesh(geo, new MeshBasicMaterial({ map: this.tex, alphaMap: rampTex, transparent: true, toneMapped: false, depthWrite: false, opacity: 0 }));
+      m.name = top ? 'SongListFadeTop' : 'SongListFadeBottom';
+      m.renderOrder = 2;
+      m.visible = false;
+      this.listFades.push(m);
+      this.face.add(m);
+    }
+  }
+  private newListTex(): CanvasTexture {
+    const t = new CanvasTexture(this.listCanvas);
+    t.colorSpace = SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  }
+
+  /** The page's scrolling list: its window, its canvas big enough for every row, how far it can scroll. */
+  private layoutList(p: Page): void {
+    const L = p.list ?? null;
+    this.list = L;
+    this.listMesh.visible = !!L;
+    for (const f of this.listFades) f.visible = !!L;
+    if (!L) {
+      this.scroll.reset();
+      this.listSig = '';
+      this.listOn = '';
+      return;
+    }
+    let bottom = L.y;
+    for (const it of p.items) if (it.scroll) bottom = Math.max(bottom, it.y + it.h);
+    const need = Math.ceil((bottom - L.y + 2 * LIST_PAD) / 512) * 512;
+    if (need > this.listCanvas.height) {
+      // (a texture keeps the size it was first sent at: a taller canvas needs a new one)
+      this.listCanvas.height = need;
+      this.listTex.dispose();
+      this.listTex = this.newListTex();
+      (this.listMesh.material as MeshBasicMaterial).map = this.listTex;
+    }
+    // (the last row's rule just inside the window's bottom edge when scrolled all the way)
+    this.scroll.setMax(bottom - L.y + 6 - L.h);
+    const z = itemZone(L);
+    this.listMesh.position.set(z.x, z.z, 0.0004);
+    this.listMesh.scale.set(z.w, z.h, 1);
+    this.listFades.forEach((m, k) => {
+      const y = k === 0 ? L.y : L.y + L.h - LIST_FADE;
+      const fz = itemZone({ x: L.x, y, w: L.w, h: LIST_FADE });
+      m.position.set(fz.x, fz.z, 0.0005);
+      m.scale.set(fz.w, fz.h, 1);
+      const uv = m.geometry.getAttribute('uv');
+      const u0 = L.x / CW;
+      const u1 = (L.x + L.w) / CW;
+      const v1 = 1 - y / CH;
+      const v0 = 1 - (y + LIST_FADE) / CH;
+      uv.setXY(0, u0, v1);
+      uv.setXY(1, u1, v1);
+      uv.setXY(2, u0, v0);
+      uv.setXY(3, u1, v0);
+      uv.needsUpdate = true;
+    });
+  }
+
+  /** The list scrolled (or was laid out): its window over its canvas, its rows' zones and lights, clipped to it. */
+  private placeList(): void {
+    const L = this.list;
+    const p = this.page;
+    if (!L || !p) return;
+    const H = this.listCanvas.height;
+    const off = this.scroll.offset;
+    const uv = this.listMesh.geometry.getAttribute('uv');
+    const u1 = L.w / this.listCanvas.width;
+    const vt = 1 - (LIST_PAD + off) / H;
+    const vb = 1 - (LIST_PAD + off + L.h) / H;
+    uv.setXY(0, 0, vt);
+    uv.setXY(1, u1, vt);
+    uv.setXY(2, 0, vb);
+    uv.setXY(3, u1, vb);
+    uv.needsUpdate = true;
+    p.items.forEach((it, i) => {
+      if (!it.scroll) return;
+      const top = Math.max(L.y, it.y - off);
+      const bot = Math.min(L.y + L.h, it.y - off + it.h);
+      // (a row half out of sight isn't one to press: the one beside it is what you see)
+      const z = bot - top >= it.h / 2 ? itemZone({ x: it.x, y: top, w: it.w, h: bot - top }) : null;
+      this.clipped[i] = z;
+      const m = this.glows[i];
+      if (m && z) {
+        m.position.set(z.x, z.z, 0.0012);
+        m.scale.set(z.w * 0.97, z.h * 0.94, 1);
+      }
+    });
+    this.zonesVersion++;
+  }
+
   pressKey(i: number): void {
     if (i >= 0 && i < MAX_ITEMS) this.press[i] = 1;
   }
@@ -765,6 +946,8 @@ export class Panel {
         const gg = this.ghostCanvas.getContext('2d')!;
         gg.clearRect(0, 0, CW, CH);
         gg.drawImage(this.canvas, 0, 0);
+        const L = this.list;
+        if (L) gg.drawImage(this.listCanvas, 0, LIST_PAD + Math.max(0, this.scroll.offset), L.w, L.h, L.x, L.y, L.w, L.h);
         this.ghostTex.needsUpdate = true;
         this.ghost.visible = !motion.calm;
       }
@@ -781,7 +964,10 @@ export class Panel {
     if (isig !== this.itemsSig) {
       this.itemsSig = isig;
       this.version++;
+      this.zonesVersion++;
       this.zones = p.items.map((it) => itemZone(it));
+      this.clipped = p.items.map(() => null);
+      this.layoutList(p);
       this.glows.forEach((m, i) => {
         const it = p.items[i];
         m.visible = !!it;
@@ -793,7 +979,8 @@ export class Panel {
       // the controls' own quads: each one's corner of the canvas (labels and off items stay flat)
       this.cards.forEach((q, i) => {
         const it = p.items[i];
-        const live = !!it && !it.off && !it.id.startsWith('label:');
+        // (a scrolling list's rows light, but don't lift: a row half under the window's edge can't grow out of it)
+        const live = !!it && !it.off && !inert(it) && !it.scroll;
         this.cardLive[i] = live;
         q.visible = false;
         this.cardS[i] = 1;
@@ -813,16 +1000,32 @@ export class Panel {
         q.scale.set(z.w, z.h, 1);
       });
     }
+    if (p.list) {
+      // a new list (another filter, the page just opened) starts with the chosen song in view; a song chosen
+      // another way (the results' next song) is scrolled to
+      const L = p.list;
+      const rows = p.items.filter((i) => i.scroll);
+      const lsig = `${p.id}:${rows.map((i) => i.id).join(',')}`;
+      const on = rows.find((i) => i.on);
+      const fresh = lsig !== this.listSig;
+      if (fresh) this.scroll.reset();
+      if (on && (fresh || on.id !== this.listOn)) this.scroll.show(on.y - L.y, on.y - L.y + on.h + 6, L.h, fresh);
+      this.listSig = lsig;
+      this.listOn = on?.id ?? '';
+      this.placeList();
+    }
     this.draw(d, p);
   }
 
   /**
-   * The panel's handle, under it as on a visionOS window: a grab bar (pinch it and move the panel anywhere; it stays
-   * there and keeps facing you) and a close dot that folds the panel into a small Menu pill, which brings it back.
+   * The panel's handle, under it as on a Horizon OS window: a grab bar (close your hand round it and move the panel
+   * anywhere; it stays there and keeps facing you) and a close dot that folds the panel into a small Menu pill, which brings it back.
    * In the panel's parent frame, following the panel.
    */
   readonly handle = new Group();
   private grabBar!: Mesh;
+  /** "Grab to move" under the bar, shown as a hand comes near it (a window's bar isn't obvious to everyone). */
+  private grabHint!: Mesh;
   private closeDot!: Mesh;
   private pill!: Mesh;
   hidden = false;
@@ -887,14 +1090,29 @@ export class Panel {
       const t = 'Menu';
       g.fillText(t, (300 - g.measureText(t).width) / 2, 54);
     })));
+    this.grabHint = new Mesh(new PlaneGeometry(0.07, 0.0146), mat(tex(384, 80, (g) => {
+      rounded(g, 4, 4, 376, 72, 36);
+      g.fillStyle = UI.bg;
+      g.fill();
+      g.lineWidth = 4;
+      g.strokeStyle = UI.ink;
+      g.stroke();
+      g.fillStyle = UI.ink;
+      g.font = display(44, 800);
+      g.textBaseline = 'middle';
+      const t = 'Grab to move';
+      g.fillText(t, (384 - g.measureText(t).width) / 2, 44);
+    })));
     const y = -PANEL.h / 2 - 0.02;
     this.grabBar.position.set(0, y, 0.002);
+    this.grabHint.position.set(0, y - 0.017, 0.002);
+    (this.grabHint.material as MeshBasicMaterial).opacity = 0;
     this.closeDot.position.set(-0.05, y, 0.002);
     this.pill.position.set(0, y + 0.01, 0.002);
     this.pill.visible = false;
-    for (const m of [this.grabBar, this.closeDot, this.pill]) m.renderOrder = 9;
+    for (const m of [this.grabBar, this.closeDot, this.pill, this.grabHint]) m.renderOrder = 9;
     this.handle.name = 'PanelHandle';
-    this.handle.add(this.grabBar, this.closeDot, this.pill);
+    this.handle.add(this.grabBar, this.closeDot, this.pill, this.grabHint);
   }
   /** Where the handle's parts are, in the world. */
   grabAt(out: Vector3): Vector3 {
@@ -935,6 +1153,10 @@ export class Panel {
     this.pill.visible = this.hidden;
     (this.grabBar.material as MeshBasicMaterial).opacity = 0.55 + 0.45 * this.grabK;
     this.grabBar.scale.setScalar(1 + 0.12 * this.grabK);
+    // (the words come up as a hand nears the bar, and stay while it's carried)
+    const hk = Math.max(0, Math.min(1, (this.grabK - 0.25) / 0.4));
+    (this.grabHint.material as MeshBasicMaterial).opacity = hk;
+    this.grabHint.visible = !this.hidden && hk > 0.01;
     (this.closeDot.material as MeshBasicMaterial).opacity = 0.7 + 0.3 * this.closeK;
     this.closeDot.scale.setScalar(1 + 0.15 * this.closeK);
     this.pill.scale.setScalar(1 + 0.06 * this.pillK);
@@ -987,6 +1209,14 @@ export class Panel {
       this.ghost.scale.setScalar(1 - 0.04 * te);
       if (this.turn >= 1) this.ghost.visible = false;
     }
+    if (this.list) {
+      if (this.scroll.update(dt)) this.placeList();
+      (this.listMesh.material as MeshBasicMaterial).opacity = this.faceMat.opacity;
+      // (each fade only where there's more list past that edge: at the top of the list, the first row is whole)
+      const off = this.scroll.offset;
+      const fk = [Math.max(0, Math.min(1, off / LIST_FADE)), Math.max(0, Math.min(1, (this.scroll.max - off) / LIST_FADE))];
+      this.listFades.forEach((m, k) => ((m.material as MeshBasicMaterial).opacity = this.faceMat.opacity * fk[k]));
+    }
     const items = this.page?.items ?? [];
     for (let i = 0; i < MAX_ITEMS; i++) {
       // a press flashes and the light pops out a little, then settles
@@ -1000,7 +1230,7 @@ export class Panel {
       const op = (solid ? this.press[i] * 0.2 : Math.max(this.press[i] * 0.55, p * 0.12, h * 0.28)) * te;
       (m.material as MeshBasicMaterial).opacity = op;
       // (an unlit glow isn't drawn at all)
-      m.visible = !!items[i] && op > 0.002;
+      m.visible = !!items[i] && op > 0.002 && !inert(items[i]) && (!items[i].scroll || !!this.clipped[i]);
       const z = items[i] ? this.zones[i] : null;
       // the control itself: 1.04 under a hovering finger (120 ms, eased out), 0.97 the moment it's pressed (60 ms),
       // back over 150 ms
@@ -1079,10 +1309,22 @@ export class Panel {
     if (p.body === 'songs' && p.card) this.drawSongCard(g, p.card);
     if (p.body === 'pause') this.drawPause(g, d);
     if (p.body === 'band' && p.band) this.drawBand(g, p.band);
+    if (p.body === 'maker' && p.parts) this.drawParts(g, p.parts);
     // (the instruments' pictures are drawn on their cards: one fixed box each, never a 3D model standing off the panel)
     this.noPics = false;
-    p.items.forEach((it) => this.drawItem(g, it));
+    for (const it of p.items) if (!it.scroll) this.drawItem(g, it);
     this.tex.needsUpdate = true;
+    const L = p.list;
+    if (L) {
+      const lg = this.listCanvas.getContext('2d')!;
+      lg.clearRect(0, 0, this.listCanvas.width, this.listCanvas.height);
+      lg.save();
+      lg.translate(-L.x, LIST_PAD - L.y);
+      lg.textBaseline = 'alphabetic';
+      for (const it of p.items) if (it.scroll) this.drawItem(lg, it);
+      lg.restore();
+      this.listTex.needsUpdate = true;
+    }
     if (false as boolean) {
       const cards = p.items
         .filter((it) => it.kind === 'card' && it.id.startsWith('inst:'))
@@ -1371,6 +1613,50 @@ export class Panel {
     g.fillText(it.label, it.x + k + 24, it.y + it.h / 2 + 19);
   }
 
+
+  /**
+   * Make a track's parts, as a strip of numbered slots across the page: each its instrument's picture and its name, in
+   * the order you'll play them. What you'll build, seen at a glance.
+   */
+  private drawParts(g: CanvasRenderingContext2D, parts: { name: string; inst: string }[]): void {
+    const n = Math.max(1, parts.length);
+    const x0 = 32;
+    const gap = 12;
+    const w = (CW - 64 - gap * (n - 1)) / n;
+    const y = 184;
+    const h = 222;
+    parts.forEach((pt, i) => {
+      const x = x0 + i * (w + gap);
+      rounded(g, x, y, w, h, 18);
+      g.fillStyle = UI.raised;
+      g.fill();
+      g.lineWidth = 3;
+      g.strokeStyle = UI.line;
+      g.stroke();
+      // (its number, stamped in the corner)
+      g.fillStyle = UI.ink;
+      g.font = display(40, 800);
+      g.fillText(String(i + 1), x + 14, y + 44);
+      const pic = thumb(pt.inst);
+      const S = Math.min(w - 28, 112);
+      if (pic) g.drawImage(pic, x + (w - S) / 2, y + 46, S, S);
+      g.fillStyle = UI.ink;
+      const name = pt.name.charAt(0).toUpperCase() + pt.name.slice(1);
+      fit(g, name, '700', 40, 30, w - 16);
+      g.fillText(name, x + (w - g.measureText(name).width) / 2, y + h - 22);
+      // (an arrow on to the next, between the slots)
+      if (i < n - 1) {
+        g.fillStyle = UI.accent;
+        const ax = x + w + gap / 2;
+        g.beginPath();
+        g.moveTo(ax - 5, y + h / 2 - 10);
+        g.lineTo(ax + 6, y + h / 2);
+        g.lineTo(ax - 5, y + h / 2 + 10);
+        g.closePath();
+        g.fill();
+      }
+    });
+  }
 
   /** The chosen song beside the list: its name (two lines if it needs them), what it is, your best and its grade. */
   private drawSongCard(g: CanvasRenderingContext2D, c: { name: string; meta: string; stars: number; grade: string; best: number; world?: string }): void {

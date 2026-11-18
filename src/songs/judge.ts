@@ -116,6 +116,26 @@ export class NoteJudge {
     return this.res;
   }
 
+  /** Whether a note on `lane` not yet played is due within the good window of song time `t` (it would take a hit). */
+  due(lane: string, t: number): boolean {
+    for (let i = this.cursor; i < this.notes.length; i++) {
+      const n = this.notes[i];
+      if (n.t - t > this.win.good) break;
+      if (n.grade === null && n.lane === lane && Math.abs(t - n.t) <= this.win.good) return true;
+    }
+    return false;
+  }
+
+  /** Whether a note on `lane` was played within `span` seconds of song time `t` (a strike just after it is a bounce). */
+  took(lane: string, t: number, span: number): boolean {
+    for (let i = this.notes.length - 1; i >= 0; i--) {
+      const n = this.notes[i];
+      if (n.t < t - span - this.win.good) break;
+      if (n.lane === lane && (n.grade === 'perfect' || n.grade === 'good') && Math.abs(t - (n.t + n.offset)) <= span) return true;
+    }
+    return false;
+  }
+
   /**
    * A hit no note took: how far off the nearest note on its lane was (s, negative: early), if one was within `span`
    * seconds (not yet played, or just missed); else null.

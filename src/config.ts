@@ -92,8 +92,9 @@ export const STRIKE = {
 
 /** Song timing (DESIGN.md §3.2, §4). */
 export const TIMING = {
-  perfectS: 0.06,
-  goodS: 0.12,
+  // (a little wider than a controller game's: hand tracking adds its own 20 to 40 ms of jitter and lag)
+  perfectS: 0.07,
+  goodS: 0.14,
   /** Slow mode widens the windows by this. */
   slowWiden: 1.5,
   /** Stars: share of notes good or better. */

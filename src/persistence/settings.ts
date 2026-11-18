@@ -45,6 +45,9 @@ export interface Settings {
   band: boolean;
   /** Free play: light sent off what you play (rings spreading, bars rising). */
   freeLight: boolean;
+  /** In songs, the marimba's bars and the piano's keys with a note about to play take a strike that lands just
+   * beside them, as a phone's keyboard widens the key you're likely to press next (on unless turned off). */
+  aimHelp?: boolean;
   /** A visual metronome (a felt pendulum) in songs. */
   pendulum: boolean;
   /** Seconds your hits arrive late by (tap-along calibration, then learned as you play). */
@@ -92,6 +95,7 @@ export function loadSettings(): Settings {
     lookToPlay: s.lookToPlay === true,
     band: s.band !== false,
     freeLight: s.freeLight !== false,
+    aimHelp: s.aimHelp !== false,
     pendulum: s.pendulum === true,
     offset: num(s.offset, -0.25, 0.25, 0),
     calibrateNext: s.calibrateNext === true,

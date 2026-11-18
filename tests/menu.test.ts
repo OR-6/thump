@@ -47,27 +47,31 @@ describe('the panel pages', () => {
     expect(p.items.find((i) => i.id.startsWith('level:') && i.on)?.label).toBe('Easy');
     expect(p.items.some((i) => i.id === 'play')).toBe(true);
   });
-  it('songs: five to a page beside the chosen one\'s card; More turns the page; filters as pills; nothing overlaps', () => {
-    const songs = Array.from({ length: 6 }, (_, i) => ({ name: `Song ${i}`, meta: 'Traditional', stars: 0, locked: i > 1 }));
-    const first = buildPage({ ...base('songs'), songs });
-    expect(first.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:0', 'song:1', 'song:2', 'song:3', 'song:4']);
-    expect(first.items.find((i) => i.id === 'songs:more')?.sub).toBe('1 of 2');
-    expect(first.card?.name).toBe('Song 0');
-    const second = buildPage({ ...base('songs'), songs, songPage: 1 });
-    expect(second.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:5']);
-    expect(second.items.find((i) => i.id === 'songs:more')?.sub).toBe('2 of 2');
-    // a filter: only the songs it lets through, paged the same way; its pill lit
+  it('songs: every song a row of a list that scrolls beside the chosen one\'s card; filters as pills; nothing overlaps', () => {
+    const songs = Array.from({ length: 9 }, (_, i) => ({ name: `Song ${i}`, meta: 'Traditional', stars: 0, locked: i > 1 }));
+    const p = buildPage({ ...base('songs'), songs });
+    const rows = p.items.filter((i) => i.id.startsWith('song:'));
+    expect(rows.map((i) => i.id)).toEqual(songs.map((_, i) => `song:${i}`));
+    expect(rows.every((i) => i.scroll)).toBe(true);
+    // (no page to turn, no counter)
+    expect(p.items.some((i) => i.id === 'songs:more' || /of \d/.test(i.sub ?? ''))).toBe(false);
+    expect(p.card?.name).toBe('Song 0');
+    // the rows one under another in the list's window, the first at its top; the window six rows tall
+    const L = p.list!;
+    expect(rows[0].y).toBe(L.y);
+    rows.forEach((r, k) => expect(r.y).toBe(L.y + k * 80));
+    expect(Math.floor(L.h / 80)).toBe(6);
+    // a filter: only the songs it lets through; its pill lit
     const some = buildPage({ ...base('songs'), songs, songShown: [1, 4], songFilter: 'originals' });
     expect(some.items.filter((i) => i.id.startsWith('song:')).map((i) => i.id)).toEqual(['song:1', 'song:4']);
     expect(some.items.find((i) => i.id.startsWith('songs:filter:') && i.on)?.label).toBe('Originals');
-    expect(some.items.some((i) => i.id === 'songs:more')).toBe(false);
-    for (const p of [first, second])
-      for (const a of p.items) {
-        expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);
-        for (const b of p.items) if (a !== b) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
-      }
-    // (four or fewer: no More row)
-    expect(buildPage(base('songs')).items.some((i) => i.id === 'songs:more')).toBe(false);
+    // nothing outside the list overlaps, the list's window included; the rows stay in the window's column
+    const fixed = [...p.items.filter((i) => !i.scroll), { ...L, id: 'list' }];
+    for (const a of fixed) {
+      expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);
+      for (const b of fixed) if (a !== b) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+    }
+    for (const r of rows) expect(r.x >= L.x && r.x + r.w <= L.x + L.w && r.y >= L.y).toBe(true);
   });
   it('in a song: switch instrument, or stop', () => {
     const p = buildPage({ ...base('song'), line: 'Kick Start' });

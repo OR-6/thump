@@ -582,8 +582,6 @@ export class MarimbaModel implements DeskModel {
   private readonly rubber = mat('Rubber', 0x26262a, 0.9);
   private readonly pinMetal = mat('Pin', 0xc8ccd2, 0.25, 1);
   private readonly sleeve = mat('Sleeve', 0x1c1c1e, 0.85);
-  private readonly yarn = new MeshStandardMaterial({ name: 'Yarn', color: 0x2f5fc4, normalMap: fineNormal(9, 30), roughness: 0.95 });
-  private readonly birch = mat('Birch', 0xd9b98a, 0.5);
   private readonly cord = mat('Cord', 0x26211c, 0.9);
   private readonly brass = mat('Brass', 0xc8a050, 0.3, 1);
   private readonly chrome = mat('Chrome', 0xe2e5ea, 0.16, 1);
@@ -696,19 +694,7 @@ export class MarimbaModel implements DeskModel {
       }
       this.root.add(bar);
     });
-    // its two mallets, lying beside it: birch handles, wound blue yarn heads
-    for (const dx of [0.022, 0.04]) {
-      const m = named(new Group(), 'Mallet');
-      const handle = new Mesh(new CylinderGeometry(0.0028, 0.0028, 0.2, 10), this.birch);
-      handle.rotation.x = Math.PI / 2;
-      const head = new Mesh(new SphereGeometry(0.0125, 20, 14), this.yarn);
-      head.scale.set(1, 0.92, 1.08);
-      head.position.z = -0.105;
-      m.add(handle, head);
-      m.position.set(x1 + dx, 0.0125, zc + 0.01);
-      m.rotation.y = dx > 0.03 ? -0.06 : 0.04;
-      this.root.add(m);
-    }
+    // (no mallets lying beside it: your fists are the mallets, so a pair on the desk only looked like something to pick up)
   }
 
   /** The parts that move or light on their own (the rest is merged into a few meshes). */

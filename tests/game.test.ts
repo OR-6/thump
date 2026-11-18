@@ -71,7 +71,7 @@ describe('the game', () => {
     expect(g.display.pulse).toBe('play');
   });
 
-  it('perform: on the machine you built, the kit parts on your things, fills, hold it, stars and Tight %', () => {
+  it('perform: on the machine you built, the kit parts on your things, no solos, hold it, stars and Tight %', () => {
     const voiced: string[] = [];
     const st = { ...stage([]), voice: (key: string) => voiced.push(key) };
     const p = freshProgress();
@@ -109,7 +109,8 @@ describe('the game', () => {
     }
     expect(g.mode).toBe('results');
     // (every note keeps its cue to the end now: no bars played from memory)
-    expect(sawFill).toBe(true);
+    // (no solos: a track you made plays straight through, as every song does)
+    expect(sawFill).toBe(false);
     expect(sawHold).toBe(false);
     expect(g.last?.stars).toBe(3);
     // (hits land up to a 30 fps frame after the note here, so not 100)
@@ -285,6 +286,39 @@ describe('the game', () => {
     for (let k = 0; k < 240 && (g.display.line !== 'Part 2 of 6: snare' || g.buildAsks() !== null); k++) g.tick((t += 1 / 30));
     expect(g.display.line).toBe('Part 2 of 6: snare');
     expect(g.buildAsks()).toBeNull();
+  });
+
+  it('build: the HUD in front of you shows each step (next, the count, recording with its bars filling, in), the parts, pointing at it', () => {
+    const g = new Game(stage([]), freshProgress(), room([{ id: 't1', family: 'bell', zones: 1 }]));
+    g.start(0);
+    g.discovered('kit', 'table', 0);
+    g.tick(45);
+    expect(g.buildHud()).toBeNull();
+    g.beginBuild(0);
+    expect(g.buildHud()?.step).toBe('next');
+    expect(g.buildHud()?.name).toBe('Kick drum');
+    expect(g.buildHud()?.parts.length).toBe(6);
+    expect(g.buildHud()?.done).toBe(0);
+    const seen: string[] = [];
+    let lastK = -1;
+    let t = 45.1;
+    for (let k = 0; k < 900 && g.buildHud()?.step !== 'in'; k++) {
+      t += 1 / 30;
+      g.tick(t);
+      g.dueBetween(t - 1 / 30, t, (kk) => g.hit(kk, t, 0.8));
+      const h = g.buildHud()!;
+      if (seen[seen.length - 1] !== h.step) seen.push(h.step);
+      if (h.step === 'count' || h.step === 'rec') expect(h.point).toBeTruthy();
+      if (h.step === 'rec') {
+        // (the take's bars fill as it goes)
+        expect(h.k!).toBeGreaterThanOrEqual(lastK);
+        lastK = h.k!;
+      }
+    }
+    expect(seen).toEqual(expect.arrayContaining(['count', 'rec', 'in']));
+    expect(lastK).toBeGreaterThan(0.9);
+    expect(g.buildHud()?.name).toBe('Kick drum');
+    expect(g.buildHud()?.done).toBe(1);
   });
 
   it('perform: never three things at once, and ▶ on the results plays your machine again', () => {
@@ -666,7 +700,7 @@ describe('the game', () => {
     expect(seen[seen.length - 1]).toBe('marimba 2 major');
   });
 
-  it('the songs page: a library, every song open, six to a page; how hard each is; all, the classics or the originals', () => {
+  it('the songs page: a library, every song open, one list that scrolls; how hard each is; all, the classics or the originals', () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
@@ -677,20 +711,14 @@ describe('the game', () => {
     // (All songs: the drums' lesson first, then every song; the other lessons on their own page)
     const songs = g.tracks.map((t, i) => (t.score?.tune.lesson ? -1 : i)).filter((i) => i >= 0);
     const all = [0, ...songs];
-    const pages = Math.ceil(all.length / 5);
-    expect(tiles().map((i) => i.label)).toEqual(all.slice(0, 5).map((i) => SONG_TRACKS[i].name));
+    // (every one of them a row of the list: it scrolls, there are no pages)
+    expect(tiles().map((i) => i.label)).toEqual(all.map((i) => g.tracks[i].name));
     // (each row is its name and best grade; what it is shows on the chosen one's card)
     expect(g.display.page?.card?.meta).toBe('Start here');
     expect(tiles()[1].grade).toBeUndefined();
     expect(tiles().some((i) => i.off)).toBe(false);
-    expect(items().find((i) => i.id === 'songs:more')?.sub).toBe(`1 of ${pages}`);
-    // every page in turn, then back to the first; every song on one of them, the last one today's
-    const seen: string[] = [];
-    for (let p = 0; p < pages; p++) {
-      seen.push(...tiles().map((i) => i.id));
-      g.act('songs:more');
-    }
-    expect(seen).toEqual(all.map((i) => `song:${i}`));
+    expect(items().some((i) => i.id === 'songs:more')).toBe(false);
+    expect(tiles().map((i) => i.id)).toEqual(all.map((i) => `song:${i}`));
     expect(tiles()[0].id).toBe('song:0');
     // any song can be picked, the hardest too
     g.act(`song:${n - 2}`);
@@ -704,7 +732,7 @@ describe('the game', () => {
     expect(tiles().map((i) => g.tracks[Number(i.id.slice(5))].score?.tune.original)).toEqual(tiles().map(() => true));
     g.act('songs:filter');
     expect(lit()).toBe('Lessons');
-    expect(tiles().length).toBe(5);
+    expect(tiles().length).toBe(g.tracks.filter((t) => t.score?.tune.lesson).length);
     g.act('songs:filter:all');
     expect(lit()).toBe('All');
   });

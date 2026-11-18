@@ -102,7 +102,13 @@ export type HudSay =
    * Playing a song: the run and the multiplier, and under them how your last hits sat in time (offsets in seconds, −
    * early; `n` of them, the newest at `i - 1` round `errs`). `v` changes with every hit or miss (it redraws then).
    */
-  | { kind: 'play'; run: number; mult: number; v: number; errs: Float32Array; n: number; i: number };
+  | { kind: 'play'; run: number; mult: number; v: number; errs: Float32Array; n: number; i: number }
+  /**
+   * Making a track: the step as a picture (the count as a big number, a red REC light with the take's two bars
+   * filling, a tick for a part that's in, a play sign when it's done) beside the part's name, and along the bottom
+   * the track's parts as a row of chips: the ones in ticked, the one now in pink.
+   */
+  | { kind: 'track'; step: 'next' | 'count' | 'rec' | 'in' | 'drop' | 'done'; name: string; parts: string[]; done: number; n: number; k: number; title?: string; bars?: number; sub?: string };
 
 export class Hud {
   readonly mesh: Mesh;
@@ -169,10 +175,11 @@ export class Hud {
 
   /** What to show now (called every frame; redraws only when it changes). */
   set(s: HudSay): void {
-    const sig = s.kind === 'count' || s.kind === 'mult' || s.kind === 'streak' ? `${s.kind}${s.n}` : s.kind === 'tip' ? `tip${s.big}|${s.small}|${s.gold ? 1 : 0}${s.hot ? 1 : 0}|${s.foot ?? ''}|${s.icon ?? ''}` : s.kind === 'play' ? `play${s.v}|${s.run}|${s.mult}` : s.kind;
+    const sig = s.kind === 'track' ? `track${s.step}|${s.title ?? ''}|${s.sub ?? ''}|${s.name}|${s.done}|${s.n}|${Math.round(s.k * 32)}` : s.kind === 'count' || s.kind === 'mult' || s.kind === 'streak' ? `${s.kind}${s.n}` : s.kind === 'tip' ? `tip${s.big}|${s.small}|${s.gold ? 1 : 0}${s.hot ? 1 : 0}|${s.foot ?? ''}|${s.icon ?? ''}` : s.kind === 'play' ? `play${s.v}|${s.run}|${s.mult}` : s.kind;
     if (sig === this.sig) return;
-    // (a tip that's only reworded doesn't stamp in again; nor does the run as you play: it pops)
-    const playing = s.kind === 'play' && this.say.kind === 'play';
+    // (a tip that's only reworded doesn't stamp in again; nor does the run as you play: it pops; nor a track's take
+    // filling, or its count going down)
+    const playing = (s.kind === 'play' && this.say.kind === 'play') || (s.kind === 'track' && this.say.kind === 'track' && s.step === this.say.step && s.name === this.say.name);
     const restamp = !(s.kind === 'tip' && this.say.kind === 'tip' && this.say.big === s.big) && !playing;
     // (the run is told by one object refreshed each frame: what it was is kept here)
     if (s.kind === 'play') {
@@ -225,6 +232,8 @@ export class Hud {
       sticker(g, cx, H / 2 - 8, 124, YELLOW, String(s.n), 130, 'in a row');
     } else if (s.kind === 'play') {
       this.drawPlay(g, s);
+    } else if (s.kind === 'track') {
+      this.drawTrack(g, s);
     } else {
       // a tip: a ticket stub. Its title printed in two inks, the line under it, and what to do to go on, highlighted
       const hot = !!s.hot;
@@ -292,7 +301,7 @@ export class Hud {
 
   /**
    * Playing: a ticket with the run printed big ("in a row" under it), the multiplier as a sticker beside it, and along
-   * the bottom a strip of time, early to late, ±120 ms wide: the Perfect band (±60 ms) highlighted in the middle, and
+   * the bottom a strip of time, early to late, ±140 ms wide: the Perfect band (±70 ms) highlighted in the middle, and
    * your last hits as ticks where they landed (blue a Perfect, green a Good, pink early or late beyond it, at its edge),
    * the newest boldest. So you can see which way you're off, and put it right.
    */
@@ -322,13 +331,13 @@ export class Hud {
     const x0 = px + 150;
     const x1 = px + pw - 150;
     const y = 232;
-    const span = 0.12;
+    const span = 0.14;
     const at = (o: number) => (x0 + x1) / 2 + (Math.max(-span, Math.min(span, o)) / span) * ((x1 - x0) / 2);
     g.fillStyle = INK;
     g.fillRect(x0, y - 2, x1 - x0, 4);
     g.globalCompositeOperation = 'multiply';
     g.fillStyle = YELLOW;
-    g.fillRect(at(-0.06), y - 20, at(0.06) - at(-0.06), 40);
+    g.fillRect(at(-0.07), y - 20, at(0.07) - at(-0.07), 40);
     g.globalCompositeOperation = 'source-over';
     g.fillStyle = INK;
     g.fillRect((x0 + x1) / 2 - 2, y - 24, 4, 48);
@@ -344,11 +353,145 @@ export class Hud {
       const o = s.errs[(s.i - s.n + k + N * 2) % N];
       const off = Math.abs(o);
       g.globalAlpha = 0.35 + 0.65 * ((k + 1) / s.n);
-      g.fillStyle = off <= 0.06 ? BLUE : off <= 0.12 ? GREEN : PINK;
+      g.fillStyle = off <= 0.07 ? BLUE : off <= 0.14 ? GREEN : PINK;
       const w = k === s.n - 1 ? 12 : 7;
       g.fillRect(at(o) - w / 2, y - 26, w, 52);
     }
     g.globalAlpha = 1;
+  }
+
+  private drawTrack(g: CanvasRenderingContext2D, s: Extract<HudSay, { kind: 'track' }>): void {
+    const px = 40;
+    const pw = W - 80;
+    const py = 8;
+    const ph = H - 16;
+    const rec = s.step === 'rec';
+    ticket(g, px, py, pw, ph, PAPER);
+    // the step, as a picture on the left
+    const gx = px + 110;
+    const gy = 108;
+    if (s.step === 'count' || s.step === 'drop') {
+      const t = String(s.n);
+      halftone(g, gx, gy, 78, s.step === 'drop' ? PINK : BLUE, 11);
+      g.font = display(150, 800);
+      const x = gx - g.measureText(t).width / 2;
+      g.lineWidth = 12;
+      g.strokeStyle = PAPER;
+      g.strokeText(t, x, gy + 52);
+      riso(g, t, x, gy + 52, BLUE, PINK, 5);
+    } else if (rec) {
+      // a red recording light
+      g.fillStyle = '#e0302b';
+      g.beginPath();
+      g.arc(gx, gy, 52, 0, Math.PI * 2);
+      g.fill();
+      g.lineWidth = 6;
+      g.strokeStyle = INK;
+      g.stroke();
+      g.fillStyle = PAPER;
+      g.font = display(34, 800);
+      g.fillText('REC', gx - g.measureText('REC').width / 2, gy + 12);
+    } else if (s.step === 'in') {
+      // a tick: it's in
+      g.fillStyle = GREEN;
+      g.beginPath();
+      g.arc(gx, gy, 56, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = PAPER;
+      g.lineWidth = 16;
+      g.beginPath();
+      g.moveTo(gx - 26, gy + 2);
+      g.lineTo(gx - 6, gy + 24);
+      g.lineTo(gx + 28, gy - 22);
+      g.stroke();
+    } else if (s.step === 'done') {
+      // a play sign: it's running, yours to play over
+      g.fillStyle = PINK;
+      g.beginPath();
+      g.arc(gx, gy, 56, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = INK;
+      g.beginPath();
+      g.moveTo(gx - 16, gy - 28);
+      g.lineTo(gx + 30, gy);
+      g.lineTo(gx - 16, gy + 28);
+      g.closePath();
+      g.fill();
+    } else {
+      // the next part: a target, where to hit
+      g.strokeStyle = PINK;
+      g.lineWidth = 12;
+      for (const r of [52, 28]) {
+        g.beginPath();
+        g.arc(gx, gy, r, 0, Math.PI * 2);
+        g.stroke();
+      }
+      g.fillStyle = PINK;
+      g.beginPath();
+      g.arc(gx, gy, 9, 0, Math.PI * 2);
+      g.fill();
+    }
+    // the words beside it: the part's name, and (recording) the take's two bars filling as it goes
+    const tx = px + 210;
+    const room = px + pw - 40 - tx;
+    const title = s.title ?? (s.step === 'in' ? `${s.name} is in` : s.step === 'drop' ? 'All together' : s.step === 'done' ? 'Your track' : rec ? 'Hit what glows' : s.name);
+    let size = 84;
+    for (; size > 52; size -= 4) {
+      g.font = display(size, 800);
+      if (g.measureText(title).width <= room) break;
+    }
+    if (s.step === 'done' || s.step === 'in') {
+      g.fillStyle = INK;
+      g.fillText(title, tx, 100);
+    } else riso(g, title, tx, 100, BLUE, PINK, 4);
+    g.font = body(40, 600);
+    g.fillStyle = INK;
+    const sub = s.sub ?? (s.step === 'done' ? 'Play anything over it' : rec ? s.name : s.step === 'count' ? 'Get ready' : s.step === 'next' ? 'Coming up' : '');
+    if (rec) {
+      // the take's bars, side by side, filling
+      const nb = s.bars ?? 2;
+      const bw = Math.min(room, 560);
+      const half = (bw - 12 * (nb - 1)) / nb;
+      for (let b = 0; b < nb; b++) {
+        const x = tx + b * (half + 12);
+        const f = Math.max(0, Math.min(1, s.k * nb - b));
+        g.fillStyle = '#e6dbc3';
+        g.fillRect(x, 128, half, 26);
+        g.fillStyle = PINK;
+        g.fillRect(x, 128, half * f, 26);
+        g.lineWidth = 3;
+        g.strokeStyle = INK;
+        g.strokeRect(x, 128, half, 26);
+      }
+    } else if (sub) g.fillText(sub, tx, 150);
+    // the track's parts: a chip each, ticked once in, the one now in pink
+    const n = Math.max(1, s.parts.length);
+    const cx0 = px + 40;
+    const cw = (pw - 80 - 8 * (n - 1)) / n;
+    const cy = 196;
+    const ch = 70;
+    const now = s.step === 'done' || s.step === 'drop' ? -1 : s.step === 'in' ? -1 : s.done;
+    s.parts.forEach((p, i) => {
+      const x = cx0 + i * (cw + 8);
+      const isIn = i < s.done;
+      g.beginPath();
+      g.roundRect(x, cy, cw, ch, 14);
+      g.fillStyle = isIn ? INK : i === now ? PINK : PAPER;
+      g.fill();
+      g.lineWidth = 3;
+      g.strokeStyle = INK;
+      g.stroke();
+      // (its whole name if it fits, else its first word: Kick, Snare)
+      g.font = body(26, 700);
+      const label = g.measureText(p).width <= cw - 14 ? p : p.split(' ')[0];
+      g.fillStyle = isIn ? PAPER : INK;
+      let fs = 30;
+      for (; fs > 18; fs -= 2) {
+        g.font = body(fs, 700);
+        if (g.measureText(label).width <= cw - 14) break;
+      }
+      g.fillText(label, x + (cw - g.measureText(label).width) / 2, cy + ch / 2 + fs * 0.36);
+    });
   }
 
   /** Each frame: stand at kit-local `at`, turned to `eyeWorld`; stamp in, fade out when there's nothing to say. */
@@ -356,7 +499,7 @@ export class Hud {
     this.age += dt;
     this.pop += dt;
     // the leader to `target` (kit-local), drawn from the top of the sign; it grows in after the sign lands
-    this.lk += ((target && this.say.kind === 'tip' ? 1 : 0) - this.lk) * Math.min(1, dt / 0.15);
+    this.lk += ((target && (this.say.kind === 'tip' || this.say.kind === 'track') ? 1 : 0) - this.lk) * Math.min(1, dt / 0.15);
     const lon = this.lk > 0.02 && !!target;
     this.leader.visible = this.leaderEnd.visible = lon;
     if (lon && target) {

@@ -88,7 +88,7 @@ export class HitWords {
   onShow: ((grade: string, at: Vector3) => void) | null = null;
   /** Whether a grade's word is shown this time (unset: always). */
   wants: ((grade: string) => boolean) | null = null;
-  /** The last judged hit's offset (s; − early): a Good says EARLY or LATE in its green. */
+  /** The last judged hit's lean (−1 early, +1 late, 0 neither): a Good says GOOD, or EARLY or LATE in its green. */
   lean: (() => number) | null = null;
   /** The word for `grade` at world `at` (6 cm above it), facing `head`. */
   show(grade: string | null, at: Vector3, head: Vector3, color: number): void {
