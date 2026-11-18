@@ -152,20 +152,20 @@
       .go-note { font-size: var(--t-small); line-height: 1.45; color: var(--ink-2); max-width: 30em; min-height: 1.45em; }
       .xr-fail { color: var(--ink); background: var(--yellow); padding: 2px 6px; font-weight: 600; font-size: var(--t-small); }
       /* the address on a ticket stub, in black, tucked in at an angle */
-      .ticket { position: absolute; right: 1%; bottom: 4%; display: flex; align-items: stretch; background: var(--ink); color: var(--paper); border-radius: 6px; transform: rotate(-4deg);
-        box-shadow: 0 1px 0 rgba(29, 29, 27, 0.2); max-width: 100%; }
-      .ticket .t-main { display: grid; gap: 6px; padding: 18px 22px 18px 24px; }
+      .ticket { position: absolute; right: 1%; bottom: 4%; display: flex; align-items: stretch; color: var(--paper); transform: rotate(-4deg); max-width: 100%; }
+      /* (the two halves each carry the ink, with a half-circle bitten out where they meet: real notches, the page shows
+         through them) */
+      .ticket .t-main, .ticket .t-stub { background: var(--ink); --notch: radial-gradient(circle 9px at var(--nx) 0, transparent 8.5px, #000 9px), radial-gradient(circle 9px at var(--nx) 100%, transparent 8.5px, #000 9px);
+        -webkit-mask: var(--notch); -webkit-mask-composite: source-in; mask: var(--notch); mask-composite: intersect; }
+      .ticket .t-main { --nx: 100%; display: grid; gap: 6px; padding: 18px 22px 18px 24px; border-radius: 6px 0 0 6px; }
       .ticket .t-top { font-size: 15px; line-height: 1.2; color: #d8cfbb; }
       .addr-url { font: 800 clamp(22px, 2.1vw, 30px)/1 var(--face); letter-spacing: -0.03em; color: var(--paper); background: none; border: 0; padding: 0; cursor: copy; text-align: left;
         text-decoration: underline; text-decoration-color: var(--pink); text-decoration-thickness: 3px; text-underline-offset: 6px; }
       .addr-url:hover { text-decoration-thickness: 5px; }
       #landing .ticket :focus-visible { outline-color: var(--yellow); }
       /* (the stub, past a perforation: notches cut top and bottom, a dashed tear line) */
-      .ticket .t-stub { position: relative; display: grid; place-items: center; padding: 0 18px; border-left: 2px dashed rgba(239, 230, 210, 0.45);
+      .ticket .t-stub { --nx: 0%; position: relative; display: grid; place-items: center; padding: 0 18px; border-left: 2px dashed rgba(239, 230, 210, 0.45); border-radius: 0 6px 6px 0;
         font: 800 15px/1.1 var(--face); text-align: center; color: var(--yellow); }
-      .ticket .t-stub::before, .ticket .t-stub::after { content: ''; position: absolute; left: -9px; width: 16px; height: 16px; border-radius: 50%; background: var(--paper); }
-      .ticket .t-stub::before { top: -8px; }
-      .ticket .t-stub::after { bottom: -8px; }
 
       /* ---- slots: the video and the screenshots. Filled when the file is there; until then a quiet empty slot ---- */
       /* (no screenshots yet: their row stays out of the way; once one is in, the first is big and the others stack beside it) */
