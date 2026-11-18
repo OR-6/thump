@@ -224,7 +224,7 @@ export function mountLanding(world: World): void {
           <p class="sign" aria-hidden="true">${ringMarkSvg({ simple: true })}<span class="riso" ${riso('Thump')}>Thump</span></p>
         </div>
         <dl class="plate">
-          <dt>Made by</dt><dd>OR-6, with my friends as testers</dd>
+          <dt>Made by</dt><dd>kaunnumi</dd>
           <dt>Built with</dt><dd>IWSDK, WebXR, three.js, TypeScript, Web Audio and PeerJS</dd>
           <dt>Runs on</dt><dd>Meta Quest 3, in the browser</dd>
           <dt>Entered in</dt><dd>The Meta VR Start Developer Competition 2026 (Gaming)</dd>
