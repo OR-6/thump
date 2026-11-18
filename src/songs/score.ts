@@ -231,11 +231,11 @@ export function scoreOf(tune: Tune): Score {
 /**
  * The songs in the order the list shows them, best to play first, so the first thing anyone picks shows the game at
  * its best: measured over all six instruments at every level (each song x instrument out of 100: 40 for chart notes
- * with something in the recording under them, 20 the recording tight on the chart's clock, 20 a level's notes a
+ * with something you hear under them, your own part's quiet guide on Easy and Normal counted, 20 the recording tight on the chart's clock, 20 a level's notes a
  * second in its band, 20 notes on the tune's own notes or the groove's kick, snare and bass), summed. Any song not
  * named here goes after, easiest first.
  */
-export const SONG_ORDER: readonly string[] = ['korobeiniki', 'drunken-sailor', 'can-can', 'mango-season', 'kite-hill', 'rooftop', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'turkish-march', 'canon', 'cold-brew', 'fur-elise', 'scarborough-fair', 'late-bus', 'amazing-grace', 'low-tide'];
+export const SONG_ORDER: readonly string[] = ['korobeiniki', 'rooftop', 'drunken-sailor', 'mango-season', 'can-can', 'cold-brew', 'william-tell', 'kite-hill', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'canon', 'turkish-march', 'low-tide', 'late-bus', 'fur-elise', 'scarborough-fair', 'amazing-grace'];
 const orderOf = (id: string) => {
   const i = SONG_ORDER.indexOf(id);
   return i < 0 ? SONG_ORDER.length : i;

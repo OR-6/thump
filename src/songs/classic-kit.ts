@@ -13,7 +13,8 @@ type Pat = (b: BarPlan) => string | undefined;
 
 /** A pattern per GM drum note over `steps` a bar (VEL's characters), at `scale`. */
 interface Beat {
-  beat: { steps: number; notes: Record<number, Pat>; scale: number };
+  /** `quiet`: its notes too soft in the mix to play to (the chart leaves them to the band). */
+  beat: { steps: number; notes: Record<number, Pat>; scale: number; quiet?: readonly number[] };
 }
 /** A style's drummer (src/songs/arrange.ts) in the bars `only` allows. */
 interface Drummer {
@@ -52,7 +53,8 @@ export const CLASSIC_KITS: Record<string, KitTrack[]> = {
     { name: 'rock kit', program: 16, rev: 30, vol: 92, parts: [{ drummer: { style: 'rock', scale: 0.9, only: (b) => b.pass === 2 } }] },
   ],
   'scarborough-fair': [{ name: 'frame drum', program: 48, rev: 55, vol: 80, parts: [{ beat: { steps: 6, scale: 0.5, notes: { 45: (b) => (b.pass >= 1 ? 'x.....' : undefined), 82: (b) => (b.pass >= 1 ? '-.x.x.' : undefined) } } }] }],
-  'amazing-grace': [{ name: 'brushes', program: 40, rev: 45, vol: 82, parts: [{ beat: { steps: 6, scale: 0.5, notes: { 36: (b) => (b.pass >= 1 ? 'x.....' : undefined), 38: (b) => (b.pass >= 1 ? '....x.' : undefined), 42: (b) => (b.pass >= 1 ? 'x.x.x.' : undefined) } } }] }],
+  // (its brushed hats are a whisper under the organ and the choir: the snare and the kick are what you hear)
+  'amazing-grace': [{ name: 'brushes', program: 40, rev: 45, vol: 82, parts: [{ beat: { steps: 6, scale: 0.5, quiet: [42], notes: { 36: (b) => (b.pass >= 1 ? 'x.....' : undefined), 38: (b) => (b.pass >= 1 ? '....x.' : undefined), 42: (b) => (b.pass >= 1 ? 'x.x.x.' : undefined) } } }] }],
   saints: [{ name: 'jazz kit', program: 32, rev: 35, vol: 88, parts: [{ beat: { steps: 8, scale: 0.62, notes: { 36: () => 'x...x...', 38: () => '..x...x.', 44: () => '..x...x.', 51: (b) => (b.pass >= 1 || b.chorus ? 'x.x.x.x.' : undefined) } } }, { crashes: { vel: 0.6, note: 49 } }] }],
   'drunken-sailor': [{ name: 'stomp and clap', program: 8, rev: 35, vol: 92, parts: [{ beat: { steps: 8, scale: 0.75, notes: { 36: () => 'x...x...', 39: () => '..x...x.', 54: (b) => (b.pass >= 1 || b.chorus ? 'x-x-x-x-' : undefined) } } }, { crashes: { vel: 0.55, note: 49 } }] }],
   korobeiniki: [
@@ -101,7 +103,7 @@ export function classicKit(s: SongShape & { tune: { id: string } }): Record<'KIC
       if ('beat' in part) {
         for (const [note, pat] of Object.entries(part.beat.notes)) {
           const lane = LANE[Number(note)];
-          if (!lane) continue;
+          if (!lane || part.beat.quiet?.includes(Number(note))) continue;
           plan.forEach((b, n) =>
             eachStep(b, n, pat(b), part.beat.steps, s.meter, s.end, (beat, ch) => {
               if (ch !== 'X' && ch !== 'x' && ch !== 'o') return;

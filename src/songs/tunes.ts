@@ -361,7 +361,9 @@ export const TUNES: readonly Tune[] = [
   {
     // the Russian folk song (1861), checked against a session transcription: its tune twice through
     id: 'korobeiniki',
-    rhythm: '.x.x.x.x',
+    // (its accordion's off-beat pah sits far under the tune, too quiet to strum to: the guitar strums with the oom, on
+    // the beat)
+    rhythm: 'x.x.x.x.',
     bass: '1.5.1.5.',
     name: 'Korobeiniki',
     by: 'Folk dance',
@@ -499,6 +501,8 @@ export const TUNES: readonly Tune[] = [
     // the hymn tune New Britain (1835), checked against a session tunebook; in three
     id: 'amazing-grace',
     drumsFrom: 18,
+    // (a strum as each bar's chord comes in with the organ and the basses; Hard on every beat too)
+    rhythm: 'x..',
     // (its basses hold each chord's root from the bar's first beat)
     bass: '1..',
     name: 'Amazing Grace',
