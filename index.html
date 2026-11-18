@@ -133,7 +133,7 @@
       .ink { position: absolute; border-radius: 50%; mix-blend-mode: multiply; }
       /* (once the page runs, the inks are printed as one picture on one dot grid, black where they cross; the spans stay
          only to place them) */
-      .ink-print { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: multiply; }
+      .ink-print { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; mix-blend-mode: multiply; }
       .ink-print ~ .ink { visibility: hidden; }
       .ink-1 { width: clamp(280px, 36vw, 520px); aspect-ratio: 1; left: -9%; top: -4%; background: var(--pink); }
       .ink-2 { width: clamp(180px, 24vw, 350px); aspect-ratio: 1; left: 38%; top: 34%; background: var(--dots-blue); }
