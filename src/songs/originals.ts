@@ -118,7 +118,7 @@ const VR_CHORUS: ProdSection = {
   },
 };
 const VELVET_ROPE: Production = {
-  id: 'cold-brew',
+  id: 'velvet-rope',
   name: 'Velvet Rope',
   bpm: 120,
   key: 'Am',
@@ -225,7 +225,7 @@ const NM_CHORUS: ProdSection = {
   },
 };
 const NIGHT_MARKET: Production = {
-  id: 'kite-hill',
+  id: 'night-market',
   name: 'Night Market',
   bpm: 112,
   key: 'Dm',
@@ -338,7 +338,7 @@ const PP_VERSE: ProdSection = {
   },
 };
 const SKINNED_KNEES: Production = {
-  id: 'rooftop',
+  id: 'skinned-knees',
   name: 'Skinned Knees',
   bpm: 150,
   key: 'A',

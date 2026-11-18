@@ -540,5 +540,5 @@ export const ALL_TUNES: readonly Tune[] = [
 ];
 
 /** Originals taken out of the game while they're rewritten (ids kept for their boards). */
-const SHELVED = new Set(['rooftop', 'kite-hill', 'cold-brew', 'late-bus', 'low-tide']);
+const SHELVED = new Set(['skinned-knees', 'night-market', 'velvet-rope', 'late-bus', 'low-tide']);
 export const TUNES: readonly Tune[] = ALL_TUNES.filter((t) => !SHELVED.has(t.id));

@@ -1346,8 +1346,8 @@ export class Game {
     const step = this.listening ? 4 : this.bandStep;
     for (const stem of STEMS) {
       const layer = stem === 'perc' ? 2 : stem === 'strings' ? 3 : stem === 'brass' ? 4 : 1;
-      // (your own part plays quietly under you on Easy and Normal, a guide to what each note is: on Hard it's all yours)
-      const v = !backing || this.friendPlays(stem) ? 0 : stem === mine ? this.guideLevel() : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : step < layer ? 0 : step >= 4 ? 1 : live;
+      // (your own part plays quietly under you, a guide to what each note is: quieter on Normal, barely there on Hard)
+      const v = !backing || this.friendPlays(stem) ? 0 : stem === mine ? (solo ? 0 : this.guideLevel()) : solo ? (stem === 'drums' || stem === 'perc' ? 0.6 : 0.4) : step < layer ? 0 : step >= 4 ? 1 : live;
       if (Math.abs((this.stemLevels.get(stem) ?? -1) - v) < 0.02) continue;
       const first = !this.stemLevels.has(stem);
       this.stemLevels.set(stem, v);
@@ -2531,7 +2531,7 @@ export class Game {
 
   /**
    * The last hit: the song's over and the band holds its chord, waiting for you (your instrument's light pulses): hit
-   * it and the band lands on it with you. Up to five seconds, then it ends by itself. (Not in a band: friends' songs
+   * it and the band lands on it with you. Up to six seconds, then it ends by itself. (Not in a band: friends' songs
    * end on the band's clock.) True while it waits.
    */
   private finalWait = -1;
@@ -3410,7 +3410,7 @@ export class Game {
         break;
       case 'jam':
         d.line = 'Jam';
-        d.sub = this.jamPhase === 'turn' ? 'Your turn' : this.jamCycle === 0 ? (this.code ? "Friend's phone: playthump.pages.dev" : 'Listen') : 'Listen';
+        d.sub = this.jamPhase === 'turn' ? 'Your turn' : 'Listen';
         d.pulse = 'jam';
         d.meter = this.jamShares.length ? this.jamShares[this.jamShares.length - 1] : -1;
         break;

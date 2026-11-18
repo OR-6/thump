@@ -13,7 +13,7 @@ import { loadProgress, saveProgress, freshProgress } from '../persistence/progre
 import { coop, normaliseCode, type CoopStatus } from '../net/coop.js';
 import { asPlayer } from '../net/band.js';
 import { PADS, type Lane } from '../config.js';
-import { CONGA, handpanZones, marimbaZones, percVoice, pianoBlacks, pianoZones, strumNotes, type InstId } from '../kit/shelf.js';
+import { CONGA, KEYBOARD, handpanZones, marimbaZones, percVoice, pianoBlacks, pianoZones, strumNotes, type InstId } from '../kit/shelf.js';
 import { TUNES } from '../songs/tunes.js';
 import { scoreOf } from '../songs/score.js';
 import { ringMarkSvg } from './brand.js';
@@ -34,7 +34,7 @@ const SHOTS: { src: string; alt: string }[] = [
 
 /** The six, in the page's order: the name and how you play it, in a line. */
 const BAND: { id: InstId; label: string; line: string }[] = [
-  { id: 'piano', label: 'Keyboard', line: 'Piano keys at real size. They react to your fingertips, so you can rest your palm and nothing plays. You can slide a finger along them too.' },
+  { id: 'piano', label: 'Keyboard', line: 'Keys a little bigger than a piano’s, for fingertips in the air. They react to your fingertips, so you can rest your palm and nothing plays. You can slide a finger along them too.' },
   { id: 'drums', label: 'Drums', line: 'Slap them with a flat hand, or make a fist and you get a stick.' },
   { id: 'marimba', label: 'Marimba', line: 'Make fists and they turn into mallets.' },
   { id: 'congas', label: 'Congas', line: 'Palm in the middle for an open tone, fingers on the edge for a slap.' },
@@ -46,7 +46,7 @@ const lineOf = (id: InstId) => BAND.find((b) => b.id === id)?.line ?? '';
 
 /** What isn't obvious from a drawing, under it (most say nothing). */
 const ABOUT: Partial<Record<InstId, string>> = {
-  piano: 'A black key plays the notes either side of it. The round button is a chord.',
+  piano: 'A black key plays the notes either side of it. The pad on the left is a chord.',
   guitar: 'Pick a chord on the neck, then strum over the soundhole.',
   congas: 'Inside the dashed line is the open tone, outside it the slap.',
 };
@@ -64,7 +64,7 @@ const andList = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, 
 /** Where the page is open: the headset's browser (it can enter), a phone (it sends the link on), or a computer. */
 type Where = 'xr' | 'phone' | 'desk';
 
-/** An empty slot: the viewfinder's corners, its name, one line. */
+/** An empty slot: its name and one line. */
 const emptySlot = (label: string, line: string, play = false) =>
   `<div class="empty">${play ? '<svg class="play-mark" viewBox="0 0 44 44" aria-hidden="true"><path d="M16 12.5v19l15-9.5z"/></svg>' : ''}<span class="silk"><span class="dot" aria-hidden="true"></span>${label}</span><p>${line}</p></div>`;
 
@@ -74,7 +74,7 @@ export function mountLanding(world: World): void {
   const classics = TUNES.length - originals.length;
   const songs = [...originals, ...TUNES.filter((t) => !t.original)];
   const songRow = (t: (typeof TUNES)[number], i: number) =>
-    `<li class="song${t.original ? ' orig' : ''}"><span class="n">${two(i + 1)}</span><span class="name">${esc(t.name)}</span><span class="by">${esc(t.original ? 'Original' : t.by)}</span><span class="len"><span class="nb">${t.bpm} bpm</span><br /><span class="vh">length </span>${lengthOf(t)}</span></li>`;
+    `<li class="song${t.original ? ' orig' : ''}"><span class="n">${two(i + 1)}</span><span class="name">${esc(t.name)}</span><span class="by">${esc(t.original ? t.style[0].toUpperCase() + t.style.slice(1) : t.by)}</span><span class="len"><span class="nb">${t.bpm} bpm</span><br /><span class="vh">length </span>${lengthOf(t)}</span></li>`;
   const originalsLine =
     originals.length === 1 ? `<strong>${esc(originals[0].name)}</strong> is an original I wrote, the other ${classics} are classics you probably already know.`
     : `${originals.length} are originals I wrote (${esc(andList(originals.map((t) => t.name)))}), the other ${classics} are classics you probably already know.`;
@@ -158,7 +158,6 @@ export function mountLanding(world: World): void {
           </div>
           <div>
             <ol class="songs">${songs.map(songRow).join('')}</ol>
-            <p class="key">Original</p>
           </div>
         </div>
       </section>
@@ -354,9 +353,9 @@ export function mountLanding(world: World): void {
     if (st.role === 'caller') return;
     const n = st.players ?? 1;
     bandStatus.textContent =
-      st.state === 'hosting' ? (st.code ? `Your code: ${st.code}. Friends type it in here, then everyone presses Enter.` : (st.message ?? 'Connecting…'))
+      st.state === 'hosting' ? (st.code ? `Your code: ${st.code}. Friends type it in here, then everyone opens this page on their Quest and presses Enter.` : (st.message ?? 'Connecting…'))
       : st.state === 'joining' ? 'Connecting…'
-      : st.state === 'connected' ? `${n} in the band${st.role === 'host' && st.code ? ` (code ${st.code})` : ''}. Now press Enter.`
+      : st.state === 'connected' ? `${n} in the band${st.role === 'host' && st.code ? ` (code ${st.code})` : ''}. Now open this page on your Quest and press Enter.`
       : st.state === 'error' || st.state === 'closed' ? (st.message ?? 'That didn’t work, try again.')
       : '';
   };
@@ -481,7 +480,7 @@ function mountDesk(el: HTMLElement): void {
     // (every piece of the kit by its own name, before the letters below: the crash isn't a conga)
     if (KIT.has(id)) audio.drum(id as Voice, 0.85, panOf(PADS[id as Lane].x));
     else if (id === 'chord') for (const k of [0, 7, 16]) audio.modal('keys', PAGE_ROOT.piano - 12 + k, 0.6, -0.4, 0, 0.5, 'page-chord', k);
-    else if (id[0] === 'w') audio.modal('keys', pianoMidi.get(n) ?? 60, 0.8, panOf((n - 7) * 0.0235), 0, 0.5, 'page');
+    else if (id[0] === 'w') audio.modal('keys', pianoMidi.get(n) ?? 60, 0.8, panOf((n - 7) * KEYBOARD.pitch), 0, 0.5, 'page');
     else if (id[0] === 'b') for (const m of blacks.get(id) ?? []) audio.modal('keys', m, 0.7, 0, 0, 0.5, `page${m}`);
     else if (id[0] === 'm') audio.modal('marimba', marimba.get(n) ?? 60, 0.8, panOf((n - 3.5) * 0.054), 0, 0.5, 'page');
     else if (id[0] === 'h') {

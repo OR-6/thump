@@ -101,7 +101,10 @@ function piano(): string {
   const front = -cm(K.front);
   // the case round the keys, the felt strip at the back as a line
   const kx = cm(whites[0].x - whites[0].w / 2);
-  let s = rect(-20.5, back - 3.6, 41, front - back + 5.4, M('case'));
+  // (the case round the keys and the chord pad, from where they are: they grew to 28 mm keys)
+  const x0 = cm(chord.x) - cm(chord.w) * 0.75 - 2.5;
+  const x1 = kx + cm(K.pitch * whites.length) + 1.5;
+  let s = rect(x0, back - 3.6, x1 - x0, front - back + 5.4, M('case'));
   s += line(kx, back - 1, kx + cm(K.pitch * whites.length), back - 1, M('felt'));
   const names = ['C', 'D', 'E', 'G', 'A'];
   for (const z of whites) {

@@ -237,7 +237,7 @@ export function scoreOf(tune: Tune): Score {
  * named here goes after, easiest first. (The three produced from scratch, src/songs/originals.ts, stand after Mango
  * Season, where the originals they replace stood: not yet measured.)
  */
-export const SONG_ORDER: readonly string[] = ['korobeiniki', 'drunken-sailor', 'can-can', 'mango-season', 'cold-brew', 'kite-hill', 'rooftop', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'turkish-march', 'canon', 'fur-elise', 'scarborough-fair', 'amazing-grace'];
+export const SONG_ORDER: readonly string[] = ['korobeiniki', 'drunken-sailor', 'can-can', 'mango-season', 'velvet-rope', 'night-market', 'skinned-knees', 'william-tell', 'entertainer', 'saints', 'mountain-king', 'ode-to-joy', 'turkish-march', 'canon', 'fur-elise', 'scarborough-fair', 'amazing-grace'];
 const orderOf = (id: string) => {
   const i = SONG_ORDER.indexOf(id);
   return i < 0 ? SONG_ORDER.length : i;

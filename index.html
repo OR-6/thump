@@ -153,7 +153,9 @@
       .slot { position: relative; margin: 0; border-radius: var(--r); background: var(--raised); overflow: hidden; }
       .slot-video { grid-column: 1 / -1; aspect-ratio: 16 / 9; }
       /* (empty, the video's slot is a letterbox, so the page doesn't open on a big dark box) */
-      .slot-video:not(.filled) { aspect-ratio: 21 / 8; }
+      .slot-video:not(.filled) { aspect-ratio: 21 / 8; max-height: 300px; }
+      /* (no screenshots yet: their row stays out of the way until one is there) */
+      .media:not(.has-shots) .shot { display: none; }
       .slot .fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; background: #000; }
       .slot.filled .fill { opacity: 1; }
       video.fill { object-fit: contain; }
@@ -161,13 +163,8 @@
       .slot:not(.filled) .fill { pointer-events: none; }
       .shot { aspect-ratio: 16 / 9; }
       .has-shots .shot-1 { grid-row: span 2; aspect-ratio: auto; min-height: 100%; }
-      /* the empty state: a viewfinder's corners, the slot's name, one line */
+      /* the empty state: the slot's name and one line, nothing else */
       .empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; padding: 24px; color: var(--text-2); }
-      .empty::before, .empty::after { content: ''; position: absolute; inset: 18px; pointer-events: none;
-        background:
-          linear-gradient(var(--line), var(--line)) 0 0 / 22px 2px no-repeat, linear-gradient(var(--line), var(--line)) 0 0 / 2px 22px no-repeat,
-          linear-gradient(var(--line), var(--line)) 100% 0 / 22px 2px no-repeat, linear-gradient(var(--line), var(--line)) 100% 0 / 2px 22px no-repeat; }
-      .empty::after { transform: scaleY(-1); }
       .empty .silk { display: inline-flex; align-items: center; gap: 8px; }
       .empty .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
       .empty p { font-size: var(--t-small); line-height: 1.4; max-width: 22em; }
@@ -338,6 +335,8 @@
         .more-in { grid-template-columns: minmax(0, 1fr); }
       }
       @media (max-width: 640px) {
+        /* (on a phone the hero's button is a screen away: no second copy in the bar) */
+        #bar-enter { display: none; }
         :root { --gut: 16px; --sec: 80px; }
         .btn { padding: 0 22px; }
         .cta .btn { flex: 1 1 100%; }

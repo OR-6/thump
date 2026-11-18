@@ -64,8 +64,8 @@ type Fn = (...a: never[]) => void;
 export type BandCtl =
   | { k: 'ping'; a: number; p: string }
   | { k: 'pong'; a: number; h: number; p: string }
-  | { k: 'song'; i: number; at: number; lv?: 'easy' | 'normal' | 'hard' }
-  | { k: 'ask'; i: number }
+  | { k: 'song'; i: number; at: number; lv?: 'easy' | 'normal' | 'hard'; id?: string }
+  | { k: 'ask'; i: number; id?: string }
   /** What a player has out, and the song they're playing on it now ('' none: their instrument then mutes nothing). */
   | { k: 'inst'; p: string; id: string; s?: string; l?: string[] }
   /** A player's score for a song played together (its band board), for the host to add up. */
@@ -80,8 +80,9 @@ export function validCtl(m: unknown): m is BandCtl {
   const id = typeof n.p === 'string' && n.p.length <= 12;
   if (n.k === 'ping') return num(n.a) && id;
   if (n.k === 'pong') return num(n.a) && num(n.h) && id;
-  if (n.k === 'song') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && num(n.at) && (n.lv === undefined || n.lv === 'easy' || n.lv === 'normal' || n.lv === 'hard');
-  if (n.k === 'ask') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32;
+  const sid = n.id === undefined || (typeof n.id === 'string' && /^[a-z0-9-]{1,40}$/.test(n.id));
+  if (n.k === 'song') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && num(n.at) && sid && (n.lv === undefined || n.lv === 'easy' || n.lv === 'normal' || n.lv === 'hard');
+  if (n.k === 'ask') return num(n.i) && (n.i as number) >= 0 && (n.i as number) < 32 && sid;
   const board = (x: unknown) => typeof x === 'string' && /^[a-z0-9-]{1,40}:band:(easy|normal|hard)$/.test(x);
   const int = (x: unknown, lo: number, hi: number) => Number.isInteger(x) && (x as number) >= lo && (x as number) <= hi;
   if (n.k === 'score') return id && board(n.b) && int(n.sc, 0, 4_000_000) && int(n.n, 1, 4000) && num(n.a) && (n.a as number) >= 0 && (n.a as number) <= 1 && typeof n.f === 'boolean';

@@ -494,8 +494,8 @@ const PRODUCED: Record<string, (c: Ctx) => Stems> = {
   // Velvet Rope, disco-funk: a room kit, a fingered bass in octaves, a clean guitar's chank with its muted scratches,
   // a string section on the intro's riff, strings and brass answering the chorus, a high string descant over the
   // last chorus, a Rhodes under the verses
-  'cold-brew': (c) => {
-    const p = PRODUCTIONS['cold-brew'];
+  'velvet-rope': (c) => {
+    const p = PRODUCTIONS['velvet-rope'];
     const ch = namedChords(p, true);
     const chorus = (s: string) => s.includes('chorus') && !s.startsWith('pre');
     const notIntro = (s: string) => s !== 'intro';
@@ -520,8 +520,8 @@ const PRODUCED: Record<string, (c: Ctx) => Stems> = {
   // Night Market, amapiano: an 808 kit, the log drum (a knocking low tom over a sub), a Rhodes on sevenths from the
   // first bar, a clean guitar's stabs, a flute on the tune (voices an octave under it in the choruses), a vocal pad in
   // the choruses, a whistle's descant at the end
-  'kite-hill': (c) => {
-    const p = PRODUCTIONS['kite-hill'];
+  'night-market': (c) => {
+    const p = PRODUCTIONS['night-market'];
     const ch = namedChords(p, true);
     const chorus = (s: string) => s.includes('chorus') && !s.startsWith('pre');
     return {

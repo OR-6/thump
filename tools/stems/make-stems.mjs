@@ -105,8 +105,8 @@ const SONG_EQ = {
   'learn-handpan': BALLAD_EQ,
   // (the three produced from scratch: their keys stems carry their guitars, strings and pads, which the band's
   // levels set too low for a record; the percussion up where a conga player sits in the room)
-  'cold-brew': { keys: 'volume=5dB', perc: 'volume=4dB' },
-  'kite-hill': { keys: 'volume=7dB', perc: 'volume=8dB', drums: 'highshelf=f=5000:g=4:t=q:w=0.7', lead: 'equalizer=f=1200:t=q:w=1:g=-3' },
+  'velvet-rope': { keys: 'volume=5dB', perc: 'volume=4dB' },
+  'night-market': { keys: 'volume=7dB', perc: 'volume=8dB', drums: 'highshelf=f=5000:g=4:t=q:w=0.7', lead: 'equalizer=f=1200:t=q:w=1:g=-3' },
   rooftop: { keys: 'volume=7dB', perc: 'volume=2dB' },
 };
 /** How much of each goes to the hall. */

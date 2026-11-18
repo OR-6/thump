@@ -575,13 +575,13 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     },
     bandSong: (i) => {
       if (!this.bandOn || this.band.host) return 'local';
-      this.band.send({ k: 'ask', i });
+      this.band.send({ k: 'ask', i, id: this.game.tracks[i]?.id });
       return 'wait';
     },
     songStarted: (i, beat0) => {
       if (!this.bandOn || !this.band.host) return;
       // beat 0 on the band's clock (the host's steady clock)
-      this.band.send({ k: 'song', i, at: performance.now() / 1000 + (beat0 - this.clock.t), lv: this.game.level });
+      this.band.send({ k: 'song', i, at: performance.now() / 1000 + (beat0 - this.clock.t), lv: this.game.level, id: this.game.tracks[i]?.id });
     },
     freeHarmony: () => {
       const id = this.kit.inst;
@@ -1047,7 +1047,10 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     if (m.k === 'ask' && this.band.host) {
       // (not while you're out of the headset or still setting up: the band would start without you)
       if ((this.visibilityState.peek() !== VisibilityState.NonImmersive && this.placement.phase !== 'placed') || this.paused) return;
-      if (this.game.mode === 'discover' || this.game.mode === 'results') this.game.playSong(m.i);
+      // (by its id: a friend on another version of the page has the songs in another order)
+      const ai = m.id ? this.game.tracks.findIndex((t) => t.id === m.id) : m.i;
+      if (ai < 0) return;
+      if (this.game.mode === 'discover' || this.game.mode === 'results') this.game.playSong(ai);
       return;
     }
     if (m.k === 'song' && !this.band.host) {
@@ -1060,7 +1063,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if ((inXr && this.placement.phase !== 'placed') || this.paused || !this.band.synced) return;
       // (everyone plays the host's level, so the scores add up on one board)
       if (m.lv) this.game.level = m.lv;
-      if (this.game.mode === 'results' || this.game.mode === 'discover') this.game.playSong(m.i, beat0);
+      const si = m.id ? this.game.tracks.findIndex((t) => t.id === m.id) : m.i;
+      if (si < 0) return;
+      if (this.game.mode === 'results' || this.game.mode === 'discover') this.game.playSong(si, beat0);
       return;
     }
     if (m.k === 'score') {
@@ -2256,7 +2261,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       planes: () => this.queries.planes.entities,
       meshes: () => this.queries.meshes.entities,
       paused: () => this.userPaused,
-      tasteOk: () => this.placement.phase === 'placed' && (this.game.mode === 'discover' || this.game.mode === 'jam') && !(this.settings.taught ?? []).includes('lightsout'),
+      // (the Spotlight is off: raising both hands does nothing, so nothing teaches it)
+      tasteOk: () => false,
       tasted: () => {
         this.settings = { ...this.settings, taught: [...(this.settings.taught ?? []), 'lightsout'] };
         saveSettings(this.settings);
