@@ -77,9 +77,8 @@ export function mountLanding(world: World): void {
   const songs = [...originals, ...TUNES.filter((t) => !t.original)];
   const songRow = (t: (typeof TUNES)[number], i: number) =>
     `<li class="song${t.original ? ' orig' : ''}"><span class="n">${two(i + 1)}</span><span class="name">${esc(t.name)}</span><span class="lead" aria-hidden="true"></span><span class="len"><span class="vh">length </span>${lengthOf(t)}</span><span class="by">${esc(t.original ? t.style[0].toUpperCase() + t.style.slice(1) : t.by)}</span><span class="bpm nb">${t.bpm} bpm</span></li>`;
-  const originalsLine =
-    originals.length === 1 ? `<strong>${esc(originals[0].name)}</strong> is an original I wrote, the other ${classics} are classics you probably already know.`
-    : `${originals.length} are originals I wrote (${esc(andList(originals.map((t) => t.name)))}), the other ${classics} are classics you probably already know.`;
+  const originalsLine = `${originals.length} ${originals.length === 1 ? 'original' : 'originals'} I wrote and ${classics} classics you already know.`;
+  void andList;
 
   const el = document.createElement('div');
   el.id = 'landing';
@@ -156,11 +155,11 @@ export function mountLanding(world: World): void {
         <div class="wrap songs-in">
           <div>
             <h2 class="h2 riso" id="songs-h" ${riso(`${TUNES.length} songs`)}>${TUNES.length} songs</h2>
-            <p class="lede">${originalsLine} I took the songs and turned them into the parts you play, with a band playing along. More originals are on the way.</p>
+            <p class="lede">${originalsLine}</p>
           </div>
           <div>
             <ol class="songs">${songs.map(songRow).join('')}</ol>
-            ${originals.length ? `<p class="key">${originals.length === 1 ? 'The one I wrote' : 'The ones I wrote'}</p>` : ''}
+            ${originals.length ? '<p class="key">Originals</p>' : ''}
           </div>
         </div>
       </section>
