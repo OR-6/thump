@@ -82,7 +82,7 @@ check('and on the crash, out to the left', s.debug.hits > hits0 && s.debug.lastH
 
 await tab('piano');
 s = state();
-check('Instruments, then the piano card, puts a piano on the desk', s.targets.inst?.[0] === 1 && s.game.display.page?.title === 'Piano', `${s.game.display.page?.id} ${s.game.display.page?.title} inst=${s.targets.inst}`);
+check('Instruments, then the piano card, puts a piano on the desk', s.targets.inst?.[0] === 1 && s.game.display.page?.title === 'Keyboard', `${s.game.display.page?.id} ${s.game.display.page?.title} inst=${s.targets.inst}`);
 let before = s.debug.hits;
 // (fingertips press the keys, 6 cm up in the case: aim the hand so its fingers, not its palm, land on the key)
 // (fingertips first: the hand pitched down, as on a keyboard; the press goes 1 cm on)
@@ -192,7 +192,7 @@ shot('shelf-congas', look);
   if (tile) {
     const st = await pinchAt(tile);
     s = state();
-    check('a pinch on the piano card puts the piano out', s.targets.inst?.[0] === 1 && s.game.display.page?.title === 'Piano', `inst=${s.targets.inst} pinching=${st.right.pinching} page=${s.game.display.page?.title}`);
+    check('a pinch on the piano card puts the piano out', s.targets.inst?.[0] === 1 && s.game.display.page?.title === 'Keyboard', `inst=${s.targets.inst} pinching=${st.right.pinching} page=${s.game.display.page?.title}`);
   }
 }
 

@@ -3570,7 +3570,7 @@ export function tightPercent(offsets: readonly number[]): number {
 /** The free-play band's chords, a bar each: the scale's first chord twice, then its second and third. */
 const GROOVE = [0, 0, 1, 2];
 
-const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Piano', marimba: 'Marimba', handpan: 'Handpan', guitar: 'Guitar', congas: 'Congas', band: 'Band' };
+const INST_NAME: Record<string, string> = { drums: 'Drums', piano: 'Keyboard', marimba: 'Marimba', handpan: 'Handpan', guitar: 'Guitar', congas: 'Congas', band: 'Band' };
 
 /** Which instrument each part is played on (it comes out on the desk when the part is asked for). */
 const PART_INST: Record<string, string> = { KICK: 'drums', SNARE: 'drums', HAT: 'drums', CLAP: 'drums', PERC: 'handpan', 'PERC 2': 'handpan', KEYS: 'piano', 'KEYS 2': 'piano', BASS: 'piano' };

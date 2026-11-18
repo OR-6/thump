@@ -35,7 +35,7 @@ export const SHELF: readonly InstDef[] = [
   { id: 'drums', name: 'Drums', how: 'Make fists for sticks, or slap with flat hands', sounds: [{ id: 'acoustic', name: 'Acoustic' }, { id: 'jazz', name: 'Jazz' }, { id: 'electronic', name: 'Electronic' }], scales: false, color: 0xff5a3c },
   {
     id: 'piano',
-    name: 'Piano',
+    name: 'Keyboard',
     how: 'Fingertips on the keys. The square on the left plays a chord',
     sounds: [
       { id: 'piano', name: 'Grand', family: 'keys' },

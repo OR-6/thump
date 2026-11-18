@@ -509,7 +509,7 @@ describe('the game', () => {
     g.key('play');
     for (let k = 0; k < 200; k++) g.tick((t += 1 / 30));
     g.key('next');
-    expect(g.display.sub).toBe('Piano next');
+    expect(g.display.sub).toBe('Keyboard next');
     const due: string[] = [];
     for (let k = 0; k < 4000 && g.mode !== 'results'; k++) {
       t += 1 / 30;
