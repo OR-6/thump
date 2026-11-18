@@ -1,7 +1,9 @@
 /**
  * Someone else in the band, across the desk: a soft light where they'd sit, in their instrument's colour, that swells
  * with every note they play, and their instrument's name on tape under it. A friend's headset in Play together; on
- * your own, the backing band's players during a song. Kit-local, beyond the panel.
+ * your own, the backing band's players during a song. Kit-local, beyond the panel. A friend's headset also sends
+ * where its head and hands are: they show here, small, behind their small instrument and facing you (friend-avatar),
+ * and the light moves up over their head; it swells with their voice too when they're on Talk.
  */
 import { Group, Mesh, MeshBasicMaterial, SphereGeometry, Vector3 } from '@iwsdk/core';
 import { asLight } from '../art/light.js';
@@ -9,9 +11,10 @@ import { Tag } from '../ui/tag.js';
 import { CongaModel, GuitarModel, HandpanModel, MarimbaModel, PianoModel, type DeskModel } from '../scene-assets/lib/instruments.js';
 import { buildDrum, buildHiHat } from '../scene-assets/lib/drums.js';
 import { congaZones, guitarZones, handpanZones, marimbaZones, pianoZones, scaleById } from '../kit/shelf.js';
+import { SEAT_STAGE, type PoseFrame } from '../net/pose.js';
+import { FriendAvatar } from './friend-avatar.js';
 
-/** Their instrument, small (a band across the desk, not dots): a desk model at a third of the size. */
-const MINI = 0.3;
+/** Their instrument (a band across the desk, not dots): a desk model, at full size (the seat's stage makes it a third). */
 export function miniModel(id: string): { root: Group; model: DeskModel | null; n: number } {
   const happy = scaleById('happy');
   const m: DeskModel | null =
@@ -44,6 +47,9 @@ const TRAY = 0.7;
 
 const _at = new Vector3();
 const _down = new Vector3(0, -0.06, 0);
+const _light = new Vector3();
+/** The light over a friend's head (seat frame, m). */
+const OVER_HEAD = 0.045;
 
 export class FriendSeat {
   readonly root = new Group();
@@ -68,6 +74,38 @@ export class FriendSeat {
     this.halo = new Mesh(new SphereGeometry(0.05, 20, 14), asLight(new MeshBasicMaterial({ color: 0xfff2dc, toneMapped: false, opacity: 0.25 })));
     this.root.add(this.orb, this.halo, this.tag.mesh);
     this.tag.mesh.visible = false;
+    // their desk: turned to face you, small, tipped towards you (their instrument and their hands go in it)
+    this.stage.name = 'FriendStage';
+    this.stage.position.set(0, SEAT_STAGE.y, 0);
+    this.stage.rotation.set(SEAT_STAGE.tilt, Math.PI, 0);
+    this.stage.scale.setScalar(SEAT_STAGE.scale);
+    this.stage.updateMatrix();
+    this.root.add(this.stage);
+  }
+
+  /** Their desk at this seat, in their own instruments' frame (pose.ts `toSeat` is the same mapping). */
+  readonly stage = new Group();
+  private avatar: FriendAvatar | null = null;
+  private talkK = 0;
+
+  /** Where their head and hands are now (their instrument frame), or null when they've gone quiet. */
+  pose(f: PoseFrame | null): void {
+    if (f && !this.avatar) {
+      this.avatar = new FriendAvatar();
+      this.avatar.setColor(this.color);
+      this.stage.add(this.avatar.root);
+    }
+    this.avatar?.show(f);
+    // the light over their head (back to its place when they've gone)
+    if (f) _light.set(f.head[0], f.head[1], f.head[2]).applyMatrix4(this.stage.matrix).y += OVER_HEAD;
+    else _light.set(0, 0, 0);
+    this.orb.position.lerp(_light, f ? 0.35 : 1);
+    this.halo.position.copy(this.orb.position);
+  }
+
+  /** How loud they are on Talk now (0..1): the light swells with it. */
+  talk(level: number): void {
+    this.talkK = level;
   }
 
   private mini: { root: Group; model: DeskModel | null; n: number } | null = null;
@@ -81,17 +119,15 @@ export class FriendSeat {
       this.miniId = id;
       this.mini?.root.removeFromParent();
       this.mini = miniModel(id);
-      this.mini.root.scale.setScalar(MINI);
-      this.mini.root.position.set(0, -0.075, 0);
-      // (tilted a little toward you, so you see it played)
-      this.mini.root.rotation.x = 0.35;
-      this.root.add(this.mini.root);
+      // (on their desk, the stage: tilted a little toward you, so you see it played)
+      this.stage.add(this.mini.root);
     }
     if (name === this.name && color === this.color) return;
     this.name = name;
     this.color = color;
     (this.orb.material as MeshBasicMaterial).color.setHex(color);
     (this.halo.material as MeshBasicMaterial).color.setHex(color);
+    this.avatar?.setColor(color);
     this.faceT = 0;
   }
 
@@ -108,11 +144,13 @@ export class FriendSeat {
     if (this.mini) {
       this.bounce = Math.max(0, this.bounce - dt * 6);
       this.mini.model?.update(dt);
-      this.mini.root.scale.setScalar(MINI * (1 + 0.06 * this.bounce));
+      this.mini.root.scale.setScalar(1 + 0.06 * this.bounce);
     }
-    this.orb.scale.setScalar(1 + this.k * 0.6);
-    this.halo.scale.setScalar(1 + this.k * 1.4);
-    (this.halo.material as MeshBasicMaterial).opacity = 0.18 + 0.5 * this.k;
+    // (a note's swell, or their voice's: whichever is more)
+    const k = Math.max(this.k, this.talkK * 0.8);
+    this.orb.scale.setScalar(1 + k * 0.6);
+    this.halo.scale.setScalar(1 + k * 1.4);
+    (this.halo.material as MeshBasicMaterial).opacity = 0.18 + 0.5 * k;
     this.faceT -= dt;
     if (this.faceT <= 0 && this.name && this.named) {
       this.faceT = 0.5;
@@ -125,6 +163,7 @@ export class FriendSeat {
 
   dispose(): void {
     this.root.removeFromParent();
+    this.avatar?.dispose();
     this.mini?.root.traverse((o) => {
       const m = o as Mesh;
       if (m.isMesh) m.geometry.dispose();

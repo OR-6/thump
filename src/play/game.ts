@@ -144,7 +144,7 @@ export interface GameStage {
   /** In-headset settings: read and switch (saved by the stage). */
   setting(name: 'oneHand' | 'contrast' | 'words' | 'band' | 'light' | 'panelMoved' | 'guitarLap' | 'onTable', flip: boolean): boolean;
   /** Playing together: the link's state and how many are in the band. */
-  bandState?(): { state: string; players: number; message?: string; host?: boolean };
+  bandState?(): { state: string; players: number; message?: string; host?: boolean; talk?: { on: boolean; line: string; others: number } };
   /** Easy or Normal changed (saved). */
   saveLevel?(level: 'easy' | 'normal' | 'hard'): void;
   /** The bandmate: claims an instrument (by surface id), is pleased, or simplifies. */
@@ -3233,7 +3233,7 @@ export class Game {
       songPage: this.shownPage(),
       songFilter: this.songFilter,
       level: this.level,
-      band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode, host: !!band.host, name: this.bandNameNow() },
+      band: { state: band.state, code: this.code, players: band.players, message: band.message, typed: this.typedCode, host: !!band.host, name: this.bandNameNow(), talk: band.talk },
       name: { title: this.nameFor === 'band' ? "Your band's name" : 'Your name', full: this.nameFor === 'band' ? this.bandNameNow() : this.myName(), words: this.nameWords() },
       maker: this.makerModel(),
       buildInfo: this.buildInfo(),

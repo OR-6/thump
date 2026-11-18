@@ -99,6 +99,8 @@ import { formOf } from './waterfall-fx.js';
 import { Dimmer } from './dimmer.js';
 import { LightsOut } from './lights-out.js';
 import { FriendSeat } from './friend-seat.js';
+import { FriendPresence } from './friend-presence.js';
+import { Talk, coopDeps } from '../net/voice.js';
 import { HitWords } from './hit-words.js';
 import { setupLighting } from '../art/lighting.js';
 import { makeThumbs } from '../art/thumbs.js';
@@ -485,7 +487,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.cleanupFuncs.push(() => {
       window.removeEventListener('thump:coop', onCoop);
       this.band.stop();
+      this.talk.leave();
     });
+    // (Talk: a friend calling is answered or not by it; its changes redraw the panel)
+    coop.onCall = (c) => this.talk.incoming(c);
+    this.talk.changed = () => this.game.refreshDisplay();
     // (started or joined on the page before entering: pick it up)
     if (coop.status.state !== 'idle') this.onBand(coop.status);
   }
@@ -562,7 +568,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       } else if (r.surface) this.overlays.get(r.surface)?.light(r.zone, k);
     },
     shelf: (dir) => this.shelfStep(dir),
-    bandState: () => ({ state: coop.status.state, players: coop.status.players ?? 1, message: coop.status.message ?? '', host: coop.status.role === 'host' }),
+    bandState: () => ({ state: coop.status.state, players: coop.status.players ?? 1, message: coop.status.message ?? '', host: coop.status.role === 'host', talk: this.talk.menu() }),
     saveLevel: (level) => {
       this.settings = { ...this.settings, level };
       saveSettings(this.settings);
@@ -926,6 +932,9 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
    * players during a song (by 'band:' and the instrument). At most three.
    */
   private seats = new Map<string, FriendSeat>();
+  /** Friends' heads and hands at their seats (and ours to them); hearing each other (Talk, opt-in). */
+  private presence = new FriendPresence(() => this.band.me);
+  private talk = new Talk(coopDeps(coop));
   private seat(key: string, inst: string): FriendSeat | null {
     let s = this.seats.get(key);
     if (!s) {
@@ -974,12 +983,16 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       this.band.panOf = (s) => this.friendSeatFor(s)?.pan ?? 0.45;
       this.band.start(coop.transport!);
       this.band.onCtl = (m) => this.onBandCtl(m);
+      this.presence.start(coop.transport!);
+      this.talk.start(coop.transport!, this.band.me);
       this.bandOn = true;
       this.pingT = 0;
       this.pings = 0;
       this.band.send({ k: 'inst', p: this.band.me, id: this.kit.inst, s: this.game.perfTrack, l: this.game.perfParts });
     } else {
       this.band.stop();
+      this.presence.stop();
+      this.talk.leave();
       this.bandOn = false;
       this.friendInst.clear();
       this.friendSong.clear();
@@ -2138,6 +2151,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         this.syncFriends();
       }
       for (const [p, t] of this.friendSeen) if (this.clock.t - t > 12) this.forget(p);
+      this.presence.tick(dt, this.kit.instRoot, this.player.head, this.seats, this.placement.phase === 'placed');
+      this.talk.tick(dt, this.seats);
     }
     if (this.labelTags.size) {
       this.labelFaceT -= dt;
@@ -4235,6 +4250,11 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
       if (!c) return;
       void coop.join(c, 'guest');
       this.game.menu = 'band';
+      this.game.refreshDisplay();
+      return;
+    }
+    if (id === 'band:talk') {
+      this.talk.toggle();
       this.game.refreshDisplay();
       return;
     }

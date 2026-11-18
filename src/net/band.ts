@@ -148,16 +148,22 @@ export class BandLink {
     wrap('pluck', ((midi: number, vel: number, _pan?: number, when?: number, kind?: string) => ({ k: 'n', s: `p:${kind ?? 'nylon'}`, m: midi, v: vel, d: ahead(when ?? 0) })) as never);
     // (the chords under a track stay on this headset: friends' tracks would clash in two keys)
     wrap('band', (() => null) as never);
-    tr.onMessage((m) => {
-      if (validCtl(m)) this.control(m);
-      else this.play(m);
-    });
+    // (a host whose guest left keeps its link for the next: listen on it once, or their notes would play twice)
+    if (tr !== this.wired) {
+      this.wired = tr;
+      tr.onMessage((m) => {
+        if (!this.originals.drum) return;
+        if (validCtl(m)) this.control(m);
+        else this.play(m);
+      });
+    }
     this.tr = tr;
   }
 
   /** This player's id in the band, and the link to send on. */
   readonly me = Math.random().toString(36).slice(2, 8);
   private tr: Transport | null = null;
+  private wired: Transport | null = null;
   /** The host's steady clock minus this device's (s), from the quickest ping so far. */
   offset = 0;
   private bestRtt = Infinity;

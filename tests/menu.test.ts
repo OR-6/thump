@@ -83,6 +83,23 @@ describe('the panel pages', () => {
     expect(p.items.map((i) => i.id)).toEqual(['pause:songs', 'pause:restart', 'resume']);
     expect(p.items.find((i) => i.id === 'resume')?.kind).toBe('play');
   });
+  it('play together: Talk once there is a band, saying who is on it or why the mic is off', () => {
+    const conn = (host: boolean, talk?: { on: boolean; line: string; others: number }) => buildPage({ ...base('band'), band: { state: 'connected', code: 'CDFH', players: 2, host, name: 'The Band', talk } });
+    expect(buildPage({ ...base('band'), band: { state: 'hosting', code: 'CDFH', players: 1, host: true } }).items.some((i) => i.id === 'band:talk')).toBe(false);
+    for (const host of [true, false]) {
+      const p = conn(host, { on: false, line: '', others: 0 });
+      const t = p.items.find((i) => i.id === 'band:talk');
+      expect(t?.kind).toBe('toggle');
+      expect(t?.on).toBe(false);
+      for (const a of p.items) {
+        expect(a.x >= 0 && a.y >= 0 && a.x + a.w <= 1360 && a.y + a.h <= 907).toBe(true);
+        for (const b of p.items) if (a !== b) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+      }
+    }
+    expect(conn(false, { on: true, line: '', others: 1 }).line).toBe('2 in the band, 1 on Talk');
+    expect(conn(false, { on: true, line: '', others: 1 }).items.find((i) => i.id === 'band:talk')?.on).toBe(true);
+    expect(conn(false, { on: false, line: 'No microphone found', others: 0 }).line).toBe('No microphone found');
+  });
   it('nothing on any page overlaps, and everything is on the panel', () => {
     for (const id of ['main', 'instruments', 'inst', 'songs', 'band', 'settings', 'free', 'build', 'song', 'results', 'pause'] as PageId[]) {
       const items = buildPage(base(id)).items;

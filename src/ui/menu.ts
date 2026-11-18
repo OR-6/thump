@@ -64,7 +64,7 @@ export interface MenuInput {
   songShown?: number[];
   songFilter?: 'all' | 'classics' | 'originals' | 'lessons';
   level: 'easy' | 'normal' | 'hard';
-  band: { state: string; code: string; players: number; message?: string; typed?: string; host?: boolean; name?: string };
+  band: { state: string; code: string; players: number; message?: string; typed?: string; host?: boolean; name?: string; talk?: { on: boolean; line: string; others: number } };
   /** The name page: what it's naming, the name, its two words (each a button that changes it). */
   name?: { title: string; full: string; words: [string, string] };
   /** Make a track's first page: the style chosen (its name, tempo, parts in order) and the track you kept, if any. */
@@ -238,12 +238,14 @@ function buildPageFor(m: MenuInput): Page {
         if (m.band.host && m.band.name) items.push({ id: 'band:name', label: m.band.name, sub: 'Your band on the world boards: tap to rename', kind: 'button', x: 32, y: BOT.y - 150, w: W - 64, h: 130 });
         items.push({ id: 'band:leave', label: 'Leave', kind: 'ghost', x: 32, y: BOT.y, w: 312, h: BOT.h });
         items.push({ id: 'nav:songs', label: 'Pick a song', sub: 'Everyone plays it, on one beat', kind: 'play', x: 360, y: BOT.y, w: W - 32 - 360, h: BOT.h });
+        // (Talk: hear each other, once there's someone to hear; under the seats, clear of the band's name)
+        if (m.band.state === 'connected') items.push({ id: 'band:talk', label: 'Talk', on: !!m.band.talk?.on, kind: 'toggle', x: 906.7, y: 416, w: W - 32 - 906.7, h: 84 });
       }
       // (the code only once the connection service has it; a failure says what went wrong)
       const msg = m.band.message ?? '';
       const line =
         m.band.state === 'connected'
-          ? `${m.band.players} in the band`
+          ? m.band.talk?.line || `${m.band.players} in the band${m.band.talk?.others ? `, ${m.band.talk.others} on Talk` : ''}`
           : m.band.state === 'hosting'
             ? msg.startsWith('Connecting') ? 'Connecting…' : 'Waiting for friends'
             : m.band.state === 'joining'

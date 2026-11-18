@@ -3,7 +3,8 @@
  * it, and the host passes each player's notes on to the others. The only part of Thump that talks to the network,
  * and only after a player starts or joins. Signalling goes through PeerJS's public broker; game data
  * flows peer-to-peer (or via PeerJS's TURN relay if direct fails).
- * No accounts, no voice, no personal data: room codes are random.
+ * No accounts, no personal data: room codes are random. Voice (Talk, src/net/voice.ts) is opt-in: media calls between
+ * the band's headsets over the same peers, only once a player turns it on.
  */
 import type { Transport } from './transport.js';
 
@@ -40,8 +41,10 @@ export function normaliseCode(raw: string): string | null {
   return /^[CDFHJKMNPRTVWXY]{4}$/.test(c) ? c : null;
 }
 
-type PeerLike = { destroy(): void; on(ev: string, cb: (...a: unknown[]) => void): void; connect(id: string, o?: object): ConnLike; reconnect?(): void; destroyed?: boolean };
-type ConnLike = { send(d: unknown): void; on(ev: string, cb: (...a: unknown[]) => void): void; close(): void; open: boolean };
+type PeerLike = { destroy(): void; on(ev: string, cb: (...a: unknown[]) => void): void; connect(id: string, o?: object): ConnLike; call?(id: string, s: MediaStream): MediaCallLike; reconnect?(): void; destroyed?: boolean; id?: string };
+type ConnLike = { send(d: unknown): void; on(ev: string, cb: (...a: unknown[]) => void): void; close(): void; open: boolean; peer?: string };
+/** A voice call (PeerJS's MediaConnection, as much of it as Talk uses). */
+export type MediaCallLike = { peer: string; answer(s?: MediaStream): void; close(): void; on(ev: string, cb: (...a: unknown[]) => void): void };
 
 class CoopSession {
   status: CoopStatus = { state: 'idle' };
@@ -59,6 +62,23 @@ class CoopSession {
   private async newPeer(id?: string): Promise<PeerLike> {
     const { Peer } = await import('peerjs');
     return (id ? new Peer(id, { debug: 0 }) : new Peer({ debug: 0 })) as unknown as PeerLike;
+  }
+
+  /** This headset's id with the connection service ('' before it has one): what friends call for Talk. */
+  get peerId(): string {
+    return this.peer?.id ?? '';
+  }
+  /** Call a friend in the band (Talk); null if there's no link. */
+  call(id: string, stream: MediaStream): MediaCallLike | null {
+    return this.peer?.call && !this.peer.destroyed ? this.peer.call(id, stream) : null;
+  }
+  /** A friend calling (Talk decides whether to answer). */
+  onCall: (c: MediaCallLike) => void = (c) => c.close();
+  private listenCalls(peer: PeerLike, gen: number): void {
+    peer.on('call', (c) => {
+      if (gen === this.gen) this.onCall(c as MediaCallLike);
+      else (c as MediaCallLike).close();
+    });
   }
 
   /** Everyone this headset talks to: the host's guests, or a guest's host. */
@@ -118,6 +138,7 @@ class CoopSession {
       peer.on('disconnected', () => {
         if (gen === this.gen && !peer.destroyed) peer.reconnect?.();
       });
+      this.listenCalls(peer, gen);
       peer.on('connection', (c) => {
         const conn = c as ConnLike;
         if (this.conns.length >= MAX_PLAYERS - 1 || gen !== this.gen) return conn.close(); // the band is full
@@ -150,6 +171,7 @@ class CoopSession {
       const peer = await this.newPeer();
       if (gen !== this.gen) return peer.destroy();
       this.peer = peer;
+      this.listenCalls(peer, gen);
       let joined = false;
       window.setTimeout(() => {
         if (!joined && gen === this.gen) this.fail('Could not reach the headset. Check the code and try again');
