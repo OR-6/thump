@@ -214,8 +214,18 @@ const SAINTS_VERSE = 'z2 C2 E2 F2 | G8 | z2 C2 E2 F2 | G8 | z2 C2 E2 F2 | G4 E4 
 const SAINTS_VERSE_CHORDS = 'C | C | C | C | C | C | C | G | G | C | C | F | F | C | F G | C';
 const KOROBEINIKI_VERSE = 'B2 F G A2 G F | E2 E G B2 A G | F3 G A2 B2 | G2 E2 E2 z2 | z A2 c e2 d c | B3 G B2 A G | F2 F G A2 B2 | G2 E2 E2 z2 | B2 F G A2 G F | E2 E G B2 A G | F3 G A2 B2 | G2 E2 E2 z2 | z A2 c e2 d c | B3 G B2 A G | F2 F G A2 B2 | G2 E2 E2 z2';
 const KOROBEINIKI_VERSE_CHORDS = 'Em B | Em | B | Em | Am | Em | B | Em | Em B | Em | B | Em | Am | Em | B | Em';
+// its second part, the slow one (the one everyone knows from Tetris), in half notes
+const KOROBEINIKI_SLOW = 'B4 G4 | A4 F4 | G4 E4 | ^D4 F4 | B4 G4 | A4 F4 | G2 B2 e4 | ^d8';
+const KOROBEINIKI_SLOW_CHORDS = 'Em | B | Em | B | Em | B | Em | B';
 const MOUNTAIN_KING_INTRO = 'B c d e f d f2 | ^e c ^e2 =e =c e2 | B c d e f d f b | a f d f a4 | B c d e f d f2 | ^e c ^e2 =e =c e2 | B c d e f d f b | a f d f a4';
 const MOUNTAIN_KING_INTRO_CHORDS = 'Bm | F# C | Bm | D | Bm | F# C | Bm | D';
+// its answer, the same theme a fifth up on F# (D A# D the neighbour over it), twice (its last bar turning on D,
+// not up to E, to stay on the keyboard)
+const MOUNTAIN_KING_ANSWER = "f ^g ^a b c' ^a c'2 | d' ^a d'2 c' ^a c'2 | f ^g ^a b c' ^a c'2 | d' c' ^a c' d'4 | f ^g ^a b c' ^a c'2 | d' ^a d'2 c' ^a c'2 | f ^g ^a b c' ^a c'2 | d' c' ^a c' d'4";
+const MOUNTAIN_KING_ANSWER_CHORDS = 'F# | F# | F# | F# | F# | F# | F# | F#';
+// the end: the whole orchestra on B minor and its dominant, then the last chord
+const MOUNTAIN_KING_END = 'B2 z2 B2 z2 | f2 z2 f2 z2 | B2 B2 f2 f2 | b8';
+const MOUNTAIN_KING_END_CHORDS = 'Bm | F# | Bm F# | Bm';
 const WILLIAM_TELL_VERSE = 'z6 A A | A2 A A A2 A A | d2 e2 f2 A A | A2 A A d2 f2 | e2 c2 A2 A A | A2 A A A2 A A | d2 e2 f2 d3/2 f/2 | a3 a a g f e | d2 f2 d2 f f | f2 f f f2 f f | f2 b2 f2 b2 | f2 b2 f2 e2 | d e c d B2 f f | f2 f f f2 f f | f2 b2 f2 b2 | f2 b2 a2 ^g2 | a2 ^g2 a2 A A | A2 A A A2 A A | d2 e2 f2 A A | A2 A A d2 f2 | e2 c2 A2 A A | A2 A A A2 A A | d2 e2 f2 d3/2 f/2 | a3 a a g f e | d2 f2 d2 z2';
 const WILLIAM_TELL_VERSE_CHORDS = 'D | D | D | D | A | D | D | A | D | Bm | Bm | Bm | Bm | Bm | Bm | Bm E | A | D | D | D | A | D | D | A | D';
 const AMAZING_GRACE_VERSE = 'z4 D2 | G4 B G | B4 A2 | G4 E2 | D4 D2 | G4 B G | B4 A B | d6- | d2 z2 B2 | d4 B G | B4 A2 | G4 E2 | D4 D2 | G4 (3B A G | B4 A2 | G6- | G4 z2';
@@ -242,10 +252,8 @@ export const ALL_TUNES: readonly Tune[] = [
     // (4 times through, each its own arrangement)
     ...form(
       ['verse', ODE_TO_JOY_VERSE, ODE_TO_JOY_VERSE_CHORDS],
-      ['solo', 'z8', 'A'],
       ['verse', ODE_TO_JOY_VERSE, ODE_TO_JOY_VERSE_CHORDS],
       ['chorus', ODE_TO_JOY_VERSE, ODE_TO_JOY_VERSE_CHORDS],
-      ['solo', 'z8', 'A'],
       ['chorus', ODE_TO_JOY_VERSE, ODE_TO_JOY_VERSE_CHORDS],
     ),
   },
@@ -264,10 +272,8 @@ export const ALL_TUNES: readonly Tune[] = [
     // (5 times through, each its own arrangement)
     ...form(
       ['verse', CAN_CAN_VERSE, CAN_CAN_VERSE_CHORDS],
-      ['solo', 'z8', 'G'],
       ['chorus', CAN_CAN_VERSE, CAN_CAN_VERSE_CHORDS],
       ['bridge', CAN_CAN_VERSE, CAN_CAN_VERSE_CHORDS],
-      ['solo', 'z8', 'G'],
       ['chorus', CAN_CAN_VERSE, CAN_CAN_VERSE_CHORDS],
       ['chorus', CAN_CAN_VERSE, CAN_CAN_VERSE_CHORDS],
     ),
@@ -290,12 +296,10 @@ export const ALL_TUNES: readonly Tune[] = [
       ['chorus', DRUNKEN_SAILOR_CHORUS, DRUNKEN_SAILOR_VERSE_CHORDS],
       ['verse', DRUNKEN_SAILOR_VERSE, DRUNKEN_SAILOR_VERSE_CHORDS],
       ['chorus', DRUNKEN_SAILOR_CHORUS, DRUNKEN_SAILOR_VERSE_CHORDS],
-      ['solo', 'z8', 'A'],
       ['verse', DRUNKEN_SAILOR_VERSE, DRUNKEN_SAILOR_VERSE_CHORDS],
       ['chorus', DRUNKEN_SAILOR_CHORUS, DRUNKEN_SAILOR_VERSE_CHORDS],
       ['verse', DRUNKEN_SAILOR_VERSE, DRUNKEN_SAILOR_VERSE_CHORDS],
       ['chorus', DRUNKEN_SAILOR_CHORUS, DRUNKEN_SAILOR_VERSE_CHORDS],
-      ['solo', 'z8', 'A'],
       ['verse', DRUNKEN_SAILOR_VERSE, DRUNKEN_SAILOR_VERSE_CHORDS],
       ['chorus', DRUNKEN_SAILOR_CHORUS, DRUNKEN_SAILOR_VERSE_CHORDS],
     ),
@@ -315,10 +319,8 @@ export const ALL_TUNES: readonly Tune[] = [
     // (5 times through, each its own arrangement)
     ...form(
       ['verse', SAINTS_VERSE, SAINTS_VERSE_CHORDS],
-      ['solo', 'z8', 'G'],
       ['chorus', SAINTS_VERSE, SAINTS_VERSE_CHORDS],
       ['bridge', SAINTS_VERSE, SAINTS_VERSE_CHORDS],
-      ['solo', 'z8', 'G'],
       ['chorus', SAINTS_VERSE, SAINTS_VERSE_CHORDS],
       ['chorus', SAINTS_VERSE, SAINTS_VERSE_CHORDS],
     ),
@@ -331,24 +333,25 @@ export const ALL_TUNES: readonly Tune[] = [
     rhythm: 'x.x.x.x.',
     bass: '1.5.1.5.',
     name: 'Korobeiniki',
-    by: 'Folk dance',
+    by: 'Folk song',
     bpm: 136,
     key: 'Em',
     style: 'dance',
     passes: 1,
-    // (5 times through, each its own arrangement)
+    // (the dance twice, its slow part, the dance, the slow part again, the dance)
     ...form(
       ['verse', KOROBEINIKI_VERSE, KOROBEINIKI_VERSE_CHORDS],
-      ['solo', 'z8', 'B'],
       ['chorus', KOROBEINIKI_VERSE, KOROBEINIKI_VERSE_CHORDS],
-      ['bridge', KOROBEINIKI_VERSE, KOROBEINIKI_VERSE_CHORDS],
-      ['solo', 'z8', 'B'],
+      ['bridge', KOROBEINIKI_SLOW, KOROBEINIKI_SLOW_CHORDS],
       ['chorus', KOROBEINIKI_VERSE, KOROBEINIKI_VERSE_CHORDS],
+      ['bridge', KOROBEINIKI_SLOW, KOROBEINIKI_SLOW_CHORDS],
       ['chorus', KOROBEINIKI_VERSE, KOROBEINIKI_VERSE_CHORDS],
     ),
   },
   {
-    // Peer Gynt (1875): its theme, twice, landing home (from memory; not checked against a score)
+    // Peer Gynt (1875): the theme in B minor and its answer on F#, again and again, the orchestra growing under it
+    // (bassoons and pizzicato, then the strings and horns, then everything), to the hammered ending (from memory;
+    // not checked against a score)
     id: 'mountain-king',
     rhythm: 'x.x.',
     bass: '1.1.',
@@ -358,18 +361,16 @@ export const ALL_TUNES: readonly Tune[] = [
     key: 'Bm',
     style: 'rock',
     passes: 1,
-    // (its theme eight times over, growing as Grieg's does, then home)
     ...form(
       ['intro', MOUNTAIN_KING_INTRO, MOUNTAIN_KING_INTRO_CHORDS],
+      ['verse', MOUNTAIN_KING_ANSWER, MOUNTAIN_KING_ANSWER_CHORDS],
       ['verse', MOUNTAIN_KING_INTRO, MOUNTAIN_KING_INTRO_CHORDS],
-      ['verse', MOUNTAIN_KING_INTRO, MOUNTAIN_KING_INTRO_CHORDS],
       ['chorus', MOUNTAIN_KING_INTRO, MOUNTAIN_KING_INTRO_CHORDS],
-      ['solo', 'z8', 'F#'],
+      ['chorus', MOUNTAIN_KING_ANSWER, MOUNTAIN_KING_ANSWER_CHORDS],
       ['chorus', MOUNTAIN_KING_INTRO, MOUNTAIN_KING_INTRO_CHORDS],
-      ['bridge', MOUNTAIN_KING_INTRO, MOUNTAIN_KING_INTRO_CHORDS],
+      ['chorus', MOUNTAIN_KING_ANSWER, MOUNTAIN_KING_ANSWER_CHORDS],
       ['chorus', MOUNTAIN_KING_INTRO, MOUNTAIN_KING_INTRO_CHORDS],
-      ['chorus', MOUNTAIN_KING_INTRO, MOUNTAIN_KING_INTRO_CHORDS],
-      ['outro', 'B8', 'Bm'],
+      ['outro', MOUNTAIN_KING_END, MOUNTAIN_KING_END_CHORDS],
     ),
   },
   {
@@ -423,10 +424,8 @@ export const ALL_TUNES: readonly Tune[] = [
     // (4 times through, each its own arrangement)
     ...form(
       ['verse', WILLIAM_TELL_VERSE, WILLIAM_TELL_VERSE_CHORDS],
-      ['solo', 'z8 | z8', 'A | A'],
       ['chorus', WILLIAM_TELL_VERSE, WILLIAM_TELL_VERSE_CHORDS],
       ['bridge', WILLIAM_TELL_VERSE, WILLIAM_TELL_VERSE_CHORDS],
-      ['solo', 'z8 | z8', 'A | A'],
       ['chorus', WILLIAM_TELL_VERSE, WILLIAM_TELL_VERSE_CHORDS],
     ),
   },
@@ -480,10 +479,8 @@ export const ALL_TUNES: readonly Tune[] = [
     // (4 times through, each its own arrangement)
     ...form(
       ['verse', AMAZING_GRACE_VERSE, AMAZING_GRACE_VERSE_CHORDS],
-      ['solo', 'z6', 'D'],
       ['verse', AMAZING_GRACE_VERSE, AMAZING_GRACE_VERSE_CHORDS],
       ['chorus', AMAZING_GRACE_VERSE, AMAZING_GRACE_VERSE_CHORDS],
-      ['solo', 'z6', 'D'],
       ['chorus', AMAZING_GRACE_VERSE, AMAZING_GRACE_VERSE_CHORDS],
     ),
   },
@@ -503,10 +500,8 @@ export const ALL_TUNES: readonly Tune[] = [
     // (5 times through, each its own arrangement)
     ...form(
       ['verse', SCARBOROUGH_FAIR_VERSE, SCARBOROUGH_FAIR_VERSE_CHORDS],
-      ['solo', 'z6', 'B'],
       ['verse', SCARBOROUGH_FAIR_VERSE, SCARBOROUGH_FAIR_VERSE_CHORDS],
       ['chorus', SCARBOROUGH_FAIR_VERSE, SCARBOROUGH_FAIR_VERSE_CHORDS],
-      ['solo', 'z6', 'B'],
       ['bridge', SCARBOROUGH_FAIR_VERSE, SCARBOROUGH_FAIR_VERSE_CHORDS],
       ['chorus', SCARBOROUGH_FAIR_VERSE, SCARBOROUGH_FAIR_VERSE_CHORDS],
     ),

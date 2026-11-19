@@ -843,7 +843,7 @@ describe('the game', () => {
     expect(band.some((e) => e.voice === 'perc') || voiced.some((k) => k.startsWith('congas:'))).toBe(true);
   });
 
-  it("a song's chords follow it bar by bar, and the solo holds the five", () => {
+  it("a song's chords follow it bar by bar, straight into its next verse", () => {
     const g = new Game(stage([]), freshProgress(), room([]));
     g.start(0);
     g.discovered('kit', 'table', 0);
@@ -858,9 +858,9 @@ describe('the game', () => {
       const b = Math.floor(g.clock.beatAt(t) / 4);
       if (b >= 0 && chordAt[b] === undefined && g.mode === 'play') chordAt[b] = g.harmony()!.chord;
     }
-    // Ode to Joy in D: D A D A D A D (A, D), then the second part from A; the solo bar after sixteen, on A
+    // Ode to Joy in D: D A D A D A D (A, D), then the second part from A; after sixteen bars the next verse, on D
     expect(chordAt.slice(0, 9)).toEqual([62, 69, 62, 69, 62, 69, 62, 69, 69]);
-    expect(chordAt[16]).toBe(69);
+    expect(chordAt[16]).toBe(62);
   });
 
   it("today's song (a loop track): its second half changes chords (IV–ii in major, VI–VII in minor) and comes home", () => {

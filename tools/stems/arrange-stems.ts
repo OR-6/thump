@@ -636,12 +636,21 @@ const ARR: Record<string, (c: Ctx) => Stems> = {
     bass: [tr('basses', 43, bassPat(c, 4, (b) => (b.pass >= 1 ? '1.1.' : '1...'), 38, 0.75, 0.9), { rev: 50, vol: 100 })],
     drums: kitTracks(c),
   }),
+  // Grieg's orchestra growing under the theme and its answer: bassoons and pizzicato first; then the clarinet and
+  // the violins, horns holding the chords, the basses driving; then trumpets and the violins an octave up over the
+  // whole band, power chords and the kit, to the hammered ending
   'mountain-king': (c) => ({
-    lead: [tr('bassoon', 70, tune(c, -1, 0.7, pass(0)), { rev: 45, vol: 112 }), tr('clarinet', 71, tune(c, 0, 0.75, pass(1)), { rev: 45, vol: 108 }), tr('strings', 48, tune(c, 0, 0.8, fromPass(1), 0.55), { rev: 55, vol: 84 }), tr('lead guitar', 29, tune(c, 0, 0.8, pass(2), 0.8), { rev: 40, vol: 100 })],
-    strings: [tr('pizzicato', 45, hits(c, 4, (b) => (b.pass === 0 ? 'x.x.' : b.pass === 1 ? 'xxxx' : undefined), 50, 0.5, 0.6), { rev: 50, vol: 90 })],
-    brass: [tr('horns', 60, pad(c, 50, 0.45, fromPass(1)), { rev: 55, vol: 84 })],
-    bass: [tr('cello pizz', 45, bassPat(c, 4, (b) => (b.pass === 0 ? '1.1.' : undefined), 38, 0.7, 0.4), { rev: 35, vol: 100 }), tr('bass', 34, bassPat(c, 8, (b) => (b.pass >= 1 ? '11111111' : undefined), 38, 0.75, 0.7), { rev: 10, vol: 104 })],
-    guitar: [tr('power chords', 30, power(c, 8, (b) => (b.pass === 2 ? 'x.x.x.x.' : undefined), 40, 0.7), { rev: 25, vol: 88 })],
+    lead: [
+      tr('bassoon', 70, tune(c, -1, 0.72, pass(0)), { rev: 45, vol: 112 }),
+      tr('clarinet', 71, tune(c, 0, 0.78, pass(1)), { rev: 45, vol: 104, pan: 52 }),
+      tr('violins', 48, tune(c, 0, 0.8, fromPass(1), 0.62), { rev: 55, vol: 92, pan: 78 }),
+      tr('trumpets', 56, tune(c, 0, 0.82, pass(2)), { rev: 45, vol: 108 }),
+      tr('violins up', 48, tune(c, 1, 0.8, pass(2), 0.6), { rev: 55, vol: 86, pan: 84 }),
+    ],
+    strings: [tr('pizzicato', 45, hits(c, 4, (b) => (b.pass === 0 ? 'x.x.' : b.pass === 1 ? 'xxxx' : undefined), 50, 0.5, 0.6), { rev: 50, vol: 90 }), tr('tremolo', 44, pad(c, 54, 0.42, pass(2)), { rev: 60, vol: 78, pan: 40 })],
+    brass: [tr('horns', 60, pad(c, 50, 0.45, fromPass(1)), { rev: 55, vol: 86 }), tr('trombones', 57, hits(c, 4, (b) => (b.pass === 2 ? 'x.x.' : undefined), 45, 0.7, 0.5), { rev: 45, vol: 84 })],
+    bass: [tr('cello pizz', 45, bassPat(c, 4, (b) => (b.pass === 0 ? '1.1.' : undefined), 38, 0.7, 0.4), { rev: 35, vol: 100 }), tr('basses', 43, bassPat(c, 8, (b) => (b.pass >= 1 ? '11111111' : undefined), 38, 0.75, 0.7), { rev: 30, vol: 102 })],
+    guitar: [tr('power chords', 30, power(c, 8, (b) => (b.pass === 2 ? 'x.x.x.x.' : undefined), 40, 0.62), { rev: 25, vol: 80 })],
     drums: kitTracks(c),
   }),
   // folk: a steel-string guitar picking each chord, the flute on the tune (then the fiddle); strings, a soft bass and a frame drum the second time

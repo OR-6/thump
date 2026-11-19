@@ -49,7 +49,7 @@ export const CLASSIC_KITS: Record<string, KitTrack[]> = {
     { name: 'kit', program: 8, rev: 40, vol: 86, parts: [{ drummer: { style: 'anthem', scale: 0.75, only: (b) => b.pass >= 1 } }] },
   ],
   'mountain-king': [
-    { name: 'timpani', program: 48, rev: 50, vol: 88, parts: [{ beat: { steps: 4, scale: 0.7, notes: { 41: (b) => (b.pass === 1 ? 'x.x.' : undefined) } } }] },
+    { name: 'timpani', program: 48, rev: 50, vol: 88, parts: [{ beat: { steps: 4, scale: 0.7, notes: { 41: (b) => (b.pass === 1 ? 'x.x.' : b.pass === 2 ? 'xxxx' : undefined) } } }, { crashes: { vel: 0.7, note: 49 } }] },
     { name: 'rock kit', program: 16, rev: 30, vol: 92, parts: [{ drummer: { style: 'rock', scale: 0.9, only: (b) => b.pass === 2 } }] },
   ],
   'scarborough-fair': [{ name: 'frame drum', program: 48, rev: 55, vol: 80, parts: [{ beat: { steps: 6, scale: 0.5, notes: { 45: (b) => (b.pass >= 1 ? 'x.....' : undefined), 82: (b) => (b.pass >= 1 ? '-.x.x.' : undefined) } } }] }],

@@ -214,12 +214,15 @@ describe('the songs: classics with modern grooves, and originals', () => {
     const s = by('ode-to-joy');
     const parts = scoreParts(s);
     expect(parts.find((p) => p.name === 'BASS')!.notes[0]).toMatchObject({ beat: 0, midi: 38 });
-    const [a, z] = s.solos[0];
-    expect(parts.find((p) => p.name === 'KICK')!.notes.some((n) => n.beat >= a && n.beat < z)).toBe(true);
-    expect(parts.find((p) => p.name === 'KEYS')!.notes.some((n) => n.beat >= a && n.beat < z)).toBe(false);
+    // (the classics play their tune straight through now; an original keeps its written break)
+    const m = by('mango-season');
+    const mparts = scoreParts(m);
+    const [a, z] = m.solos[0];
+    expect(mparts.find((p) => p.name === 'KICK')!.notes.some((n) => n.beat >= a && n.beat < z)).toBe(true);
+    expect(mparts.find((p) => p.name === 'KEYS')!.notes.some((n) => n.beat >= a && n.beat < z)).toBe(false);
     const bed = scoreBed(s);
     expect(bed.filter((e) => e.voice === 'shaker').map((e) => e.beat)).toEqual([-4, -3, -2, -1]);
-    expect(bed.find((e) => e.voice === 'chord' && e.beat === a)).toMatchObject({ midi: chordMidi(s.soloChord, s.keyPc), minor: false });
+    expect(scoreBed(m).find((e) => e.voice === 'chord' && e.beat === a)).toMatchObject({ midi: chordMidi(m.soloChord, m.keyPc) });
     // a song in three keeps its bars of three: Amazing Grace's chords change on the bar
     const ag = by('amazing-grace');
     expect(ag.meter).toBe(3);
