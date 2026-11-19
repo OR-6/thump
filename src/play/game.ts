@@ -41,6 +41,8 @@ const PAN_ALT: readonly (readonly string[])[] = Array.from({ length: 9 }, (_, z)
   return [`handpan:${PAN_AT_SLOT[(slot + 1) % 8]}`, `handpan:${PAN_AT_SLOT[(slot + 7) % 8]}`];
 });
 /** Other keys a hit on `key` may stand for at this level (the drum's other half; a field's neighbours on Easy). */
+/** A gap before your next note this long (beats) is a rest: its ring shows from far off (src/room/approach-rings.ts). */
+const REST_BEATS = 4;
 /** The Spotlight (gold bars, a meter, both hands up for double points): off; playtesters found it more confusing than fun. */
 const SPOTLIGHT = false;
 /** How long the band holds its last chord for your last hit before it ends the song itself (s). */
@@ -261,6 +263,14 @@ export class Game {
   last: Summary | null = null;
   readonly motes: MoteView[] = Array.from({ length: MAX_MOTES }, () => ({ key: '', ahead: 0, grade: null }));
   moteCount = 0;
+  /** After a rest: the part your next note is on and how many beats off it is, when it's further off than the rings
+   * show (src/room/approach-rings.ts draws it from far off, beating to your entry); '' when there's no rest. */
+  farKey = '';
+  farAhead = 0;
+  /** Beats in a bar of the song playing (4 outside one). */
+  get meter(): number {
+    return this.perf?.track.score?.meter ?? 4;
+  }
   /** 0..1 how well it's going (the applause meter). */
   energy = 0.5;
   readonly graded = { perfect: 0, good: 0, extra: 0 };
@@ -2545,8 +2555,21 @@ export class Game {
     // ring would still be wide when the judge wants the hit)
     const seen = this.clock.beatAt(t - this.opts.offset);
     let k = 0;
+    // (your next note, when it comes after a rest of a bar or so: the rings draw it from far off until the usual ring
+    // takes it, so the way back in shows with no words)
+    let prev = -Infinity;
+    let next = false;
+    this.farKey = '';
     for (const n of j.notes) {
       const d = n.beat - seen;
+      if (!next && n.grade === null && d > 0) {
+        next = true;
+        if (n.beat - prev >= REST_BEATS) {
+          this.farKey = n.lane;
+          this.farAhead = d;
+        }
+      }
+      if (!next) prev = n.beat;
       if (d > TIMING.travelBeats + 0.01) break;
       if (d < -0.6 && !(n.grade === 'perfect' || n.grade === 'good')) continue;
       if (d < -1) continue;

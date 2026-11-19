@@ -33,7 +33,16 @@ export interface ApproachFeed {
   readonly motes: readonly ApproachNote[];
   readonly moteCount: number;
   readonly mode: string;
+  /** After a rest: the part your next note is on, and how many beats off it is (beyond the usual rings). */
+  readonly farKey?: string;
+  readonly farAhead?: number;
+  /** Beats in a bar (the far ring beats on each of them in the last one). */
+  readonly meter?: number;
 }
+
+/** How big a far ring starts (× the part), and how many bars ahead of its note it appears. */
+const FAR_START = 2.6;
+const FAR_BARS = 2;
 /** Where and what shape `key` is (world), and its colour; false: nothing to show for it. */
 export type ShapeOf = (key: string, s: PartShape, col: Color) => boolean;
 
@@ -192,6 +201,48 @@ export class ApproachRings {
         this.band(s, 2, sh, w1, d1, r1, 0.0005, 0.0035, _t, n.ahead > 0 && !miss ? Math.min(1, a * 0.5 + 0.35) * (paused ? 0.25 : 1) : 0);
         s++;
       }
+    }
+    // after a rest, your way back in, with no words (as a rhythm game shows what's coming from far off): your next
+    // note's ring appears up to two bars early, wide and faint, narrowing slowly onto the part until the usual ring
+    // takes over; the part's own outline beats on each beat, softly at first and strongly through the last bar, so
+    // you feel the count to your entry
+    const far = feed.farAhead ?? 0;
+    const meter = feed.meter ?? 4;
+    const farMax = Math.max(lead + 1, FAR_BARS * meter);
+    if ((feed.mode === 'play' || feed.mode === 'count') && feed.farKey && far > lead && far <= farMax && s < SLOTS && shapeOf(feed.farKey, this.shape, _c)) {
+      const sh = this.shape;
+      const v = (far - lead) / (farMax - lead);
+      const ph = far - Math.floor(far);
+      const lastBar = far <= lead + meter;
+      const pulse = calm ? 0 : Math.pow(ph, 10) * (lastBar ? 1 : 0.45);
+      const base = (0.24 + 0.3 * (1 - v)) * (paused ? 0.25 : 1);
+      _t.copy(_c).lerp(WHITE, 0.6);
+      const w1 = sh.w / 2;
+      const d1 = (sh.round ? sh.w : sh.d) / 2;
+      if (sh.lane) {
+        // (a key: its landing box, beating; the block itself slides in with the usual lead)
+        const land = sh.d > 0.12 ? 0.035 : 0.025;
+        const L = this.lane;
+        L.q.copy(sh.q);
+        _l.set(0, 0, sh.d / 2 - land).applyQuaternion(sh.q);
+        L.at.copy(sh.at).add(_l);
+        const bw = sh.w * 0.43 + 0.0015;
+        const bd = 0.0175;
+        this.band(s, 0, L, bw, bd, 0, 0, 0, EDGE, 0);
+        this.band(s, 1, L, bw, bd, 0, 0, 0, _c, 0);
+        this.band(s, 2, L, bw, bd, Math.min(bw, bd) * 0.5, 0.0005, 0.0025 + 0.002 * pulse, _t, Math.min(1, base + 0.7 * pulse));
+      } else {
+        const grow = START + (FAR_START - START) * v;
+        const hw = w1 * grow;
+        const hd = d1 * grow;
+        const r = sh.round ? hw : Math.min(hw, hd) * 0.35;
+        const w = 0.004 * (1 + 0.5 * pulse);
+        this.band(s, 0, sh, hw, hd, r, -0.0015, w + 0.0015, EDGE, base * 0.4);
+        this.band(s, 1, sh, hw, hd, r, 0, w, _c, Math.min(1, base * (1 + 1.4 * pulse)));
+        const r1 = sh.round ? w1 : Math.min(w1, d1) * 0.35;
+        this.band(s, 2, sh, w1, d1, r1, 0.0005, 0.0035 + 0.002 * pulse, _t, Math.min(1, 0.15 + 0.75 * pulse) * (paused ? 0.25 : 1));
+      }
+      s++;
     }
     // the slots left over: nothing (collapsed, clear)
     for (let k = s; k < this.used; k++) {

@@ -1385,13 +1385,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private hudFirstT = -9;
   private hudSticksT = -9;
   private coachKitT = -1;
-  /** In a wait of over 4 s for your next note, until it's nearly due. */
-  private waiting = false;
-  private longWait(next: number): boolean {
-    if (next > 4 && next < 120) this.waiting = true;
-    else if (next < 0.4 || next >= 120) this.waiting = false;
-    return this.waiting;
-  }
   private coachHits = 0;
   private coachGoT = -1;
   private coachSkip = 0;
@@ -1520,12 +1513,8 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         const ps = this.game.pendingSwitch()!;
         say = { kind: 'tip', big: `${instDef(ps.inst as InstId).name} next`, small: `Switching in ${Math.max(1, Math.ceil(ps.inS))}...` };
       }
-      // (a long wait for your next note, the band playing on: when you come in, counted down, so nobody wonders if it's
-      // stopped working)
-      else if (inSong && mode === 'play' && !this.game.paused && !this.game.listening && this.longWait(this.game.nextNoteIn())) {
-        const n = Math.max(1, Math.ceil(this.game.nextNoteIn()));
-        say = { kind: 'tip', big: n <= 3 ? `In ${n}` : 'Listen', small: n <= 3 ? 'Get ready' : `Sit tight. You're back in ${n}` };
-      }
+      // (a long wait for your next note: no words; the next note's ring shows from far off and beats to your entry,
+      // src/room/approach-rings.ts, while this sign keeps your run)
       // (playing a song with nothing else to say: the run, the multiplier, and how your last hits sat in time)
       else if (inSong && mode === 'play' && !this.game.paused && !this.game.listening) {
         const p = this.hudPlay;
