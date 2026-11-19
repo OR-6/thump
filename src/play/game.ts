@@ -2264,16 +2264,6 @@ export class Game {
   world: { rank: number; total: number; inst: string } | null = null;
   /** The last judged hit's offset from its note (s; − early, + late). */
   lastOffset = 0;
-  /**
-   * The last judged hit's lean: −1 clearly early, +1 clearly late (past halfway from the Perfect window's edge to the
-   * Good's), 0 near enough the beat. A Good says GOOD, or EARLY or LATE when it leans.
-   */
-  get hitLean(): number {
-    const w = this.judge?.win;
-    if (!w) return 0;
-    const o = this.lastOffset;
-    return Math.abs(o) <= (w.perfect + w.good) / 2 ? 0 : Math.sign(o);
-  }
   /** Your last 10 hits' offsets (s), round the ring: `hitErrN` of them, the next going at `hitErrI`; `hitV` counts. */
   readonly hitErrs = new Float32Array(10);
   hitErrN = 0;

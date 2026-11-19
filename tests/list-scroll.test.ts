@@ -57,4 +57,19 @@ describe('the song list scrolls under a finger', () => {
     run(s, 1);
     expect(s.offset).toBe(80);
   });
+
+  it('its scrollbar puts the list where the bar is put, never past the ends; that is never a tap', () => {
+    const s = new ListScroll();
+    s.setMax(600);
+    s.grab(2, 300);
+    s.jump(2, 450);
+    expect(s.offset).toBe(450);
+    s.jump(2, 900);
+    expect(s.offset).toBe(600);
+    s.jump(2, -50);
+    expect(s.offset).toBe(0);
+    s.release(2);
+    run(s, 1);
+    expect(s.offset).toBe(0);
+  });
 });

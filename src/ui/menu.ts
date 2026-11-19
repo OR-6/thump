@@ -98,6 +98,8 @@ export interface MenuInput {
 }
 
 const W = 1360;
+/** The width a scrolling list keeps at its right for its scrollbar (panel px). */
+export const LIST_BAR = 40;
 const back = (): Item => ({ id: 'back', label: 'Back', kind: 'button', x: 32, y: 28, w: 96, h: 96 });
 /** The top-right corner button (beside the title). */
 const corner = (id: string, label: string): Item => ({ id, label, kind: 'button', x: 1068, y: 28, w: 260, h: 96 });
@@ -213,11 +215,12 @@ function buildPageFor(m: MenuInput): Page {
         }
       }
       // (every song the filter lets through, by name with its best grade, one under another; the list shows six rows
-      // at a time and scrolls under a finger, so the rows past the sixth sit below the window until it's scrolled)
+      // at a time and scrolls under a finger, so the rows past the sixth sit below the window until it's scrolled; its
+      // last 40 px are the scrollbar's, which shows there's more and can be dragged)
       const list = { x: 32, y: 176, w: C8, h: 480 };
       shown.forEach((i, k) => {
         const s = m.songs[i];
-        items.push({ id: `song:${i}`, label: s.name, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', scroll: true, x: list.x, y: list.y + k * 80, w: list.w, h: 74 });
+        items.push({ id: `song:${i}`, label: s.name, stars: s.stars, grade: s.grade, on: i === m.songSel, off: s.locked, kind: 'row', scroll: true, x: list.x, y: list.y + k * 80, w: list.w - LIST_BAR, h: 74 });
       });
       const lv = m.level === 'hard' ? 'Hard' : m.level === 'normal' ? 'Normal' : 'Easy';
       // the level as three tabs, each lit in its own colour

@@ -56,6 +56,15 @@ export class ListScroll {
     this.lastY = y;
   }
 
+  /** The holding pointer puts the list at `offset` straight away (dragging its scrollbar: no give past the ends). */
+  jump(id: number, offset: number): void {
+    if (id !== this.held) return;
+    const o = Math.max(0, Math.min(this.max, offset));
+    this.moved = Math.max(this.moved, Math.abs(o - this.offset) + this.moved);
+    this.offset = o;
+    this.vel = 0;
+  }
+
   /** The pointer let go; true when it had moved enough to be a drag (not a tap). */
   release(id: number, tap = 24): boolean {
     if (id !== this.held) return false;

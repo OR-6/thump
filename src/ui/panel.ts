@@ -13,7 +13,7 @@ import { FONT, whenFonts } from './fonts.js';
 import { PanelFx, type FxKind } from './panel-fx.js';
 import { GRADE_PAIR, JUDGE, LEVEL_INK, MULT_PAIR, NEON, SECONDARY, UI, body, chroma, display, glowText, halftone, hgrad, pill, riso, slant, stage, vgrad } from './theme.js';
 import { star, type Display } from './module.js';
-import type { Item, Page } from './menu.js';
+import { LIST_BAR, type Item, type Page } from './menu.js';
 import { ICON } from '../stand/stand.js';
 import { Minis } from './minis.js';
 import { motion } from './motion.js';
@@ -37,6 +37,9 @@ const MAX_ITEMS = 48;
 const LIST_PAD = 96;
 /** The fade where a scrolling list's rows meet the window's top and bottom edges (px). */
 const LIST_FADE = 28;
+/** The scrollbar's thumb: a short ink bar (panel px). */
+const THUMB_W = 14;
+const THUMB_H = 84;
 
 const INK = '#1d1d1b';
 const SOFT = '#4a4640';
@@ -192,12 +195,14 @@ function drawRing(g: CanvasRenderingContext2D, k: number, pair: [string, string]
   g.clearRect(0, 0, 480, 480);
   g.lineCap = 'round';
   g.lineWidth = 28;
-  g.strokeStyle = '#2b2730';
+  // the empty track a faint print on the paper, the part filled solid ink (the grade's, once it lands): only your score
+  // reads as filled (the track was the old dark screen's near-black, so a low score looked like a full ring)
+  g.strokeStyle = 'rgba(29,29,27,0.1)';
   g.beginPath();
   g.arc(240, 240, 200, 0, Math.PI * 2);
   g.stroke();
   if (k > 0.002) {
-    g.strokeStyle = pair ? pair[1] : 'rgba(251,247,255,0.7)';
+    g.strokeStyle = pair ? pair[1] : '#1d1d1b';
     g.shadowColor = pair ? pair[1] : NEON.violet;
     g.shadowBlur = 0;
     g.beginPath();
@@ -402,6 +407,10 @@ export class Panel {
   private listTex!: CanvasTexture;
   private listMesh!: Mesh;
   private listFades: Mesh[] = [];
+  /** The scrollbar's thumb (its track is printed on the page): it moves as the list does, and can be dragged. */
+  private listThumb!: Mesh;
+  /** Pointers dragging the scrollbar rather than the list. */
+  private onBar = new Set<number>();
   private list: { x: number; y: number; w: number; h: number } | null = null;
   /** The list's rows' signature (which rows, in what order) and the chosen one: a new list, or a new choice, scrolls. */
   private listSig = '';
@@ -662,18 +671,42 @@ export class Panel {
     const q = itemZone(L);
     return Math.abs(x - q.x) <= q.w / 2 + slack && Math.abs(z - q.z) <= q.h / 2 + slack;
   }
-  /** A pointer (a fingertip, a pinch, a controller's ray: `id`) takes the list at height `z` up the panel (m). */
-  listGrab(id: number, z: number): void {
+  /**
+   * A pointer (a fingertip, a pinch, a controller's ray: `id`) takes the list at (x, z) on the panel (m). On the
+   * scrollbar (the list's right edge) it takes the bar: the list goes where the bar is put. True when it took the bar.
+   */
+  listGrab(id: number, z: number, x = -1): boolean {
     this.scroll.grab(id, this.listY(z));
+    const L = this.list;
+    const bar = !!L && ((x / PANEL.w + 0.5) * CW) >= L.x + L.w - LIST_BAR - 8;
+    if (bar) {
+      this.onBar.add(id);
+      this.scroll.jump(id, this.barOffset(this.listY(z)));
+      this.placeList();
+    }
+    return bar;
   }
   listDrag(id: number, z: number, dt: number): void {
     const was = this.scroll.offset;
-    this.scroll.drag(id, this.listY(z), dt);
+    if (this.onBar.has(id)) this.scroll.jump(id, this.barOffset(this.listY(z)));
+    else this.scroll.drag(id, this.listY(z), dt);
     if (this.scroll.offset !== was) this.placeList();
   }
-  /** It lets go: true when it had moved the list (a drag, not a tap: 8 mm or more). */
+  /** It lets go: true when it had moved the list (a drag, not a tap: 8 mm or more), or held its scrollbar. */
   listRelease(id: number): boolean {
-    return this.scroll.release(id, (0.008 / PANEL.h) * CH);
+    const bar = this.onBar.delete(id);
+    return this.scroll.release(id, (0.008 / PANEL.h) * CH) || bar;
+  }
+  /** The scrollbar's track (panel px): where its thumb's middle can go, top to bottom. */
+  private barTrack(): { x: number; y0: number; y1: number } {
+    const L = this.list!;
+    return { x: L.x + L.w - LIST_BAR / 2, y0: L.y + 8 + THUMB_H / 2, y1: L.y + L.h - 8 - THUMB_H / 2 };
+  }
+  /** The list's offset for the bar's thumb at panel height `y` (px). */
+  private barOffset(y: number): number {
+    if (!this.list) return 0;
+    const t = this.barTrack();
+    return Math.max(0, Math.min(1, (y - t.y0) / Math.max(1, t.y1 - t.y0))) * this.scroll.max;
   }
   /** How far the holding pointer has moved the list since it took it (m). */
   get listTravel(): number {
@@ -716,6 +749,22 @@ export class Panel {
       this.listFades.push(m);
       this.face.add(m);
     }
+    // the thumb: an ink bar with round ends (a fixed size, so its ends never stretch)
+    const tc = document.createElement('canvas');
+    tc.width = 32;
+    tc.height = 192;
+    const tg = tc.getContext('2d')!;
+    rounded(tg, 0, 0, 32, 192, 16);
+    tg.fillStyle = UI.ink;
+    tg.fill();
+    const tt = new CanvasTexture(tc);
+    tt.colorSpace = SRGBColorSpace;
+    const tz = itemZone({ x: 0, y: 0, w: THUMB_W, h: THUMB_H });
+    this.listThumb = new Mesh(new PlaneGeometry(tz.w, tz.h), new MeshBasicMaterial({ map: tt, transparent: true, toneMapped: false, depthWrite: false }));
+    this.listThumb.name = 'SongListThumb';
+    this.listThumb.renderOrder = 3;
+    this.listThumb.visible = false;
+    this.face.add(this.listThumb);
   }
   private newListTex(): CanvasTexture {
     const t = new CanvasTexture(this.listCanvas);
@@ -730,6 +779,7 @@ export class Panel {
     this.list = L;
     this.listMesh.visible = !!L;
     for (const f of this.listFades) f.visible = !!L;
+    this.listThumb.visible = false;
     if (!L) {
       this.scroll.reset();
       this.listSig = '';
@@ -785,6 +835,14 @@ export class Panel {
     uv.setXY(2, 0, vb);
     uv.setXY(3, u1, vb);
     uv.needsUpdate = true;
+    // the thumb: down its track as far as the list is down its length (held at the ends when pulled past them)
+    this.listThumb.visible = this.scroll.max > 0;
+    if (this.listThumb.visible) {
+      const t = this.barTrack();
+      const f = Math.max(0, Math.min(1, off / this.scroll.max));
+      const z = itemZone({ x: t.x - THUMB_W / 2, y: t.y0 + f * (t.y1 - t.y0) - THUMB_H / 2, w: THUMB_W, h: THUMB_H });
+      this.listThumb.position.set(z.x, z.z, 0.0007);
+    }
     p.items.forEach((it, i) => {
       if (!it.scroll) return;
       const top = Math.max(L.y, it.y - off);
@@ -1212,6 +1270,7 @@ export class Panel {
     if (this.list) {
       if (this.scroll.update(dt)) this.placeList();
       (this.listMesh.material as MeshBasicMaterial).opacity = this.faceMat.opacity;
+      (this.listThumb.material as MeshBasicMaterial).opacity = this.faceMat.opacity;
       // (each fade only where there's more list past that edge: at the top of the list, the first row is whole)
       const off = this.scroll.offset;
       const fk = [Math.max(0, Math.min(1, off / LIST_FADE)), Math.max(0, Math.min(1, (this.scroll.max - off) / LIST_FADE))];
@@ -1313,8 +1372,19 @@ export class Panel {
     // (the instruments' pictures are drawn on their cards: one fixed box each, never a 3D model standing off the panel)
     this.noPics = false;
     for (const it of p.items) if (!it.scroll) this.drawItem(g, it);
-    this.tex.needsUpdate = true;
     const L = p.list;
+    if (L && this.scroll.max > 0) {
+      // the scrollbar's track: a printed rule down the list's right edge, a little dot at each end
+      const t = this.barTrack();
+      g.fillStyle = UI.ink3;
+      g.fillRect(t.x - 2, t.y0 - THUMB_H / 2, 4, t.y1 - t.y0 + THUMB_H);
+      for (const y of [t.y0 - THUMB_H / 2, t.y1 + THUMB_H / 2]) {
+        g.beginPath();
+        g.arc(t.x, y, 5, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    this.tex.needsUpdate = true;
     if (L) {
       const lg = this.listCanvas.getContext('2d')!;
       lg.clearRect(0, 0, this.listCanvas.width, this.listCanvas.height);

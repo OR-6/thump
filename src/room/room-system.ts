@@ -413,7 +413,6 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     // (a Perfect's word only while it's new: a song's first four, a lesson's first dozen; Good, Early and Late always)
     this.hitWords.wants = (g) => g !== 'perfect' || this.game.graded.perfect <= (this.game.inLesson ? 12 : 4);
     // (a Good says which way it was off, in Good's green: early or late, and still counted)
-    this.hitWords.lean = () => this.game.hitLean;
     // the game's own sounds play in the music: the chord under them, landing on the band's grid
     sfx.music = (o) => this.sfxMusic(o);
     sfx.grid = (div) => this.sfxGrid(div);
@@ -4106,7 +4105,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
           const z = this.rayZ;
           const k = this.panelItemAt(x, z);
           if (h.edge === 'start' && this.kit.module.inList(x, z)) {
-            this.takeList(i, 2, k, z);
+            this.takeList(i, 2, k, z, x);
             continue;
           }
           if (k < 0) continue;
@@ -4135,7 +4134,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
         if (off <= 0) this.tipArmed[i] = false;
         // (a fingertip landing on the song list takes hold of it: it presses the row only if it lifts without moving)
         if (fire && this.kit.module.inList(this.o.x, this.o.z)) {
-          this.takeList(i, 1, this.panelItemAt(this.o.x, this.o.z), this.o.z);
+          this.takeList(i, 1, this.panelItemAt(this.o.x, this.o.z), this.o.z, this.o.x);
           continue;
         }
         if (off < -0.02 || off > 0.05) continue;
@@ -4208,7 +4207,7 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
     this.moduleSurface.toZone(at, this.o);
     if (Math.abs(this.o.y) > 0.035) return;
     const k = this.panelItemAt(this.o.x, this.o.z);
-    if (this.kit.module.inList(this.o.x, this.o.z)) this.takeList(hand, 3, k, this.o.z);
+    if (this.kit.module.inList(this.o.x, this.o.z)) this.takeList(hand, 3, k, this.o.z, this.o.x);
     else if (k >= 0) this.pressPanel(k);
   }
 
@@ -4221,14 +4220,15 @@ export class RoomSystem extends createSystem({ planes: { required: [XRPlane] }, 
   private listTapK = [-1, -1];
   private listT = [0, 0];
   private listVer = [-1, -1];
-  private takeList(hand: number, src: number, k: number, z: number): void {
+  private takeList(hand: number, src: number, k: number, z: number, x: number): void {
     // (one hand on the list at a time: the other's touch is nothing, not a tap)
     if (this.listSrc[1 - hand]) return;
     this.listSrc[hand] = src;
     this.listVer[hand] = this.kit.module.version;
     this.listTapK[hand] = k >= 0 && this.kit.module.itemAt(k)?.scroll ? k : -1;
     this.listT[hand] = this.uiT;
-    this.kit.module.listGrab(hand, z);
+    // (on the scrollbar: it's the bar that's held, and letting go presses nothing)
+    if (this.kit.module.listGrab(hand, z, x)) this.listTapK[hand] = -1;
   }
   private dropList(hand: number): void {
     if (!this.listSrc[hand]) return;

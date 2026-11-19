@@ -17,7 +17,7 @@ const js = (body) => {
 // a point on the panel (x right, z up it, m; `out` in front of its face) in the world
 const onPanel = (x, z, out) =>
   js(`const m = r.kit.module; const v = m.root.position.clone().set(${x}, ${z}, ${out}); m.root.updateMatrixWorld(true); m.root.localToWorld(v); return [v.x, v.y, v.z];`);
-const list = () => js(`const m = r.kit.module; const L = m.page?.list; if (!L) return null; const W = 1360, H = 907, PW = 0.38, PH = 0.2533; return { x: ((L.x + L.w / 2) / W - 0.5) * PW, z: (0.5 - (L.y + L.h / 2) / H) * PH, h: (L.h / H) * PH, offset: m.scroll.offset, max: m.scroll.max, sel: r.game.songSel };`);
+const list = () => js(`const m = r.kit.module; const L = m.page?.list; if (!L) return null; const W = 1360, H = 907, PW = 0.38, PH = 0.2533; return { x: ((L.x + L.w / 2) / W - 0.5) * PW, z: (0.5 - (L.y + L.h / 2) / H) * PH, h: (L.h / H) * PH, w: (L.w / W) * PW, offset: m.scroll.offset, max: m.scroll.max, sel: r.game.songSel };`);
 
 await goto('');
 await placeKit();
@@ -75,5 +75,23 @@ await wait(700);
 const tapped = list();
 check('a tap on a row picks that song', want >= 0 && tapped.sel === want, `wanted ${want}, picked ${tapped.sel}`);
 check('the picked song stays in view', (() => { const y = js(`const m = r.kit.module; const it = m.page.items.find((i) => i.id === 'song:${tapped.sel}'); return it ? it.y - m.page.list.y - m.scroll.offset : -999;`); return y >= -1 && y <= 480 - 74 + 1; })());
+
+// the scrollbar beside the list: a finger on it near the bottom takes the list most of the way down; slid up, the
+// list follows the bar back up; letting go picks nothing
+const barX = L.x + L.w / 2 - (20 / 1360) * 0.38;
+const sel0 = list().sel;
+xr('set-transform', { device: HAND, position: tipTo(onPanel(barX, L.z - L.h * 0.4, 0.03)), orientation: FLAT });
+await wait(300);
+xr('animate-to', { device: HAND, position: tipTo(onPanel(barX, L.z - L.h * 0.4, -0.003)), duration: 0.15 });
+await wait(400);
+const low = list();
+check('touching the scrollbar near its bottom takes the list near its end', low.offset > low.max * 0.75, `${low.offset.toFixed(0)} of ${low.max.toFixed(0)}`);
+xr('animate-to', { device: HAND, position: tipTo(onPanel(barX, L.z + L.h * 0.4, -0.003)), duration: 0.6 });
+await wait(800);
+const high = list();
+check('sliding it up brings the list back to its top', high.offset < high.max * 0.25, `${high.offset.toFixed(0)} of ${high.max.toFixed(0)}`);
+xr('animate-to', { device: HAND, position: tipTo(onPanel(barX, L.z + L.h * 0.4, 0.04)), duration: 0.12 });
+await wait(600);
+check('letting go of the scrollbar picks no song', list().sel === sel0, `sel ${sel0} → ${list().sel}`);
 xr('set-transform', { device: HAND, position: { x: 0.35, y: 1.45, z: -0.25 }, orientation: { pitch: 0, yaw: 0, roll: -90 } });
 done('E2E scroll');

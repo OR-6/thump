@@ -10,10 +10,14 @@ import { motion } from '../ui/motion.js';
 import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3, type Object3D } from '@iwsdk/core';
 import { FONT, whenFonts } from '../ui/fonts.js';
 
-/** (the last two: a Good that was early or late, in Good's green: still counted, but it says which way) */
-const WORDS = ['PERFECT', 'GOOD', 'EARLY', 'LATE', 'EARLY ', 'LATE '] as const;
-/** Each word's own neon (a cyan Perfect, a green Good, an orange Early, a violet Late). */
-const INK: Record<string, [string, string]> = { PERFECT: ['#ff48b0', '#3255a4'], GOOD: ['#3255a4', '#2f8a4c'], EARLY: ['#3255a4', '#e0622b'], LATE: ['#ff48b0', '#4a4640'], 'EARLY ': ['#3255a4', '#2f8a4c'], 'LATE ': ['#3255a4', '#2f8a4c'] };
+/**
+ * A hit that counted says PERFECT or GOOD, nothing else; one that didn't count says TOO EARLY or TOO LATE, so a word
+ * never makes a hit that missed look as if it landed (an EARLY over a hit that didn't count read as done, and the note
+ * that was still coming went unplayed). Which way a counted hit leaned is on the HUD's timing strip.
+ */
+const WORDS = ['PERFECT', 'GOOD', 'TOO EARLY', 'TOO LATE'] as const;
+/** Each word's own inks: a pink Perfect, a green Good; the two that didn't count in grey ink, struck with orange. */
+const INK: Record<string, [string, string]> = { PERFECT: ['#ff48b0', '#3255a4'], GOOD: ['#3255a4', '#2f8a4c'], 'TOO EARLY': ['#e0622b', '#4a4640'], 'TOO LATE': ['#e0622b', '#4a4640'] };
 const POOL = 6;
 /** How long a word is up (s). */
 const LIFE = 0.42;
@@ -27,10 +31,15 @@ function wordTexture(word: string): CanvasTexture {
   const draw = () => {
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, 512, 144);
-    g.font = `800 92px 'Bricolage Grotesque', ${FONT}`;
     g.textBaseline = 'middle';
     const ink = word;
     word = word.trim();
+    // (as big as fits: TOO EARLY is twice PERFECT's length)
+    let px = 92;
+    for (; px > 56; px -= 4) {
+      g.font = `800 ${px}px 'Bricolage Grotesque', ${FONT}`;
+      if (g.measureText(word).width <= 484) break;
+    }
     const w = g.measureText(word).width;
     const x = (512 - w) / 2;
     const y = 70;
@@ -88,13 +97,10 @@ export class HitWords {
   onShow: ((grade: string, at: Vector3) => void) | null = null;
   /** Whether a grade's word is shown this time (unset: always). */
   wants: ((grade: string) => boolean) | null = null;
-  /** The last judged hit's lean (−1 early, +1 late, 0 neither): a Good says GOOD, or EARLY or LATE in its green. */
-  lean: (() => number) | null = null;
   /** The word for `grade` at world `at` (6 cm above it), facing `head`. */
   show(grade: string | null, at: Vector3, head: Vector3, color: number): void {
     if (grade) this.onShow?.(grade, at);
-    const lean = grade === 'good' && this.lean ? this.lean() : 0;
-    const w = grade === 'perfect' ? 0 : grade === 'good' ? (lean < 0 ? 4 : lean > 0 ? 5 : 1) : grade === 'early' ? 2 : grade === 'late' ? 3 : -1;
+    const w = grade === 'perfect' ? 0 : grade === 'good' ? 1 : grade === 'early' ? 2 : grade === 'late' ? 3 : -1;
     if (!this.meshes.length || w < 0 || (this.wants && !this.wants(grade!))) return;
     const i = this.next++ % this.meshes.length;
     const m = this.meshes[i];
